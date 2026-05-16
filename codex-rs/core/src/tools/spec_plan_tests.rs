@@ -2070,6 +2070,7 @@ fn request_plugin_install_description_lists_discoverable_tools() {
     );
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[test]
 fn code_mode_augments_mcp_tool_descriptions_with_namespaced_sample() {
     let model_info = model_info();
@@ -2125,6 +2126,7 @@ declare const tools: { mcp__sample__echo(args: { message: string; }): Promise<Ca
     ));
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[test]
 fn code_mode_preserves_nullable_and_literal_mcp_input_shapes() {
     let model_info = model_info();
@@ -2208,6 +2210,7 @@ declare const tools: { mcp__sample__fn(args: { open?: Array<{ lineno?: number | 
     ));
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[test]
 fn code_mode_augments_builtin_tool_descriptions_with_typed_sample() {
     let model_info = model_info();
@@ -2244,6 +2247,7 @@ fn code_mode_augments_builtin_tool_descriptions_with_typed_sample() {
     );
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[test]
 fn code_mode_only_exec_description_includes_full_nested_tool_details() {
     let model_info = model_info();
@@ -2280,6 +2284,7 @@ fn code_mode_only_exec_description_includes_full_nested_tool_details() {
     assert!(description.contains("### `view_image`"));
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[test]
 fn code_mode_only_exec_description_includes_extension_tool_details() {
     let model_info = model_info();
@@ -2318,6 +2323,7 @@ fn code_mode_only_exec_description_includes_extension_tool_details() {
     assert!(description.contains("Echoes arguments through an extension tool."));
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[test]
 fn code_mode_exec_description_omits_nested_tool_details_when_not_code_mode_only() {
     let model_info = model_info();
@@ -2480,6 +2486,7 @@ fn server_name_from_tool_name(name: &ToolName) -> String {
         .to_string()
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[test]
 fn code_mode_augments_mcp_tool_descriptions_with_structured_output_sample() {
     let model_info = model_info();

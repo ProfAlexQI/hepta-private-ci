@@ -7,15 +7,21 @@
 
 use std::sync::Arc;
 
-use codex_code_mode::RuntimeResponse;
-use serde::Serialize;
 use tracing::warn;
 
+#[cfg(feature = "code-mode-v8")]
+use codex_code_mode::RuntimeResponse;
+#[cfg(feature = "code-mode-v8")]
+use serde::Serialize;
+
 use crate::model::AgentThreadId;
+#[cfg(feature = "code-mode-v8")]
 use crate::model::CodeCellRuntimeStatus;
 use crate::model::CodexTurnId;
 use crate::model::ModelVisibleCallId;
+#[cfg(feature = "code-mode-v8")]
 use crate::payload::RawPayloadKind;
+#[cfg(feature = "code-mode-v8")]
 use crate::payload::RawPayloadRef;
 use crate::raw_event::RawTraceEventContext;
 use crate::raw_event::RawTraceEventPayload;
@@ -48,6 +54,7 @@ struct EnabledCodeCellTraceContext {
 /// Keeping the raw runtime payload here preserves stored-value and lifecycle
 /// evidence without duplicating the model-facing transcript.
 #[derive(Serialize)]
+#[cfg(feature = "code-mode-v8")]
 struct CodeCellResponseTracePayload<'a> {
     response: &'a RuntimeResponse,
 }
@@ -102,6 +109,7 @@ impl CodeCellTraceContext {
     /// running. Terminal initial responses should be followed by `record_ended`
     /// by the caller so the reducer can distinguish model-visible output from
     /// runtime completion.
+    #[cfg(feature = "code-mode-v8")]
     pub fn record_initial_response(&self, response: &RuntimeResponse) {
         let CodeCellTraceContextState::Enabled(context) = &self.state else {
             return;
@@ -117,6 +125,7 @@ impl CodeCellTraceContext {
     }
 
     /// Records the terminal lifecycle point for a code-mode runtime cell.
+    #[cfg(feature = "code-mode-v8")]
     pub fn record_ended(&self, response: &RuntimeResponse) {
         let CodeCellTraceContextState::Enabled(context) = &self.state else {
             return;
@@ -132,6 +141,7 @@ impl CodeCellTraceContext {
     }
 }
 
+#[cfg(feature = "code-mode-v8")]
 fn code_cell_status_for_runtime_response(response: &RuntimeResponse) -> CodeCellRuntimeStatus {
     match response {
         RuntimeResponse::Yielded { .. } => CodeCellRuntimeStatus::Yielded,
@@ -146,6 +156,7 @@ fn code_cell_status_for_runtime_response(response: &RuntimeResponse) -> CodeCell
     }
 }
 
+#[cfg(feature = "code-mode-v8")]
 fn code_cell_response_payload(
     context: &EnabledCodeCellTraceContext,
     response: &RuntimeResponse,
@@ -157,6 +168,7 @@ fn code_cell_response_payload(
     )
 }
 
+#[cfg(feature = "code-mode-v8")]
 fn write_json_payload_best_effort(
     writer: &TraceWriter,
     kind: RawPayloadKind,

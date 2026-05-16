@@ -1258,6 +1258,7 @@ async fn test_get_openai_tools_mcp_tools_with_additional_properties_schema() {
     );
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[tokio::test]
 async fn code_mode_only_restricts_model_tools_to_exec_tools() {
     let mut features = Features::with_defaults();
@@ -1273,6 +1274,7 @@ async fn code_mode_only_restricts_model_tools_to_exec_tools() {
     .await;
 }
 
+#[cfg(feature = "code-mode-v8")]
 #[tokio::test]
 async fn code_mode_only_can_expose_multi_agent_v2_as_normal_tools() {
     let config = test_config().await;

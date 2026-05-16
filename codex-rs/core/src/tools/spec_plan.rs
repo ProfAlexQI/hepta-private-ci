@@ -1,10 +1,7 @@
 use crate::config::DEFAULT_MULTI_AGENT_V2_DEFAULT_WAIT_TIMEOUT_MS;
 use crate::config::DEFAULT_MULTI_AGENT_V2_MAX_WAIT_TIMEOUT_MS;
 use crate::config::DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS;
-use crate::tools::code_mode::execute_spec::create_code_mode_tool;
 use crate::tools::handlers::ApplyPatchHandler;
-use crate::tools::handlers::CodeModeExecuteHandler;
-use crate::tools::handlers::CodeModeWaitHandler;
 use crate::tools::handlers::CreateGoalHandler;
 use crate::tools::handlers::DynamicToolHandler;
 use crate::tools::handlers::ExecCommandHandler;
@@ -66,12 +63,20 @@ use codex_tools::ToolExecutor;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use codex_tools::ToolsConfig;
-use codex_tools::collect_code_mode_exec_prompt_tool_definitions;
 use codex_tools::default_namespace_description;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::warn;
+
+#[cfg(feature = "code-mode-v8")]
+use crate::tools::code_mode::execute_spec::create_code_mode_tool;
+#[cfg(feature = "code-mode-v8")]
+use crate::tools::handlers::CodeModeExecuteHandler;
+#[cfg(feature = "code-mode-v8")]
+use crate::tools::handlers::CodeModeWaitHandler;
+#[cfg(feature = "code-mode-v8")]
+use codex_tools::collect_code_mode_exec_prompt_tool_definitions;
 
 #[derive(Clone, Copy)]
 struct ToolRegistryBuildParams<'a> {
@@ -153,14 +158,16 @@ fn spec_for_model_request(
     exposure: ToolExposure,
     spec: ToolSpec,
 ) -> ToolSpec {
+    #[cfg(feature = "code-mode-v8")]
     if config.code_mode_enabled
         && exposure != ToolExposure::DirectModelOnly
         && codex_code_mode::is_code_mode_nested_tool(spec.name())
     {
-        codex_tools::augment_tool_spec_for_code_mode(spec)
-    } else {
-        spec
+        return codex_tools::augment_tool_spec_for_code_mode(spec);
     }
+
+    let _ = (config, exposure);
+    spec
 }
 
 pub(crate) fn hosted_model_tool_specs(config: &ToolsConfig) -> Vec<ToolSpec> {
@@ -213,16 +220,27 @@ fn is_hidden_by_code_mode_only(
     registry: &ToolRegistry,
     spec: &ToolSpec,
 ) -> bool {
-    if !config.code_mode_only_enabled || !codex_code_mode::is_code_mode_nested_tool(spec.name()) {
+    #[cfg(not(feature = "code-mode-v8"))]
+    {
+        let _ = (config, registry, spec);
         return false;
     }
 
-    let exposure = registry
-        .tool_exposure(&ToolName::plain(spec.name()))
-        .unwrap_or(ToolExposure::Direct);
-    exposure != ToolExposure::DirectModelOnly
+    #[cfg(feature = "code-mode-v8")]
+    {
+        if !config.code_mode_only_enabled || !codex_code_mode::is_code_mode_nested_tool(spec.name())
+        {
+            return false;
+        }
+
+        let exposure = registry
+            .tool_exposure(&ToolName::plain(spec.name()))
+            .unwrap_or(ToolExposure::Direct);
+        exposure != ToolExposure::DirectModelOnly
+    }
 }
 
+#[cfg(feature = "code-mode-v8")]
 fn build_code_mode_executors(
     config: &ToolsConfig,
     executors: &[Arc<dyn CoreToolRuntime>],
@@ -260,6 +278,16 @@ fn build_code_mode_executors(
         )),
         Arc::new(CodeModeWaitHandler),
     ]
+}
+
+#[cfg(not(feature = "code-mode-v8"))]
+fn build_code_mode_executors(
+    config: &ToolsConfig,
+    executors: &[Arc<dyn CoreToolRuntime>],
+    deferred_tools_available: bool,
+) -> Vec<Arc<dyn CoreToolRuntime>> {
+    let _ = (config, executors, deferred_tools_available);
+    vec![]
 }
 
 fn merge_into_namespaces(specs: Vec<ToolSpec>) -> Vec<ToolSpec> {
@@ -308,6 +336,7 @@ fn merge_into_namespaces(specs: Vec<ToolSpec>) -> Vec<ToolSpec> {
     merged_specs
 }
 
+#[cfg(feature = "code-mode-v8")]
 fn code_mode_namespace_descriptions(
     specs: &[ToolSpec],
 ) -> BTreeMap<String, codex_code_mode::ToolNamespaceDescription> {
@@ -566,6 +595,7 @@ fn append_extension_tool_executors(
         .iter()
         .map(|executor| executor.tool_name())
         .collect::<HashSet<_>>();
+    #[cfg(feature = "code-mode-v8")]
     if config.code_mode_enabled {
         reserved_tool_names.insert(ToolName::plain(codex_code_mode::PUBLIC_TOOL_NAME));
         reserved_tool_names.insert(ToolName::plain(codex_code_mode::WAIT_TOOL_NAME));
@@ -596,6 +626,7 @@ fn multi_agent_v2_handler(
     override_tool_exposure(Arc::new(handler), exposure)
 }
 
+#[cfg(feature = "code-mode-v8")]
 fn compare_code_mode_tools(
     left: &codex_code_mode::ToolDefinition,
     right: &codex_code_mode::ToolDefinition,
@@ -610,6 +641,7 @@ fn compare_code_mode_tools(
         .then_with(|| left.name.cmp(&right.name))
 }
 
+#[cfg(feature = "code-mode-v8")]
 fn code_mode_namespace_name<'a>(
     tool: &codex_code_mode::ToolDefinition,
     namespace_descriptions: &'a BTreeMap<String, codex_code_mode::ToolNamespaceDescription>,

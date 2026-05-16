@@ -120,6 +120,7 @@ impl AnyToolResult {
         result.to_response_item(&call_id, &payload)
     }
 
+    #[cfg_attr(not(feature = "code-mode-v8"), allow(dead_code))]
     pub(crate) fn code_mode_result(self) -> serde_json::Value {
         let Self {
             payload, result, ..
@@ -281,6 +282,7 @@ impl ToolRegistry {
         self.tools.get(name).map(Arc::clone)
     }
 
+    #[cfg_attr(not(feature = "code-mode-v8"), allow(dead_code))]
     pub(crate) fn tool_exposure(&self, name: &ToolName) -> Option<ToolExposure> {
         self.tools.get(name).map(|tool| tool.exposure())
     }
