@@ -797,14 +797,14 @@
       "description": "Authentication mode for OpenAI-backed providers.",
       "oneOf": [
         {
-          "description": "OpenAI API key provided by the caller and stored by Codex.",
+          "description": "OpenAI API key provided by the caller and stored by Hepta.",
           "enum": [
             "apikey"
           ],
           "type": "string"
         },
         {
-          "description": "ChatGPT OAuth managed by Codex (tokens persisted and refreshed by Codex).",
+          "description": "ChatGPT OAuth managed by Hepta (tokens persisted and refreshed by Hepta).",
           "enum": [
             "chatgpt"
           ],
@@ -818,7 +818,7 @@
           "type": "string"
         },
         {
-          "description": "Programmatic Codex auth backed by a registered Agent Identity.",
+          "description": "Programmatic Hepta auth backed by a registered Agent Identity.",
           "enum": [
             "agentIdentity"
           ],
@@ -6825,7 +6825,7 @@
           "type": "object"
         },
         {
-          "description": "[UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE. The access token must contain the same scopes that Codex-managed ChatGPT auth tokens have.",
+          "description": "[UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE. The access token must contain the same scopes that Hepta-managed ChatGPT auth tokens have.",
           "properties": {
             "accessToken": {
               "description": "Access token (JWT) supplied by the client. This token is used for backend API requests and email extraction.",
@@ -6836,7 +6836,7 @@
               "type": "string"
             },
             "chatgptPlanType": {
-              "description": "Optional plan type supplied by the client.\n\nWhen `null`, Codex attempts to derive the plan type from access-token claims. If unavailable, the plan defaults to `unknown`.",
+              "description": "Optional plan type supplied by the client.\n\nWhen `null`, Hepta attempts to derive the plan type from access-token claims. If unavailable, the plan defaults to `unknown`.",
               "type": [
                 "string",
                 "null"

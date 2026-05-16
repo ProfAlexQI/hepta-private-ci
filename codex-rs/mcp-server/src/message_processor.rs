@@ -369,7 +369,7 @@ impl MessageProcessor {
                     Err(e) => {
                         let result = CallToolResult {
                             content: vec![rmcp::model::Content::text(format!(
-                                "Failed to load Codex configuration from overrides: {e}"
+                                "Failed to load Hepta configuration from overrides: {e}"
                             ))],
                             structured_content: None,
                             is_error: Some(true),
@@ -382,7 +382,7 @@ impl MessageProcessor {
                 Err(e) => {
                     let result = CallToolResult {
                         content: vec![rmcp::model::Content::text(format!(
-                            "Failed to parse configuration for Codex tool: {e}"
+                            "Failed to parse configuration for Hepta MCP tool: {e}"
                         ))],
                         structured_content: None,
                         is_error: Some(true),
@@ -440,10 +440,10 @@ impl MessageProcessor {
             Some(json_val) => match serde_json::from_value::<CodexToolCallReplyParam>(json_val) {
                 Ok(params) => params,
                 Err(e) => {
-                    tracing::error!("Failed to parse Codex tool call reply parameters: {e}");
+                    tracing::error!("Failed to parse Hepta MCP tool reply parameters: {e}");
                     let result = CallToolResult {
                         content: vec![rmcp::model::Content::text(format!(
-                            "Failed to parse configuration for Codex tool: {e}"
+                            "Failed to parse configuration for Hepta MCP tool: {e}"
                         ))],
                         structured_content: None,
                         is_error: Some(true),

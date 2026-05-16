@@ -19,9 +19,9 @@ use ts_rs::TS;
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Display, JsonSchema, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthMode {
-    /// OpenAI API key provided by the caller and stored by Codex.
+    /// OpenAI API key provided by the caller and stored by Hepta.
     ApiKey,
-    /// ChatGPT OAuth managed by Codex (tokens persisted and refreshed by Codex).
+    /// ChatGPT OAuth managed by Hepta (tokens persisted and refreshed by Hepta).
     Chatgpt,
     /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
     ///
@@ -31,7 +31,7 @@ pub enum AuthMode {
     #[ts(rename = "chatgptAuthTokens")]
     #[strum(serialize = "chatgptAuthTokens")]
     ChatgptAuthTokens,
-    /// Programmatic Codex auth backed by a registered Agent Identity.
+    /// Programmatic Hepta auth backed by a registered Agent Identity.
     #[serde(rename = "agentIdentity")]
     #[ts(rename = "agentIdentity")]
     #[strum(serialize = "agentIdentity")]

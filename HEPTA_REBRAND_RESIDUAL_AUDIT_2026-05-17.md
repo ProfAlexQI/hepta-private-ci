@@ -33,6 +33,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   describe this repository as a Hepta fork rather than an install/update path
   for upstream Codex artifacts.
 
+## Cleaned in configuration/schema wording pass
+
+- Config-loading diagnostics, network-proxy managed CA diagnostics, and
+  app-server config-manager comments now say Hepta for user-facing
+  configuration surfaces.
+- App-server auth protocol descriptions now say Hepta-managed ChatGPT/API-key
+  tokens while retaining compatibility field and type names.
+- Config JSON schema, app-server JSON/TypeScript schema fixtures, memory
+  consolidation templates, and the imagegen fallback network note now use Hepta
+  product wording.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

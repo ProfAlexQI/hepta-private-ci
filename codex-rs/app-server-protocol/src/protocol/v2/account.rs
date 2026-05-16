@@ -62,7 +62,7 @@ pub enum LoginAccountParams {
     #[ts(rename = "chatgptDeviceCode")]
     ChatgptDeviceCode,
     /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
-    /// The access token must contain the same scopes that Codex-managed ChatGPT auth tokens have.
+    /// The access token must contain the same scopes that Hepta-managed ChatGPT auth tokens have.
     #[experimental("account/login/start.chatgptAuthTokens")]
     #[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
     #[ts(rename = "chatgptAuthTokens", rename_all = "camelCase")]
@@ -74,7 +74,7 @@ pub enum LoginAccountParams {
         chatgpt_account_id: String,
         /// Optional plan type supplied by the client.
         ///
-        /// When `null`, Codex attempts to derive the plan type from access-token
+        /// When `null`, Hepta attempts to derive the plan type from access-token
         /// claims. If unavailable, the plan defaults to `unknown`.
         #[ts(optional = nullable)]
         chatgpt_plan_type: Option<String>,
