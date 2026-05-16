@@ -26,13 +26,13 @@ use crate::output::Output;
 use crate::state::ReaderEvent;
 
 #[derive(Parser)]
-#[command(author = "Codex", version, about = "Minimal app-server client")]
+#[command(author = "Hepta", version, about = "Minimal Hepta app-server client")]
 struct Cli {
-    /// Path to the `codex` CLI binary.
-    #[arg(long, default_value = "codex")]
+    /// Path to the `hepta` CLI binary.
+    #[arg(long = "hepta-bin", alias = "codex-bin", default_value = "hepta")]
     codex_bin: String,
 
-    /// Forwarded to the `codex` CLI as `--config key=value`. Repeatable.
+    /// Forwarded to Hepta as `--config key=value`. Repeatable.
     #[arg(short = 'c', long = "config", value_name = "key=value", action = ArgAction::Append)]
     config_overrides: Vec<String>,
 

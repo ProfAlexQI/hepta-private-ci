@@ -115,6 +115,22 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   of Codex backend auth / `codex login`.
 - ChatGPT apply-command help and crate README now describe Hepta agent tasks.
 
+## Cleaned in developer auxiliary-tool pass
+
+- App-server test/debug clients now present Hepta app-server command names,
+  help text, default binary names, trace guidance, and visible runtime dirs.
+  Legacy `--codex-bin`, `CODEX_BIN`, and `CODEX_APP_SERVER_URL` remain
+  compatibility inputs only.
+- Root Rust workspace README now documents local Hepta source builds,
+  `hepta mcp`, `hepta mcp-server`, `hepta exec`, Hepta sandbox commands,
+  and `~/.hepta` runtime paths instead of upstream Codex install commands.
+- Execpolicy README now documents `hepta execpolicy check`; the standalone
+  dev crate name remains `codex-execpolicy`.
+- Windows sandbox smoke script now resolves `hepta.exe` / `hepta`, uses
+  `HEPTA_HOME`, and tests Hepta runtime artifact protection under `.hepta`.
+- Nix package metadata now names the forked package/program as Hepta, while
+  keeping the Cargo workspace crate names unchanged.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
@@ -128,6 +144,9 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   remain compatibility/internal Rust API names.
 - MCP compatibility aliases and event names such as `codex`, `codex-reply`,
   and `codex/event`.
+- App-server test-client internal helper types such as `CodexClient` and
+  `SpawnCodex` remain deferred internal identifiers; the user-facing CLI now
+  defaults to `hepta` and Hepta wording.
 
 ## Deferred
 

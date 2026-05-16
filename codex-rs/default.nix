@@ -14,7 +14,7 @@ rustPlatform.buildRustPackage (_: {
   env.PKG_CONFIG_PATH = lib.makeSearchPathOutput "dev" "lib/pkgconfig" (
     [ openssl ] ++ lib.optionals stdenv.isLinux [ libcap ]
   );
-  pname = "codex-rs";
+  pname = "hepta-rs";
   inherit version;
   cargoLock.lockFile = ./Cargo.lock;
   doCheck = false;
@@ -48,9 +48,8 @@ rustPlatform.buildRustPackage (_: {
   };
 
   meta = with lib; {
-    description = "OpenAI Codex command‑line interface rust implementation";
+    description = "Hepta command-line interface Rust implementation";
     license = licenses.asl20;
-    homepage = "https://github.com/openai/codex";
-    mainProgram = "codex";
+    mainProgram = "hepta";
   };
 })

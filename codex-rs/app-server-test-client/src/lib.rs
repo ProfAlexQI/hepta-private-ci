@@ -98,27 +98,32 @@ const NOTIFICATIONS_TO_OPT_OUT: &[&str] = &[
 const APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SERVER_GRACEFUL_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const DEFAULT_ANALYTICS_ENABLED: bool = true;
-const OTEL_SERVICE_NAME: &str = "codex-app-server-test-client";
+const OTEL_SERVICE_NAME: &str = "hepta-app-server-test-client";
 const TRACE_DISABLED_MESSAGE: &str =
-    "Not enabled - enable tracing in $CODEX_HOME/config.toml to get a trace URL!";
+    "Not enabled - enable tracing in $HEPTA_HOME/config.toml to get a trace URL!";
 
-/// Minimal launcher that initializes the Codex app-server and logs the handshake.
+/// Minimal launcher that initializes the Hepta app-server and logs the handshake.
 #[derive(Parser)]
-#[command(author = "Codex", version, about = "Bootstrap Codex app-server", long_about = None)]
+#[command(author = "Hepta", version, about = "Bootstrap Hepta app-server", long_about = None)]
 struct Cli {
-    /// Path to the `codex` CLI binary. When set, requests use stdio by
-    /// spawning `codex app-server` as a child process.
-    #[arg(long, env = "CODEX_BIN", global = true)]
+    /// Path to the `hepta` CLI binary. When set, requests use stdio by
+    /// spawning `hepta app-server` as a child process.
+    #[arg(
+        long = "hepta-bin",
+        alias = "codex-bin",
+        env = "HEPTA_BIN",
+        global = true
+    )]
     codex_bin: Option<PathBuf>,
 
     /// Existing websocket server URL to connect to.
     ///
-    /// If neither `--codex-bin` nor `--url` is provided, defaults to
+    /// If neither `--hepta-bin` nor `--url` is provided, defaults to
     /// `ws://127.0.0.1:4222`.
-    #[arg(long, env = "CODEX_APP_SERVER_URL", global = true)]
+    #[arg(long, env = "HEPTA_APP_SERVER_URL", global = true)]
     url: Option<String>,
 
-    /// Forwarded to the `codex` CLI as `--config key=value`. Repeatable.
+    /// Forwarded to Hepta as `--config key=value`. Repeatable.
     ///
     /// Example:
     ///   `--config 'model_providers.mock.base_url="http://localhost:4010/v2"'`
@@ -146,21 +151,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum CliCommand {
-    /// Start `codex app-server` on a websocket endpoint in the background.
+    /// Start `hepta app-server` on a websocket endpoint in the background.
     ///
     /// Logs are written to:
-    ///   `/tmp/codex-app-server-test-client/`
+    ///   `/tmp/hepta-app-server-test-client/`
     Serve {
-        /// WebSocket listen URL passed to `codex app-server --listen`.
+        /// WebSocket listen URL passed to `hepta app-server --listen`.
         #[arg(long, default_value = "ws://127.0.0.1:4222")]
         listen: String,
         /// Kill any process listening on the same port before starting.
         #[arg(long, default_value_t = false)]
         kill: bool,
     },
-    /// Send a user message through the Codex app-server.
+    /// Send a user message through the Hepta app-server.
     SendMessage {
-        /// User message to send to Codex.
+        /// User message to send to Hepta.
         user_message: String,
     },
     /// Send a user message through the app-server V2 thread/turn APIs.
@@ -168,14 +173,14 @@ enum CliCommand {
         /// Opt into experimental app-server methods and fields.
         #[arg(long)]
         experimental_api: bool,
-        /// User message to send to Codex.
+        /// User message to send to Hepta.
         user_message: String,
     },
     /// Resume a V2 thread by id, then send a user message.
     ResumeMessageV2 {
         /// Existing thread id to resume.
         thread_id: String,
-        /// User message to send to Codex.
+        /// User message to send to Hepta.
         user_message: String,
     },
     /// Resume a V2 thread and continuously stream notifications/events.
@@ -229,12 +234,12 @@ enum CliCommand {
         #[arg(long, default_value_t = false)]
         device_code: bool,
     },
-    /// Fetch the current account rate limits from the Codex app-server.
+    /// Fetch the current account rate limits from the Hepta app-server.
     GetAccountRateLimits,
-    /// List the available models from the Codex app-server.
+    /// List the available models from the Hepta app-server.
     #[command(name = "model-list")]
     ModelList,
-    /// List stored threads from the Codex app-server.
+    /// List stored threads from the Hepta app-server.
     #[command(name = "thread-list")]
     ThreadList {
         /// Number of threads to return.
@@ -281,13 +286,15 @@ pub async fn run() -> Result<()> {
         dynamic_tools,
         command,
     } = Cli::parse();
+    let codex_bin = codex_bin.or_else(|| std::env::var_os("CODEX_BIN").map(PathBuf::from));
+    let url = url.or_else(|| std::env::var("CODEX_APP_SERVER_URL").ok());
 
     let dynamic_tools = parse_dynamic_tools_arg(&dynamic_tools)?;
 
     match command {
         CliCommand::Serve { listen, kill } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "serve")?;
-            let codex_bin = codex_bin.unwrap_or_else(|| PathBuf::from("codex"));
+            let codex_bin = codex_bin.unwrap_or_else(|| PathBuf::from("hepta"));
             serve(&codex_bin, &config_overrides, &listen, kill)
         }
         CliCommand::SendMessage { user_message } => {
@@ -437,7 +444,7 @@ struct BackgroundAppServer {
 
 fn resolve_endpoint(codex_bin: Option<PathBuf>, url: Option<String>) -> Result<Endpoint> {
     if codex_bin.is_some() && url.is_some() {
-        bail!("--codex-bin and --url are mutually exclusive");
+        bail!("--hepta-bin and --url are mutually exclusive");
     }
     if let Some(codex_bin) = codex_bin {
         return Ok(Endpoint::SpawnCodex(codex_bin));
@@ -455,7 +462,7 @@ fn resolve_shared_websocket_url(
 ) -> Result<String> {
     if codex_bin.is_some() {
         bail!(
-            "{command} requires --url or an already-running websocket app-server; --codex-bin would spawn a private stdio app-server instead"
+            "{command} requires --url or an already-running websocket app-server; --hepta-bin would spawn a private stdio app-server instead"
         );
     }
 
@@ -509,7 +516,7 @@ impl Drop for BackgroundAppServer {
 }
 
 fn serve(codex_bin: &Path, config_overrides: &[String], listen: &str, kill: bool) -> Result<()> {
-    let runtime_dir = PathBuf::from("/tmp/codex-app-server-test-client");
+    let runtime_dir = PathBuf::from("/tmp/hepta-app-server-test-client");
     fs::create_dir_all(&runtime_dir)
         .with_context(|| format!("failed to create runtime dir {}", runtime_dir.display()))?;
     let log_path = runtime_dir.join("app-server.log");
@@ -547,7 +554,7 @@ fn serve(codex_bin: &Path, config_overrides: &[String], listen: &str, kill: bool
 
     let pid = child.id();
 
-    println!("started codex app-server");
+    println!("started hepta app-server");
     println!("listen: {listen}");
     println!("pid: {pid} (launcher process)");
     println!("log: {}", log_path.display());
@@ -1203,7 +1210,7 @@ fn live_elicitation_timeout_pause(
 
     let mut _background_server = None;
     let websocket_url = match (codex_bin, url) {
-        (Some(_), Some(_)) => bail!("--codex-bin and --url are mutually exclusive"),
+        (Some(_), Some(_)) => bail!("--hepta-bin and --url are mutually exclusive"),
         (Some(codex_bin), None) => {
             let server = BackgroundAppServer::spawn(&codex_bin, config_overrides)?;
             let websocket_url = server.url.clone();
@@ -1455,11 +1462,11 @@ impl CodexClient {
         let stdin = codex_app_server
             .stdin
             .take()
-            .context("codex app-server stdin unavailable")?;
+            .context("hepta app-server stdin unavailable")?;
         let stdout = codex_app_server
             .stdout
             .take()
-            .context("codex app-server stdout unavailable")?;
+            .context("hepta app-server stdout unavailable")?;
 
         Ok(Self {
             transport: ClientTransport::Stdio {
@@ -1545,8 +1552,8 @@ impl CodexClient {
             request_id: request_id.clone(),
             params: InitializeParams {
                 client_info: ClientInfo {
-                    name: "codex-toy-app-server".to_string(),
-                    title: Some("Codex Toy App Server".to_string()),
+                    name: "hepta-toy-app-server".to_string(),
+                    title: Some("Hepta Toy App Server".to_string()),
                     version: env!("CARGO_PKG_VERSION").to_string(),
                 },
                 capabilities: Some(InitializeCapabilities {
@@ -2070,10 +2077,10 @@ impl CodexClient {
                     writeln!(stdin, "{payload}")?;
                     stdin
                         .flush()
-                        .context("failed to flush payload to codex app-server")?;
+                        .context("failed to flush payload to hepta app-server")?;
                     return Ok(());
                 }
-                bail!("codex app-server stdin closed")
+                bail!("hepta app-server stdin closed")
             }
             ClientTransport::WebSocket { socket, url } => {
                 socket
@@ -2090,9 +2097,9 @@ impl CodexClient {
                 let mut response_line = String::new();
                 let bytes = stdout
                     .read_line(&mut response_line)
-                    .context("failed to read from codex app-server")?;
+                    .context("failed to read from hepta app-server")?;
                 if bytes == 0 {
-                    bail!("codex app-server closed stdout");
+                    bail!("hepta app-server closed stdout");
                 }
                 Ok(response_line)
             }
@@ -2207,14 +2214,14 @@ impl Drop for CodexClient {
         let _ = stdin.take();
 
         if let Ok(Some(status)) = child.try_wait() {
-            println!("[codex app-server exited: {status}]");
+            println!("[hepta app-server exited: {status}]");
             return;
         }
 
         let deadline = SystemTime::now() + APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT;
         loop {
             if let Ok(Some(status)) = child.try_wait() {
-                println!("[codex app-server exited: {status}]");
+                println!("[hepta app-server exited: {status}]");
                 return;
             }
 
