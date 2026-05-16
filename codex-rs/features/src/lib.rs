@@ -180,7 +180,7 @@ pub enum Feature {
     Goals,
     /// Route MCP tool approval prompts through the MCP elicitation request path.
     ToolCallMcpElicitation,
-    /// Prompt Codex Apps connector auth failures through MCP URL elicitations.
+    /// Prompt Hepta Apps connector auth failures through MCP URL elicitations.
     AuthElicitation,
     /// Enable personality selection in the TUI.
     Personality,
@@ -806,7 +806,7 @@ pub const FEATURES: &[FeatureSpec] = &[
         stage: Stage::Experimental {
             name: "Memories",
             menu_description: "Allow Codex to create new memories from conversations and bring relevant memories into new conversations.",
-            announcement: "NEW: Codex can now generate and use memories. Try it now with `/memories`",
+            announcement: "NEW: Hepta can now generate and use memories. Try it now with `/memories`",
         },
         default_enabled: false,
     },
@@ -1073,7 +1073,7 @@ pub const FEATURES: &[FeatureSpec] = &[
         key: "goals",
         stage: Stage::Experimental {
             name: "Goals",
-            menu_description: "Set a persistent goal Codex can continue over time",
+            menu_description: "Set a persistent goal Hepta can continue over time",
             announcement: "",
         },
         default_enabled: false,

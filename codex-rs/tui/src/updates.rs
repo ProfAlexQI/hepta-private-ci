@@ -24,7 +24,7 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
         return None;
     }
 
-    let action = update_action::get_update_action();
+    let action = update_action::get_update_action()?;
     let version_file = version_filepath(config);
     let info = read_version_info(&version_file).ok();
 
@@ -36,7 +36,7 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
         // isn’t blocked by a network call. The UI reads the previously cached
         // value (if any) for this run; the next run shows the banner if needed.
         tokio::spawn(async move {
-            check_for_update(&version_file, action)
+            check_for_update(&version_file, Some(action))
                 .await
                 .inspect_err(|e| tracing::error!("Failed to update version: {e}"))
         });

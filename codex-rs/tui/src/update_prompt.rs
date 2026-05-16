@@ -203,10 +203,7 @@ impl WidgetRef for &UpdatePromptScreen {
         column.push("");
         column.push(
             Line::from(vec![
-                "Release notes: ".dim(),
-                "https://github.com/openai/codex/releases/latest"
-                    .dim()
-                    .underlined(),
+                "Release notes are not configured for this Hepta source fork.".dim(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );

@@ -238,7 +238,7 @@ impl ChatWidget {
             let instructions = if connector.is_accessible {
                 "Manage this app in your browser."
             } else {
-                "Install this app in your browser, then reload Codex."
+                "Install this app in your browser, then reload Hepta."
             };
             if let Some(install_url) = connector.install_url.clone() {
                 let app_id = connector.id.clone();

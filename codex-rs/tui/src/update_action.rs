@@ -1,52 +1,47 @@
 #[cfg(any(not(debug_assertions), test))]
 use codex_install_context::InstallContext;
-#[cfg(any(not(debug_assertions), test))]
+#[cfg(test)]
 use codex_install_context::StandalonePlatform;
+
+const DISABLED_UPDATE_SH_ARGS: &[&str] = &[
+    "-c",
+    "printf '%s\n' 'Hepta self-update is not configured for this source fork.' >&2; exit 1",
+];
+const DISABLED_UPDATE_POWERSHELL_ARGS: &[&str] = &[
+    "-c",
+    "Write-Error 'Hepta self-update is not configured for this source fork.'; exit 1",
+];
 
 /// Update action the CLI should perform after the TUI exits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateAction {
-    /// Update via `npm install -g @openai/codex@latest`.
+    /// Upstream npm self-update is disabled for the Hepta source fork.
     NpmGlobalLatest,
-    /// Update via `bun install -g @openai/codex@latest`.
+    /// Upstream bun self-update is disabled for the Hepta source fork.
     BunGlobalLatest,
-    /// Update via `brew upgrade codex`.
+    /// Upstream Homebrew self-update is disabled for the Hepta source fork.
     BrewUpgrade,
-    /// Update via `curl -fsSL https://chatgpt.com/codex/install.sh | sh`.
+    /// Upstream standalone Unix self-update is disabled for the Hepta source fork.
     StandaloneUnix,
-    /// Update via `irm https://chatgpt.com/codex/install.ps1|iex`.
+    /// Upstream standalone Windows self-update is disabled for the Hepta source fork.
     StandaloneWindows,
 }
 
 impl UpdateAction {
     #[cfg(any(not(debug_assertions), test))]
     pub(crate) fn from_install_context(context: &InstallContext) -> Option<Self> {
-        match context {
-            InstallContext::Npm => Some(UpdateAction::NpmGlobalLatest),
-            InstallContext::Bun => Some(UpdateAction::BunGlobalLatest),
-            InstallContext::Brew => Some(UpdateAction::BrewUpgrade),
-            InstallContext::Standalone { platform, .. } => Some(match platform {
-                StandalonePlatform::Unix => UpdateAction::StandaloneUnix,
-                StandalonePlatform::Windows => UpdateAction::StandaloneWindows,
-            }),
-            InstallContext::Other => None,
-        }
+        let _ = context;
+        None
     }
 
     /// Returns the list of command-line arguments for invoking the update.
     pub fn command_args(self) -> (&'static str, &'static [&'static str]) {
         match self {
-            UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@openai/codex"]),
-            UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@openai/codex"]),
-            UpdateAction::BrewUpgrade => ("brew", &["upgrade", "--cask", "codex"]),
-            UpdateAction::StandaloneUnix => (
-                "sh",
-                &["-c", "curl -fsSL https://chatgpt.com/codex/install.sh | sh"],
-            ),
-            UpdateAction::StandaloneWindows => (
-                "powershell",
-                &["-c", "irm https://chatgpt.com/codex/install.ps1|iex"],
-            ),
+            UpdateAction::NpmGlobalLatest
+            | UpdateAction::BunGlobalLatest
+            | UpdateAction::BrewUpgrade
+            | UpdateAction::StandaloneUnix => ("sh", DISABLED_UPDATE_SH_ARGS),
+            UpdateAction::StandaloneWindows => ("powershell", DISABLED_UPDATE_POWERSHELL_ARGS),
         }
     }
 
@@ -79,15 +74,15 @@ mod tests {
         );
         assert_eq!(
             UpdateAction::from_install_context(&InstallContext::Npm),
-            Some(UpdateAction::NpmGlobalLatest)
+            None
         );
         assert_eq!(
             UpdateAction::from_install_context(&InstallContext::Bun),
-            Some(UpdateAction::BunGlobalLatest)
+            None
         );
         assert_eq!(
             UpdateAction::from_install_context(&InstallContext::Brew),
-            Some(UpdateAction::BrewUpgrade)
+            None
         );
         assert_eq!(
             UpdateAction::from_install_context(&InstallContext::Standalone {
@@ -95,7 +90,7 @@ mod tests {
                 release_dir: native_release_dir.clone(),
                 resources_dir: Some(native_release_dir.join("codex-resources")),
             }),
-            Some(UpdateAction::StandaloneUnix)
+            None
         );
         assert_eq!(
             UpdateAction::from_install_context(&InstallContext::Standalone {
@@ -103,25 +98,24 @@ mod tests {
                 release_dir: native_release_dir.clone(),
                 resources_dir: Some(native_release_dir.join("codex-resources")),
             }),
-            Some(UpdateAction::StandaloneWindows)
+            None
         );
     }
 
     #[test]
-    fn standalone_update_commands_rerun_latest_installer() {
+    fn update_commands_are_disabled_for_hepta_fork() {
         assert_eq!(
             UpdateAction::StandaloneUnix.command_args(),
-            (
-                "sh",
-                &["-c", "curl -fsSL https://chatgpt.com/codex/install.sh | sh"][..],
-            )
+            ("sh", DISABLED_UPDATE_SH_ARGS)
         );
         assert_eq!(
             UpdateAction::StandaloneWindows.command_args(),
-            (
-                "powershell",
-                &["-c", "irm https://chatgpt.com/codex/install.ps1|iex"][..],
-            )
+            ("powershell", DISABLED_UPDATE_POWERSHELL_ARGS)
+        );
+        assert!(
+            UpdateAction::NpmGlobalLatest
+                .command_str()
+                .contains("Hepta self-update is not configured for this source fork.")
         );
     }
 }

@@ -58,7 +58,7 @@ async fn session_summary_includes_resume_hint_for_persisted_rollout() {
     );
     assert_eq!(
         summary.resume_command,
-        Some("codex resume 123e4567-e89b-12d3-a456-426614174000".to_string())
+        Some("hepta resume 123e4567-e89b-12d3-a456-426614174000".to_string())
     );
 }
 
@@ -84,6 +84,6 @@ async fn session_summary_uses_id_even_when_thread_has_name() {
     .expect("summary");
     assert_eq!(
         summary.resume_command,
-        Some("codex resume 123e4567-e89b-12d3-a456-426614174000".to_string())
+        Some("hepta resume 123e4567-e89b-12d3-a456-426614174000".to_string())
     );
 }

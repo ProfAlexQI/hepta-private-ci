@@ -23,11 +23,11 @@ const MAX_IPC_FRAME_BYTES: usize = 256 * 1024 * 1024;
 const TUI_SOURCE_CLIENT_ID: &str = "codex-tui";
 #[cfg(any(unix, windows))]
 const OPEN_IDE_HINT: &str =
-    "Open this project in VS Code or Cursor with the Codex extension active.";
+    "Open this project in VS Code or Cursor with the Hepta extension active.";
 #[cfg(any(unix, windows))]
 const IDE_DID_NOT_PROVIDE_CONTEXT_HINT: &str = "The IDE extension did not provide context.";
 #[cfg(any(unix, windows))]
-const KEEP_TRYING_HINT: &str = "Codex will keep trying on future messages.";
+const KEEP_TRYING_HINT: &str = "Hepta will keep trying on future messages.";
 
 #[derive(Debug, Error)]
 pub(crate) enum IdeContextError {
