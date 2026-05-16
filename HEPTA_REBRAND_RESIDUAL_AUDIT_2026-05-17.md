@@ -44,12 +44,26 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   consolidation templates, and the imagegen fallback network note now use Hepta
   product wording.
 
+## Cleaned in MCP surface pass
+
+- MCP initialize `serverInfo` now reports `hepta-mcp-server`, title `Hepta`,
+  and a Hepta-owned `user_agent` value.
+- MCP `tools/list` now advertises `hepta` and `hepta-reply` with Hepta tool
+  titles, descriptions, and schema descriptions.
+- MCP tool-call parse/load/start/runtime errors and elicitation prompts now say
+  Hepta instead of Codex.
+- Integration tests exercise the new `hepta` tool name while the server keeps
+  accepting legacy `codex` / `codex-reply` calls as hidden compatibility
+  aliases.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
 - Wire/API field names such as `codexHome`, `codexErrorInfo`, `codexStreamlinedLogin`, and generated TypeScript/JSON schema type names.
 - Legacy environment variables and paths that remain fallback compatibility surfaces, including `CODEX_HOME`, `CODEX_SQLITE_HOME`, `CODEX_OSS_*`, and `.codex`.
 - Remote-control headers and protocol identifiers that external clients may already depend on.
+- MCP compatibility aliases and event names such as `codex`, `codex-reply`,
+  and `codex/event`.
 
 ## Deferred
 

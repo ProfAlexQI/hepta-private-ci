@@ -98,11 +98,11 @@ async fn shell_command_approval_triggers_elicitation() -> anyhow::Result<()> {
     ])
     .await?;
 
-    // Send a "codex" tool request, which should hit the responses endpoint.
+    // Send a "hepta" tool request, which should hit the responses endpoint.
     // In turn, it should reply with a tool call, which the MCP should forward
     // as an elicitation.
     let codex_request_id = mcp_process
-        .send_codex_tool_call(CodexToolCallParam {
+        .send_hepta_tool_call(CodexToolCallParam {
             prompt: "run `git init`".to_string(),
             ..Default::default()
         })
@@ -155,7 +155,7 @@ async fn shell_command_approval_triggers_elicitation() -> anyhow::Result<()> {
     .expect("task_complete_notification timeout")
     .expect("task_complete_notification resp");
 
-    // Verify the original `codex` tool call completes and that the file was created.
+    // Verify the original `hepta` tool call completes and that the file was created.
     let codex_response = timeout(
         DEFAULT_READ_TIMEOUT,
         mcp_process.read_stream_until_response_message(RequestId::Number(codex_request_id)),
@@ -194,7 +194,7 @@ fn create_expected_elicitation_request_params(
     thread_id: codex_protocol::ThreadId,
 ) -> anyhow::Result<serde_json::Value> {
     let expected_message = format!(
-        "Allow Codex to run `{}` in `{}`?",
+        "Allow Hepta to run `{}` in `{}`?",
         shlex::try_join(command.iter().map(std::convert::AsRef::as_ref))?,
         workdir.to_string_lossy()
     );
@@ -256,9 +256,9 @@ async fn patch_approval_triggers_elicitation() -> anyhow::Result<()> {
     ])
     .await?;
 
-    // Send a "codex" tool request that will trigger the apply_patch command
+    // Send a "hepta" tool request that will trigger the apply_patch command
     let codex_request_id = mcp_process
-        .send_codex_tool_call(CodexToolCallParam {
+        .send_hepta_tool_call(CodexToolCallParam {
             cwd: Some(cwd.path().to_string_lossy().to_string()),
             prompt: "please modify the test file".to_string(),
             // This test exercises patch approval elicitation, not local sandbox setup.
@@ -318,7 +318,7 @@ async fn patch_approval_triggers_elicitation() -> anyhow::Result<()> {
         )
         .await?;
 
-    // Verify the original `codex` tool call completes
+    // Verify the original `hepta` tool call completes
     let codex_response = timeout(
         DEFAULT_READ_TIMEOUT,
         mcp_process.read_stream_until_response_message(RequestId::Number(codex_request_id)),
@@ -374,9 +374,9 @@ async fn codex_tool_passes_base_instructions() -> anyhow::Result<()> {
     let mut mcp_process = McpProcess::new(codex_home.path()).await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp_process.initialize()).await??;
 
-    // Send a "codex" tool request, which should hit the responses endpoint.
+    // Send a "hepta" tool request, which should hit the responses endpoint.
     let codex_request_id = mcp_process
-        .send_codex_tool_call(CodexToolCallParam {
+        .send_hepta_tool_call(CodexToolCallParam {
             prompt: "How are you?".to_string(),
             base_instructions: Some("You are a helpful assistant.".to_string()),
             developer_instructions: Some("Foreshadow upcoming tool calls.".to_string()),
@@ -406,7 +406,7 @@ async fn codex_tool_passes_base_instructions() -> anyhow::Result<()> {
                     .get("structuredContent")
                     .and_then(|v| v.get("threadId"))
                     .and_then(serde_json::Value::as_str)
-                    .expect("codex tool response should include structuredContent.threadId"),
+                    .expect("hepta tool response should include structuredContent.threadId"),
                 "content": "Enjoy!"
             }
         })
@@ -458,7 +458,7 @@ fn create_expected_patch_approval_elicitation_request_params(
     if let Some(r) = &reason {
         message_lines.push(r.clone());
     }
-    message_lines.push("Allow Codex to apply proposed code changes?".to_string());
+    message_lines.push("Allow Hepta to apply proposed code changes?".to_string());
     let params_json = serde_json::to_value(PatchApprovalElicitRequestParams {
         message: message_lines.join("\n"),
         requested_schema: json!({"type":"object","properties":{}}),
@@ -500,7 +500,7 @@ async fn create_mcp_process(responses: Vec<String>) -> anyhow::Result<McpHandle>
     })
 }
 
-/// Create a Codex config that uses the mock server as the model provider.
+/// Create a Hepta config that uses the mock server as the model provider.
 /// It also uses `approval_policy = "untrusted"` so that we exercise the
 /// elicitation code path for shell commands.
 fn create_config_toml(codex_home: &Path, server_uri: &str) -> std::io::Result<()> {

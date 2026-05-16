@@ -52,7 +52,7 @@ pub(crate) fn create_call_tool_result_with_thread_id(
     }
 }
 
-/// Run a complete Codex session and stream events back to the client.
+/// Run a complete Hepta session and stream events back to the client.
 ///
 /// On completion (success or error) the function sends the appropriate
 /// `tools/call` response so the LLM can continue the conversation.
@@ -72,7 +72,7 @@ pub async fn run_codex_tool_session(
         Ok(res) => res,
         Err(e) => {
             let result = CallToolResult {
-                content: vec![Content::text(format!("Failed to start Codex session: {e}"))],
+                content: vec![Content::text(format!("Failed to start Hepta session: {e}"))],
                 is_error: Some(true),
                 structured_content: None,
                 meta: None,
@@ -399,7 +399,7 @@ async fn run_codex_tool_session_inner(
             Err(e) => {
                 let result = create_call_tool_result_with_thread_id(
                     thread_id,
-                    format!("Codex runtime error: {e}"),
+                    format!("Hepta runtime error: {e}"),
                     Some(true),
                 );
                 outgoing.send_response(request_id.clone(), result).await;

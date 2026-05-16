@@ -9,7 +9,6 @@ use codex_exec_server::EnvironmentManager;
 use codex_extension_api::empty_extension_registry;
 use codex_login::AuthManager;
 use codex_login::default_client::USER_AGENT_SUFFIX;
-use codex_login::default_client::get_codex_user_agent;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::Submission;
@@ -219,15 +218,16 @@ impl MessageProcessor {
         }
 
         let server_info = Implementation {
-            name: "codex-mcp-server".to_string(),
-            title: Some("Codex".to_string()),
+            name: "hepta-mcp-server".to_string(),
+            title: Some("Hepta".to_string()),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            description: None,
+            description: Some("Hepta MCP server for local agent sessions.".to_string()),
             icons: None,
             website_url: None,
         };
 
-        // Preserve Codex's existing non-spec `serverInfo.user_agent` field.
+        // Preserve the existing non-spec `serverInfo.user_agent` field for
+        // MCP clients that display it.
         let mut server_info_value = match serde_json::to_value(&server_info) {
             Ok(value) => value,
             Err(err) => {
@@ -244,7 +244,13 @@ impl MessageProcessor {
             }
         };
         if let serde_json::Value::Object(ref mut obj) = server_info_value {
-            obj.insert("user_agent".to_string(), json!(get_codex_user_agent()));
+            obj.insert(
+                "user_agent".to_string(),
+                json!(format!(
+                    "hepta-mcp-server/{} ({name}; {version})",
+                    env!("CARGO_PKG_VERSION")
+                )),
+            );
         }
 
         let mut result_value = match serde_json::to_value(InitializeResult {
@@ -339,9 +345,12 @@ impl MessageProcessor {
         } = params;
 
         match name.as_ref() {
-            "codex" => self.handle_tool_call_codex(id, arguments).await,
-            "codex-reply" => {
-                self.handle_tool_call_codex_session_reply(id, arguments)
+            "hepta" | "codex" => {
+                self.handle_tool_call_codex(id, arguments, name.as_ref())
+                    .await
+            }
+            "hepta-reply" | "codex-reply" => {
+                self.handle_tool_call_codex_session_reply(id, arguments, name.as_ref())
                     .await
             }
             _ => {
@@ -360,6 +369,7 @@ impl MessageProcessor {
         &self,
         id: RequestId,
         arguments: Option<rmcp::model::JsonObject>,
+        tool_name: &str,
     ) {
         let arguments = arguments.map(serde_json::Value::Object);
         let (initial_prompt, config): (String, Config) = match arguments {
@@ -394,9 +404,9 @@ impl MessageProcessor {
             },
             None => {
                 let result = CallToolResult {
-                    content: vec![rmcp::model::Content::text(
-                        "Missing arguments for codex tool-call; the `prompt` field is required.",
-                    )],
+                    content: vec![rmcp::model::Content::text(format!(
+                        "Missing arguments for {tool_name} tool-call; the `prompt` field is required."
+                    ))],
                     structured_content: None,
                     is_error: Some(true),
                     meta: None,
@@ -411,10 +421,10 @@ impl MessageProcessor {
         let thread_manager = self.thread_manager.clone();
         let running_requests_id_to_codex_uuid = self.running_requests_id_to_codex_uuid.clone();
 
-        // Spawn an async task to handle the Codex session so that we do not
+        // Spawn an async task to handle the Hepta session so that we do not
         // block the synchronous message-processing loop.
         task::spawn(async move {
-            // Run the Codex session and stream events back to the client.
+            // Run the Hepta session and stream events back to the client.
             crate::codex_tool_runner::run_codex_tool_session(
                 id,
                 initial_prompt,
@@ -431,6 +441,7 @@ impl MessageProcessor {
         &self,
         request_id: RequestId,
         arguments: Option<rmcp::model::JsonObject>,
+        tool_name: &str,
     ) {
         let arguments = arguments.map(serde_json::Value::Object);
         tracing::info!("tools/call -> params: {:?}", arguments);
@@ -455,12 +466,12 @@ impl MessageProcessor {
             },
             None => {
                 tracing::error!(
-                    "Missing arguments for codex-reply tool-call; the `thread_id` and `prompt` fields are required."
+                    "Missing arguments for {tool_name} tool-call; the `thread_id` and `prompt` fields are required."
                 );
                 let result = CallToolResult {
-                    content: vec![rmcp::model::Content::text(
-                        "Missing arguments for codex-reply tool-call; the `thread_id` and `prompt` fields are required.",
-                    )],
+                    content: vec![rmcp::model::Content::text(format!(
+                        "Missing arguments for {tool_name} tool-call; the `thread_id` and `prompt` fields are required."
+                    ))],
                     structured_content: None,
                     is_error: Some(true),
                     meta: None,
@@ -568,7 +579,7 @@ impl MessageProcessor {
         };
         tracing::info!("thread_id: {thread_id}");
 
-        // Obtain the Codex thread from the server.
+        // Obtain the Hepta thread from the server.
         let codex_arc = match self.thread_manager.get_thread(thread_id).await {
             Ok(c) => c,
             Err(_) => {
@@ -577,7 +588,7 @@ impl MessageProcessor {
             }
         };
 
-        // Submit interrupt to Codex.
+        // Submit interrupt to Hepta.
         if let Err(e) = codex_arc
             .submit_with_id(Submission {
                 id: request_id_string,
@@ -586,7 +597,7 @@ impl MessageProcessor {
             })
             .await
         {
-            tracing::error!("Failed to submit interrupt to Codex: {e}");
+            tracing::error!("Failed to submit interrupt to Hepta: {e}");
             return;
         }
         // unregister the id so we don't keep it in the map
