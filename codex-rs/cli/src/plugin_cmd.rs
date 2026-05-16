@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use crate::marketplace_cmd::MarketplaceCli;
 
 #[derive(Debug, Parser)]
-#[command(bin_name = "codex plugin")]
+#[command(bin_name = "hepta plugin")]
 pub struct PluginCli {
     #[clap(flatten)]
     pub config_overrides: CliConfigOverrides,
@@ -52,8 +52,8 @@ pub enum PluginSubcommand {
 
 #[derive(Debug, Parser)]
 #[command(
-    bin_name = "codex plugin add",
-    after_help = "Examples:\n  codex plugin add sample@debug\n  codex plugin add sample --marketplace debug"
+    bin_name = "hepta plugin add",
+    after_help = "Examples:\n  hepta plugin add sample@debug\n  hepta plugin add sample --marketplace debug"
 )]
 pub struct AddPluginArgs {
     /// Plugin selector to install: either PLUGIN@MARKETPLACE or PLUGIN with --marketplace.
@@ -67,8 +67,8 @@ pub struct AddPluginArgs {
 
 #[derive(Debug, Parser)]
 #[command(
-    bin_name = "codex plugin list",
-    after_help = "Examples:\n  codex plugin list\n  codex plugin list --marketplace debug"
+    bin_name = "hepta plugin list",
+    after_help = "Examples:\n  hepta plugin list\n  hepta plugin list --marketplace debug"
 )]
 pub struct ListPluginsArgs {
     /// Only list plugins from this configured marketplace name.
@@ -78,8 +78,8 @@ pub struct ListPluginsArgs {
 
 #[derive(Debug, Parser)]
 #[command(
-    bin_name = "codex plugin remove",
-    after_help = "Examples:\n  codex plugin remove sample@debug\n  codex plugin remove sample --marketplace debug"
+    bin_name = "hepta plugin remove",
+    after_help = "Examples:\n  hepta plugin remove sample@debug\n  hepta plugin remove sample --marketplace debug"
 )]
 pub struct RemovePluginArgs {
     /// Plugin selector to remove: either PLUGIN@MARKETPLACE or PLUGIN with --marketplace.
@@ -212,7 +212,7 @@ struct PluginCommandContext {
 async fn load_plugin_command_context(
     overrides: Vec<(String, toml::Value)>,
 ) -> Result<PluginCommandContext> {
-    let codex_home = find_codex_home().context("failed to resolve CODEX_HOME")?;
+    let codex_home = find_codex_home().context("failed to resolve HEPTA_HOME")?;
     let config = Config::load_with_cli_overrides(overrides)
         .await
         .context("failed to load configuration")?;
