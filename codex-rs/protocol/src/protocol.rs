@@ -1,4 +1,4 @@
-//! Defines the protocol for a Codex session between a client and an agent.
+//! Defines the protocol for a Hepta session between a client and an agent.
 //!
 //! Uses a SQ (Submission Queue) / EQ (Event Queue) pattern to asynchronously communicate
 //! between user and agent.
@@ -102,7 +102,22 @@ pub const COLLABORATION_MODE_OPEN_TAG: &str = "<collaboration_mode>";
 pub const COLLABORATION_MODE_CLOSE_TAG: &str = "</collaboration_mode>";
 pub const REALTIME_CONVERSATION_OPEN_TAG: &str = "<realtime_conversation>";
 pub const REALTIME_CONVERSATION_CLOSE_TAG: &str = "</realtime_conversation>";
-pub const USER_MESSAGE_BEGIN: &str = "## My request for Codex:";
+pub const USER_MESSAGE_BEGIN: &str = "## My request for Hepta:";
+pub const LEGACY_USER_MESSAGE_BEGIN: &str = "## My request for Codex:";
+
+pub fn find_user_message_begin(text: &str) -> Option<(usize, &'static str)> {
+    [USER_MESSAGE_BEGIN, LEGACY_USER_MESSAGE_BEGIN]
+        .into_iter()
+        .filter_map(|marker| text.rfind(marker).map(|idx| (idx, marker)))
+        .max_by_key(|(idx, _)| *idx)
+}
+
+pub fn strip_user_message_context(text: &str) -> &str {
+    match find_user_message_begin(text) {
+        Some((idx, marker)) => text[idx + marker.len()..].trim(),
+        None => text.trim(),
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema)]
 pub struct TurnEnvironmentSelection {
@@ -3944,6 +3959,20 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
     use tempfile::TempDir;
+
+    #[test]
+    fn strip_user_message_context_accepts_current_marker() {
+        let message = "context\n## My request for Hepta:\n  optimize this\n";
+
+        assert_eq!(strip_user_message_context(message), "optimize this");
+    }
+
+    #[test]
+    fn strip_user_message_context_accepts_legacy_marker() {
+        let message = "context\n## My request for Codex:\n  optimize this\n";
+
+        assert_eq!(strip_user_message_context(message), "optimize this");
+    }
 
     fn sorted_writable_roots(roots: Vec<WritableRoot>) -> Vec<(PathBuf, Vec<PathBuf>)> {
         let mut sorted_roots: Vec<(PathBuf, Vec<PathBuf>)> = roots

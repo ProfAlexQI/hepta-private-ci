@@ -11,9 +11,9 @@ const MAX_OPEN_TABS: usize = 100;
 const MAX_OPEN_TABS_CHARS: usize = 20_000;
 // Match the desktop app and IDE extension delimiter exactly. IDE context is serialized into the
 // raw prompt before this marker, then transcript rendering strips back to the request after the last
-// marker. Keeping the same marker and stripping semantics lets threads created with IDE context in
-// one surface replay cleanly in the others.
-const PROMPT_REQUEST_BEGIN: &str = "## My request for Codex:";
+// marker. The legacy marker keeps older Codex-origin transcripts readable after the Hepta rebrand.
+const PROMPT_REQUEST_BEGIN: &str = "## My request for Hepta:";
+const LEGACY_PROMPT_REQUEST_BEGIN: &str = "## My request for Codex:";
 
 pub(crate) fn apply_ide_context_to_user_input(
     context: &IdeContext,
@@ -63,14 +63,22 @@ pub(crate) fn has_prompt_context(context: &IdeContext) -> bool {
 }
 
 pub(crate) fn extract_prompt_request_with_offset(message: &str) -> (&str, usize) {
-    let Some((before_request, request)) = message.rsplit_once(PROMPT_REQUEST_BEGIN) else {
+    let Some((marker_start, marker)) = last_prompt_request_marker(message) else {
         return (message, 0);
     };
 
-    let request_start = before_request.len() + PROMPT_REQUEST_BEGIN.len();
+    let request_start = marker_start + marker.len();
+    let request = &message[request_start..];
     let trimmed_request = request.trim();
     let leading_trimmed_len = request.len() - request.trim_start().len();
     (trimmed_request, request_start + leading_trimmed_len)
+}
+
+fn last_prompt_request_marker(message: &str) -> Option<(usize, &'static str)> {
+    [PROMPT_REQUEST_BEGIN, LEGACY_PROMPT_REQUEST_BEGIN]
+        .into_iter()
+        .filter_map(|marker| message.rfind(marker).map(|idx| (idx, marker)))
+        .max_by_key(|(idx, _)| *idx)
 }
 
 fn prefixed_text_input(prefix: String, text: String, text_elements: Vec<TextElement>) -> UserInput {
@@ -282,7 +290,7 @@ mod tests {
 
         assert!(apply_ide_context_to_user_input(&context, &mut items));
 
-        let expected_prefix = "# Context from my IDE setup:\n\n## Active file: src/lib.rs\n\n## My request for Codex:\n";
+        let expected_prefix = "# Context from my IDE setup:\n\n## Active file: src/lib.rs\n\n## My request for Hepta:\n";
         let prefix_len = expected_prefix.len();
         assert_eq!(
             items,
@@ -308,11 +316,21 @@ mod tests {
     #[test]
     fn extract_prompt_request_returns_text_after_last_delimiter() {
         let message =
-            "# Context\n## My request for Codex:\nFirst\n## My request for Codex:\n  Second\n";
+            "# Context\n## My request for Hepta:\nFirst\n## My request for Hepta:\n  Second\n";
 
         assert_eq!(
             extract_prompt_request_with_offset(message),
             ("Second", message.find("Second").expect("request offset"))
+        );
+    }
+
+    #[test]
+    fn extract_prompt_request_accepts_legacy_codex_delimiter() {
+        let message = "# Context\n## My request for Codex:\n  Legacy\n";
+
+        assert_eq!(
+            extract_prompt_request_with_offset(message),
+            ("Legacy", message.find("Legacy").expect("request offset"))
         );
     }
 

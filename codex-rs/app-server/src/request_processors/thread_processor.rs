@@ -3912,10 +3912,7 @@ fn preview_from_rollout_items(items: &[RolloutItem]) -> String {
             },
             _ => None,
         })
-        .map(|preview| match preview.find(USER_MESSAGE_BEGIN) {
-            Some(idx) => preview[idx + USER_MESSAGE_BEGIN.len()..].trim().to_string(),
-            None => preview,
-        })
+        .map(|preview| strip_user_message_context(&preview).to_string())
         .unwrap_or_default()
 }
 

@@ -1,4 +1,5 @@
 use super::*;
+use codex_protocol::protocol::USER_MESSAGE_BEGIN;
 
 use anyhow::Result;
 use pretty_assertions::assert_eq;

@@ -1,4 +1,4 @@
-//! Persist Codex session rollouts (.jsonl) so sessions can be replayed or inspected later.
+//! Persist Hepta session rollouts (.jsonl) so sessions can be replayed or inspected later.
 
 use std::collections::HashSet;
 use std::fs;

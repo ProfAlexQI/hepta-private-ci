@@ -1814,7 +1814,7 @@ fn search_tool_registers_for_deferred_dynamic_tools() {
     let ToolSpec::ToolSearch { description, .. } = search_tool else {
         panic!("expected tool_search tool");
     };
-    assert!(description.contains("- Dynamic tools: Tools provided by the current Codex thread."));
+    assert!(description.contains("- Dynamic tools: Tools provided by the current Hepta thread."));
     assert_contains_tool_names(&tools, &[TOOL_SEARCH_TOOL_NAME]);
     assert_lacks_tool_name(&tools, "codex_app");
     assert!(registry.has_tool(&ToolName::plain(TOOL_SEARCH_TOOL_NAME)));

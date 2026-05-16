@@ -65,6 +65,19 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - TUI model chooser descriptions now say models are optimized for Hepta while
   preserving model ids such as `gpt-5.1-codex`.
 
+## Cleaned in prompt identity pass
+
+- Bundled base prompts, realtime prompts, model instruction templates, and the
+  models-manager catalog now identify the local agent/runtime as Hepta instead
+  of Codex.
+- IDE-context prompt serialization now emits `## My request for Hepta:`.
+  Protocol, rollout, state, thread-store, app-server summary, and TUI transcript
+  extraction paths still accept the legacy `## My request for Codex:` marker
+  for older saved transcripts.
+- TUI session headers, status cards, exec banner, feedback subject lines,
+  guardian review prompts, dynamic-tool descriptions, and related snapshots now
+  use Hepta product wording.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
@@ -81,6 +94,5 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `gpt-5.1-codex`, `.codex` project-hook metadata folders, upstream
   ChatGPT Codex attestation/device URLs, and OpenAI VS Code compatibility
   examples.
-- Model base instructions still identify the agent as Codex in bundled catalog data; changing that affects model behavior and should be reviewed separately from UI string cleanup.
 - Upstream service URLs such as ChatGPT Codex backend and usage pages remain until Hepta-owned endpoints are available.
 - Snapshot fixture names retain `codex_tui` because they follow the crate/test target name.

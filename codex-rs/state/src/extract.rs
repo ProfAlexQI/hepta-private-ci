@@ -4,8 +4,8 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionMetaLine;
 use codex_protocol::protocol::TurnContextItem;
-use codex_protocol::protocol::USER_MESSAGE_BEGIN;
 use codex_protocol::protocol::UserMessageEvent;
+use codex_protocol::protocol::strip_user_message_context;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -119,10 +119,7 @@ fn set_preview_if_empty(metadata: &mut ThreadMetadata, preview: Option<String>) 
 }
 
 fn strip_user_message_prefix(text: &str) -> &str {
-    match text.find(USER_MESSAGE_BEGIN) {
-        Some(idx) => text[idx + USER_MESSAGE_BEGIN.len()..].trim(),
-        None => text.trim(),
-    }
+    strip_user_message_context(text)
 }
 
 fn user_message_preview(user: &UserMessageEvent) -> Option<String> {
