@@ -87,12 +87,31 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   in their temporary config, keeping the compatibility event schema covered
   without making local Hepta installs send analytics by default.
 
+## Cleaned in login/default-client identity pass
+
+- The default outbound `originator` and `User-Agent` identity now uses
+  `hepta_cli_rs` instead of `codex_cli_rs`.
+- The default residency header name now uses
+  `x-openai-internal-hepta-residency`.
+- `HEPTA_INTERNAL_ORIGINATOR_OVERRIDE` is now the preferred override env var;
+  `CODEX_INTERNAL_ORIGINATOR_OVERRIDE` remains as a legacy fallback.
+- Hepta-owned app-server daemon probing now initializes as
+  `hepta_app_server_daemon`, while the old daemon name remains non-originating
+  compatibility input.
+- Backend/cloud-task HTTP fallback and suffix user agents now use Hepta names
+  such as `hepta-cli` and `hepta_cloud_tasks_tui`.
+- Downstream default-client callers now use `get_hepta_user_agent()`; the old
+  `get_codex_user_agent()` helper is retained only as a compatibility shim.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
 - Wire/API field names such as `codexHome`, `codexErrorInfo`, `codexStreamlinedLogin`, and generated TypeScript/JSON schema type names.
 - Legacy environment variables and paths that remain fallback compatibility surfaces, including `CODEX_HOME`, `CODEX_SQLITE_HOME`, `CODEX_OSS_*`, and `.codex`.
 - Remote-control headers and protocol identifiers that external clients may already depend on.
+- Legacy originator/client compatibility inputs such as
+  `codex_app_server_daemon`, `codex_vscode`, `codex-tui`, and the
+  `get_codex_user_agent()` shim.
 - MCP compatibility aliases and event names such as `codex`, `codex-reply`,
   and `codex/event`.
 

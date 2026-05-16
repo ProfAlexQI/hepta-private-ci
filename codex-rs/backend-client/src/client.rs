@@ -9,7 +9,7 @@ use codex_api::SharedAuthProvider;
 use codex_client::build_reqwest_client_with_custom_ca;
 use codex_client::with_chatgpt_cloudflare_cookie_store;
 use codex_login::CodexAuth;
-use codex_login::default_client::get_codex_user_agent;
+use codex_login::default_client::get_hepta_user_agent;
 use codex_protocol::account::PlanType as AccountPlanType;
 use codex_protocol::protocol::CreditsSnapshot;
 use codex_protocol::protocol::RateLimitReachedType;
@@ -171,7 +171,7 @@ impl Client {
 
     pub fn from_auth(base_url: impl Into<String>, auth: &CodexAuth) -> Result<Self> {
         Ok(Self::new(base_url)?
-            .with_user_agent(get_codex_user_agent())
+            .with_user_agent(get_hepta_user_agent())
             .with_auth_provider(codex_model_provider::auth_provider_from_auth(auth)))
     }
 
@@ -207,7 +207,7 @@ impl Client {
         if let Some(ua) = &self.user_agent {
             h.insert(USER_AGENT, ua.clone());
         } else {
-            h.insert(USER_AGENT, HeaderValue::from_static("codex-cli"));
+            h.insert(USER_AGENT, HeaderValue::from_static("hepta-cli"));
         }
         self.auth_provider.add_auth_headers(&mut h);
         if let Some(acc) = &self.chatgpt_account_id

@@ -2,6 +2,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use codex_login::default_client::CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR;
+use codex_login::default_client::HEPTA_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR;
 use core_test_support::responses;
 use core_test_support::test_codex_exec::test_codex_exec;
 use wiremock::matchers::header;
@@ -22,6 +23,7 @@ async fn send_codex_exec_originator() -> anyhow::Result<()> {
 
     test.cmd_with_server(&server)
         .env_remove(CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR)
+        .env_remove(HEPTA_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR)
         .arg("--skip-git-repo-check")
         .arg("tell me something")
         .assert()
@@ -40,11 +42,11 @@ async fn supports_originator_override() -> anyhow::Result<()> {
         responses::ev_assistant_message("response_1", "Hello, world!"),
         responses::ev_completed("response_1"),
     ]);
-    responses::mount_sse_once_match(&server, header("Originator", "codex_exec_override"), body)
+    responses::mount_sse_once_match(&server, header("Originator", "hepta_exec_override"), body)
         .await;
 
     test.cmd_with_server(&server)
-        .env("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "codex_exec_override")
+        .env("HEPTA_INTERNAL_ORIGINATOR_OVERRIDE", "hepta_exec_override")
         .arg("--skip-git-repo-check")
         .arg("tell me something")
         .assert()

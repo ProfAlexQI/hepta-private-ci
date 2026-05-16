@@ -61,12 +61,12 @@ pub async fn build_chatgpt_headers() -> HeaderMap {
     use reqwest::header::HeaderValue;
     use reqwest::header::USER_AGENT;
 
-    set_user_agent_suffix("codex_cloud_tasks_tui");
-    let ua = codex_login::default_client::get_codex_user_agent();
+    set_user_agent_suffix("hepta_cloud_tasks_tui");
+    let ua = codex_login::default_client::get_hepta_user_agent();
     let mut headers = HeaderMap::new();
     headers.insert(
         USER_AGENT,
-        HeaderValue::from_str(&ua).unwrap_or(HeaderValue::from_static("codex-cli")),
+        HeaderValue::from_str(&ua).unwrap_or(HeaderValue::from_static("hepta-cli")),
     );
     if let Some(am) = load_auth_manager(/*chatgpt_base_url*/ None).await
         && let Some(auth) = am.auth().await

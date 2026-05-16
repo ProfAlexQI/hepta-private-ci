@@ -19,7 +19,7 @@ use tokio_tungstenite::client_async;
 use tokio_tungstenite::tungstenite::Message;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
-const CLIENT_NAME: &str = "codex_app_server_daemon";
+const CLIENT_NAME: &str = "hepta_app_server_daemon";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProbeInfo {
@@ -114,10 +114,10 @@ mod tests {
     use super::parse_version_from_user_agent;
 
     #[test]
-    fn parses_version_from_codex_user_agent() {
+    fn parses_version_from_hepta_user_agent() {
         assert_eq!(
             parse_version_from_user_agent(
-                "codex_app_server_daemon/1.2.3 (Linux 6.8.0; x86_64) codex_cli_rs/1.2.3",
+                "hepta_app_server_daemon/1.2.3 (Linux 6.8.0; x86_64) hepta_cli_rs/1.2.3",
             )
             .expect("version"),
             "1.2.3"
@@ -126,6 +126,6 @@ mod tests {
 
     #[test]
     fn rejects_user_agent_without_version() {
-        assert!(parse_version_from_user_agent("codex_app_server_daemon").is_err());
+        assert!(parse_version_from_user_agent("hepta_app_server_daemon").is_err());
     }
 }

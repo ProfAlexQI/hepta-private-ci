@@ -73,7 +73,7 @@ async fn initialize_probe_does_not_override_originator() -> Result<()> {
     let message = timeout(
         DEFAULT_READ_TIMEOUT,
         mcp.initialize_with_client_info(ClientInfo {
-            name: "codex_app_server_daemon".to_string(),
+            name: "hepta_app_server_daemon".to_string(),
             title: Some("Hepta App Server Daemon".to_string()),
             version: "0.1.0".to_string(),
         }),
@@ -85,7 +85,7 @@ async fn initialize_probe_does_not_override_originator() -> Result<()> {
     };
     let InitializeResponse { user_agent, .. } = to_response::<InitializeResponse>(response)?;
 
-    assert!(user_agent.starts_with("codex_cli_rs/"));
+    assert!(user_agent.starts_with("hepta_cli_rs/"));
     Ok(())
 }
 
@@ -112,7 +112,7 @@ async fn initialize_codex_backend_does_not_override_originator() -> Result<()> {
     };
     let InitializeResponse { user_agent, .. } = to_response::<InitializeResponse>(response)?;
 
-    assert!(user_agent.starts_with("codex_cli_rs/"));
+    assert!(user_agent.starts_with("hepta_cli_rs/"));
     Ok(())
 }
 
@@ -126,8 +126,8 @@ async fn initialize_respects_originator_override_env_var() -> Result<()> {
     let mut mcp = McpProcess::new_with_env(
         codex_home.path(),
         &[(
-            "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
-            Some("codex_originator_via_env_var"),
+            "HEPTA_INTERNAL_ORIGINATOR_OVERRIDE",
+            Some("hepta_originator_via_env_var"),
         )],
     )
     .await?;
@@ -152,7 +152,7 @@ async fn initialize_respects_originator_override_env_var() -> Result<()> {
         platform_os,
     } = to_response::<InitializeResponse>(response)?;
 
-    assert!(user_agent.starts_with("codex_originator_via_env_var/"));
+    assert!(user_agent.starts_with("hepta_originator_via_env_var/"));
     assert_eq!(response_codex_home, expected_codex_home);
     assert_eq!(platform_family, std::env::consts::FAMILY);
     assert_eq!(platform_os, std::env::consts::OS);
@@ -167,7 +167,10 @@ async fn initialize_rejects_invalid_client_name() -> Result<()> {
     create_config_toml(codex_home.path(), &server.uri(), "never")?;
     let mut mcp = McpProcess::new_with_env(
         codex_home.path(),
-        &[("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", None)],
+        &[
+            ("HEPTA_INTERNAL_ORIGINATOR_OVERRIDE", None),
+            ("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", None),
+        ],
     )
     .await?;
 
