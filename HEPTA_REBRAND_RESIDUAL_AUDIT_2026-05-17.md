@@ -103,6 +103,18 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Downstream default-client callers now use `get_hepta_user_agent()`; the old
   `get_codex_user_agent()` helper is retained only as a compatibility shim.
 
+## Cleaned in Cloud Tasks / ChatGPT wrapper pass
+
+- Cloud Tasks CLI help now says Hepta Cloud for task submission, status, list,
+  apply, diff, prompt, branch, and task-id descriptions.
+- Cloud Tasks sign-in and environment resolution guidance now points users at
+  `hepta login` / `hepta cloud`; pagination guidance now prints
+  `hepta cloud list --cursor=...`.
+- Cloud Tasks request identity suffixes now use `hepta_cloud_tasks_*` values.
+- ChatGPT wrapper errors now say Hepta ChatGPT auth and `hepta login` instead
+  of Codex backend auth / `codex login`.
+- ChatGPT apply-command help and crate README now describe Hepta agent tasks.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
@@ -112,6 +124,8 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Legacy originator/client compatibility inputs such as
   `codex_app_server_daemon`, `codex_vscode`, `codex-tui`, and the
   `get_codex_user_agent()` shim.
+- Cloud Tasks crate/module identifiers such as `codex_cloud_tasks_client`
+  remain compatibility/internal Rust API names.
 - MCP compatibility aliases and event names such as `codex`, `codex-reply`,
   and `codex/event`.
 
