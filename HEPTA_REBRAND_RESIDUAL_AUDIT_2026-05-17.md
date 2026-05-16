@@ -9,6 +9,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - TUI model migration and availability copy now says Hepta in user-visible upgrade prompts.
 - Terminal title and status-line configuration descriptions now say Hepta for app name/version items.
 
+## Cleaned in API/docs/schema pass
+
+- Root README no longer points users at upstream Codex release artifacts or
+  `codex` login/docs as the default Hepta path.
+- App-server README now documents `hepta app-server`, `HEPTA_HOME`, Hepta
+  generation/review/sandbox language, and Hepta skill/config examples while
+  keeping compatibility field names such as `codexHome`.
+- App-server protocol schema comments now describe `codexHome` as the resolved
+  Hepta home compatibility field and update thread-origin examples to
+  `hepta exec` / `hepta app-server`.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
@@ -18,7 +29,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 
 ## Deferred
 
-- App-server README and generated schema prose still contain Codex-era product wording; clean them in a dedicated API-doc/schema regeneration pass.
+- App-server README and generated schema prose still contain deliberate
+  compatibility references: crate/package names, model ids such as
+  `gpt-5.1-codex`, `.codex` project-hook metadata folders, upstream
+  ChatGPT Codex attestation/device URLs, and OpenAI VS Code compatibility
+  examples.
 - Model base instructions still identify the agent as Codex in bundled catalog data; changing that affects model behavior and should be reviewed separately from UI string cleanup.
 - Upstream service URLs such as ChatGPT Codex backend and usage pages remain until Hepta-owned endpoints are available.
 - Snapshot fixture names retain `codex_tui` because they follow the crate/test target name.

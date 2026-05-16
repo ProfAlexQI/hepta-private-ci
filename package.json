@@ -1,7 +1,7 @@
 {
   "name": "hepta-codex-monorepo",
   "private": true,
-  "description": "Codex-derived Hepta runtime workspace.",
+  "description": "Hepta runtime workspace derived from the upstream Codex codebase.",
   "scripts": {
     "format": "prettier --check *.json *.md docs/*.md .github/workflows/*.yml **/*.js",
     "format:fix": "prettier --write *.json *.md docs/*.md .github/workflows/*.yml **/*.js",

@@ -2704,7 +2704,7 @@
               "$ref": "#/definitions/v2/AbsolutePathBuf"
             }
           ],
-          "description": "Absolute path to the server's $CODEX_HOME directory."
+          "description": "Absolute path to the server's resolved Hepta home directory. The `codexHome` wire field name is retained for compatibility."
         },
         "platformFamily": {
           "description": "Platform family for the running app-server target, for example `\"unix\"` or `\"windows\"`.",
@@ -7391,7 +7391,7 @@
             "type": "object"
           },
           {
-            "description": "User config layer from $CODEX_HOME/config.toml. This layer is special in that it is expected to be: - writable by the user - generally outside the workspace directory",
+            "description": "User config layer from the resolved Hepta home config.toml. This layer is special in that it is expected to be: - writable by the user - generally outside the workspace directory",
             "properties": {
               "file": {
                 "allOf": [
@@ -15109,7 +15109,7 @@
                 "$ref": "#/definitions/v2/SessionSource"
               }
             ],
-            "description": "Origin of the thread (CLI, VSCode, codex exec, codex app-server, etc.)."
+            "description": "Origin of the thread (CLI, VS Code, hepta exec, hepta app-server, etc.)."
           },
           "status": {
             "allOf": [
