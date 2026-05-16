@@ -49,7 +49,7 @@ use std::path::PathBuf;
 use toml::Value as TomlValue;
 
 #[cfg(unix)]
-const SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/codex/config.toml";
+const SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/hepta/config.toml";
 
 #[cfg(windows)]
 const DEFAULT_PROGRAM_DATA_DIR_WINDOWS: &str = r"C:\ProgramData";
@@ -81,8 +81,8 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 ///
 /// - cloud:    managed cloud requirements
 /// - admin:    managed preferences (*)
-/// - system    `/etc/codex/requirements.toml` (Unix) or
-///   `%ProgramData%\OpenAI\Codex\requirements.toml` (Windows)
+/// - system    `/etc/hepta/requirements.toml` (Unix) or
+///   `%ProgramData%\Hepta\requirements.toml` (Windows)
 ///
 /// For backwards compatibility, we also load from
 /// `managed_config.toml` and map it to `requirements.toml`.
@@ -90,10 +90,10 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 /// Configuration is built up from multiple layers in the following order:
 ///
 /// - admin:    managed preferences (*)
-/// - system    `/etc/codex/config.toml` (Unix) or
-///   `%ProgramData%\OpenAI\Codex\config.toml` (Windows)
-/// - user      `${CODEX_HOME}/config.toml`
-/// - profile   `${CODEX_HOME}/<name>.config.toml`, when selected
+/// - system    `/etc/hepta/config.toml` (Unix) or
+///   `%ProgramData%\Hepta\config.toml` (Windows)
+/// - user      `${HEPTA_HOME}/config.toml`
+/// - profile   `${HEPTA_HOME}/<name>.config.toml`, when selected
 /// - cwd       `${PWD}/config.toml` (loaded but disabled when the directory is untrusted)
 /// - tree      parent directories up to root looking for `./.codex/config.toml` (loaded but disabled when untrusted)
 /// - repo      `$(git rev-parse --show-toplevel)/.codex/config.toml` (loaded but disabled when untrusted)
@@ -101,7 +101,7 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 ///
 /// (*) Only available on macOS via managed device profiles.
 ///
-/// See https://developers.openai.com/codex/security for details.
+/// See Hepta security documentation for details.
 ///
 /// When loading the config stack for a thread, there should be a `cwd`
 /// associated with it such that `cwd` should be `Some(...)`. Only for
@@ -585,7 +585,7 @@ pub async fn load_requirements_toml(
 
 #[cfg(unix)]
 fn system_requirements_toml_file() -> io::Result<AbsolutePathBuf> {
-    AbsolutePathBuf::from_absolute_path(Path::new("/etc/codex/requirements.toml"))
+    AbsolutePathBuf::from_absolute_path(Path::new("/etc/hepta/requirements.toml"))
 }
 
 #[cfg(windows)]
@@ -622,7 +622,7 @@ fn system_config_toml_file_with_overrides(
 }
 
 #[cfg(windows)]
-fn windows_codex_system_dir() -> PathBuf {
+fn windows_hepta_system_dir() -> PathBuf {
     let program_data = windows_program_data_dir_from_known_folder().unwrap_or_else(|err| {
         tracing::warn!(
             error = %err,
@@ -630,18 +630,18 @@ fn windows_codex_system_dir() -> PathBuf {
         );
         PathBuf::from(DEFAULT_PROGRAM_DATA_DIR_WINDOWS)
     });
-    program_data.join("OpenAI").join("Codex")
+    program_data.join("Hepta")
 }
 
 #[cfg(windows)]
 fn windows_system_requirements_toml_file() -> io::Result<AbsolutePathBuf> {
-    let requirements_toml_file = windows_codex_system_dir().join("requirements.toml");
+    let requirements_toml_file = windows_hepta_system_dir().join("requirements.toml");
     AbsolutePathBuf::try_from(requirements_toml_file)
 }
 
 #[cfg(windows)]
 fn windows_system_config_toml_file() -> io::Result<AbsolutePathBuf> {
-    let config_toml_file = windows_codex_system_dir().join("config.toml");
+    let config_toml_file = windows_hepta_system_dir().join("config.toml");
     AbsolutePathBuf::try_from(config_toml_file)
 }
 
@@ -1317,7 +1317,7 @@ async fn merge_root_checkout_project_hooks(
     Ok(config)
 }
 /// The legacy mechanism for specifying admin-enforced configuration is to read
-/// from a file like `/etc/codex/managed_config.toml` that has the same
+/// from a file like `/etc/hepta/managed_config.toml` that has the same
 /// structure as `config.toml` where fields like `approval_policy` can specify
 /// exactly one value rather than a list of allowed values.
 ///
@@ -1466,8 +1466,7 @@ foo = "xyzzy"
     fn windows_system_requirements_toml_file_uses_expected_suffix() {
         let expected = windows_program_data_dir_from_known_folder()
             .unwrap_or_else(|_| PathBuf::from(DEFAULT_PROGRAM_DATA_DIR_WINDOWS))
-            .join("OpenAI")
-            .join("Codex")
+            .join("Hepta")
             .join("requirements.toml");
         assert_eq!(
             windows_system_requirements_toml_file()
@@ -1479,7 +1478,7 @@ foo = "xyzzy"
             windows_system_requirements_toml_file()
                 .expect("requirements.toml path")
                 .as_path()
-                .ends_with(Path::new("OpenAI").join("Codex").join("requirements.toml"))
+                .ends_with(Path::new("Hepta").join("requirements.toml"))
         );
     }
 
@@ -1488,8 +1487,7 @@ foo = "xyzzy"
     fn windows_system_config_toml_file_uses_expected_suffix() {
         let expected = windows_program_data_dir_from_known_folder()
             .unwrap_or_else(|_| PathBuf::from(DEFAULT_PROGRAM_DATA_DIR_WINDOWS))
-            .join("OpenAI")
-            .join("Codex")
+            .join("Hepta")
             .join("config.toml");
         assert_eq!(
             windows_system_config_toml_file()
@@ -1501,7 +1499,7 @@ foo = "xyzzy"
             windows_system_config_toml_file()
                 .expect("config.toml path")
                 .as_path()
-                .ends_with(Path::new("OpenAI").join("Codex").join("config.toml"))
+                .ends_with(Path::new("Hepta").join("config.toml"))
         );
     }
 }

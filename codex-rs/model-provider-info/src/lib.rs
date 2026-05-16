@@ -1,8 +1,8 @@
-//! Registry of model providers supported by Codex.
+//! Registry of model providers supported by Hepta.
 //!
 //! Providers can be defined in two places:
-//!   1. Built-in defaults compiled into the binary so Codex works out-of-the-box.
-//!   2. User-defined entries inside `~/.codex/config.toml` under the `model_providers`
+//!   1. Built-in defaults compiled into the binary so Hepta works out-of-the-box.
+//!   2. User-defined entries inside `~/.hepta/config.toml` under the `model_providers`
 //!      key. These override or extend the defaults at runtime.
 
 use codex_api::Provider as ApiProvider;
@@ -41,10 +41,10 @@ pub const AMAZON_BEDROCK_GPT_5_4_MODEL_ID: &str = "openai.gpt-5.4";
 pub const AMAZON_BEDROCK_DEFAULT_BASE_URL: &str =
     "https://bedrock-mantle.us-east-1.api.aws/openai/v1";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER: &str = "x-amzn-mantle-client-agent";
-const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE: &str = "codex";
-const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your provider config.\nMore info: https://github.com/openai/codex/discussions/7782";
+const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE: &str = "hepta";
+const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your Hepta provider config.";
 pub const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
-pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
+pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.";
 
 /// Wire protocol that the provider speaks.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
@@ -414,7 +414,7 @@ pub fn built_in_model_providers(
     let amazon_bedrock_provider = P::create_amazon_bedrock_provider(/*aws*/ None);
 
     // We do not want to be in the business of adjucating which third-party
-    // providers are bundled with Codex CLI, so we only include the OpenAI and
+    // providers are bundled with Hepta CLI, so we only include the OpenAI and
     // open source ("oss") providers by default. Users are encouraged to add to
     // `model_providers` in config.toml to add their own providers.
     [
@@ -473,22 +473,29 @@ pub fn merge_configured_model_providers(
 }
 
 pub fn create_oss_provider(default_provider_port: u16, wire_api: WireApi) -> ModelProviderInfo {
-    // These CODEX_OSS_ environment variables are experimental: we may
-    // switch to reading values from config.toml instead.
-    let default_codex_oss_base_url = format!(
-        "http://localhost:{codex_oss_port}/v1",
-        codex_oss_port = std::env::var("CODEX_OSS_PORT")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
+    // HEPTA_OSS_* is the primary env surface. Legacy CODEX_OSS_* remains a
+    // compatibility fallback while the fork still carries Codex-era configs.
+    let default_hepta_oss_base_url = format!(
+        "http://localhost:{hepta_oss_port}/v1",
+        hepta_oss_port = non_empty_env("HEPTA_OSS_PORT", "CODEX_OSS_PORT")
             .and_then(|value| value.parse::<u16>().ok())
             .unwrap_or(default_provider_port)
     );
 
-    let codex_oss_base_url = std::env::var("CODEX_OSS_BASE_URL")
+    let hepta_oss_base_url = non_empty_env("HEPTA_OSS_BASE_URL", "CODEX_OSS_BASE_URL")
+        .unwrap_or(default_hepta_oss_base_url);
+    create_oss_provider_with_base_url(&hepta_oss_base_url, wire_api)
+}
+
+fn non_empty_env(primary: &str, legacy: &str) -> Option<String> {
+    std::env::var(primary)
         .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or(default_codex_oss_base_url);
-    create_oss_provider_with_base_url(&codex_oss_base_url, wire_api)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var(legacy)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
 }
 
 pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> ModelProviderInfo {

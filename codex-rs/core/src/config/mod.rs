@@ -194,7 +194,9 @@ pub const CONFIG_TOML_FILE: &str = "config.toml";
 const CONFIG_PROFILE_V2_SUFFIX: &str = ".config.toml";
 
 fn resolve_sqlite_home_env(resolved_cwd: &Path) -> Option<PathBuf> {
-    let raw = std::env::var(codex_state::SQLITE_HOME_ENV).ok()?;
+    let raw = std::env::var(codex_state::SQLITE_HOME_ENV)
+        .ok()
+        .or_else(|| std::env::var(codex_state::LEGACY_SQLITE_HOME_ENV).ok())?;
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
@@ -590,23 +592,23 @@ pub struct Config {
     /// Compact prompt override.
     pub compact_prompt: Option<String>,
 
-    /// Optional external notifier command. When set, Codex will spawn this
+    /// Optional external notifier command. When set, Hepta will spawn this
     /// program after each completed *turn* (i.e. when the agent finishes
     /// processing a user submission). The value must be the full command
-    /// broken into argv tokens **without** the trailing JSON argument - Codex
+    /// broken into argv tokens **without** the trailing JSON argument - Hepta
     /// appends one extra argument containing a JSON payload describing the
     /// event.
     ///
-    /// Example `~/.codex/config.toml` snippet:
+    /// Example `~/.hepta/config.toml` snippet:
     ///
     /// ```toml
-    /// notify = ["notify-send", "Codex"]
+    /// notify = ["notify-send", "Hepta"]
     /// ```
     ///
     /// which will be invoked as:
     ///
     /// ```shell
-    /// notify-send Codex '{"type":"agent-turn-complete","turn-id":"12345"}'
+    /// notify-send Hepta '{"type":"agent-turn-complete","turn-id":"12345"}'
     /// ```
     ///
     /// If unset the feature is disabled.
@@ -693,26 +695,25 @@ pub struct Config {
     pub workspace_roots_explicit: bool,
 
     /// Preferred store for CLI auth credentials.
-    /// file (default): Use a file in the Codex home directory.
+    /// file (default): Use a file in the Hepta home directory.
     /// keyring: Use an OS-specific keyring service.
     /// auto: Use the OS-specific keyring service if available, otherwise use a file.
     pub cli_auth_credentials_store_mode: AuthCredentialsStoreMode,
 
-    /// Definition for MCP servers that Codex can reach out to for tool calls.
+    /// Definition for MCP servers that Hepta can reach out to for tool calls.
     pub mcp_servers: Constrained<HashMap<String, McpServerConfig>>,
 
     /// Preferred store for MCP OAuth credentials.
     /// keyring: Use an OS-specific keyring service.
-    ///          Credentials stored in the keyring will only be readable by Codex unless the user explicitly grants access via OS-level keyring access.
-    ///          https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2
-    /// file: CODEX_HOME/.credentials.json
-    ///       This file will be readable to Codex and other applications running as the same user.
+    ///          Credentials stored in the keyring will only be readable by Hepta unless the user explicitly grants access via OS-level keyring access.
+    /// file: HEPTA_HOME/.credentials.json
+    ///       This file will be readable to Hepta and other applications running as the same user.
     /// auto (default): keyring if available, otherwise file.
     pub mcp_oauth_credentials_store_mode: OAuthCredentialsStoreMode,
 
     /// Optional fixed port to use for the local HTTP callback server used during MCP OAuth login.
     ///
-    /// When unset, Codex will bind to an ephemeral port chosen by the OS.
+    /// When unset, Hepta will bind to an ephemeral port chosen by the OS.
     pub mcp_oauth_callback_port: Option<u16>,
 
     /// Optional redirect URI to use during MCP OAuth login.
@@ -751,20 +752,21 @@ pub struct Config {
     /// Memories subsystem settings.
     pub memories: MemoriesConfig,
 
-    /// Directory containing all Codex state (defaults to `~/.codex` but can be
-    /// overridden by the `CODEX_HOME` environment variable).
+    /// Directory containing all Hepta state (defaults to `~/.hepta` but can be
+    /// overridden by the `HEPTA_HOME` environment variable; `CODEX_HOME` remains
+    /// a compatibility fallback).
     pub codex_home: AbsolutePathBuf,
 
-    /// Directory where Codex stores the SQLite state DB.
+    /// Directory where Hepta stores the SQLite state DB.
     pub sqlite_home: PathBuf,
 
-    /// Directory where Codex writes log files (defaults to `$CODEX_HOME/log`).
+    /// Directory where Hepta writes log files (defaults to `$HEPTA_HOME/log`).
     pub log_dir: PathBuf,
 
-    /// Directory where Codex writes effective session config lock files.
+    /// Directory where Hepta writes effective session config lock files.
     pub config_lock_export_dir: Option<AbsolutePathBuf>,
 
-    /// Whether config lock replay ignores Codex version drift between the
+    /// Whether config lock replay ignores Hepta version drift between the
     /// lock metadata and the regenerated lock.
     pub config_lock_allow_codex_version_mismatch: bool,
 
@@ -775,7 +777,7 @@ pub struct Config {
     /// Effective config lock used for strict replay validation.
     pub config_lock_toml: Option<Arc<ConfigLockfileToml>>,
 
-    /// Settings that govern if and what will be written to `~/.codex/history.jsonl`.
+    /// Settings that govern if and what will be written to `~/.hepta/history.jsonl`.
     pub history: History,
 
     /// When true, session is not persisted on disk. Default to `false`
@@ -918,8 +920,8 @@ pub struct Config {
     /// Collection of various notices we show the user
     pub notices: Notice,
 
-    /// When `true`, checks for Codex updates on startup and surfaces update prompts.
-    /// Set to `false` only if your Codex updates are centrally managed.
+    /// When `true`, checks for Hepta updates on startup and surfaces update prompts.
+    /// Set to `false` only if your Hepta updates are centrally managed.
     /// Defaults to `true`.
     pub check_for_update_on_startup: bool,
 
@@ -928,11 +930,11 @@ pub struct Config {
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: bool,
 
-    /// When `false`, disables analytics across Codex product surfaces in this machine.
+    /// When `false`, disables analytics across Hepta product surfaces in this machine.
     /// Voluntarily left as Optional because the default value might depend on the client.
     pub analytics_enabled: Option<bool>,
 
-    /// When `false`, disables feedback collection across Codex product surfaces.
+    /// When `false`, disables feedback collection across Hepta product surfaces.
     /// Defaults to `true`.
     pub feedback_enabled: bool,
 
@@ -1372,7 +1374,7 @@ impl Config {
         .await
     }
 
-    /// Load a default configuration for a specific Codex home without reading
+    /// Load a default configuration for a specific Hepta home without reading
     /// user, project, or system config layers.
     pub async fn load_default_with_cli_overrides_for_codex_home(
         codex_home: PathBuf,
@@ -1793,7 +1795,7 @@ pub(crate) fn set_project_trust_level_inner(
     Ok(())
 }
 
-/// Patch `CODEX_HOME/config.toml` project state to set trust level.
+/// Patch `HEPTA_HOME/config.toml` project state to set trust level.
 /// Use with caution.
 pub fn set_project_trust_level(
     codex_home: &Path,
@@ -3594,19 +3596,20 @@ fn normalize_guardian_policy_config(value: Option<&str>) -> Option<String> {
     })
 }
 
-/// Returns the path to the Codex configuration directory, which can be
-/// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.codex`.
+/// Returns the path to the Hepta configuration directory, which can be
+/// specified by the `HEPTA_HOME` environment variable. If not set, legacy
+/// `CODEX_HOME` is accepted as a compatibility fallback; otherwise defaults to
+/// `~/.hepta`.
 ///
-/// - If `CODEX_HOME` is set, the value must exist and be a directory. The
+/// - If `HEPTA_HOME` or legacy `CODEX_HOME` is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.
-/// - If `CODEX_HOME` is not set, this function does not verify that the
+/// - If neither variable is set, this function does not verify that the
 ///   directory exists.
 pub fn find_codex_home() -> std::io::Result<AbsolutePathBuf> {
     codex_utils_home_dir::find_codex_home()
 }
 
-/// Returns the path to the folder where Codex logs are stored. Does not verify
+/// Returns the path to the folder where Hepta logs are stored. Does not verify
 /// that the directory exists.
 pub fn log_dir(cfg: &Config) -> std::io::Result<PathBuf> {
     Ok(cfg.log_dir.clone())

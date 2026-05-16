@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use toml::Value as TomlValue;
 
 #[cfg(unix)]
-const CODEX_MANAGED_CONFIG_SYSTEM_PATH: &str = "/etc/codex/managed_config.toml";
+const HEPTA_MANAGED_CONFIG_SYSTEM_PATH: &str = "/etc/hepta/managed_config.toml";
 
 #[derive(Debug, Clone)]
 pub(super) struct MangedConfigFromFile {
@@ -32,7 +32,7 @@ pub(super) struct ManagedConfigFromMdm {
 
 #[derive(Debug, Clone)]
 pub(super) struct LoadedConfigLayers {
-    /// If present, data read from a file such as `/etc/codex/managed_config.toml`.
+    /// If present, data read from a file such as `/etc/hepta/managed_config.toml`.
     pub managed_config: Option<MangedConfigFromFile>,
     /// If present, data read from managed preferences (macOS only).
     pub managed_config_from_mdm: Option<ManagedConfigFromMdm>,
@@ -171,7 +171,7 @@ pub(super) fn managed_config_default_path(codex_home: &Path) -> PathBuf {
     #[cfg(unix)]
     {
         let _ = codex_home;
-        PathBuf::from(CODEX_MANAGED_CONFIG_SYSTEM_PATH)
+        PathBuf::from(HEPTA_MANAGED_CONFIG_SYSTEM_PATH)
     }
 
     #[cfg(not(unix))]

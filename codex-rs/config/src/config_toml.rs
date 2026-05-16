@@ -1,4 +1,4 @@
-//! Schema-heavy configuration TOML types used by Codex.
+//! Schema-heavy configuration TOML types used by Hepta.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -138,7 +138,7 @@ of strings; comma-separated strings are not supported. Use \
     }
 }
 
-/// Base config deserialized from ~/.codex/config.toml.
+/// Base config deserialized from ~/.hepta/config.toml.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ConfigToml {
@@ -223,7 +223,7 @@ pub struct ConfigToml {
     /// Optional path to a file containing model instructions that will override
     /// the built-in instructions for the selected model. Users are STRONGLY
     /// DISCOURAGED from using this field, as deviating from the instructions
-    /// sanctioned by Codex will likely degrade model performance.
+    /// sanctioned by Hepta will likely degrade model performance.
     pub model_instructions_file: Option<AbsolutePathBuf>,
 
     /// Compact prompt used for history compaction.
@@ -238,13 +238,13 @@ pub struct ConfigToml {
     pub forced_login_method: Option<ForcedLoginMethod>,
 
     /// Preferred backend for storing CLI auth credentials.
-    /// file (default): Use a file in the Codex home directory.
+    /// file (default): Use a file in the Hepta home directory.
     /// keyring: Use an OS-specific keyring service.
     /// auto: Use the keyring if available, otherwise use a file.
     #[serde(default)]
     pub cli_auth_credentials_store: Option<AuthCredentialsStoreMode>,
 
-    /// Definition for MCP servers that Codex can reach out to for tool calls.
+    /// Definition for MCP servers that Hepta can reach out to for tool calls.
     #[serde(default)]
     // Uses the raw MCP input shape (custom deserialization) rather than `McpServerConfig`.
     #[schemars(schema_with = "crate::schema::mcp_servers_schema")]
@@ -252,14 +252,13 @@ pub struct ConfigToml {
 
     /// Preferred backend for storing MCP OAuth credentials.
     /// keyring: Use an OS-specific keyring service.
-    ///          https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2
-    /// file: Use a file in the Codex home directory.
+    /// file: Use a file in the Hepta home directory.
     /// auto (default): Use the OS-specific keyring service if available, otherwise use a file.
     #[serde(default)]
     pub mcp_oauth_credentials_store: Option<OAuthCredentialsStoreMode>,
 
     /// Optional fixed port for the local HTTP callback server used during MCP OAuth login.
-    /// When unset, Codex will bind to an ephemeral port chosen by the OS.
+    /// When unset, Hepta will bind to an ephemeral port chosen by the OS.
     pub mcp_oauth_callback_port: Option<u16>,
 
     /// Optional redirect URI to use during MCP OAuth login.
@@ -306,16 +305,16 @@ pub struct ConfigToml {
     #[serde(default)]
     pub profiles: HashMap<String, ConfigProfile>,
 
-    /// Settings that govern if and what will be written to `~/.codex/history.jsonl`.
+    /// Settings that govern if and what will be written to `~/.hepta/history.jsonl`.
     #[serde(default = "default_history")]
     pub history: Option<History>,
 
-    /// Directory where Codex stores the SQLite state DB.
-    /// Defaults to `$CODEX_SQLITE_HOME` when set. Otherwise uses `$CODEX_HOME`.
+    /// Directory where Hepta stores the SQLite state DB.
+    /// Defaults to `$HEPTA_SQLITE_HOME` when set. Otherwise uses `$HEPTA_HOME`.
     pub sqlite_home: Option<AbsolutePathBuf>,
 
-    /// Directory where Codex writes log files, for example `codex-tui.log`.
-    /// Defaults to `$CODEX_HOME/log`.
+    /// Directory where Hepta writes log files, for example `hepta-tui.log`.
+    /// Defaults to `$HEPTA_HOME/log`.
     pub log_dir: Option<AbsolutePathBuf>,
 
     /// Debugging and reproducibility settings.
@@ -360,7 +359,7 @@ pub struct ConfigToml {
     /// Base URL for requests to ChatGPT (as opposed to the OpenAI API).
     pub chatgpt_base_url: Option<String>,
 
-    /// Optional product SKU forwarded on host-owned Codex Apps MCP requests.
+    /// Optional product SKU forwarded on host-owned Hepta Apps MCP requests.
     pub apps_mcp_product_sku: Option<String>,
 
     /// Base URL override for the built-in `openai` model provider.
@@ -452,12 +451,12 @@ pub struct ConfigToml {
     pub ghost_snapshot: Option<GhostSnapshotToml>,
 
     /// Markers used to detect the project root when searching parent
-    /// directories for `.codex` folders. Defaults to [".git"] when unset.
+    /// directories for project config folders. Defaults to [".git"] when unset.
     #[serde(default)]
     pub project_root_markers: Option<Vec<String>>,
 
-    /// When `true`, checks for Codex updates on startup and surfaces update prompts.
-    /// Set to `false` only if your Codex updates are centrally managed.
+    /// When `true`, checks for Hepta updates on startup and surfaces update prompts.
+    /// Set to `false` only if your Hepta updates are centrally managed.
     /// Defaults to `true`.
     pub check_for_update_on_startup: Option<bool>,
 
@@ -466,11 +465,11 @@ pub struct ConfigToml {
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: Option<bool>,
 
-    /// When `false`, disables analytics across Codex product surfaces in this machine.
+    /// When `false`, disables analytics across Hepta product surfaces in this machine.
     /// Defaults to `true`.
     pub analytics: Option<AnalyticsConfigToml>,
 
-    /// When `false`, disables feedback collection across Codex product surfaces.
+    /// When `false`, disables feedback collection across Hepta product surfaces.
     /// Defaults to `true`.
     pub feedback: Option<FeedbackConfigToml>,
 
@@ -518,13 +517,13 @@ pub struct DebugToml {
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct DebugConfigLockToml {
-    /// Directory where Codex writes effective session config lock files.
+    /// Directory where Hepta writes effective session config lock files.
     pub export_dir: Option<AbsolutePathBuf>,
 
     /// Lockfile to replay as the authoritative effective config.
     pub load_path: Option<AbsolutePathBuf>,
 
-    /// Allow replaying a lock generated by a different Codex version.
+    /// Allow replaying a lock generated by a different Hepta version.
     pub allow_codex_version_mismatch: Option<bool>,
 
     /// Save fields resolved from the model catalog/session configuration.

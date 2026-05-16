@@ -1,3 +1,4 @@
+use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -12,14 +13,14 @@ use dirs::home_dir;
 use owo_colors::OwoColorize;
 
 #[derive(Debug, Parser)]
-#[command(name = "codex-state-logs")]
-#[command(about = "Tail Codex logs from the dedicated logs SQLite DB with simple filters")]
+#[command(name = "hepta-state-logs")]
+#[command(about = "Tail Hepta logs from the dedicated logs SQLite DB with simple filters")]
 struct Args {
-    /// Path to CODEX_HOME. Defaults to $CODEX_HOME or ~/.codex.
-    #[arg(long, env = "CODEX_HOME")]
-    codex_home: Option<PathBuf>,
+    /// Path to HEPTA_HOME. Defaults to $HEPTA_HOME, legacy $CODEX_HOME, or ~/.hepta.
+    #[arg(long = "hepta-home", alias = "codex-home", env = "HEPTA_HOME")]
+    hepta_home: Option<PathBuf>,
 
-    /// Direct path to the logs SQLite database. Overrides --codex-home.
+    /// Direct path to the logs SQLite database. Overrides --hepta-home.
     #[arg(long)]
     db: Option<PathBuf>,
 
@@ -107,11 +108,11 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let db_path = resolve_db_path(&args)?;
     let filter = build_filter(&args)?;
-    let codex_home = db_path
+    let state_home = db_path
         .parent()
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| PathBuf::from("."));
-    let runtime = StateRuntime::init(codex_home, "logs-client".to_string()).await?;
+    let runtime = StateRuntime::init(state_home, "logs-client".to_string()).await?;
 
     let mut last_id =
         print_backfill(runtime.as_ref(), &filter, args.backfill, args.compact).await?;
@@ -135,15 +136,23 @@ fn resolve_db_path(args: &Args) -> anyhow::Result<PathBuf> {
         return Ok(db.clone());
     }
 
-    let codex_home = args.codex_home.clone().unwrap_or_else(default_codex_home);
-    Ok(codex_state::logs_db_path(codex_home.as_path()))
+    let hepta_home = args
+        .hepta_home
+        .clone()
+        .or_else(legacy_codex_home_env)
+        .unwrap_or_else(default_hepta_home);
+    Ok(codex_state::logs_db_path(hepta_home.as_path()))
 }
 
-fn default_codex_home() -> PathBuf {
+fn legacy_codex_home_env() -> Option<PathBuf> {
+    env::var_os("CODEX_HOME").map(PathBuf::from)
+}
+
+fn default_hepta_home() -> PathBuf {
     if let Some(home) = home_dir() {
-        return home.join(".codex");
+        return home.join(".hepta");
     }
-    PathBuf::from(".codex")
+    PathBuf::from(".hepta")
 }
 
 fn build_filter(args: &Args) -> anyhow::Result<LogFilter> {
@@ -401,14 +410,14 @@ mod tests {
 
     #[test]
     fn log_level_rejects_aliases_and_unknown_values() {
-        assert!(Args::try_parse_from(["codex-state-logs", "--level", "warning"]).is_err());
-        assert!(Args::try_parse_from(["codex-state-logs", "--level", "err"]).is_err());
-        assert!(Args::try_parse_from(["codex-state-logs", "--level", "warn,error"]).is_err());
+        assert!(Args::try_parse_from(["hepta-state-logs", "--level", "warning"]).is_err());
+        assert!(Args::try_parse_from(["hepta-state-logs", "--level", "err"]).is_err());
+        assert!(Args::try_parse_from(["hepta-state-logs", "--level", "warn,error"]).is_err());
     }
 
     #[test]
     fn log_level_accepts_canonical_values_case_insensitively() {
-        let args = Args::try_parse_from(["codex-state-logs", "--level", "WARN"])
+        let args = Args::try_parse_from(["hepta-state-logs", "--level", "WARN"])
             .expect("parse uppercase log level");
 
         assert_eq!(args.level, Some(LogLevelThreshold::Warn));
