@@ -1,83 +1,61 @@
 use anyhow::Context as _;
-use std::ffi::CString;
 use std::path::Path;
 use std::path::PathBuf;
 use tempfile::Builder;
 use tokio::process::Command;
 
-const CODEX_DMG_URL_ARM64: &str = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
-const CODEX_DMG_URL_X64: &str =
-    "https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg";
+const HEPTA_APP_BUNDLE_NAME: &str = "Hepta.app";
 
 pub async fn run_mac_app_open_or_install(
     workspace: PathBuf,
     download_url_override: Option<String>,
 ) -> anyhow::Result<()> {
-    if let Some(app_path) = find_existing_codex_app_path() {
+    if let Some(app_path) = find_existing_hepta_app_path() {
         eprintln!(
-            "Opening Codex Desktop at {app_path}...",
+            "Opening Hepta Desktop at {app_path}...",
             app_path = app_path.display()
         );
-        open_codex_app(&app_path, &workspace).await?;
+        open_hepta_app(&app_path, &workspace).await?;
         return Ok(());
     }
-    eprintln!("Codex Desktop not found; downloading installer...");
-    let download_url = download_url_override.unwrap_or_else(|| {
-        let default_url = if is_apple_silicon_mac() {
-            CODEX_DMG_URL_ARM64
-        } else {
-            CODEX_DMG_URL_X64
-        };
-        default_url.to_string()
-    });
-    let installed_app = download_and_install_codex_to_user_applications(&download_url)
+
+    let Some(download_url) = download_url_override else {
+        anyhow::bail!(
+            "Hepta Desktop is not installed and no Hepta Desktop installer URL is configured for this source fork. Install Hepta Desktop manually or pass --download-url."
+        );
+    };
+
+    eprintln!("Hepta Desktop not found; downloading installer from override URL...");
+    let installed_app = download_and_install_hepta_to_user_applications(&download_url)
         .await
-        .context("failed to download/install Codex Desktop")?;
+        .context("failed to download/install Hepta Desktop")?;
     eprintln!(
-        "Launching Codex Desktop from {installed_app}...",
+        "Launching Hepta Desktop from {installed_app}...",
         installed_app = installed_app.display()
     );
-    open_codex_app(&installed_app, &workspace).await?;
+    open_hepta_app(&installed_app, &workspace).await?;
     Ok(())
 }
 
-fn is_apple_silicon_mac() -> bool {
-    fn macos_sysctl_flag(name: &str) -> Option<bool> {
-        let name = CString::new(name).ok()?;
-        let mut value: libc::c_int = 0;
-        let mut size = std::mem::size_of_val(&value);
-        let result = unsafe {
-            libc::sysctlbyname(
-                name.as_ptr(),
-                (&mut value as *mut libc::c_int).cast::<libc::c_void>(),
-                &mut size,
-                std::ptr::null_mut(),
-                0,
-            )
-        };
-        (result == 0).then_some(value != 0)
-    }
-
-    std::env::consts::ARCH == "aarch64"
-        || macos_sysctl_flag("sysctl.proc_translated").unwrap_or(false)
-        || macos_sysctl_flag("hw.optional.arm64").unwrap_or(false)
-}
-
-fn find_existing_codex_app_path() -> Option<PathBuf> {
-    candidate_codex_app_paths()
+fn find_existing_hepta_app_path() -> Option<PathBuf> {
+    candidate_hepta_app_paths()
         .into_iter()
         .find(|candidate| candidate.is_dir())
 }
 
-fn candidate_codex_app_paths() -> Vec<PathBuf> {
-    let mut paths = vec![PathBuf::from("/Applications/Codex.app")];
+fn candidate_hepta_app_paths() -> Vec<PathBuf> {
+    let mut paths = vec![PathBuf::from("/Applications").join(HEPTA_APP_BUNDLE_NAME)];
     if let Some(home) = std::env::var_os("HOME") {
-        paths.push(PathBuf::from(home).join("Applications").join("Codex.app"));
+        paths.push(
+            PathBuf::from(home)
+                .join("Applications")
+                .join(HEPTA_APP_BUNDLE_NAME),
+        );
     }
     paths
 }
 
-async fn open_codex_app(app_path: &Path, workspace: &Path) -> anyhow::Result<()> {
+async fn open_hepta_app(app_path: &Path, workspace: &Path) -> anyhow::Result<()> {
     eprintln!(
         "Opening workspace {workspace}...",
         workspace = workspace.display()
@@ -101,27 +79,27 @@ async fn open_codex_app(app_path: &Path, workspace: &Path) -> anyhow::Result<()>
     );
 }
 
-async fn download_and_install_codex_to_user_applications(dmg_url: &str) -> anyhow::Result<PathBuf> {
+async fn download_and_install_hepta_to_user_applications(dmg_url: &str) -> anyhow::Result<PathBuf> {
     let temp_dir = Builder::new()
-        .prefix("codex-app-installer-")
+        .prefix("hepta-app-installer-")
         .tempdir()
         .context("failed to create temp dir")?;
     let tmp_root = temp_dir.path().to_path_buf();
     let _temp_dir = temp_dir;
 
-    let dmg_path = tmp_root.join("Codex.dmg");
+    let dmg_path = tmp_root.join("Hepta.dmg");
     download_dmg(dmg_url, &dmg_path).await?;
 
-    eprintln!("Mounting Codex Desktop installer...");
+    eprintln!("Mounting Hepta Desktop installer...");
     let mount_point = mount_dmg(&dmg_path).await?;
     eprintln!(
         "Installer mounted at {mount_point}.",
         mount_point = mount_point.display()
     );
     let result = async {
-        let app_in_volume = find_codex_app_in_mount(&mount_point)
-            .context("failed to locate Codex.app in mounted dmg")?;
-        install_codex_app_bundle(&app_in_volume).await
+        let app_in_volume = find_hepta_app_in_mount(&mount_point)
+            .context("failed to locate Hepta.app in mounted dmg")?;
+        install_hepta_app_bundle(&app_in_volume).await
     }
     .await;
 
@@ -136,10 +114,10 @@ async fn download_and_install_codex_to_user_applications(dmg_url: &str) -> anyho
     result
 }
 
-async fn install_codex_app_bundle(app_in_volume: &Path) -> anyhow::Result<PathBuf> {
+async fn install_hepta_app_bundle(app_in_volume: &Path) -> anyhow::Result<PathBuf> {
     for applications_dir in candidate_applications_dirs()? {
         eprintln!(
-            "Installing Codex Desktop into {applications_dir}...",
+            "Installing Hepta Desktop into {applications_dir}...",
             applications_dir = applications_dir.display()
         );
         std::fs::create_dir_all(&applications_dir).with_context(|| {
@@ -149,7 +127,7 @@ async fn install_codex_app_bundle(app_in_volume: &Path) -> anyhow::Result<PathBu
             )
         })?;
 
-        let dest_app = applications_dir.join("Codex.app");
+        let dest_app = applications_dir.join(HEPTA_APP_BUNDLE_NAME);
         if dest_app.is_dir() {
             return Ok(dest_app);
         }
@@ -158,14 +136,14 @@ async fn install_codex_app_bundle(app_in_volume: &Path) -> anyhow::Result<PathBu
             Ok(()) => return Ok(dest_app),
             Err(err) => {
                 eprintln!(
-                    "warning: failed to install Codex.app to {applications_dir}: {err}",
+                    "warning: failed to install Hepta.app to {applications_dir}: {err}",
                     applications_dir = applications_dir.display()
                 );
             }
         }
     }
 
-    anyhow::bail!("failed to install Codex.app to any applications directory");
+    anyhow::bail!("failed to install Hepta.app to any applications directory");
 }
 
 fn candidate_applications_dirs() -> anyhow::Result<Vec<PathBuf>> {
@@ -233,8 +211,8 @@ async fn detach_dmg(mount_point: &Path) -> anyhow::Result<()> {
     anyhow::bail!("hdiutil detach failed with {status}");
 }
 
-fn find_codex_app_in_mount(mount_point: &Path) -> anyhow::Result<PathBuf> {
-    let direct = mount_point.join("Codex.app");
+fn find_hepta_app_in_mount(mount_point: &Path) -> anyhow::Result<PathBuf> {
+    let direct = mount_point.join(HEPTA_APP_BUNDLE_NAME);
     if direct.is_dir() {
         return Ok(direct);
     }
@@ -298,19 +276,19 @@ mod tests {
 
     #[test]
     fn parses_mount_point_from_tab_separated_hdiutil_output() {
-        let output = "/dev/disk2s1\tApple_HFS\tCodex\t/Volumes/Codex\n";
+        let output = "/dev/disk2s1\tApple_HFS\tHepta\t/Volumes/Hepta\n";
         assert_eq!(
             parse_hdiutil_attach_mount_point(output).as_deref(),
-            Some("/Volumes/Codex")
+            Some("/Volumes/Hepta")
         );
     }
 
     #[test]
     fn parses_mount_point_with_spaces() {
-        let output = "/dev/disk2s1\tApple_HFS\tCodex Installer\t/Volumes/Codex Installer\n";
+        let output = "/dev/disk2s1\tApple_HFS\tHepta Installer\t/Volumes/Hepta Installer\n";
         assert_eq!(
             parse_hdiutil_attach_mount_point(output).as_deref(),
-            Some("/Volumes/Codex Installer")
+            Some("/Volumes/Hepta Installer")
         );
     }
 }

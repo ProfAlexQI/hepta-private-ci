@@ -3,43 +3,40 @@ use std::path::Path;
 use std::path::PathBuf;
 use tokio::process::Command;
 
-const CODEX_WINDOWS_INSTALLER_URL: &str =
-    "https://get.microsoft.com/installer/download/9PLM9XGG6VKS?cid=website_cta_psi";
-const CODEX_MICROSOFT_STORE_WEB_URL: &str = "https://apps.microsoft.com/detail/9plm9xgg6vks";
-
 pub async fn run_windows_app_open_or_install(
     workspace: PathBuf,
     download_url_override: Option<String>,
 ) -> anyhow::Result<()> {
-    if let Some(app_id) = find_codex_app_id().await? {
-        eprintln!("Opening Codex Desktop...");
-        open_installed_codex_app(&app_id).await?;
+    if let Some(app_id) = find_hepta_app_id().await? {
+        eprintln!("Opening Hepta Desktop...");
+        open_installed_hepta_app(&app_id).await?;
         eprintln!(
-            "In Codex Desktop, open workspace {workspace}.",
+            "In Hepta Desktop, open workspace {workspace}.",
             workspace = display_workspace_path(&workspace)
         );
         return Ok(());
     }
 
-    eprintln!("Codex Desktop not found; opening Windows installer...");
-    let download_url = download_url_override
-        .as_deref()
-        .unwrap_or(CODEX_WINDOWS_INSTALLER_URL);
-    if open_url(download_url).await.is_err() && download_url_override.is_none() {
-        open_url(CODEX_MICROSOFT_STORE_WEB_URL).await?;
-    }
+    let Some(download_url) = download_url_override.as_deref() else {
+        anyhow::bail!(
+            "Hepta Desktop is not installed and no Hepta Desktop installer URL is configured for this source fork. Install Hepta Desktop manually or pass --download-url."
+        );
+    };
+
+    eprintln!("Hepta Desktop not found; opening installer from override URL...");
+    open_url(download_url).await?;
     eprintln!(
-        "After installing Codex Desktop, open workspace {workspace}.",
+        "After installing Hepta Desktop, open workspace {workspace}.",
         workspace = display_workspace_path(&workspace)
     );
     Ok(())
 }
 
-async fn find_codex_app_id() -> anyhow::Result<Option<String>> {
+async fn find_hepta_app_id() -> anyhow::Result<Option<String>> {
     let output = Command::new("powershell.exe")
         .arg("-NoProfile")
         .arg("-Command")
-        .arg("Get-StartApps -Name 'Codex' | Select-Object -First 1 -ExpandProperty AppID")
+        .arg("Get-StartApps -Name 'Hepta' | Select-Object -First 1 -ExpandProperty AppID")
         .output()
         .await
         .context("failed to invoke `powershell.exe`")?;
@@ -56,7 +53,7 @@ async fn find_codex_app_id() -> anyhow::Result<Option<String>> {
     }
 }
 
-async fn open_installed_codex_app(app_id: &str) -> anyhow::Result<()> {
+async fn open_installed_hepta_app(app_id: &str) -> anyhow::Result<()> {
     let target = format!("shell:AppsFolder\\{app_id}");
     open_shell_target(&target).await
 }
@@ -109,24 +106,24 @@ mod tests {
     #[test]
     fn display_workspace_path_removes_windows_extended_prefix() {
         assert_eq!(
-            display_workspace_path(Path::new(r"\\?\C:\Users\fcoury\code\codex")),
-            r"C:\Users\fcoury\code\codex"
+            display_workspace_path(Path::new(r"\\?\C:\Users\fcoury\code\hepta")),
+            r"C:\Users\fcoury\code\hepta"
         );
     }
 
     #[test]
     fn display_workspace_path_preserves_unc_prefix() {
         assert_eq!(
-            display_workspace_path(Path::new(r"\\?\UNC\server\share\codex")),
-            r"\\server\share\codex"
+            display_workspace_path(Path::new(r"\\?\UNC\server\share\hepta")),
+            r"\\server\share\hepta"
         );
     }
 
     #[test]
     fn display_workspace_path_leaves_regular_paths_unchanged() {
         assert_eq!(
-            display_workspace_path(Path::new(r"C:\Users\fcoury\code\codex")),
-            r"C:\Users\fcoury\code\codex"
+            display_workspace_path(Path::new(r"C:\Users\fcoury\code\hepta")),
+            r"C:\Users\fcoury\code\hepta"
         );
     }
 }
