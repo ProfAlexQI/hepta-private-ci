@@ -1,4 +1,4 @@
-//! Diagnoses whether Codex update paths target the running installation.
+//! Diagnoses whether Hepta update paths target the running installation.
 //!
 //! Update diagnostics combine cached version metadata, install-channel hints,
 //! and bounded latest-version probes. For npm-managed launches, this module also
@@ -18,17 +18,13 @@ use super::NpmRootCheck;
 use super::doctor_install_context;
 use super::doctor_managed_by_npm;
 use super::npm_global_root_check;
-use super::run_command;
 
 const VERSION_FILE_NAME: &str = "version.json";
-const GITHUB_LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
-const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
 
 /// Builds the update-health row for the current installation.
 ///
-/// Network failures while fetching latest-version metadata degrade the row to a
-/// warning instead of failing doctor outright; update freshness is useful
-/// support context but should not mask more direct install/config failures.
+/// The direct Hepta fork does not query the upstream Codex release channel.
+/// Update freshness remains local-only until a Hepta release feed exists.
 pub(super) fn updates_check(config: &Config) -> DoctorCheck {
     let current_exe = std::env::current_exe().ok();
     let install_context = doctor_install_context(current_exe.as_deref());
@@ -43,7 +39,7 @@ pub(super) fn updates_check(config: &Config) -> DoctorCheck {
     push_cached_version_details(&mut details, &version_file);
 
     let mut status = CheckStatus::Ok;
-    let mut summary = "update configuration is locally consistent".to_string();
+    let mut summary = "update channel is local source fork".to_string();
     let mut remediation = None;
 
     if doctor_managed_by_npm(current_exe.as_deref()) {
@@ -72,7 +68,7 @@ pub(super) fn updates_check(config: &Config) -> DoctorCheck {
                 status = status.max(CheckStatus::Warning);
                 summary = "npm update target could not be proven".to_string();
                 remediation = Some(
-                    "Reinstall or update Codex so the JS shim provides CODEX_MANAGED_PACKAGE_ROOT."
+                    "Reinstall or update Hepta so the JS shim provides HEPTA_MANAGED_PACKAGE_ROOT."
                         .to_string(),
                 );
             }
@@ -84,20 +80,8 @@ pub(super) fn updates_check(config: &Config) -> DoctorCheck {
         }
     }
 
-    match fetch_latest_version(&install_context) {
-        Ok(latest_version) => {
-            details.push(format!("latest version: {latest_version}"));
-            if is_newer(&latest_version, env!("CARGO_PKG_VERSION")) == Some(true) {
-                details.push("latest version status: newer version is available".to_string());
-            } else {
-                details.push("latest version status: current version is not older".to_string());
-            }
-        }
-        Err(err) => {
-            status = status.max(CheckStatus::Warning);
-            details.push(format!("latest version probe: {err}"));
-        }
-    }
+    details.push("latest version probe: disabled for direct Hepta source fork".to_string());
+    details.push("latest version status: local source fork".to_string());
 
     let mut check = DoctorCheck::new("updates.status", "updates", status, summary).details(details);
     if let Some(remediation) = remediation {
@@ -130,67 +114,12 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
 
 fn update_action_label(context: &InstallContext) -> &'static str {
     match context {
-        InstallContext::Npm => "npm install -g @openai/codex",
-        InstallContext::Bun => "bun install -g @openai/codex",
-        InstallContext::Brew => "brew upgrade --cask codex",
-        InstallContext::Standalone { .. } => "standalone installer",
-        InstallContext::Other => "manual or unknown",
+        InstallContext::Npm => "npm install -g @hepta/hepta",
+        InstallContext::Bun => "bun install -g @hepta/hepta",
+        InstallContext::Brew => "brew upgrade --cask hepta",
+        InstallContext::Standalone { .. } => "Hepta standalone installer",
+        InstallContext::Other => "manual source fork update",
     }
-}
-
-fn fetch_latest_version(context: &InstallContext) -> Result<String, String> {
-    match context {
-        InstallContext::Brew => fetch_homebrew_cask_version(),
-        InstallContext::Npm
-        | InstallContext::Bun
-        | InstallContext::Standalone { .. }
-        | InstallContext::Other => fetch_latest_github_release_version(),
-    }
-}
-
-fn fetch_latest_github_release_version() -> Result<String, String> {
-    #[derive(Deserialize)]
-    struct ReleaseInfo {
-        tag_name: String,
-    }
-
-    let info = http_get_json::<ReleaseInfo>(GITHUB_LATEST_RELEASE_URL)?;
-    info.tag_name
-        .strip_prefix("rust-v")
-        .map(str::to_string)
-        .ok_or_else(|| format!("failed to parse latest tag {}", info.tag_name))
-}
-
-fn fetch_homebrew_cask_version() -> Result<String, String> {
-    #[derive(Deserialize)]
-    struct HomebrewCaskInfo {
-        version: String,
-    }
-
-    http_get_json::<HomebrewCaskInfo>(HOMEBREW_CASK_API_URL).map(|info| info.version)
-}
-
-fn http_get_json<T>(url: &str) -> Result<T, String>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    let body = run_command("curl", ["-fsSL", "--max-time", "5", url])?;
-    serde_json::from_str::<T>(&body).map_err(|err| err.to_string())
-}
-
-fn is_newer(latest: &str, current: &str) -> Option<bool> {
-    match (parse_version(latest), parse_version(current)) {
-        (Some(latest), Some(current)) => Some(latest > current),
-        (Some(_), None) | (None, Some(_)) | (None, None) => None,
-    }
-}
-
-fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = value.trim().split('.');
-    let major = parts.next()?.parse::<u64>().ok()?;
-    let minor = parts.next()?.parse::<u64>().ok()?;
-    let patch = parts.next()?.parse::<u64>().ok()?;
-    Some((major, minor, patch))
 }
 
 #[derive(Deserialize)]
@@ -207,21 +136,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn is_newer_compares_plain_semver() {
-        assert_eq!(is_newer("1.2.4", "1.2.3"), Some(true));
-        assert_eq!(is_newer("1.2.3", "1.2.4"), Some(false));
-        assert_eq!(is_newer("1.2.3-beta.1", "1.2.2"), None);
-    }
-
-    #[test]
     fn update_action_labels_install_contexts() {
         assert_eq!(
             update_action_label(&InstallContext::Npm),
-            "npm install -g @openai/codex"
+            "npm install -g @hepta/hepta"
         );
         assert_eq!(
             update_action_label(&InstallContext::Other),
-            "manual or unknown"
+            "manual source fork update"
         );
     }
 }
