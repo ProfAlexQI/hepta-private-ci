@@ -20,6 +20,19 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   Hepta home compatibility field and update thread-origin examples to
   `hepta exec` / `hepta app-server`.
 
+## Cleaned in feature/docs pass
+
+- Experimental feature menu descriptions and announcements now use Hepta for
+  transcript reflow, memories, network proxy restart, external migration, and
+  idle-sleep copy.
+- Deprecated feature warnings no longer point users to upstream Codex
+  documentation as the default Hepta configuration reference.
+- Skill installer sample guidance now tells users to restart Hepta after
+  installing new skills.
+- Root security, changelog, announcement-tip, and changelog-generation prose now
+  describe this repository as a Hepta fork rather than an install/update path
+  for upstream Codex artifacts.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

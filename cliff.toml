@@ -4,7 +4,7 @@
 header = """
 # Changelog
 
-You can install any of these versions: `npm install -g @openai/codex@<version>`
+Use packaged Hepta release artifacts for installable builds once they are staged.
 """
 
 body = """

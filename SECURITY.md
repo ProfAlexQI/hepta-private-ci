@@ -1,17 +1,17 @@
 # Security Policy
 
-Thank you for helping us keep Codex secure!
+Thank you for helping keep Hepta secure.
 
 ## Reporting Security Issues
 
-The security is essential to OpenAI's mission. We appreciate the work of security researchers acting in good faith to identify and responsibly report potential vulnerabilities, helping us maintain strong privacy and security standards for our users and technology.
+Hepta is currently a local source fork derived from upstream OpenAI Codex. Please report Hepta-specific security issues privately to the project maintainer before public disclosure.
 
-Our security program is managed through Bugcrowd, and we ask that any validated vulnerabilities be reported via the [Bugcrowd program](https://bugcrowd.com/engagements/openai).
+If the issue applies to upstream OpenAI Codex, follow OpenAI's vulnerability disclosure process instead of treating this fork as the upstream reporting channel.
 
 ## Vulnerability Disclosure Program
 
-Our Vulnerability Program Guidelines are defined on our [Bugcrowd program page](https://bugcrowd.com/engagements/openai).
+This fork does not yet publish an independent public bounty or disclosure program. Keep reports private until a maintainer has had time to triage and patch.
 
-## How to operate CODEX safely
+## How to operate Hepta safely
 
-For details on Codex security boundaries, including sandboxing, approvals, and network controls, see [Agent approvals & security](https://developers.openai.com/codex/agent-approvals-security).
+Run Hepta with least-privilege sandbox and approval settings, keep network access explicit, and do not substitute upstream Codex release artifacts for this fork unless you intentionally want the upstream product.

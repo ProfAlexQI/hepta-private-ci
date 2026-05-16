@@ -1,1 +1,3 @@
-The changelog can be found on the [releases page](https://github.com/openai/codex/releases).
+Hepta fork changes are tracked in this repository's Git history until packaged Hepta releases are staged.
+
+The upstream Codex release page remains useful only when intentionally comparing against the source project.
