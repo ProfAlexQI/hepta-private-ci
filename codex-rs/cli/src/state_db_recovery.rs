@@ -17,10 +17,10 @@ pub(crate) fn is_locked(detail: &str) -> bool {
 }
 
 pub(crate) fn confirm_repair(startup_error: &LocalStateDbStartupError) -> std::io::Result<bool> {
-    eprintln!("Codex couldn't start because its local database appears to be damaged.");
-    eprintln!("Codex can try a safe repair by backing up those files and rebuilding them.");
+    eprintln!("Hepta couldn't start because its local database appears to be damaged.");
+    eprintln!("Hepta can try a safe repair by backing up those files and rebuilding them.");
     print_technical_details(startup_error);
-    crate::confirm("Repair Codex local data now? [y/N]: ")
+    crate::confirm("Repair Hepta local data now? [y/N]: ")
 }
 
 pub(crate) async fn repair_files(
@@ -33,7 +33,7 @@ pub(crate) async fn repair_files(
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
-    let repair_suffix = format!("codex-repair-{timestamp}");
+    let repair_suffix = format!("hepta-repair-{timestamp}");
     let mut backups = Vec::new();
 
     match tokio::fs::metadata(sqlite_home).await {
@@ -60,7 +60,7 @@ pub(crate) async fn repair_files(
 
     if backups.is_empty() {
         return Err(std::io::Error::other(
-            "no repairable Codex local data files were found",
+            "no repairable Hepta local data files were found",
         ));
     }
 
@@ -68,7 +68,7 @@ pub(crate) async fn repair_files(
 }
 
 pub(crate) fn print_repair_backups(backups: &[PathBuf]) {
-    eprintln!("Backed up Codex local data before repair:");
+    eprintln!("Backed up Hepta local data before repair:");
     for backup in backups {
         eprintln!("  {}", backup.display());
     }
@@ -76,15 +76,15 @@ pub(crate) fn print_repair_backups(backups: &[PathBuf]) {
 }
 
 pub(crate) fn print_diagnostic_guidance(startup_error: &LocalStateDbStartupError) {
-    eprintln!("Codex couldn't start because its local database appears to be damaged.");
-    eprintln!("Run `codex doctor` to check your setup and get next-step guidance.");
+    eprintln!("Hepta couldn't start because its local database appears to be damaged.");
+    eprintln!("Run `hepta doctor` to check your setup and get next-step guidance.");
     eprintln!("If this keeps happening, share the technical details below when asking for help.");
     print_technical_details(startup_error);
 }
 
 pub(crate) fn print_locked_guidance(startup_error: &LocalStateDbStartupError) {
-    eprintln!("Codex couldn't start because another Codex process is using its local data.");
-    eprintln!("Quit any other copies of Codex that may still be running, then try again.");
+    eprintln!("Hepta couldn't start because another Hepta process is using its local data.");
+    eprintln!("Quit any other copies of Hepta that may still be running, then try again.");
     print_technical_details(startup_error);
 }
 
