@@ -56,6 +56,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   accepting legacy `codex` / `codex-reply` calls as hidden compatibility
   aliases.
 
+## Cleaned in TUI microcopy pass
+
+- Composer placeholder and related test helpers now say `Ask Hepta to do
+  anything`.
+- Approval denial, permission-preset, memory-settings, feedback-upload, and
+  hook-event descriptions now use Hepta product wording.
+- TUI model chooser descriptions now say models are optimized for Hepta while
+  preserving model ids such as `gpt-5.1-codex`.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
