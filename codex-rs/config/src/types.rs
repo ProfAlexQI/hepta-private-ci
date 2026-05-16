@@ -188,7 +188,8 @@ pub enum HistoryPersistence {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct AnalyticsConfigToml {
-    /// When `false`, disables analytics across Hepta product surfaces in this profile.
+    /// When `true`, enables analytics across Hepta product surfaces in this profile.
+    /// Unset remains disabled in this source fork unless a caller explicitly opts in.
     pub enabled: Option<bool>,
 }
 

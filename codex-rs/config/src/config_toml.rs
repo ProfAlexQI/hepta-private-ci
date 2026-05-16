@@ -465,8 +465,8 @@ pub struct ConfigToml {
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: Option<bool>,
 
-    /// When `false`, disables analytics across Hepta product surfaces in this machine.
-    /// Defaults to `true`.
+    /// When `true`, enables analytics across Hepta product surfaces in this machine.
+    /// Defaults to `false` in this source fork unless explicitly opted in.
     pub analytics: Option<AnalyticsConfigToml>,
 
     /// When `false`, disables feedback collection across Hepta product surfaces.

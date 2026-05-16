@@ -1,5 +1,6 @@
 use super::AnalyticsEventsClient;
 use super::AnalyticsEventsQueue;
+use super::analytics_events_enabled;
 use super::track_event_request_batches;
 use crate::events::CodexAcceptedLineFingerprintsEventParams;
 use crate::events::CodexAcceptedLineFingerprintsEventRequest;
@@ -82,6 +83,13 @@ fn client_with_receiver() -> (AnalyticsEventsClient, mpsc::Receiver<AnalyticsFac
         plugin_used_emitted_keys: Arc::new(Mutex::new(HashSet::new())),
     };
     (AnalyticsEventsClient { queue: Some(queue) }, receiver)
+}
+
+#[test]
+fn analytics_events_are_explicit_opt_in_for_hepta_fork() {
+    assert_eq!(analytics_events_enabled(None), false);
+    assert_eq!(analytics_events_enabled(Some(false)), false);
+    assert_eq!(analytics_events_enabled(Some(true)), true);
 }
 
 fn sample_turn_start_request() -> ClientRequest {

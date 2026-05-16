@@ -9,6 +9,8 @@ use codex_core::config::ConfigBuilder;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -85,6 +87,11 @@ pub(crate) async fn mount_analytics_capture(server: &MockServer, codex_home: &Pa
         .respond_with(ResponseTemplate::new(200))
         .mount(server)
         .await;
+
+    OpenOptions::new()
+        .append(true)
+        .open(codex_home.join("config.toml"))?
+        .write_all(b"\n[analytics]\nenabled = true\n")?;
 
     write_chatgpt_auth(
         codex_home,

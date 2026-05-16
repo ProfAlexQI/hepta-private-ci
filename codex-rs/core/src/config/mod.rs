@@ -930,8 +930,9 @@ pub struct Config {
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: bool,
 
-    /// When `false`, disables analytics across Hepta product surfaces in this machine.
-    /// Voluntarily left as Optional because the default value might depend on the client.
+    /// When `true`, enables analytics across Hepta product surfaces in this machine.
+    /// Voluntarily left as Optional so unset can remain disabled unless the caller
+    /// supplies an explicit opt-in policy.
     pub analytics_enabled: Option<bool>,
 
     /// When `false`, disables feedback collection across Hepta product surfaces.

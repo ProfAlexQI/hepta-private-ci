@@ -92,7 +92,7 @@
       "description": "Analytics settings loaded from config.toml. Fields are optional so we can apply defaults.",
       "properties": {
         "enabled": {
-          "description": "When `false`, disables analytics across Hepta product surfaces in this profile.",
+          "description": "When `true`, enables analytics across Hepta product surfaces in this profile. Unset remains disabled in this source fork unless a caller explicitly opts in.",
           "type": "boolean"
         }
       },
@@ -3989,7 +3989,7 @@
           "$ref": "#/definitions/AnalyticsConfigToml"
         }
       ],
-      "description": "When `false`, disables analytics across Hepta product surfaces in this machine. Defaults to `true`."
+      "description": "When `true`, enables analytics across Hepta product surfaces in this machine. Defaults to `false` in this source fork unless explicitly opted in."
     },
     "approval_policy": {
       "allOf": [

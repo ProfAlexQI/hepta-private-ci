@@ -78,6 +78,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   guardian review prompts, dynamic-tool descriptions, and related snapshots now
   use Hepta product wording.
 
+## Cleaned in analytics opt-in pass
+
+- Analytics event export is now explicit opt-in for the Hepta source fork:
+  unset analytics config no longer creates a sender for upstream Codex analytics
+  endpoints.
+- Tests that exercise analytics delivery now set `[analytics].enabled = true`
+  in their temporary config, keeping the compatibility event schema covered
+  without making local Hepta installs send analytics by default.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
