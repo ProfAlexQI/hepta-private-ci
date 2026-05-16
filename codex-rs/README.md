@@ -1,14 +1,15 @@
-# Codex CLI (Rust Implementation)
+# Hepta Codex-Derived Runtime
 
-We provide Codex CLI as a standalone executable to ensure a zero-dependency install.
+This workspace is the Codex Rust implementation being modified directly into
+the new Hepta runtime.
 
-## Installing Codex
+## Building Hepta
 
-Today, the easiest way to install Codex is via `npm`:
+Build the first forked binary from this workspace:
 
 ```shell
-npm i -g @openai/codex
-codex
+cargo build -p codex-cli --bin hepta
+./target/debug/hepta --help
 ```
 
 You can also install via Homebrew (`brew install --cask codex`) or download a platform-specific release directly from our [GitHub Releases](https://github.com/openai/codex/releases).
@@ -20,11 +21,13 @@ You can also install via Homebrew (`brew install --cask codex`) or download a pl
 
 ## What's new in the Rust CLI
 
-The Rust implementation is now the maintained Codex CLI and serves as the default experience. It includes a number of features that the legacy TypeScript CLI never supported.
+The first migration step keeps upstream internal crate names in place, while
+the binary and runtime home are Hepta-owned.
 
 ### Config
 
-Codex supports a rich set of configuration options. Note that the Rust CLI uses `config.toml` instead of `config.json`. See [`docs/config.md`](../docs/config.md) for details.
+Hepta inherits the Codex `config.toml` format initially, but resolves runtime
+state from `HEPTA_HOME` / `~/.hepta`.
 
 ### Model Context Protocol Support
 

@@ -1,32 +1,28 @@
-<p align="center"><code>npm i -g @openai/codex</code><br />or <code>brew install --cask codex</code></p>
-<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
+<p align="center"><code>cargo build -p codex-cli --bin hepta</code></p>
+<p align="center"><strong>Hepta</strong> is a Codex-derived local agent runtime being modified in place.
 <p align="center">
   <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
 </p>
 </br>
-If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
-</br>If you want the desktop app experience, run <code>codex app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
-</br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
+This fork keeps the upstream Codex Rust workspace intact enough to build while
+Hepta-specific runtime, memory, plugin, and service behavior is moved into the
+core crates directly.</p>
 
 ---
 
 ## Quickstart
 
-### Installing and running Codex CLI
+### Building and running Hepta
 
-Install globally with your preferred package manager:
-
-```shell
-# Install using npm
-npm install -g @openai/codex
-```
+Build the forked Rust CLI directly:
 
 ```shell
-# Install using Homebrew
-brew install --cask codex
+cargo build -p codex-cli --bin hepta
+./codex-rs/target/debug/hepta --help
 ```
 
-Then simply run `codex` to get started.
+Set `HEPTA_HOME` to override the runtime home. Without it, Hepta uses
+`~/.hepta`.
 
 <details>
 <summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
