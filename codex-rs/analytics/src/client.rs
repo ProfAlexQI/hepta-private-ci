@@ -241,7 +241,7 @@ impl AnalyticsEventsClient {
         )));
     }
 
-    pub fn track_compaction(&self, event: crate::facts::CodexCompactionEvent) {
+    pub fn track_compaction(&self, event: crate::facts::HeptaCompactionEvent) {
         self.record_fact(AnalyticsFact::Custom(CustomAnalyticsFact::Compaction(
             Box::new(event),
         )));

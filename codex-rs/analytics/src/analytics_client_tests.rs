@@ -13,7 +13,6 @@ use crate::events::CodexPluginEventRequest;
 use crate::events::CodexPluginUsedEventRequest;
 use crate::events::CodexReviewEventParams;
 use crate::events::CodexReviewEventRequest;
-use crate::events::CodexRuntimeMetadata;
 use crate::events::CodexToolItemEventBase;
 use crate::events::CodexTurnEventRequest;
 use crate::events::FinalApprovalOutcome;
@@ -23,6 +22,7 @@ use crate::events::GuardianReviewEventParams;
 use crate::events::GuardianReviewFailureReason;
 use crate::events::GuardianReviewTerminalStatus;
 use crate::events::GuardianReviewedAction;
+use crate::events::HeptaRuntimeMetadata;
 use crate::events::ReviewResolution;
 use crate::events::ReviewStatus;
 use crate::events::ReviewSubjectKind;
@@ -42,7 +42,6 @@ use crate::facts::AnalyticsJsonRpcError;
 use crate::facts::AppInvocation;
 use crate::facts::AppMentionedInput;
 use crate::facts::AppUsedInput;
-use crate::facts::CodexCompactionEvent;
 use crate::facts::CompactionImplementation;
 use crate::facts::CompactionPhase;
 use crate::facts::CompactionReason;
@@ -50,6 +49,7 @@ use crate::facts::CompactionStatus;
 use crate::facts::CompactionStrategy;
 use crate::facts::CompactionTrigger;
 use crate::facts::CustomAnalyticsFact;
+use crate::facts::HeptaCompactionEvent;
 use crate::facts::HookRunFact;
 use crate::facts::HookRunInput;
 use crate::facts::InputError;
@@ -221,8 +221,8 @@ fn sample_app_server_client_metadata() -> CodexAppServerClientMetadata {
     }
 }
 
-fn sample_runtime_metadata() -> CodexRuntimeMetadata {
-    CodexRuntimeMetadata {
+fn sample_runtime_metadata() -> HeptaRuntimeMetadata {
+    HeptaRuntimeMetadata {
         codex_rs_version: "0.1.0".to_string(),
         runtime_os: "macos".to_string(),
         runtime_os_version: "15.3.1".to_string(),
@@ -726,7 +726,7 @@ fn sample_initialize_fact(connection_id: u64) -> AnalyticsFact {
             }),
         },
         product_client_id: DEFAULT_ORIGINATOR.to_string(),
-        runtime: CodexRuntimeMetadata {
+        runtime: HeptaRuntimeMetadata {
             codex_rs_version: "0.99.0".to_string(),
             runtime_os: "linux".to_string(),
             runtime_os_version: "24.04".to_string(),
@@ -1199,7 +1199,7 @@ fn compaction_event_serializes_expected_shape() {
     let event = TrackEventRequest::Compaction(Box::new(CodexCompactionEventRequest {
         event_type: "codex_compaction_event",
         event_params: crate::events::codex_compaction_event_params(
-            CodexCompactionEvent {
+            HeptaCompactionEvent {
                 thread_id: "thread-1".to_string(),
                 turn_id: "turn-1".to_string(),
                 trigger: CompactionTrigger::Auto,
@@ -1308,7 +1308,7 @@ fn thread_initialized_event_serializes_expected_shape() {
                 rpc_transport: AppServerRpcTransport::Stdio,
                 experimental_api_enabled: Some(true),
             },
-            runtime: CodexRuntimeMetadata {
+            runtime: HeptaRuntimeMetadata {
                 codex_rs_version: "0.1.0".to_string(),
                 runtime_os: "macos".to_string(),
                 runtime_os_version: "15.3.1".to_string(),
@@ -1373,7 +1373,7 @@ fn command_execution_event_serializes_expected_shape() {
                     rpc_transport: AppServerRpcTransport::Websocket,
                     experimental_api_enabled: Some(true),
                 },
-                runtime: CodexRuntimeMetadata {
+                runtime: HeptaRuntimeMetadata {
                     codex_rs_version: "0.99.0".to_string(),
                     runtime_os: "macos".to_string(),
                     runtime_os_version: "15.3.1".to_string(),
@@ -1472,7 +1472,7 @@ fn review_event_serializes_expected_shape() {
                 rpc_transport: AppServerRpcTransport::Websocket,
                 experimental_api_enabled: Some(true),
             },
-            runtime: CodexRuntimeMetadata {
+            runtime: HeptaRuntimeMetadata {
                 codex_rs_version: "0.99.0".to_string(),
                 runtime_os: "macos".to_string(),
                 runtime_os_version: "15.3.1".to_string(),
@@ -1570,7 +1570,7 @@ async fn initialize_caches_client_and_thread_lifecycle_publishes_once_initialize
                     }),
                 },
                 product_client_id: DEFAULT_ORIGINATOR.to_string(),
-                runtime: CodexRuntimeMetadata {
+                runtime: HeptaRuntimeMetadata {
                     codex_rs_version: "0.99.0".to_string(),
                     runtime_os: "linux".to_string(),
                     runtime_os_version: "24.04".to_string(),
@@ -1751,7 +1751,7 @@ async fn compaction_event_ingests_custom_fact() {
     reducer
         .ingest(
             AnalyticsFact::Custom(CustomAnalyticsFact::Compaction(Box::new(
-                CodexCompactionEvent {
+                HeptaCompactionEvent {
                     thread_id: "thread-1".to_string(),
                     turn_id: "turn-compact".to_string(),
                     trigger: CompactionTrigger::Manual,
@@ -2638,7 +2638,7 @@ async fn subagent_thread_started_inherits_parent_connection_for_new_thread() {
     reducer
         .ingest(
             AnalyticsFact::Custom(CustomAnalyticsFact::Compaction(Box::new(
-                CodexCompactionEvent {
+                HeptaCompactionEvent {
                     thread_id: "thread-review".to_string(),
                     turn_id: "turn-compact".to_string(),
                     trigger: CompactionTrigger::Manual,

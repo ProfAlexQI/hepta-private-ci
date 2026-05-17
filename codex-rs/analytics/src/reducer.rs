@@ -24,7 +24,6 @@ use crate::events::CodexPluginEventRequest;
 use crate::events::CodexPluginUsedEventRequest;
 use crate::events::CodexReviewEventParams;
 use crate::events::CodexReviewEventRequest;
-use crate::events::CodexRuntimeMetadata;
 use crate::events::CodexToolItemEventBase;
 use crate::events::CodexTurnEventParams;
 use crate::events::CodexTurnEventRequest;
@@ -36,6 +35,7 @@ use crate::events::FinalApprovalOutcome;
 use crate::events::GuardianReviewEventParams;
 use crate::events::GuardianReviewEventPayload;
 use crate::events::GuardianReviewEventRequest;
+use crate::events::HeptaRuntimeMetadata;
 use crate::events::ReviewResolution;
 use crate::events::ReviewStatus;
 use crate::events::ReviewSubjectKind;
@@ -62,8 +62,8 @@ use crate::facts::AnalyticsFact;
 use crate::facts::AnalyticsJsonRpcError;
 use crate::facts::AppMentionedInput;
 use crate::facts::AppUsedInput;
-use crate::facts::CodexCompactionEvent;
 use crate::facts::CustomAnalyticsFact;
+use crate::facts::HeptaCompactionEvent;
 use crate::facts::HookRunInput;
 use crate::facts::PluginState;
 use crate::facts::PluginStateChangedInput;
@@ -140,7 +140,7 @@ pub(crate) struct AnalyticsReducer {
 
 struct ConnectionState {
     app_server_client: CodexAppServerClientMetadata,
-    runtime: CodexRuntimeMetadata,
+    runtime: HeptaRuntimeMetadata,
 }
 
 #[derive(Default)]
@@ -179,7 +179,7 @@ impl<'a> AnalyticsDropSite<'a> {
         }
     }
 
-    fn compaction(input: &'a CodexCompactionEvent) -> Self {
+    fn compaction(input: &'a HeptaCompactionEvent) -> Self {
         Self {
             event_name: "compaction",
             thread_id: &input.thread_id,
@@ -488,7 +488,7 @@ impl AnalyticsReducer {
         connection_id: u64,
         params: InitializeParams,
         product_client_id: String,
-        runtime: CodexRuntimeMetadata,
+        runtime: HeptaRuntimeMetadata,
         rpc_transport: AppServerRpcTransport,
     ) {
         self.connections.insert(
@@ -1266,7 +1266,7 @@ impl AnalyticsReducer {
         ));
     }
 
-    fn ingest_compaction(&mut self, input: CodexCompactionEvent, out: &mut Vec<TrackEventRequest>) {
+    fn ingest_compaction(&mut self, input: HeptaCompactionEvent, out: &mut Vec<TrackEventRequest>) {
         let Some((connection_state, thread_metadata)) =
             self.thread_context_or_warn(AnalyticsDropSite::compaction(&input))
         else {
@@ -2409,7 +2409,7 @@ fn accepted_line_event_input(
 
 fn codex_turn_event_params(
     app_server_client: CodexAppServerClientMetadata,
-    runtime: CodexRuntimeMetadata,
+    runtime: HeptaRuntimeMetadata,
     turn_id: String,
     turn_state: &TurnState,
     thread_metadata: &ThreadMetadataState,

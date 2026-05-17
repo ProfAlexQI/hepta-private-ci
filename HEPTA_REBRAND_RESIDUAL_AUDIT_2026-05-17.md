@@ -547,6 +547,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `find_codex_home()` compatibility helper, and deliberate upstream installer
   safety wording.
 
+## Cleaned in analytics local-type pass
+
+- Local analytics fact/runtime types now use Hepta primary names:
+  `HeptaRuntimeMetadata`, `HeptaCompactionEvent`, and
+  `HeptaTurnSteerEvent`.
+- Public `CodexCompactionEvent` and `CodexTurnSteerEvent` type aliases remain
+  exported as source-compatibility shims for downstream code.
+- Hosted event names, request structs, analytics endpoint paths, payload field
+  names, and product-surface strings remain Codex compatibility names because
+  they are remote service schema identifiers rather than local runtime branding.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
@@ -571,6 +582,9 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `codex_streamlined_login` remain upstream compatibility names.
 - ChatGPT auth error markers such as `missing_codex_entitlement` remain
   upstream compatibility names.
+- Analytics wire/event schema names such as `codex_*_event`,
+  `codex_rs_version`, `/codex/analytics-events/events`, and related
+  request structs remain hosted-service compatibility identifiers.
 
 ## Deferred
 

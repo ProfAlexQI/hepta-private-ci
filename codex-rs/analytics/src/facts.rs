@@ -1,6 +1,6 @@
 use crate::events::AppServerRpcTransport;
-use crate::events::CodexRuntimeMetadata;
 use crate::events::GuardianReviewEventParams;
+use crate::events::HeptaRuntimeMetadata;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::ClientResponsePayload;
 use codex_app_server_protocol::InitializeParams;
@@ -126,7 +126,7 @@ pub enum TurnSteerRejectionReason {
 }
 
 #[derive(Clone)]
-pub struct CodexTurnSteerEvent {
+pub struct HeptaTurnSteerEvent {
     pub expected_turn_id: Option<String>,
     pub accepted_turn_id: Option<String>,
     pub num_input_images: usize,
@@ -134,6 +134,8 @@ pub struct CodexTurnSteerEvent {
     pub rejection_reason: Option<TurnSteerRejectionReason>,
     pub created_at: u64,
 }
+
+pub type CodexTurnSteerEvent = HeptaTurnSteerEvent;
 
 #[derive(Clone, Copy, Debug)]
 pub enum AnalyticsJsonRpcError {
@@ -256,7 +258,7 @@ pub enum CompactionStatus {
 }
 
 #[derive(Clone)]
-pub struct CodexCompactionEvent {
+pub struct HeptaCompactionEvent {
     pub thread_id: String,
     pub turn_id: String,
     pub trigger: CompactionTrigger,
@@ -273,13 +275,15 @@ pub struct CodexCompactionEvent {
     pub duration_ms: Option<u64>,
 }
 
+pub type CodexCompactionEvent = HeptaCompactionEvent;
+
 #[allow(dead_code)]
 pub(crate) enum AnalyticsFact {
     Initialize {
         connection_id: u64,
         params: InitializeParams,
         product_client_id: String,
-        runtime: CodexRuntimeMetadata,
+        runtime: HeptaRuntimeMetadata,
         rpc_transport: AppServerRpcTransport,
     },
     ClientRequest {
@@ -323,7 +327,7 @@ pub(crate) enum AnalyticsFact {
 
 pub(crate) enum CustomAnalyticsFact {
     SubAgentThreadStarted(SubAgentThreadStartedInput),
-    Compaction(Box<CodexCompactionEvent>),
+    Compaction(Box<HeptaCompactionEvent>),
     GuardianReview(Box<GuardianReviewEventParams>),
     TurnResolvedConfig(Box<TurnResolvedConfigFact>),
     TurnTokenUsage(Box<TurnTokenUsageFact>),
