@@ -743,6 +743,12 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   classes, session-key/reply-target strategy, and model/send gates without
   invoking a model runner, writing cursor state, sending Telegram messages, or
   exposing raw prompt text, callback data, chat ids, sender ids, or message ids.
+- A gated model bridge skeleton now exists at
+  `/api/telegram-model-bridge`. It defines the session-runner bridge plan,
+  duplicate/cursor policy, approval policy, failure policy, and send gate
+  boundary. By default `HEPTA_NATIVE_TELEGRAM_MODEL_TURN` is off, so status
+  probes do not invoke a runner, spawn a process, write cursor state, perform
+  network work, send Telegram messages, or expose raw Telegram identifiers.
 
 ## Keep for compatibility
 

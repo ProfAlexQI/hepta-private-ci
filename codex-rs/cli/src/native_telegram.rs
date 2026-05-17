@@ -14,6 +14,8 @@ const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor
 const TELEGRAM_ALLOWED_UPDATES: &str =
     "[\"message\",\"edited_message\",\"callback_query\",\"message_reaction\"]";
 const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
+const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
+const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramPluginStatus {
@@ -155,6 +157,35 @@ pub(crate) struct NativeTelegramModelTurnPlanStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramModelBridgeStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) model_turn_gate_env: &'static str,
+    pub(crate) model_turn_gate_enabled: bool,
+    pub(crate) send_gate_env: &'static str,
+    pub(crate) model_turn_bridge_ready: bool,
+    pub(crate) model_turn_started: bool,
+    pub(crate) session_runner_invoked: bool,
+    pub(crate) local_process_spawned: bool,
+    pub(crate) external_network_read: bool,
+    pub(crate) external_send: bool,
+    pub(crate) cursor_written: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_sender_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
+    pub(crate) config: NativeTelegramConfigStatus,
+    pub(crate) cursor_plan: NativeTelegramCursorPlan,
+    pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
+    pub(crate) bridge_plan: NativeTelegramSessionBridgePlan,
+    pub(crate) error: Option<String>,
+    pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramModelTurnPlan {
     pub(crate) planner_ready: bool,
     pub(crate) candidate_count: usize,
@@ -170,6 +201,25 @@ pub(crate) struct NativeTelegramModelTurnPlan {
     pub(crate) send_delivery_gate: &'static str,
     pub(crate) raw_message_text_exposed: bool,
     pub(crate) raw_callback_data_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_sender_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramSessionBridgePlan {
+    pub(crate) bridge_plan_ready: bool,
+    pub(crate) runner_kind: &'static str,
+    pub(crate) runner_invocation_strategy: &'static str,
+    pub(crate) prompt_material_policy: &'static str,
+    pub(crate) session_key_strategy: &'static str,
+    pub(crate) duplicate_policy: &'static str,
+    pub(crate) cursor_commit_policy: &'static str,
+    pub(crate) response_delivery_policy: &'static str,
+    pub(crate) approval_policy: &'static str,
+    pub(crate) failure_policy: &'static str,
+    pub(crate) process_spawned_by_status: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
     pub(crate) raw_chat_id_exposed: bool,
     pub(crate) raw_sender_id_exposed: bool,
     pub(crate) raw_message_id_exposed: bool,
@@ -299,6 +349,83 @@ pub(crate) fn telegram_model_turn_plan_status(
         model_turn_plan,
         error,
         next_migration_slice: "wire the planned redacted candidates into a bounded Codex session runner",
+    }
+}
+
+pub(crate) fn telegram_model_bridge_status(requested: bool) -> NativeTelegramModelBridgeStatus {
+    telegram_model_bridge_status_with_gate(requested, env_truthy(TELEGRAM_MODEL_TURN_GATE_ENV))
+}
+
+fn telegram_model_bridge_status_with_gate(
+    requested: bool,
+    model_turn_gate_enabled: bool,
+) -> NativeTelegramModelBridgeStatus {
+    let config = if requested {
+        load_telegram_config_status()
+    } else {
+        NativeTelegramConfigStatus::disabled()
+    };
+    let cursor_plan = if requested {
+        NativeTelegramCursorPlan::ready()
+    } else {
+        NativeTelegramCursorPlan::disabled()
+    };
+    let model_turn_plan = if requested {
+        plan_model_turn_for_updates(&[])
+    } else {
+        NativeTelegramModelTurnPlan::disabled()
+    };
+    let bridge_plan = if requested {
+        NativeTelegramSessionBridgePlan::ready()
+    } else {
+        NativeTelegramSessionBridgePlan::disabled()
+    };
+    let config_ready = requested && config.enabled && config.token_shape_ok && config.binding_ready;
+    let status = if !requested {
+        "disabled"
+    } else if !model_turn_gate_enabled {
+        "gated"
+    } else if config_ready {
+        "planned"
+    } else {
+        "attention"
+    };
+    let error = if requested && !model_turn_gate_enabled {
+        Some(format!(
+            "Telegram model-turn bridge is gated; set {TELEGRAM_MODEL_TURN_GATE_ENV}=1 only after runner invocation wiring is ready"
+        ))
+    } else if requested && !config_ready {
+        Some("Telegram config, token shape, or binding is not ready".to_string())
+    } else {
+        None
+    };
+
+    NativeTelegramModelBridgeStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested,
+        status,
+        model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
+        model_turn_gate_enabled,
+        send_gate_env: TELEGRAM_SEND_GATE_ENV,
+        model_turn_bridge_ready: requested && model_turn_gate_enabled && config_ready,
+        model_turn_started: false,
+        session_runner_invoked: false,
+        local_process_spawned: false,
+        external_network_read: false,
+        external_send: false,
+        cursor_written: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_chat_id_exposed: false,
+        raw_sender_id_exposed: false,
+        raw_message_id_exposed: false,
+        config,
+        cursor_plan,
+        model_turn_plan,
+        bridge_plan,
+        error,
+        next_migration_slice: "implement the gated session-runner invocation and keep Telegram send behind HEPTA_NATIVE_TELEGRAM_SEND",
     }
 }
 
@@ -1068,6 +1195,48 @@ impl NativeTelegramModelTurnPlan {
     }
 }
 
+impl NativeTelegramSessionBridgePlan {
+    fn disabled() -> Self {
+        Self {
+            bridge_plan_ready: false,
+            runner_kind: "disabled",
+            runner_invocation_strategy: "disabled",
+            prompt_material_policy: "disabled",
+            session_key_strategy: "disabled",
+            duplicate_policy: "disabled",
+            cursor_commit_policy: "disabled",
+            response_delivery_policy: "disabled",
+            approval_policy: "disabled",
+            failure_policy: "disabled",
+            process_spawned_by_status: false,
+            raw_prompt_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+
+    fn ready() -> Self {
+        Self {
+            bridge_plan_ready: true,
+            runner_kind: "codex_session_runner",
+            runner_invocation_strategy: "in-process session runner preferred; local process spawn remains disabled for status probes",
+            prompt_material_policy: "raw Telegram text is held only in the pending model-turn invocation and is never serialized into status JSON",
+            session_key_strategy: "map each Telegram conversation to a stable internal Hepta session key without exposing raw chat ids",
+            duplicate_policy: "suppress candidates whose update id is below the committed next-update cursor before any model turn",
+            cursor_commit_policy: "write the next-update cursor only after model output is handled or duplicate suppression is recorded",
+            response_delivery_policy: "convert model output to a Telegram send plan only after HEPTA_NATIVE_TELEGRAM_SEND is explicitly enabled",
+            approval_policy: "reuse the Hepta session approval policy; do not auto-escalate shell/tool approvals from Telegram ingress",
+            failure_policy: "on runner failure, keep cursor uncommitted and return a redacted diagnostic instead of sending partial output",
+            process_spawned_by_status: false,
+            raw_prompt_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+}
+
 impl NativeTelegramReceiveOnceStatus {
     #[allow(clippy::too_many_arguments)]
     fn base(
@@ -1357,6 +1526,31 @@ mod tests {
         assert!(!plan.raw_chat_id_exposed);
         assert!(!plan.raw_sender_id_exposed);
         assert!(!plan.raw_message_id_exposed);
+    }
+
+    #[test]
+    fn model_bridge_without_gate_is_gated_and_side_effect_free() {
+        let status = telegram_model_bridge_status_with_gate(true, false);
+        assert_eq!(status.status, "gated");
+        assert_eq!(status.model_turn_gate_env, TELEGRAM_MODEL_TURN_GATE_ENV);
+        assert_eq!(status.send_gate_env, TELEGRAM_SEND_GATE_ENV);
+        assert!(!status.model_turn_gate_enabled);
+        assert!(!status.model_turn_bridge_ready);
+        assert!(!status.model_turn_started);
+        assert!(!status.session_runner_invoked);
+        assert!(!status.local_process_spawned);
+        assert!(!status.external_network_read);
+        assert!(!status.external_send);
+        assert!(!status.cursor_written);
+        assert!(!status.raw_update_payload_exposed);
+        assert!(!status.raw_prompt_text_exposed);
+        assert!(!status.raw_chat_id_exposed);
+        assert!(!status.raw_sender_id_exposed);
+        assert!(!status.raw_message_id_exposed);
+        assert!(status.bridge_plan.bridge_plan_ready);
+        assert!(!status.bridge_plan.process_spawned_by_status);
+        assert!(!status.bridge_plan.raw_prompt_text_exposed);
+        assert!(status.error.unwrap().contains(TELEGRAM_MODEL_TURN_GATE_ENV));
     }
 
     #[test]
