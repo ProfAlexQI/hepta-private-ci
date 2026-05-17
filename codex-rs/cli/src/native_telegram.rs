@@ -25,6 +25,13 @@ pub(crate) const TELEGRAM_DELIVERY_APPROVED_ENV: &str = "HEPTA_NATIVE_TELEGRAM_D
 pub(crate) const TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER";
 const TELEGRAM_MODEL_TIMEOUT_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TIMEOUT_MS";
+const TELEGRAM_MODEL_ENV: &str = "HEPTA_TELEGRAM_MODEL";
+const HEPTA_DEFAULT_MODEL_ENV: &str = "HEPTA_DEFAULT_MODEL";
+const TELEGRAM_MLX_BASE_URL_ENV: &str = "HEPTA_MLX_OPENAI_BASE_URL";
+const DEFAULT_TELEGRAM_MLX_BASE_URL: &str = "http://127.0.0.1:11436/v1";
+const TELEGRAM_MLX_MAX_TOKENS_ENV: &str = "HEPTA_MLX_TELEGRAM_MAX_TOKENS";
+const DEFAULT_TELEGRAM_MLX_MAX_TOKENS: u64 = 512;
+const MAX_TELEGRAM_MLX_MAX_TOKENS: u64 = 4096;
 const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
 const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
 const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
@@ -2414,11 +2421,119 @@ where
 }
 
 fn run_hepta_model_turn(prompt: &str) -> Result<String, String> {
+    if let Some(config) = telegram_mlx_local_chat_config() {
+        return run_mlx_local_chat_completion(prompt, &config);
+    }
     if telegram_in_process_model_runner_enabled() {
         run_hepta_in_process_model_turn(prompt)
     } else {
         run_hepta_exec_child_model_turn(prompt)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TelegramMlxLocalChatConfig {
+    base_url: String,
+    model: String,
+    max_tokens: u64,
+}
+
+fn telegram_mlx_local_chat_config() -> Option<TelegramMlxLocalChatConfig> {
+    let model_ref = env::var(TELEGRAM_MODEL_ENV)
+        .ok()
+        .or_else(|| env::var(HEPTA_DEFAULT_MODEL_ENV).ok())?;
+    let model = parse_mlx_local_model_ref(&model_ref)?;
+    let base_url = env::var(TELEGRAM_MLX_BASE_URL_ENV)
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_TELEGRAM_MLX_BASE_URL.to_string());
+    let max_tokens = env::var(TELEGRAM_MLX_MAX_TOKENS_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|value| value.clamp(1, MAX_TELEGRAM_MLX_MAX_TOKENS))
+        .unwrap_or(DEFAULT_TELEGRAM_MLX_MAX_TOKENS);
+    Some(TelegramMlxLocalChatConfig {
+        base_url,
+        model,
+        max_tokens,
+    })
+}
+
+fn parse_mlx_local_model_ref(model_ref: &str) -> Option<String> {
+    model_ref
+        .trim()
+        .strip_prefix("mlx-local/")
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn run_mlx_local_chat_completion(
+    prompt: &str,
+    config: &TelegramMlxLocalChatConfig,
+) -> Result<String, String> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Err("Telegram MLX runner requires non-empty prompt material".to_string());
+    }
+    let endpoint = format!("{}/chat/completions", config.base_url.trim_end_matches('/'));
+    let client = reqwest::blocking::Client::builder()
+        .timeout(telegram_model_timeout())
+        .build()
+        .map_err(|error| format!("failed to build local MLX model client: {error}"))?;
+    let response = client
+        .post(endpoint)
+        .json(&serde_json::json!({
+            "model": config.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are Hepta replying in Telegram. Answer naturally, concisely, and in the user's language."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "max_tokens": config.max_tokens,
+            "max_kv_size": 4096,
+            "temperature": 0.2,
+            "stream": false,
+            "strip_thinking": true
+        }))
+        .send()
+        .map_err(|error| {
+            format!(
+                "local MLX chat-completions request failed: {}",
+                error.without_url()
+            )
+        })?;
+    let status = response.status();
+    let body = response
+        .json::<Value>()
+        .map_err(|error| format!("failed to parse local MLX response JSON: {error}"))?;
+    if !status.is_success() {
+        return Err(format!(
+            "local MLX chat-completions HTTP status {}; description={}",
+            status.as_u16(),
+            body.pointer("/error/message")
+                .and_then(Value::as_str)
+                .map(redact_token_like_text)
+                .unwrap_or_else(|| "missing".to_string())
+        ));
+    }
+    extract_openai_chat_completion_text(&body)
+}
+
+fn extract_openai_chat_completion_text(body: &Value) -> Result<String, String> {
+    body.pointer("/choices/0/message/content")
+        .and_then(Value::as_str)
+        .or_else(|| body.pointer("/choices/0/text").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| "local MLX chat-completions response did not include text".to_string())
 }
 
 fn run_hepta_in_process_model_turn(prompt: &str) -> Result<String, String> {
@@ -4220,6 +4335,47 @@ mod tests {
                 .contains(TELEGRAM_MODEL_TURN_GATE_ENV)
         );
         assert!(!cursor_path.exists());
+    }
+
+    #[test]
+    fn mlx_local_model_ref_parser_requires_provider_prefix() {
+        assert_eq!(
+            parse_mlx_local_model_ref(
+                " mlx-local/froggeric/Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-4bit "
+            )
+            .as_deref(),
+            Some("froggeric/Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-4bit")
+        );
+        assert_eq!(parse_mlx_local_model_ref("mlx-local/   "), None);
+        assert_eq!(parse_mlx_local_model_ref("openai/gpt-5.5").as_deref(), None);
+    }
+
+    #[test]
+    fn openai_chat_completion_text_extractor_accepts_message_or_text() {
+        let chat = serde_json::json!({
+            "choices": [{
+                "message": { "role": "assistant", "content": "  local reply  " }
+            }]
+        });
+        assert_eq!(
+            extract_openai_chat_completion_text(&chat).expect("chat content"),
+            "local reply"
+        );
+
+        let completion = serde_json::json!({
+            "choices": [{ "text": "  completion reply  " }]
+        });
+        assert_eq!(
+            extract_openai_chat_completion_text(&completion).expect("completion text"),
+            "completion reply"
+        );
+
+        let missing = serde_json::json!({ "choices": [{ "message": { "content": "   " }}]});
+        assert!(
+            extract_openai_chat_completion_text(&missing)
+                .expect_err("empty text rejected")
+                .contains("did not include text")
+        );
     }
 
     #[test]
