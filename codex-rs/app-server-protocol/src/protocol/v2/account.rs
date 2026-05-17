@@ -55,7 +55,11 @@ pub enum LoginAccountParams {
     #[serde(rename = "chatgpt", rename_all = "camelCase")]
     #[ts(rename = "chatgpt", rename_all = "camelCase")]
     Chatgpt {
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[serde(
+            default,
+            alias = "heptaStreamlinedLogin",
+            skip_serializing_if = "std::ops::Not::not"
+        )]
         codex_streamlined_login: bool,
     },
     #[serde(rename = "chatgptDeviceCode")]

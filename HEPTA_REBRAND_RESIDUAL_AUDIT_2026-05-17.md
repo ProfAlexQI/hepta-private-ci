@@ -558,6 +558,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   names, and product-surface strings remain Codex compatibility names because
   they are remote service schema identifiers rather than local runtime branding.
 
+## Cleaned in phase-2 login schema-alias pass
+
+- `account/login/start` now accepts `heptaStreamlinedLogin` as a
+  deserialization alias for the ChatGPT streamlined-login flag.
+- The response/request serialization shape continues to emit the existing
+  `codexStreamlinedLogin` compatibility field for clients that already depend
+  on that wire name.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

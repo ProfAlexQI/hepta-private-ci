@@ -2445,6 +2445,29 @@ mod tests {
     }
 
     #[test]
+    fn deserialize_account_login_chatgpt_accepts_hepta_streamlined_alias() -> Result<()> {
+        let request: ClientRequest = serde_json::from_value(json!({
+            "method": "account/login/start",
+            "id": 3,
+            "params": {
+                "type": "chatgpt",
+                "heptaStreamlinedLogin": true
+            }
+        }))?;
+
+        assert_eq!(
+            ClientRequest::LoginAccount {
+                request_id: RequestId::Integer(3),
+                params: v2::LoginAccountParams::Chatgpt {
+                    codex_streamlined_login: true,
+                },
+            },
+            request,
+        );
+        Ok(())
+    }
+
+    #[test]
     fn serialize_account_login_chatgpt_device_code() -> Result<()> {
         let request = ClientRequest::LoginAccount {
             request_id: RequestId::Integer(4),
