@@ -662,6 +662,18 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - MCP apps refresh documentation and test failure text now use Hepta apps
   wording while preserving the legacy `codex_apps` wire/server name.
 
+## Cleaned in app-server runtime identity pass
+
+- App-server OTEL service name now reports `hepta-app-server`.
+- App-server in-process/test clients now use Hepta test identities.
+- TUI startup failure copy now says `Hepta home` while keeping the
+  underlying compatibility resolver.
+- App-server stack-sensitive integration tests now run in explicit 8 MiB
+  runtime threads where needed, preventing debug-test stack overflow while
+  preserving the same async coverage.
+- Plugin analytics delivery tests now explicitly opt in before asserting
+  hosted compatibility events, matching Hepta's default no-export policy.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
