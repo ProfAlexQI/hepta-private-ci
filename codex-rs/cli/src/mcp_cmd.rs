@@ -255,10 +255,10 @@ async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Re
 
     validate_server_name(&name)?;
 
-    let codex_home = find_codex_home().context("failed to resolve HEPTA_HOME")?;
-    let mut servers = load_global_mcp_servers(&codex_home)
+    let hepta_home = find_codex_home().context("failed to resolve HEPTA_HOME")?;
+    let mut servers = load_global_mcp_servers(&hepta_home)
         .await
-        .with_context(|| format!("failed to load MCP servers from {}", codex_home.display()))?;
+        .with_context(|| format!("failed to load MCP servers from {}", hepta_home.display()))?;
 
     let transport = match transport_args {
         AddMcpTransportArgs {
@@ -319,11 +319,11 @@ async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Re
 
     servers.insert(name.clone(), new_entry);
 
-    ConfigEditsBuilder::new(&codex_home)
+    ConfigEditsBuilder::new(&hepta_home)
         .replace_mcp_servers(&servers)
         .apply()
         .await
-        .with_context(|| format!("failed to write MCP servers to {}", codex_home.display()))?;
+        .with_context(|| format!("failed to write MCP servers to {}", hepta_home.display()))?;
 
     println!("Added global MCP server '{name}'.");
 
@@ -368,19 +368,19 @@ async fn run_remove(config_overrides: &CliConfigOverrides, remove_args: RemoveAr
 
     validate_server_name(&name)?;
 
-    let codex_home = find_codex_home().context("failed to resolve HEPTA_HOME")?;
-    let mut servers = load_global_mcp_servers(&codex_home)
+    let hepta_home = find_codex_home().context("failed to resolve HEPTA_HOME")?;
+    let mut servers = load_global_mcp_servers(&hepta_home)
         .await
-        .with_context(|| format!("failed to load MCP servers from {}", codex_home.display()))?;
+        .with_context(|| format!("failed to load MCP servers from {}", hepta_home.display()))?;
 
     let removed = servers.remove(&name).is_some();
 
     if removed {
-        ConfigEditsBuilder::new(&codex_home)
+        ConfigEditsBuilder::new(&hepta_home)
             .replace_mcp_servers(&servers)
             .apply()
             .await
-            .with_context(|| format!("failed to write MCP servers to {}", codex_home.display()))?;
+            .with_context(|| format!("failed to write MCP servers to {}", hepta_home.display()))?;
     }
 
     if removed {

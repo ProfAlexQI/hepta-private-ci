@@ -213,6 +213,13 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Public ServerOptions/AuthConfig fields named codex_home remain compatibility
   API keys while their local test inputs now use hepta_home names.
 
+## Cleaned in CLI MCP home naming pass
+
+- MCP add/remove command handlers now use Hepta home terminology for resolved
+  local config paths before writing global MCP server config.
+- Compatibility uses of config.codex_home and MCP protocol/event aliases stay
+  unchanged.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
