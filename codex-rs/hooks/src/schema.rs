@@ -241,7 +241,7 @@ pub(crate) enum PreToolUseDecisionWire {
 #[schemars(rename = "pre-tool-use.command.input")]
 pub(crate) struct PreToolUseCommandInput {
     pub session_id: String,
-    /// Codex extension: expose the active turn id to internal turn-scoped hooks.
+    /// Hepta extension: expose the active turn id to internal turn-scoped hooks.
     pub turn_id: String,
     pub transcript_path: NullableString,
     pub cwd: String,
@@ -260,7 +260,7 @@ pub(crate) struct PreToolUseCommandInput {
 #[schemars(rename = "permission-request.command.input")]
 pub(crate) struct PermissionRequestCommandInput {
     pub session_id: String,
-    /// Codex extension: expose the active turn id to internal turn-scoped hooks.
+    /// Hepta extension: expose the active turn id to internal turn-scoped hooks.
     pub turn_id: String,
     pub transcript_path: NullableString,
     pub cwd: String,
@@ -278,7 +278,7 @@ pub(crate) struct PermissionRequestCommandInput {
 #[schemars(rename = "post-tool-use.command.input")]
 pub(crate) struct PostToolUseCommandInput {
     pub session_id: String,
-    /// Codex extension: expose the active turn id to internal turn-scoped hooks.
+    /// Hepta extension: expose the active turn id to internal turn-scoped hooks.
     pub turn_id: String,
     pub transcript_path: NullableString,
     pub cwd: String,
@@ -298,7 +298,7 @@ pub(crate) struct PostToolUseCommandInput {
 #[schemars(rename = "pre-compact.command.input")]
 pub(crate) struct PreCompactCommandInput {
     pub session_id: String,
-    /// Codex extension: expose the active turn id to internal turn-scoped hooks.
+    /// Hepta extension: expose the active turn id to internal turn-scoped hooks.
     pub turn_id: String,
     pub transcript_path: NullableString,
     pub cwd: String,
@@ -314,7 +314,7 @@ pub(crate) struct PreCompactCommandInput {
 #[schemars(rename = "post-compact.command.input")]
 pub(crate) struct PostCompactCommandInput {
     pub session_id: String,
-    /// Codex extension: expose the active turn id to internal turn-scoped hooks.
+    /// Hepta extension: expose the active turn id to internal turn-scoped hooks.
     pub turn_id: String,
     pub transcript_path: NullableString,
     pub cwd: String,
@@ -432,7 +432,7 @@ impl SessionStartCommandInput {
 #[schemars(rename = "user-prompt-submit.command.input")]
 pub(crate) struct UserPromptSubmitCommandInput {
     pub session_id: String,
-    /// Codex extension: expose the active turn id to internal turn-scoped hooks.
+    /// Hepta extension: expose the active turn id to internal turn-scoped hooks.
     pub turn_id: String,
     pub transcript_path: NullableString,
     pub cwd: String,
@@ -449,7 +449,7 @@ pub(crate) struct UserPromptSubmitCommandInput {
 #[schemars(rename = "stop.command.input")]
 pub(crate) struct StopCommandInput {
     pub session_id: String,
-    /// Codex extension: expose the active turn id to internal turn-scoped hooks.
+    /// Hepta extension: expose the active turn id to internal turn-scoped hooks.
     pub turn_id: String,
     pub transcript_path: NullableString,
     pub cwd: String,

@@ -295,6 +295,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Ollama version, responses-api-proxy API-key guidance, account/rate-limit
   errors, and memory rate-limit diagnostics now use Hepta wording.
 
+## Cleaned in app-server protocol identity pass
+
+- App-server initialize examples and tests now use Hepta client titles while
+  preserving compatibility originator names such as `codex_vscode`.
+- App-server protocol documentation for auth refresh, MCP elicitation, plugin
+  availability, and process spawning now uses Hepta wording.
+- Hook schema comments now describe Hepta extensions before regenerating the
+  vendored hook schema fixtures.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

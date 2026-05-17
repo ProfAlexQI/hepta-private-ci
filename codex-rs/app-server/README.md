@@ -103,7 +103,7 @@ Compatibility example from OpenAI's official VS Code extension:
   "params": {
     "clientInfo": {
       "name": "codex_vscode",
-      "title": "Codex VS Code Extension",
+      "title": "Hepta VS Code Extension",
       "version": "0.1.0"
     }
   }
