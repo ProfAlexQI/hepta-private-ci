@@ -760,6 +760,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   model-turn plan, model-bridge, and send-plan endpoints, plus the three
   runtime gates. The summary itself is explicitly side-effect free: it does
   not perform live Telegram reads, invoke a model, or send Telegram messages.
+- A gated drain-once pipeline endpoint now exists at
+  `/api/telegram-drain-once`. It orders the future execution stages as
+  receive, duplicate suppression, model turn, send, and cursor commit, but
+  status probes stop before the first missing gate and keep all live-read,
+  model, send, cursor-write, and raw-payload exposure flags false.
 
 ## Keep for compatibility
 

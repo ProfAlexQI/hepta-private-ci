@@ -16,6 +16,13 @@ const TELEGRAM_ALLOWED_UPDATES: &str =
 pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
 pub(crate) const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
 pub(crate) const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
+const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
+    "receive_getUpdates",
+    "duplicate_suppression",
+    "model_turn",
+    "sendMessage",
+    "cursor_commit",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramPluginStatus {
@@ -209,6 +216,30 @@ pub(crate) struct NativeTelegramSendPlanStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramDrainOnceStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) gates: NativeTelegramGatewayGateSummary,
+    pub(crate) config: NativeTelegramConfigStatus,
+    pub(crate) execution_plan: NativeTelegramExecutionPlan,
+    pub(crate) live_read_started: bool,
+    pub(crate) model_turn_started: bool,
+    pub(crate) send_started: bool,
+    pub(crate) cursor_written: bool,
+    pub(crate) external_network_read: bool,
+    pub(crate) external_network_write: bool,
+    pub(crate) external_send: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramGatewayGateSummary {
     pub(crate) live_read_gate_env: &'static str,
     pub(crate) live_read_gate_enabled: bool,
@@ -219,6 +250,18 @@ pub(crate) struct NativeTelegramGatewayGateSummary {
     pub(crate) readiness_summary_performs_live_read: bool,
     pub(crate) readiness_summary_invokes_model: bool,
     pub(crate) readiness_summary_sends_message: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramExecutionPlan {
+    pub(crate) execution_plan_ready: bool,
+    pub(crate) stages: &'static [&'static str],
+    pub(crate) all_required_gates_enabled: bool,
+    pub(crate) first_missing_gate: Option<&'static str>,
+    pub(crate) receive_before_model: bool,
+    pub(crate) send_after_model_success: bool,
+    pub(crate) cursor_commit_after_delivery: bool,
+    pub(crate) status_probe_executes_pipeline: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -502,6 +545,83 @@ fn telegram_model_bridge_status_with_gate(
 
 pub(crate) fn telegram_send_plan_status(requested: bool) -> NativeTelegramSendPlanStatus {
     telegram_send_plan_status_with_gate(requested, env_truthy(TELEGRAM_SEND_GATE_ENV))
+}
+
+pub(crate) fn telegram_drain_once_status(requested: bool) -> NativeTelegramDrainOnceStatus {
+    telegram_drain_once_status_with_gates(requested, telegram_gateway_gate_summary())
+}
+
+fn telegram_drain_once_status_with_gates(
+    requested: bool,
+    gates: NativeTelegramGatewayGateSummary,
+) -> NativeTelegramDrainOnceStatus {
+    let config = if requested {
+        load_telegram_config_status()
+    } else {
+        NativeTelegramConfigStatus::disabled()
+    };
+    let first_missing_gate = first_missing_drain_once_gate(&gates);
+    let all_required_gates_enabled = requested && first_missing_gate.is_none();
+    let status = if !requested {
+        "disabled"
+    } else if all_required_gates_enabled {
+        "planned"
+    } else {
+        "gated"
+    };
+    let error = if requested {
+        first_missing_gate.map(|gate| {
+            format!(
+                "Telegram drain-once pipeline is gated before side effects; first missing gate: {gate}"
+            )
+        })
+    } else {
+        None
+    };
+
+    NativeTelegramDrainOnceStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested,
+        status,
+        gates,
+        config,
+        execution_plan: NativeTelegramExecutionPlan {
+            execution_plan_ready: requested,
+            stages: TELEGRAM_DRAIN_ONCE_STAGES,
+            all_required_gates_enabled,
+            first_missing_gate,
+            receive_before_model: true,
+            send_after_model_success: true,
+            cursor_commit_after_delivery: true,
+            status_probe_executes_pipeline: false,
+        },
+        live_read_started: false,
+        model_turn_started: false,
+        send_started: false,
+        cursor_written: false,
+        external_network_read: false,
+        external_network_write: false,
+        external_send: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        raw_token_exposed: false,
+        error,
+        next_migration_slice: "replace this side-effect-free drain plan with gated live read, model turn, send, and cursor commit execution",
+    }
+}
+
+fn first_missing_drain_once_gate(gates: &NativeTelegramGatewayGateSummary) -> Option<&'static str> {
+    if !gates.live_read_gate_enabled {
+        Some(TELEGRAM_LIVE_READ_ENV)
+    } else if !gates.model_turn_gate_enabled {
+        Some(TELEGRAM_MODEL_TURN_GATE_ENV)
+    } else if !gates.send_gate_enabled {
+        Some(TELEGRAM_SEND_GATE_ENV)
+    } else {
+        None
+    }
 }
 
 fn telegram_send_plan_status_with_gate(
@@ -1755,6 +1875,44 @@ mod tests {
         assert!(!status.send_plan.raw_message_id_exposed);
         assert!(!status.send_plan.raw_token_exposed);
         assert!(status.error.unwrap().contains(TELEGRAM_SEND_GATE_ENV));
+    }
+
+    #[test]
+    fn drain_once_without_gates_stops_before_side_effects() {
+        let gates = NativeTelegramGatewayGateSummary {
+            live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
+            live_read_gate_enabled: false,
+            model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
+            model_turn_gate_enabled: false,
+            send_gate_env: TELEGRAM_SEND_GATE_ENV,
+            send_gate_enabled: false,
+            readiness_summary_performs_live_read: false,
+            readiness_summary_invokes_model: false,
+            readiness_summary_sends_message: false,
+        };
+        let status = telegram_drain_once_status_with_gates(true, gates);
+        assert_eq!(status.status, "gated");
+        assert_eq!(
+            status.execution_plan.first_missing_gate,
+            Some(TELEGRAM_LIVE_READ_ENV)
+        );
+        assert!(!status.execution_plan.all_required_gates_enabled);
+        assert!(status.execution_plan.receive_before_model);
+        assert!(status.execution_plan.send_after_model_success);
+        assert!(status.execution_plan.cursor_commit_after_delivery);
+        assert!(!status.execution_plan.status_probe_executes_pipeline);
+        assert!(!status.live_read_started);
+        assert!(!status.model_turn_started);
+        assert!(!status.send_started);
+        assert!(!status.cursor_written);
+        assert!(!status.external_network_read);
+        assert!(!status.external_network_write);
+        assert!(!status.external_send);
+        assert!(!status.raw_update_payload_exposed);
+        assert!(!status.raw_prompt_text_exposed);
+        assert!(!status.raw_response_text_exposed);
+        assert!(!status.raw_token_exposed);
+        assert!(status.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
     }
 
     #[test]
