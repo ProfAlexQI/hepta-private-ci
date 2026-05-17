@@ -28,7 +28,10 @@ use codex_keyring_store::KeyringStore;
 use codex_protocol::account::PlanType as AccountPlanType;
 use once_cell::sync::Lazy;
 
-/// Expected structure for $CODEX_HOME/auth.json.
+/// Expected structure for $HEPTA_HOME/auth.json.
+///
+/// Legacy CODEX_HOME compatibility uses the same file schema when that fallback
+/// path is selected by configuration loading.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct AuthDotJson {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -110,7 +113,7 @@ impl FileAuthStorage {
         Self { codex_home }
     }
 
-    /// Attempt to read and parse the `auth.json` file in the given `CODEX_HOME` directory.
+    /// Attempt to read and parse the `auth.json` file in the resolved Hepta home directory.
     /// Returns the full AuthDotJson structure.
     pub(super) fn try_read_auth_json(&self, auth_file: &Path) -> std::io::Result<AuthDotJson> {
         let mut file = File::open(auth_file)?;
@@ -159,7 +162,7 @@ impl AuthStorageBackend for FileAuthStorage {
 
 const KEYRING_SERVICE: &str = "Hepta Auth";
 
-// turns codex_home path into a stable, short key string
+// Turns the resolved Hepta runtime home path into a stable, short key string.
 fn compute_store_key(codex_home: &Path) -> std::io::Result<String> {
     let canonical = codex_home
         .canonicalize()
@@ -191,12 +194,12 @@ impl KeyringAuthStorage {
         match self.keyring_store.load(KEYRING_SERVICE, key) {
             Ok(Some(serialized)) => serde_json::from_str(&serialized).map(Some).map_err(|err| {
                 std::io::Error::other(format!(
-                    "failed to deserialize CLI auth from keyring: {err}"
+                    "failed to deserialize Hepta CLI auth from keyring: {err}"
                 ))
             }),
             Ok(None) => Ok(None),
             Err(error) => Err(std::io::Error::other(format!(
-                "failed to load CLI auth from keyring: {}",
+                "failed to load Hepta CLI auth from keyring: {}",
                 error.message()
             ))),
         }
@@ -206,10 +209,7 @@ impl KeyringAuthStorage {
         match self.keyring_store.save(KEYRING_SERVICE, key, value) {
             Ok(()) => Ok(()),
             Err(error) => {
-                let message = format!(
-                    "failed to write OAuth tokens to keyring: {}",
-                    error.message()
-                );
+                let message = format!("failed to write Hepta auth to keyring: {}", error.message());
                 warn!("{message}");
                 Err(std::io::Error::other(message))
             }
@@ -268,7 +268,9 @@ impl AuthStorageBackend for AutoAuthStorage {
             Ok(Some(auth)) => Ok(Some(auth)),
             Ok(None) => self.file_storage.load(),
             Err(err) => {
-                warn!("failed to load CLI auth from keyring, falling back to file storage: {err}");
+                warn!(
+                    "failed to load Hepta auth from keyring, falling back to file storage: {err}"
+                );
                 self.file_storage.load()
             }
         }
@@ -278,7 +280,7 @@ impl AuthStorageBackend for AutoAuthStorage {
         match self.keyring_storage.save(auth) {
             Ok(()) => Ok(()),
             Err(err) => {
-                warn!("failed to save auth to keyring, falling back to file storage: {err}");
+                warn!("failed to save Hepta auth to keyring, falling back to file storage: {err}");
                 self.file_storage.save(auth)
             }
         }
@@ -290,7 +292,7 @@ impl AuthStorageBackend for AutoAuthStorage {
     }
 }
 
-// A global in-memory store for mapping codex_home -> AuthDotJson.
+// A global in-memory store for mapping resolved Hepta runtime home -> AuthDotJson.
 static EPHEMERAL_AUTH_STORE: Lazy<Mutex<HashMap<String, AuthDotJson>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 

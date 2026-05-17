@@ -335,7 +335,7 @@ impl CodexAuth {
         }
     }
 
-    /// Returns `None` if Codex backend auth does not expose an account id.
+    /// Returns `None` if ChatGPT backend auth does not expose an account id.
     pub fn get_account_id(&self) -> Option<String> {
         match self {
             Self::AgentIdentity(auth) => Some(auth.account_id().to_string()),
@@ -343,7 +343,7 @@ impl CodexAuth {
         }
     }
 
-    /// Returns false if Codex backend auth omits the FedRAMP claim.
+    /// Returns false if ChatGPT backend auth omits the FedRAMP claim.
     pub fn is_fedramp_account(&self) -> bool {
         match self {
             Self::AgentIdentity(auth) => auth.is_fedramp_account(),
@@ -353,7 +353,7 @@ impl CodexAuth {
         }
     }
 
-    /// Returns `None` if Codex backend auth does not expose an account email.
+    /// Returns `None` if ChatGPT backend auth does not expose an account email.
     pub fn get_account_email(&self) -> Option<String> {
         match self {
             Self::AgentIdentity(auth) => Some(auth.email().to_string()),
@@ -361,7 +361,7 @@ impl CodexAuth {
         }
     }
 
-    /// Returns `None` if Codex backend auth does not expose a ChatGPT user id.
+    /// Returns `None` if ChatGPT backend auth does not expose a ChatGPT user id.
     pub fn get_chatgpt_user_id(&self) -> Option<String> {
         match self {
             Self::AgentIdentity(auth) => Some(auth.chatgpt_user_id().to_string()),
@@ -463,7 +463,9 @@ impl ChatgptAuth {
 }
 
 pub const OPENAI_API_KEY_ENV_VAR: &str = "OPENAI_API_KEY";
+pub const HEPTA_API_KEY_ENV_VAR: &str = "HEPTA_API_KEY";
 pub const CODEX_API_KEY_ENV_VAR: &str = "CODEX_API_KEY";
+pub const HEPTA_ACCESS_TOKEN_ENV_VAR: &str = "HEPTA_ACCESS_TOKEN";
 pub const CODEX_ACCESS_TOKEN_ENV_VAR: &str = "CODEX_ACCESS_TOKEN";
 
 pub fn read_openai_api_key_from_env() -> Option<String> {
@@ -474,11 +476,21 @@ pub fn read_openai_api_key_from_env() -> Option<String> {
 }
 
 pub fn read_codex_api_key_from_env() -> Option<String> {
-    read_non_empty_env_var(CODEX_API_KEY_ENV_VAR)
+    read_hepta_api_key_from_env()
 }
 
 pub fn read_codex_access_token_from_env() -> Option<String> {
-    read_non_empty_env_var(CODEX_ACCESS_TOKEN_ENV_VAR)
+    read_hepta_access_token_from_env()
+}
+
+pub fn read_hepta_api_key_from_env() -> Option<String> {
+    read_non_empty_env_var(HEPTA_API_KEY_ENV_VAR)
+        .or_else(|| read_non_empty_env_var(CODEX_API_KEY_ENV_VAR))
+}
+
+pub fn read_hepta_access_token_from_env() -> Option<String> {
+    read_non_empty_env_var(HEPTA_ACCESS_TOKEN_ENV_VAR)
+        .or_else(|| read_non_empty_env_var(CODEX_ACCESS_TOKEN_ENV_VAR))
 }
 
 fn read_non_empty_env_var(key: &str) -> Option<String> {
@@ -500,8 +512,8 @@ async fn verified_agent_identity_record(
     Ok(claims.into())
 }
 
-/// Delete the auth.json file inside `codex_home` if it exists. Returns `Ok(true)`
-/// if a file was removed, `Ok(false)` if no auth file was present.
+/// Delete the Hepta auth.json file inside the resolved runtime home if it exists.
+/// Returns `Ok(true)` if a file was removed, `Ok(false)` if no auth file was present.
 pub fn logout(
     codex_home: &Path,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
@@ -525,7 +537,7 @@ pub async fn logout_with_revoke(
     .await
 }
 
-/// Writes an `auth.json` that contains only the API key.
+/// Writes a Hepta `auth.json` that contains only the API key.
 pub fn login_with_api_key(
     codex_home: &Path,
     api_key: &str,
@@ -541,7 +553,7 @@ pub fn login_with_api_key(
     save_auth(codex_home, &auth_dot_json, auth_credentials_store_mode)
 }
 
-/// Writes an `auth.json` that contains only the access token.
+/// Writes a Hepta `auth.json` that contains only the access token.
 pub async fn login_with_access_token(
     codex_home: &Path,
     access_token: &str,
@@ -1241,7 +1253,7 @@ impl UnauthorizedRecovery {
     }
 }
 
-/// Central manager providing a single source of truth for auth.json derived
+/// Central manager providing a single source of truth for Hepta auth.json derived
 /// authentication data. It loads once (or on preference change) and then
 /// hands out cloned `CodexAuth` values so the rest of the program has a
 /// consistent snapshot.
@@ -1267,7 +1279,7 @@ pub struct AuthManager {
 /// `codex_core::config::Config`, but this trait keeps `codex-login` independent
 /// from `codex-core`.
 pub trait AuthManagerConfig {
-    /// Returns the Codex home directory used for auth storage.
+    /// Returns the resolved Hepta runtime home directory used for auth storage.
     fn codex_home(&self) -> PathBuf;
 
     /// Returns the CLI auth credential storage mode for auth loading.
@@ -1745,7 +1757,7 @@ impl AuthManager {
         result
     }
 
-    /// Log out by deleting the on‑disk auth.json (if present). Returns Ok(true)
+    /// Log out by deleting stored Hepta auth (if present). Returns Ok(true)
     /// if a file was removed, Ok(false) if no auth file existed. On success,
     /// reloads the in‑memory auth cache so callers immediately observe the
     /// unauthenticated state.

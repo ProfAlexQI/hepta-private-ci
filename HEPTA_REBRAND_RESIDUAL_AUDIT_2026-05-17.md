@@ -131,6 +131,19 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Nix package metadata now names the forked package/program as Hepta, while
   keeping the Cargo workspace crate names unchanged.
 
+## Cleaned in auth storage/keyring pass
+
+- Hepta auth now recognizes `HEPTA_API_KEY` and `HEPTA_ACCESS_TOKEN` as
+  preferred environment variables, while preserving `CODEX_API_KEY` and
+  `CODEX_ACCESS_TOKEN` as legacy fallbacks through the existing compatibility
+  reader names.
+- Auth environment telemetry now treats either Hepta or legacy Codex API-key
+  variables as present without exposing the secret value.
+- Auth storage comments and keyring errors now refer to Hepta auth,
+  `$HEPTA_HOME/auth.json`, and the `Hepta Auth` keyring service.
+- Keyring store-key coverage now uses the `~/.hepta` home path; the legacy
+  fallback still uses the same auth.json schema if selected by config loading.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
@@ -147,6 +160,9 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - App-server test-client internal helper types such as `CodexClient` and
   `SpawnCodex` remain deferred internal identifiers; the user-facing CLI now
   defaults to `hepta` and Hepta wording.
+- Auth type/API names such as `CodexAuth`, `codex_home`, and exported
+  `read_codex_*_from_env` helpers remain compatibility identifiers. The
+  helpers now read Hepta environment variable names first.
 
 ## Deferred
 

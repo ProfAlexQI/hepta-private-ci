@@ -708,8 +708,52 @@ impl Drop for EnvVarGuard {
     }
 }
 
-fn remove_access_token_env_var() -> EnvVarGuard {
-    EnvVarGuard::remove(CODEX_ACCESS_TOKEN_ENV_VAR)
+fn remove_access_token_env_var() -> (EnvVarGuard, EnvVarGuard) {
+    (
+        EnvVarGuard::remove(HEPTA_ACCESS_TOKEN_ENV_VAR),
+        EnvVarGuard::remove(CODEX_ACCESS_TOKEN_ENV_VAR),
+    )
+}
+
+fn remove_hepta_access_token_env_var() -> EnvVarGuard {
+    EnvVarGuard::remove(HEPTA_ACCESS_TOKEN_ENV_VAR)
+}
+
+fn remove_hepta_api_key_env_var() -> EnvVarGuard {
+    EnvVarGuard::remove(HEPTA_API_KEY_ENV_VAR)
+}
+
+#[test]
+#[serial(codex_auth_env)]
+fn hepta_env_auth_readers_prefer_hepta_names() {
+    let _hepta_api_key_guard = EnvVarGuard::set(HEPTA_API_KEY_ENV_VAR, "sk-hepta");
+    let _codex_api_key_guard = EnvVarGuard::set(CODEX_API_KEY_ENV_VAR, "sk-codex");
+    let _hepta_access_token_guard =
+        EnvVarGuard::set(HEPTA_ACCESS_TOKEN_ENV_VAR, "hepta-access-token");
+    let _codex_access_token_guard =
+        EnvVarGuard::set(CODEX_ACCESS_TOKEN_ENV_VAR, "codex-access-token");
+
+    assert_eq!(read_codex_api_key_from_env().as_deref(), Some("sk-hepta"));
+    assert_eq!(
+        read_codex_access_token_from_env().as_deref(),
+        Some("hepta-access-token")
+    );
+}
+
+#[test]
+#[serial(codex_auth_env)]
+fn legacy_codex_env_auth_readers_remain_fallbacks() {
+    let _hepta_api_key_guard = remove_hepta_api_key_env_var();
+    let _hepta_access_token_guard = remove_hepta_access_token_env_var();
+    let _codex_api_key_guard = EnvVarGuard::set(CODEX_API_KEY_ENV_VAR, "sk-codex");
+    let _codex_access_token_guard =
+        EnvVarGuard::set(CODEX_ACCESS_TOKEN_ENV_VAR, "codex-access-token");
+
+    assert_eq!(read_codex_api_key_from_env().as_deref(), Some("sk-codex"));
+    assert_eq!(
+        read_codex_access_token_from_env().as_deref(),
+        Some("codex-access-token")
+    );
 }
 
 #[tokio::test]
@@ -735,6 +779,7 @@ async fn load_auth_reads_access_token_from_env() {
         .expect(1)
         .mount(&server)
         .await;
+    let _hepta_access_token_guard = remove_hepta_access_token_env_var();
     let _access_token_guard = EnvVarGuard::set(CODEX_ACCESS_TOKEN_ENV_VAR, &agent_identity);
 
     let chatgpt_base_url = format!("{}/backend-api", server.uri());
@@ -768,6 +813,8 @@ async fn load_auth_keeps_codex_api_key_env_precedence() {
     let codex_home = tempdir().unwrap();
     let record = agent_identity_record(WORKSPACE_ID_ALLOWED);
     let agent_identity = fake_agent_identity_jwt(&record).expect("fake agent identity");
+    let _hepta_access_token_guard = remove_hepta_access_token_env_var();
+    let _hepta_api_key_guard = remove_hepta_api_key_env_var();
     let _access_token_guard = EnvVarGuard::set(CODEX_ACCESS_TOKEN_ENV_VAR, &agent_identity);
     let _api_key_guard = EnvVarGuard::set(CODEX_API_KEY_ENV_VAR, "sk-env");
 
@@ -991,6 +1038,7 @@ async fn enforce_login_restrictions_allows_api_key_if_login_method_not_set_but_f
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn enforce_login_restrictions_blocks_env_api_key_when_chatgpt_required() {
+    let _hepta_api_key_guard = remove_hepta_api_key_env_var();
     let _guard = EnvVarGuard::set(CODEX_API_KEY_ENV_VAR, "sk-env");
     let _access_token_guard = remove_access_token_env_var();
     let codex_home = tempdir().unwrap();
