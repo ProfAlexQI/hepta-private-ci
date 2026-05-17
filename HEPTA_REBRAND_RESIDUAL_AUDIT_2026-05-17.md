@@ -583,6 +583,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   environment fallbacks remain compatibility inputs while Hepta-owned managed
   environment variables stay preferred.
 
+## Cleaned in app-server-client test-home pass
+
+- App-server-client in-process test fixtures now use `hepta_home` local
+  naming and `build_test_config_for_hepta_home`.
+- The underlying config builder and fallback loader still call the
+  `codex_home` compatibility APIs, and `CODEX_API_KEY` remains the legacy
+  environment input guarded by `enable_codex_api_key_env`.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

@@ -993,15 +993,15 @@ mod tests {
         }
     }
 
-    async fn build_test_config_for_codex_home(codex_home: &Path) -> Config {
+    async fn build_test_config_for_hepta_home(hepta_home: &Path) -> Config {
         match ConfigBuilder::default()
-            .codex_home(codex_home.to_path_buf())
+            .codex_home(hepta_home.to_path_buf())
             .build()
             .await
         {
             Ok(config) => config,
             Err(_) => Config::load_default_with_cli_overrides_for_codex_home(
-                codex_home.to_path_buf(),
+                hepta_home.to_path_buf(),
                 Vec::new(),
             )
             .await
@@ -1010,7 +1010,7 @@ mod tests {
     }
 
     struct TestClient {
-        _codex_home: TempDir,
+        _hepta_home: TempDir,
         client: InProcessAppServerClient,
     }
 
@@ -1032,8 +1032,8 @@ mod tests {
         session_source: SessionSource,
         channel_capacity: usize,
     ) -> TestClient {
-        let codex_home = TempDir::new().expect("temp dir");
-        let config = Arc::new(build_test_config_for_codex_home(codex_home.path()).await);
+        let hepta_home = TempDir::new().expect("temp dir");
+        let config = Arc::new(build_test_config_for_hepta_home(hepta_home.path()).await);
         let state_db = init_state_db(config.as_ref())
             .await
             .expect("state db should initialize for in-process test");
@@ -1061,7 +1061,7 @@ mod tests {
         .expect("in-process app-server client should start");
 
         TestClient {
-            _codex_home: codex_home,
+            _hepta_home: hepta_home,
             client,
         }
     }
