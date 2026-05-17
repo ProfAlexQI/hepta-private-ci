@@ -189,6 +189,7 @@ pub(crate) struct NativeTelegramModelBridgeStatus {
     pub(crate) cursor_plan: NativeTelegramCursorPlan,
     pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
     pub(crate) invocation_request: NativeTelegramModelInvocationRequestPlan,
+    pub(crate) model_execution: NativeTelegramModelExecutionReport,
     pub(crate) bridge_plan: NativeTelegramSessionBridgePlan,
     pub(crate) error: Option<String>,
     pub(crate) next_migration_slice: &'static str,
@@ -231,6 +232,7 @@ pub(crate) struct NativeTelegramDrainOnceStatus {
     pub(crate) inspection: NativeTelegramIngressInspection,
     pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
     pub(crate) invocation_request: NativeTelegramModelInvocationRequestPlan,
+    pub(crate) model_execution: NativeTelegramModelExecutionReport,
     pub(crate) send_plan: NativeTelegramSendPlan,
     pub(crate) send_request: NativeTelegramSendRequestPlan,
     pub(crate) send_execution: NativeTelegramSendExecutionReport,
@@ -334,6 +336,32 @@ pub(crate) struct NativeTelegramModelInvocationRequestPlan {
     pub(crate) raw_chat_id_exposed: bool,
     pub(crate) raw_sender_id_exposed: bool,
     pub(crate) raw_message_id_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramModelExecutionReport {
+    pub(crate) status: &'static str,
+    pub(crate) execution_ready: bool,
+    pub(crate) model_turn_gate_env: &'static str,
+    pub(crate) model_turn_gate_enabled: bool,
+    pub(crate) candidate_present: bool,
+    pub(crate) prompt_material_present: bool,
+    pub(crate) reply_target_available: bool,
+    pub(crate) stable_session_key_ready: bool,
+    pub(crate) candidate_next_update_offset: Option<i64>,
+    pub(crate) runner_invocation_allowed: bool,
+    pub(crate) session_runner_invoked: bool,
+    pub(crate) local_process_spawned: bool,
+    pub(crate) model_output_present: bool,
+    pub(crate) external_send: bool,
+    pub(crate) cursor_written: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_sender_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -608,6 +636,11 @@ fn telegram_model_bridge_status_with_gate(
     } else {
         NativeTelegramModelInvocationRequestPlan::disabled(model_turn_gate_enabled)
     };
+    let model_execution = if requested {
+        NativeTelegramModelExecutionReport::from_invocation_request(&invocation_request)
+    } else {
+        NativeTelegramModelExecutionReport::disabled(model_turn_gate_enabled)
+    };
     let bridge_plan = if requested {
         NativeTelegramSessionBridgePlan::ready()
     } else {
@@ -657,6 +690,7 @@ fn telegram_model_bridge_status_with_gate(
         cursor_plan,
         model_turn_plan,
         invocation_request,
+        model_execution,
         bridge_plan,
         error,
         next_migration_slice: "implement the gated session-runner invocation and keep Telegram send behind HEPTA_NATIVE_TELEGRAM_SEND",
@@ -903,6 +937,12 @@ fn telegram_drain_once_status_with_gates(
         }
     }
 
+    let model_execution = if requested {
+        NativeTelegramModelExecutionReport::from_invocation_request(&invocation_request)
+    } else {
+        NativeTelegramModelExecutionReport::disabled(gates.model_turn_gate_enabled)
+    };
+
     NativeTelegramDrainOnceStatus {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -924,6 +964,7 @@ fn telegram_drain_once_status_with_gates(
         inspection,
         model_turn_plan,
         invocation_request,
+        model_execution,
         send_plan,
         send_request,
         send_execution,
@@ -1761,6 +1802,22 @@ struct NativeTelegramReplyTargetMaterial {
     raw_identifiers_exposed: bool,
 }
 
+#[derive(Debug, Clone)]
+struct NativeTelegramModelExecutionInput {
+    candidate: Option<NativeTelegramCandidateMaterial>,
+    duplicate_decision: Option<NativeTelegramDuplicateDecision>,
+    model_turn_gate_enabled: bool,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+struct NativeTelegramModelExecutionOutcome {
+    report: NativeTelegramModelExecutionReport,
+    model_output: Option<String>,
+    reply_target: Option<NativeTelegramReplyTargetMaterial>,
+    candidate_next_update_offset: Option<i64>,
+}
+
 fn plan_model_turn_for_updates(updates: &[Value]) -> NativeTelegramModelTurnPlan {
     let mut plan = NativeTelegramModelTurnPlan::ready();
 
@@ -1823,6 +1880,130 @@ fn build_model_invocation_request_plan(
     }
 
     NativeTelegramModelInvocationRequestPlan::empty(model_turn_gate_enabled)
+}
+
+#[allow(dead_code)]
+fn execute_telegram_model_turn_after_candidate<F>(
+    input: NativeTelegramModelExecutionInput,
+    run_model: F,
+) -> NativeTelegramModelExecutionOutcome
+where
+    F: FnOnce(&str) -> Result<String, String>,
+{
+    let invocation_request = match (input.candidate.clone(), input.duplicate_decision.clone()) {
+        (Some(candidate), Some(decision)) if candidate.requires_model => {
+            NativeTelegramModelInvocationRequestPlan::from_candidate(
+                candidate,
+                decision,
+                input.model_turn_gate_enabled,
+            )
+        }
+        (Some(candidate), _) if !candidate.requires_model => {
+            NativeTelegramModelInvocationRequestPlan::attention(
+                candidate,
+                "not_model_candidate",
+                None,
+                input.model_turn_gate_enabled,
+            )
+        }
+        _ => NativeTelegramModelInvocationRequestPlan::empty(input.model_turn_gate_enabled),
+    };
+    let mut report =
+        NativeTelegramModelExecutionReport::from_invocation_request(&invocation_request);
+
+    if !input.model_turn_gate_enabled {
+        report.error = Some(format!(
+            "Telegram model execution is gated by {}",
+            TELEGRAM_MODEL_TURN_GATE_ENV
+        ));
+        return NativeTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: None,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    }
+
+    let Some(candidate) = input.candidate else {
+        report.error = Some("Telegram model execution requires a candidate".to_string());
+        return NativeTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: None,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    };
+    if invocation_request.should_record_duplicate {
+        return NativeTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: candidate.reply_target,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    }
+    let Some(prompt_text) = candidate
+        .prompt_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        report.status = "attention";
+        report.error =
+            Some("Telegram model execution requires non-empty prompt material".to_string());
+        return NativeTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: candidate.reply_target,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    };
+    if !invocation_request.runner_invocation_allowed {
+        report.status = "attention";
+        report.error = Some("Telegram model execution request is not runner-eligible".to_string());
+        return NativeTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: candidate.reply_target,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    }
+
+    report.status = "running";
+    report.session_runner_invoked = true;
+    match run_model(prompt_text) {
+        Ok(output) => {
+            let output = output.trim().to_string();
+            if output.is_empty() {
+                report.status = "attention";
+                report.error = Some("Telegram model execution returned empty output".to_string());
+                NativeTelegramModelExecutionOutcome {
+                    report,
+                    model_output: None,
+                    reply_target: candidate.reply_target,
+                    candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+                }
+            } else {
+                report.status = "completed";
+                report.model_output_present = true;
+                NativeTelegramModelExecutionOutcome {
+                    report,
+                    model_output: Some(output),
+                    reply_target: candidate.reply_target,
+                    candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+                }
+            }
+        }
+        Err(error) => {
+            report.status = "attention";
+            report.error = Some(redact_token_like_text(&error));
+            NativeTelegramModelExecutionOutcome {
+                report,
+                model_output: None,
+                reply_target: candidate.reply_target,
+                candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+            }
+        }
+    }
 }
 
 fn build_telegram_send_request_plan(
@@ -2262,6 +2443,78 @@ impl NativeTelegramModelInvocationRequestPlan {
             raw_chat_id_exposed: false,
             raw_sender_id_exposed: false,
             raw_message_id_exposed: false,
+        }
+    }
+}
+
+impl NativeTelegramModelExecutionReport {
+    fn disabled(model_turn_gate_enabled: bool) -> Self {
+        Self {
+            status: "disabled",
+            execution_ready: false,
+            model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
+            model_turn_gate_enabled,
+            candidate_present: false,
+            prompt_material_present: false,
+            reply_target_available: false,
+            stable_session_key_ready: false,
+            candidate_next_update_offset: None,
+            runner_invocation_allowed: false,
+            session_runner_invoked: false,
+            local_process_spawned: false,
+            model_output_present: false,
+            external_send: false,
+            cursor_written: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+            error: None,
+        }
+    }
+
+    fn from_invocation_request(request: &NativeTelegramModelInvocationRequestPlan) -> Self {
+        let status = if !request.request_builder_ready {
+            "disabled"
+        } else if !request.model_turn_gate_enabled {
+            "gated"
+        } else if !request.candidate_present {
+            "waiting_candidate"
+        } else if request.should_record_duplicate {
+            "duplicate_suppressed"
+        } else if !request.prompt_material_in_memory {
+            "waiting_prompt"
+        } else if request.runner_invocation_allowed {
+            "ready"
+        } else {
+            "attention"
+        };
+
+        Self {
+            status,
+            execution_ready: request.request_builder_ready,
+            model_turn_gate_env: request.model_turn_gate_env,
+            model_turn_gate_enabled: request.model_turn_gate_enabled,
+            candidate_present: request.candidate_present,
+            prompt_material_present: request.prompt_material_in_memory,
+            reply_target_available: request.reply_target_available,
+            stable_session_key_ready: request.stable_session_key_ready,
+            candidate_next_update_offset: request.candidate_next_update_offset,
+            runner_invocation_allowed: request.runner_invocation_allowed,
+            session_runner_invoked: false,
+            local_process_spawned: false,
+            model_output_present: false,
+            external_send: false,
+            cursor_written: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+            error: None,
         }
     }
 }
@@ -2962,6 +3215,132 @@ mod tests {
     }
 
     #[test]
+    fn model_execution_runs_runner_without_serializing_prompt_or_output() {
+        let update = serde_json::json!({
+            "update_id": 48,
+            "message": {
+                "message_id": 13,
+                "text": "private model prompt",
+                "chat": { "id": 6476198178_i64, "type": "private" },
+                "from": { "id": 6476198178_i64, "username": "private_user" }
+            }
+        });
+        let candidate = extract_telegram_candidate_material(&update).expect("candidate");
+        let decision = telegram_duplicate_decision(48, Some(48));
+
+        let outcome = execute_telegram_model_turn_after_candidate(
+            NativeTelegramModelExecutionInput {
+                candidate: Some(candidate),
+                duplicate_decision: Some(decision),
+                model_turn_gate_enabled: true,
+            },
+            |prompt| {
+                assert_eq!(prompt, "private model prompt");
+                Ok(" private model response text ".to_string())
+            },
+        );
+
+        assert_eq!(outcome.report.status, "completed");
+        assert!(outcome.report.execution_ready);
+        assert!(outcome.report.model_turn_gate_enabled);
+        assert!(outcome.report.candidate_present);
+        assert!(outcome.report.prompt_material_present);
+        assert!(outcome.report.reply_target_available);
+        assert!(outcome.report.stable_session_key_ready);
+        assert_eq!(outcome.report.candidate_next_update_offset, Some(49));
+        assert!(outcome.report.runner_invocation_allowed);
+        assert!(outcome.report.session_runner_invoked);
+        assert!(!outcome.report.local_process_spawned);
+        assert!(outcome.report.model_output_present);
+        assert!(!outcome.report.external_send);
+        assert!(!outcome.report.cursor_written);
+        assert!(!outcome.report.raw_update_payload_exposed);
+        assert!(!outcome.report.raw_prompt_text_exposed);
+        assert!(!outcome.report.raw_response_text_exposed);
+        assert!(!outcome.report.raw_chat_id_exposed);
+        assert!(!outcome.report.raw_sender_id_exposed);
+        assert!(!outcome.report.raw_message_id_exposed);
+        assert_eq!(
+            outcome.model_output.as_deref(),
+            Some("private model response text")
+        );
+        assert!(outcome.reply_target.is_some());
+        assert_eq!(outcome.candidate_next_update_offset, Some(49));
+
+        let serialized = serde_json::to_string(&outcome.report).expect("serialize");
+        assert!(!serialized.contains("private model prompt"));
+        assert!(!serialized.contains("private model response text"));
+        assert!(!serialized.contains("6476198178"));
+        assert!(!serialized.contains("private_user"));
+    }
+
+    #[test]
+    fn model_execution_requires_gate_before_runner_invocation() {
+        let update = serde_json::json!({
+            "update_id": 48,
+            "message": {
+                "message_id": 13,
+                "text": "private model prompt",
+                "chat": { "id": 6476198178_i64, "type": "private" }
+            }
+        });
+        let candidate = extract_telegram_candidate_material(&update).expect("candidate");
+        let decision = telegram_duplicate_decision(48, Some(48));
+
+        let outcome = execute_telegram_model_turn_after_candidate(
+            NativeTelegramModelExecutionInput {
+                candidate: Some(candidate),
+                duplicate_decision: Some(decision),
+                model_turn_gate_enabled: false,
+            },
+            |_| panic!("model runner must not run while gated"),
+        );
+
+        assert_eq!(outcome.report.status, "gated");
+        assert!(!outcome.report.runner_invocation_allowed);
+        assert!(!outcome.report.session_runner_invoked);
+        assert!(!outcome.report.model_output_present);
+        assert!(
+            outcome
+                .report
+                .error
+                .unwrap()
+                .contains(TELEGRAM_MODEL_TURN_GATE_ENV)
+        );
+        assert_eq!(outcome.model_output, None);
+    }
+
+    #[test]
+    fn model_execution_suppresses_duplicate_before_runner() {
+        let update = serde_json::json!({
+            "update_id": 48,
+            "message": {
+                "message_id": 13,
+                "text": "private duplicate prompt",
+                "chat": { "id": 6476198178_i64, "type": "private" }
+            }
+        });
+        let candidate = extract_telegram_candidate_material(&update).expect("candidate");
+        let decision = telegram_duplicate_decision(48, Some(49));
+
+        let outcome = execute_telegram_model_turn_after_candidate(
+            NativeTelegramModelExecutionInput {
+                candidate: Some(candidate),
+                duplicate_decision: Some(decision),
+                model_turn_gate_enabled: true,
+            },
+            |_| panic!("duplicate candidate must not invoke model runner"),
+        );
+
+        assert_eq!(outcome.report.status, "duplicate_suppressed");
+        assert!(!outcome.report.runner_invocation_allowed);
+        assert!(!outcome.report.session_runner_invoked);
+        assert!(!outcome.report.model_output_present);
+        assert_eq!(outcome.model_output, None);
+        assert_eq!(outcome.candidate_next_update_offset, Some(49));
+    }
+
+    #[test]
     fn model_bridge_without_gate_is_gated_and_side_effect_free() {
         let status = telegram_model_bridge_status_with_gate(true, false);
         assert_eq!(status.status, "gated");
@@ -2984,6 +3363,10 @@ mod tests {
         assert!(!status.invocation_request.candidate_present);
         assert!(!status.invocation_request.session_runner_invoked);
         assert!(!status.invocation_request.local_process_spawned);
+        assert_eq!(status.model_execution.status, "gated");
+        assert!(!status.model_execution.session_runner_invoked);
+        assert!(!status.model_execution.local_process_spawned);
+        assert!(!status.model_execution.model_output_present);
         assert!(status.bridge_plan.bridge_plan_ready);
         assert!(!status.bridge_plan.process_spawned_by_status);
         assert!(!status.bridge_plan.raw_prompt_text_exposed);
@@ -3290,6 +3673,8 @@ mod tests {
         assert!(status.invocation_request.request_builder_ready);
         assert!(!status.invocation_request.candidate_present);
         assert!(!status.invocation_request.runner_invocation_allowed);
+        assert_eq!(status.model_execution.status, "gated");
+        assert!(!status.model_execution.session_runner_invoked);
         assert!(status.send_plan.send_plan_ready);
         assert!(!status.send_plan.delivery_performed_by_status);
         assert!(status.send_request.request_builder_ready);
@@ -3339,6 +3724,8 @@ mod tests {
         assert!(!status.invocation_request.candidate_present);
         assert!(status.invocation_request.model_turn_gate_enabled);
         assert!(!status.invocation_request.runner_invocation_allowed);
+        assert_eq!(status.model_execution.status, "waiting_candidate");
+        assert!(!status.model_execution.session_runner_invoked);
         assert!(status.send_plan.send_plan_ready);
         assert_eq!(status.send_execution.status, "waiting_model_output");
         assert!(!status.send_execution.send_attempted);

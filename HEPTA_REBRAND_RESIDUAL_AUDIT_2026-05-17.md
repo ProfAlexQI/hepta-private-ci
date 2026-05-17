@@ -813,6 +813,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   into Bot API `getUpdates` as the optional `offset` query parameter. Missing
   cursor state omits the offset, malformed cursor state fails closed before
   network reads, and negative offsets are never serialized into the request.
+- Telegram model execution now has a gated runner contract: candidate prompt
+  material is held only in memory, duplicate updates are suppressed before any
+  runner call, `HEPTA_NATIVE_TELEGRAM_MODEL_TURN=1` is required before runner
+  invocation, and the public execution report never serializes raw prompt text,
+  model output, chat ids, sender ids, message ids, cursor writes, or sends.
 
 ## Keep for compatibility
 
