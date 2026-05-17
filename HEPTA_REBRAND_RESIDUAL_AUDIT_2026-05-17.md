@@ -656,6 +656,12 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Exec-server default client connection identity is now `hepta-core`.
 - Exec-server environment transport identity is now `hepta-environment`.
 
+## Cleaned in MCP apps wording pass
+
+- Plugin-install refresh warning now says `Hepta apps tools cache`.
+- MCP apps refresh documentation and test failure text now use Hepta apps
+  wording while preserving the legacy `codex_apps` wire/server name.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

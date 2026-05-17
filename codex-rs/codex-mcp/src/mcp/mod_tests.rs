@@ -218,10 +218,10 @@ fn codex_apps_server_config_uses_legacy_codex_apps_path() {
     servers = with_codex_apps_mcp(servers, Some(&auth), &config);
     let server = servers
         .get(CODEX_APPS_MCP_SERVER_NAME)
-        .expect("codex apps should be present when apps is enabled");
+        .expect("Hepta apps should be present when apps is enabled");
     let config = server
         .configured_config()
-        .expect("codex apps should use configured transport");
+        .expect("Hepta apps should use configured transport");
     let url = match &config.transport {
         McpServerTransportConfig::StreamableHttp { url, .. } => url,
         _ => panic!("expected streamable http transport for Hepta apps"),
@@ -240,10 +240,10 @@ fn codex_apps_server_config_uses_configured_apps_mcp_path_override() {
     let servers = with_codex_apps_mcp(HashMap::new(), Some(&auth), &config);
     let server = servers
         .get(CODEX_APPS_MCP_SERVER_NAME)
-        .expect("codex apps should be present when apps is enabled");
+        .expect("Hepta apps should be present when apps is enabled");
     let config = server
         .configured_config()
-        .expect("codex apps should use configured transport");
+        .expect("Hepta apps should use configured transport");
     let url = match &config.transport {
         McpServerTransportConfig::StreamableHttp { url, .. } => url,
         _ => panic!("expected streamable http transport for Hepta apps"),
@@ -262,10 +262,10 @@ fn codex_apps_server_config_forwards_configured_product_sku_header() {
     let servers = with_codex_apps_mcp(HashMap::new(), Some(&auth), &config);
     let server = servers
         .get(CODEX_APPS_MCP_SERVER_NAME)
-        .expect("codex apps should be present when apps is enabled");
+        .expect("Hepta apps should be present when apps is enabled");
     let config = server
         .configured_config()
-        .expect("codex apps should use configured transport");
+        .expect("Hepta apps should use configured transport");
 
     match &config.transport {
         McpServerTransportConfig::StreamableHttp {
@@ -352,7 +352,7 @@ async fn effective_mcp_servers_preserve_user_servers_and_add_codex_apps() {
         .expect("configured server should exist");
     let codex_apps = effective
         .get(CODEX_APPS_MCP_SERVER_NAME)
-        .expect("codex apps server should exist");
+        .expect("Hepta apps server should exist");
 
     let sample = sample
         .configured_config()
@@ -362,7 +362,7 @@ async fn effective_mcp_servers_preserve_user_servers_and_add_codex_apps() {
         .expect("configured server should retain transport");
     let codex_apps = codex_apps
         .configured_config()
-        .expect("codex apps should use configured transport");
+        .expect("Hepta apps should use configured transport");
 
     match &sample.transport {
         McpServerTransportConfig::StreamableHttp { url, .. } => {

@@ -376,7 +376,7 @@ impl McpConnectionManager {
         normalize_tools_for_model(tools)
     }
 
-    /// Force-refresh codex apps tools by bypassing the in-process cache.
+    /// Force-refresh Hepta apps tools by bypassing the in-process cache.
     ///
     /// On success, the refreshed tools replace the cache contents and the
     /// latest filtered tools are returned directly to the caller. On

@@ -342,7 +342,7 @@ async fn refresh_missing_requested_connectors(
         }
         Err(err) => {
             warn!(
-                "failed to refresh codex apps tools cache after plugin install request for {tool_id}: {err:#}"
+                "failed to refresh Hepta apps tools cache after plugin install request for {tool_id}: {err:#}"
             );
             None
         }
