@@ -59,6 +59,10 @@ const FALLBACK_PORT: u16 = 1457;
 // names stable while presenting the local product as Hepta elsewhere.
 const CODEX_CLI_SIMPLIFIED_FLOW_QUERY: &str = "codex_cli_simplified_flow";
 const CODEX_STREAMLINED_LOGIN_QUERY: &str = "codex_streamlined_login";
+// The auth backend still reports missing Hepta access through Codex-era OAuth
+// markers. Keep these exact values for protocol compatibility.
+const CHATGPT_ACCESS_DENIED_ERROR_CODE: &str = "access_denied";
+const CHATGPT_MISSING_CODEX_ENTITLEMENT_MARKER: &str = "missing_codex_entitlement";
 static LOGIN_ERROR_PAGE_TEMPLATE: LazyLock<Template> = LazyLock::new(|| {
     Template::parse(include_str!("assets/error.html"))
         .unwrap_or_else(|err| panic!("login error page template must parse: {err}"))
@@ -977,18 +981,18 @@ fn login_error_response(
 }
 
 /// Returns true when the OAuth callback represents a missing Hepta entitlement.
-fn is_missing_codex_entitlement_error(error_code: &str, error_description: Option<&str>) -> bool {
-    error_code == "access_denied"
+fn is_missing_hepta_entitlement_error(error_code: &str, error_description: Option<&str>) -> bool {
+    error_code == CHATGPT_ACCESS_DENIED_ERROR_CODE
         && error_description.is_some_and(|description| {
             description
                 .to_ascii_lowercase()
-                .contains("missing_codex_entitlement")
+                .contains(CHATGPT_MISSING_CODEX_ENTITLEMENT_MARKER)
         })
 }
 
 /// Converts OAuth callback errors into a user-facing message.
 fn oauth_callback_error_message(error_code: &str, error_description: Option<&str>) -> String {
-    if is_missing_codex_entitlement_error(error_code, error_description) {
+    if is_missing_hepta_entitlement_error(error_code, error_description) {
         return "Hepta is not enabled for your workspace. Contact your workspace administrator to request access to Hepta.".to_string();
     }
 
@@ -1078,7 +1082,7 @@ fn render_login_error_page(
 ) -> Vec<u8> {
     let code = error_code.unwrap_or("unknown_error");
     let (title, display_message, display_description, help_text) =
-        if is_missing_codex_entitlement_error(code, error_description) {
+        if is_missing_hepta_entitlement_error(code, error_description) {
             (
                 "You do not have access to Hepta".to_string(),
                 "This account is not currently authorized to use Hepta in this workspace."
@@ -1186,11 +1190,13 @@ mod tests {
     use core_test_support::skip_if_no_network;
     use pretty_assertions::assert_eq;
 
+    use super::CHATGPT_ACCESS_DENIED_ERROR_CODE;
+    use super::CHATGPT_MISSING_CODEX_ENTITLEMENT_MARKER;
     use super::DEFAULT_ISSUER;
     use super::TokenEndpointErrorDetail;
     use super::compose_success_url;
     use super::html_escape;
-    use super::is_missing_codex_entitlement_error;
+    use super::is_missing_hepta_entitlement_error;
     use super::parse_token_endpoint_error;
     use super::persist_tokens_async;
     use super::redact_sensitive_query_value;
@@ -1517,21 +1523,21 @@ mod tests {
 
     #[test]
     fn render_login_error_page_uses_entitlement_copy() {
-        let error_description = Some("missing_codex_entitlement");
-        assert!(is_missing_codex_entitlement_error(
-            "access_denied",
+        let error_description = Some(CHATGPT_MISSING_CODEX_ENTITLEMENT_MARKER);
+        assert!(is_missing_hepta_entitlement_error(
+            CHATGPT_ACCESS_DENIED_ERROR_CODE,
             error_description
         ));
 
         let body = String::from_utf8(render_login_error_page(
             "access denied",
-            Some("access_denied"),
+            Some(CHATGPT_ACCESS_DENIED_ERROR_CODE),
             error_description,
         ))
         .expect("login error page should be utf-8");
 
         assert!(body.contains("You do not have access to Hepta"));
         assert!(body.contains("Contact your workspace administrator"));
-        assert!(!body.contains("missing_codex_entitlement"));
+        assert!(!body.contains(CHATGPT_MISSING_CODEX_ENTITLEMENT_MARKER));
     }
 }

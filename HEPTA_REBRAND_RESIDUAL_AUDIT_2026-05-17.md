@@ -156,6 +156,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   constants while preserving the wire names expected by the ChatGPT login
   service and older browser callbacks.
 
+## Cleaned in entitlement/error-code pass
+
+- Missing-entitlement detection now uses a Hepta-named helper and keeps
+  user-facing access-denied copy branded as Hepta.
+- The upstream OAuth `access_denied` code and `missing_codex_entitlement`
+  marker are centralized as compatibility constants instead of being repeated
+  as raw strings in callback rendering and tests.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
@@ -178,6 +186,8 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - ChatGPT auth wire paths and query keys such as `/codex/device`,
   `/deviceauth/callback`, `codex_cli_simplified_flow`, and
   `codex_streamlined_login` remain upstream compatibility names.
+- ChatGPT auth error markers such as `missing_codex_entitlement` remain
+  upstream compatibility names.
 
 ## Deferred
 
