@@ -5,7 +5,7 @@ use sqlx::migrate::Migrator;
 pub(crate) static STATE_MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 pub(crate) static LOGS_MIGRATOR: Migrator = sqlx::migrate!("./logs_migrations");
 
-/// Allow an older Codex binary to open a database that has already been
+/// Allow an older Hepta binary to open a database that has already been
 /// migrated by a newer binary running in parallel.
 ///
 /// We intentionally ignore applied migration versions that are newer than the

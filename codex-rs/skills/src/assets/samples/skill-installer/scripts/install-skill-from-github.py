@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install a skill from a GitHub repo path into $CODEX_HOME/skills."""
+"""Install a skill from a GitHub repo path into $HEPTA_HOME/skills."""
 
 from __future__ import annotations
 
@@ -42,12 +42,16 @@ class InstallError(Exception):
     pass
 
 
-def _codex_home() -> str:
-    return os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex"))
+def _hepta_home() -> str:
+    return (
+        os.environ.get("HEPTA_HOME")
+        or os.environ.get("CODEX_HOME")
+        or os.path.expanduser("~/.hepta")
+    )
 
 
 def _tmp_root() -> str:
-    base = os.path.join(tempfile.gettempdir(), "codex")
+    base = os.path.join(tempfile.gettempdir(), "hepta")
     os.makedirs(base, exist_ok=True)
     return base
 
@@ -241,7 +245,7 @@ def _resolve_source(args: Args) -> Source:
 
 
 def _default_dest() -> str:
-    return os.path.join(_codex_home(), "skills")
+    return os.path.join(_hepta_home(), "skills")
 
 
 def _parse_args(argv: list[str]) -> Args:

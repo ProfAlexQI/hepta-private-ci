@@ -378,6 +378,18 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   comments now use Hepta wording for product/runtime behavior while retaining
   `Codex*` Rust type names and trace enum names as compatibility identifiers.
 
+## Cleaned in MCP / skill / runtime surface pass
+
+- Skill cache docs and bundled skill-installer helpers now prefer
+  `HEPTA_HOME` / `~/.hepta`, while still accepting `CODEX_HOME` as a
+  legacy fallback.
+- MCP runner, elicitation, OAuth cache, RMCP client info, and network-proxy
+  user-facing prose now use Hepta wording while retaining wire keys,
+  compatibility capability ids, and crate names.
+- Client, websocket custom-CA comments, model-manager comments, state
+  migration docs, shell-command docs, TUI style notes, and memory
+  consolidation templates now describe Hepta as the active runtime.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

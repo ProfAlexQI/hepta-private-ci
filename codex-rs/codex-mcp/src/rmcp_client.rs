@@ -64,7 +64,7 @@ use rmcp::model::Tool as RmcpTool;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-/// MCP server capability indicating that Codex should include [`SandboxState`]
+/// MCP server capability indicating that Hepta should include [`SandboxState`]
 /// in tool-call request `_meta` under this key.
 pub const MCP_SANDBOX_STATE_META_CAPABILITY: &str = "codex/sandbox-state-meta";
 
@@ -483,7 +483,7 @@ async fn start_server_task(
         client_info: Implementation {
             name: "codex-mcp-client".to_owned(),
             version: env!("CARGO_PKG_VERSION").to_owned(),
-            title: Some("Codex".into()),
+            title: Some("Hepta".into()),
             description: None,
             icons: None,
             website_url: None,
