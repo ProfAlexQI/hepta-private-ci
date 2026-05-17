@@ -8,10 +8,10 @@ use uuid::Uuid;
 
 use super::LocalThreadStoreConfig;
 
-pub(super) fn test_config(codex_home: &Path) -> LocalThreadStoreConfig {
+pub(super) fn test_config(hepta_home: &Path) -> LocalThreadStoreConfig {
     LocalThreadStoreConfig {
-        codex_home: codex_home.to_path_buf(),
-        sqlite_home: codex_home.to_path_buf(),
+        codex_home: hepta_home.to_path_buf(),
+        sqlite_home: hepta_home.to_path_buf(),
         default_model_provider_id: "test-provider".to_string(),
     }
 }

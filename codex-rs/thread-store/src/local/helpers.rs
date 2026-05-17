@@ -52,8 +52,8 @@ pub(super) fn scoped_rollout_path(
     }
 }
 
-pub(super) fn rollout_path_is_archived(codex_home: &Path, path: &Path) -> bool {
-    path.starts_with(codex_home.join(ARCHIVED_SESSIONS_SUBDIR))
+pub(super) fn rollout_path_is_archived(hepta_home: &Path, path: &Path) -> bool {
+    path.starts_with(hepta_home.join(ARCHIVED_SESSIONS_SUBDIR))
         || path
             .components()
             .any(|component| component.as_os_str() == OsStr::new(ARCHIVED_SESSIONS_SUBDIR))

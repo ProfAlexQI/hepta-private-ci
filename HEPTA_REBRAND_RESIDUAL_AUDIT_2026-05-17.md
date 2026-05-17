@@ -591,6 +591,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `codex_home` compatibility APIs, and `CODEX_API_KEY` remains the legacy
   environment input guarded by `enable_codex_api_key_env`.
 
+## Cleaned in thread-store local helper pass
+
+- Thread-store local test support and archived-rollout helper parameters now
+  use `hepta_home` naming.
+- `LocalThreadStoreConfig::codex_home` remains a public Rust compatibility
+  field for now; field-level migration should happen only with a broader
+  thread-store/core API compatibility plan.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
