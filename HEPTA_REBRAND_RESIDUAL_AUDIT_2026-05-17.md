@@ -304,6 +304,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Hook schema comments now describe Hepta extensions before regenerating the
   vendored hook schema fixtures.
 
+## Cleaned in Windows sandbox product surface pass
+
+- Windows sandbox local users, desktop names, mutex names, group comments,
+  firewall friendly text, WFP names/descriptions, runtime-bin cache path,
+  debug config examples, and TUI fallback prompt text now use Hepta naming.
+- Stable internal firewall rule identifiers remain `codex_sandbox_*` so
+  existing installations can still find/update prior rules instead of
+  orphaning them.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
