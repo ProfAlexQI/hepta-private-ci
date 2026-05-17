@@ -26,13 +26,13 @@ let template = Template::parse(
 )?;
 
 let rendered = template.render([
-    ("name", "Codex"),
+    ("name", "Hepta"),
     ("mode", "strict"),
 ])?;
 
 assert_eq!(
     rendered,
-    "Hello, Codex.\nLiteral braces: {{ and }}.\nMode: strict"
+    "Hello, Hepta.\nLiteral braces: {{ and }}.\nMode: strict"
 );
 
 let one_shot = render("Hi {{ who }}!", [("who", "there")])?;

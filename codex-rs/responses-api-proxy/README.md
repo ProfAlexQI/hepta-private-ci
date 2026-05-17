@@ -4,14 +4,14 @@
 
 ```
 # Launch the proxy, dump request/response pairs to /tmp/proxy
-cd path/to/codex/codex-rs
+cd path/to/hepta-codex/codex-rs
 cargo build
 echo $OPENAI_API_KEY | ./target/debug/codex-responses-api-proxy \
     --port 60001 \
     --dump-dir /tmp/proxy
 
 
-# Add this to ~/.codex/config.toml:
+# Add this to ~/.hepta/config.toml:
 
 [model_providers.codex-responses-api-proxy]
 name = 'codex-responses-api-proxy'
@@ -23,7 +23,7 @@ model_provider = "codex-responses-api-proxy"
 
 
 # Use it
-codex -p proxy
+hepta -p proxy
 ```
 
 # Detailed docs
@@ -40,12 +40,12 @@ A privileged user (i.e., `root` or a user with `sudo`) who has access to `OPENAI
 printenv OPENAI_API_KEY | env -u OPENAI_API_KEY codex-responses-api-proxy --http-shutdown --server-info /tmp/server-info.json
 ```
 
-A non-privileged user would then run Codex as follows, specifying the `model_provider` dynamically:
+A non-privileged user would then run Hepta as follows, specifying the `model_provider` dynamically:
 
 ```shell
 PROXY_PORT=$(jq .port /tmp/server-info.json)
 PROXY_BASE_URL="http://127.0.0.1:${PROXY_PORT}"
-codex exec -c "model_providers.openai-proxy={ name = 'OpenAI Proxy', base_url = '${PROXY_BASE_URL}/v1', wire_api='responses' }" \
+hepta exec -c "model_providers.openai-proxy={ name = 'OpenAI Proxy', base_url = '${PROXY_BASE_URL}/v1', wire_api='responses' }" \
     -c model_provider="openai-proxy" \
     'Your prompt here'
 ```
@@ -97,7 +97,7 @@ printenv AZURE_OPENAI_API_KEY | env -u AZURE_OPENAI_API_KEY codex-responses-api-
 
 Care is taken to restrict access/copying to the value of `OPENAI_API_KEY` retained in memory:
 
-- We leverage [`codex_process_hardening`](https://github.com/openai/codex/blob/main/codex-rs/process-hardening/README.md) so `codex-responses-api-proxy` is run with standard process-hardening techniques.
+- We leverage [`codex_process_hardening`](https://github.com/openai/codex/blob/main/codex-rs/process-hardening/README.md) so `codex-responses-api-proxy` is run with the fork's standard process-hardening techniques.
 - At startup, we allocate a `1024` byte buffer on the stack and copy `"Bearer "` into the start of the buffer.
 - We then read from `stdin`, copying the contents into the buffer after `"Bearer "`.
 - After verifying the key matches `/^[a-zA-Z0-9_-]+$/` (and does not exceed the buffer), we create a `String` from that buffer (so the data is now on the heap).

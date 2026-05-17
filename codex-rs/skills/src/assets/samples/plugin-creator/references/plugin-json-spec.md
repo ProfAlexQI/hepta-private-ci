@@ -131,7 +131,7 @@
 
 - `name` (`string`): Marketplace identifier or catalog name.
 - `interface` (`object`, optional): Marketplace presentation metadata.
-- `plugins` (`array`): Ordered plugin entries. This order determines how Codex renders plugins.
+- `plugins` (`array`): Ordered plugin entries. This order determines how Hepta renders plugins.
 
 ### `interface` fields
 

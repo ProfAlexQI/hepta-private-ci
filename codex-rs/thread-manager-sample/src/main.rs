@@ -64,7 +64,7 @@ use codex_core_api::thread_store_from_config;
 #[derive(Debug, Parser)]
 #[command(
     name = "codex-thread-manager-sample",
-    about = "Run one Codex turn through ThreadManager and print mapped notifications as newline-delimited JSON."
+    about = "Run one Hepta turn through ThreadManager and print mapped notifications as newline-delimited JSON."
 )]
 struct Args {
     /// Override the model for this run.
@@ -81,7 +81,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn run_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
-    if let Err(err) = set_default_originator("codex_thread_manager_sample".to_string()) {
+    if let Err(err) = set_default_originator("hepta_thread_manager_sample".to_string()) {
         tracing::warn!("failed to set originator: {err:?}");
     }
 
@@ -136,7 +136,7 @@ async fn run_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
     } = thread_manager
         .start_thread(config)
         .await
-        .context("start Codex thread")?;
+        .context("start Hepta thread")?;
 
     let thread_id_string = thread_id.to_string();
     let turn_output = run_turn(&thread, &thread_id_string, prompt).await;
@@ -144,13 +144,13 @@ async fn run_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
     let _ = thread_manager.remove_thread(&thread_id).await;
 
     turn_output?;
-    shutdown_result.context("shut down Codex thread")?;
+    shutdown_result.context("shut down Hepta thread")?;
 
     Ok(())
 }
 
 fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::Result<Config> {
-    let codex_home = find_codex_home().context("find Codex home")?;
+    let hepta_home = find_codex_home().context("find Hepta home")?;
     let cwd = AbsolutePathBuf::current_dir().context("resolve current directory")?;
     let model_provider_id = OPENAI_PROVIDER_ID.to_string();
     let model_providers = built_in_model_providers(/*openai_base_url*/ None);
@@ -224,13 +224,13 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         agent_max_depth: 1,
         agent_roles: BTreeMap::new(),
         memories: MemoriesConfig::default(),
-        sqlite_home: codex_home.to_path_buf(),
-        log_dir: codex_home.join("log").to_path_buf(),
+        sqlite_home: hepta_home.to_path_buf(),
+        log_dir: hepta_home.join("log").to_path_buf(),
         config_lock_export_dir: None,
         config_lock_allow_codex_version_mismatch: false,
         config_lock_save_fields_resolved_from_model_catalog: true,
         config_lock_toml: None,
-        codex_home,
+        codex_home: hepta_home,
         history: History::default(),
         ephemeral: true,
         file_opener: UriBasedFileOpener::VsCode,
@@ -300,7 +300,7 @@ async fn run_turn(thread: &CodexThread, thread_id: &str, prompt: String) -> anyh
     let mut current_turn_id: Option<String> = None;
     let mut stdout = std::io::stdout().lock();
     loop {
-        let event = thread.next_event().await.context("read Codex event")?;
+        let event = thread.next_event().await.context("read Hepta event")?;
         let notification = match &event.msg {
             EventMsg::TurnStarted(event) => {
                 current_turn_id = Some(event.turn_id.clone());

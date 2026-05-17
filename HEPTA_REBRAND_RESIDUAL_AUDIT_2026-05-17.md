@@ -340,6 +340,22 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   where the text describes the product/runtime rather than an internal crate,
   path, environment variable, or wire field.
 
+## Cleaned in README/crate-doc pass
+
+- README files for the network proxy, responses proxy, API client,
+  file-search, thread-manager sample, thread-store, rollout trace, memory
+  pipeline, Linux sandbox, OTEL, stream parser, and template utility now use
+  Hepta wording for product/runtime prose.
+- Crate-level Rust docs for custom CA handling, Cloudflare-cookie handling,
+  cloud requirements, rollout tracing, rollout protocol mapping, rollout
+  session models, and memory read/write/MCP crates now describe Hepta instead
+  of Codex.
+- Sample skill assets now use Hepta command/home wording for OpenAI-docs MCP
+  installation, plugin rendering, and image-generation save/helper paths.
+- Compatibility names such as `CODEX_CA_CERTIFICATE`, `CODEX_ROLLOUT_TRACE_ROOT`,
+  `codex-core`, `codex-*` crate names, `codex_process_hardening`, and upstream
+  ChatGPT `/backend-api/codex/...` paths remain unchanged.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

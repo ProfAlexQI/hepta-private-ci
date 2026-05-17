@@ -1,6 +1,6 @@
 # codex-otel
 
-`codex-otel` is the OpenTelemetry integration crate for Codex. It provides:
+`codex-otel` is the OpenTelemetry integration crate for Hepta. It provides:
 
 - Provider wiring for log/trace/metric exporters (`codex_otel::OtelProvider`
   and `codex_otel::provider`).
@@ -23,7 +23,7 @@ use tracing_subscriber::prelude::*;
 
 let settings = OtelSettings {
     environment: "dev".to_string(),
-    service_name: "codex-cli".to_string(),
+    service_name: "hepta-cli".to_string(),
     service_version: env!("CARGO_PKG_VERSION").to_string(),
     codex_home: std::path::PathBuf::from("/tmp"),
     exporter: OtelExporter::OtlpHttp {
@@ -65,7 +65,7 @@ beta = "two"
 
 Configured tracestate members and encoded values must be valid W3C tracestate.
 Each nested table is encoded as semicolon-separated `key:value` fields inside
-that member. If propagated trace context already has the named member, Codex
+that member. If propagated trace context already has the named member, Hepta
 upserts configured fields and preserves other fields in that member. This
 config shape does not support setting opaque tracestate member values. Invalid
 trace metadata entries are ignored during config load and reported as startup
@@ -74,7 +74,7 @@ warnings.
 ## SessionTelemetry (events)
 
 `SessionTelemetry` adds consistent metadata to tracing events and helps record
-Codex-specific session events. Rich session/business events should go through
+Hepta-specific session events. Rich session/business events should go through
 `SessionTelemetry`; subsystem-owned audit events can stay with the owning subsystem.
 
 ```rust
@@ -104,7 +104,7 @@ Modes:
 - In-memory: records via `opentelemetry_sdk::metrics::InMemoryMetricExporter` for tests/assertions; call `shutdown()` to flush.
 
 `codex-otel` also provides `OtelExporter::Statsig`, a shorthand for exporting OTLP/HTTP JSON metrics
-to Statsig using Codex-internal defaults.
+to Statsig using Hepta-internal defaults.
 
 Statsig ingestion (OTLP/HTTP JSON) example:
 
@@ -113,7 +113,7 @@ use codex_otel::config::{OtelExporter, OtelHttpProtocol};
 
 let metrics = MetricsClient::new(MetricsConfig::otlp(
     "dev",
-    "codex-cli",
+    "hepta-cli",
     env!("CARGO_PKG_VERSION"),
     OtelExporter::OtlpHttp {
         endpoint: "https://api.statsig.com/otlp".to_string(),
@@ -136,7 +136,7 @@ In-memory (tests):
 let exporter = InMemoryMetricExporter::default();
 let metrics = MetricsClient::new(MetricsConfig::in_memory(
     "test",
-    "codex-cli",
+    "hepta-cli",
     env!("CARGO_PKG_VERSION"),
     exporter.clone(),
 ))?;
