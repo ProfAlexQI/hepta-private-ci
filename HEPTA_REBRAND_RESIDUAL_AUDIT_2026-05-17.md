@@ -448,6 +448,8 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   existing credentials survive the rebrand.
 - Rollout path examples now use Hepta/runtime-home wording instead of
   hard-coded `~/.codex/sessions` examples.
+- TUI keymap error messages, theme discovery docs, and pet cache docs now
+  point at Hepta/runtime-home paths and Hepta keymap documentation.
 - Endpoint paths such as `/api/codex/...`, legacy MCP wire fields such as
   `codex_*`, and crate names such as `codex-core` remain compatibility names.
 

@@ -9,7 +9,7 @@
 //! | `SYNTAX_SET` | `OnceLock<SyntaxSet>` | Grammar database, immutable after init |
 //! | `THEME` | `OnceLock<RwLock<Theme>>` | Active color theme, swappable at runtime |
 //! | `THEME_OVERRIDE` | `OnceLock<Option<String>>` | Persisted user preference (write-once) |
-//! | `CODEX_HOME` | `OnceLock<Option<PathBuf>>` | Root for custom `.tmTheme` discovery |
+//! | `CODEX_HOME` | `OnceLock<Option<PathBuf>>` | Resolved runtime home for custom `.tmTheme` discovery |
 //!
 //! **Lifecycle:** call [`set_theme_override`] once at startup (after the final
 //! config is resolved) to persist the user preference and seed the `THEME`
@@ -67,7 +67,7 @@ fn syntax_set() -> &'static SyntaxSet {
 // time — long before it reaches users.  A runtime warning would be
 // unactionable noise since users can't fix upstream themes.
 
-/// Set the user-configured syntax theme override and codex home path.
+/// Set the user-configured syntax theme override and runtime home path.
 ///
 /// Call this with the **final resolved config** (after onboarding, resume, and
 /// fork reloads complete). The first call persists `name` and `codex_home` in
@@ -106,7 +106,7 @@ pub(crate) fn validate_theme_name(name: Option<&str>, codex_home: Option<&Path>)
     let name = name?;
     let custom_theme_path_display = codex_home
         .map(|home| custom_theme_path(name, home).display().to_string())
-        .unwrap_or_else(|| format!("$CODEX_HOME/themes/{name}.tmTheme"));
+        .unwrap_or_else(|| format!("$HEPTA_HOME/themes/{name}.tmTheme"));
     // Bundled themes always resolve.
     if parse_theme_name(name).is_some() {
         return None;
@@ -211,7 +211,7 @@ fn resolve_theme_with_override(name: Option<&str>, codex_home: Option<&Path>) ->
         if let Some(theme_name) = parse_theme_name(name) {
             return ts.get(theme_name).clone();
         }
-        // 2. Try loading {CODEX_HOME}/themes/{name}.tmTheme from disk.
+        // 2. Try loading {HEPTA_HOME}/themes/{name}.tmTheme from disk.
         if let Some(home) = codex_home
             && let Some(theme) = load_custom_theme(name, home)
         {
@@ -352,7 +352,7 @@ pub(crate) fn resolve_theme_by_name(name: &str, codex_home: Option<&Path>) -> Op
 }
 
 /// A theme available in the picker, either bundled or loaded from a custom
-/// `.tmTheme` file under `{CODEX_HOME}/themes/`.
+/// `.tmTheme` file under `{HEPTA_HOME}/themes/`.
 pub(crate) struct ThemeEntry {
     /// Kebab-case identifier used for config persistence and theme resolution.
     pub name: String,
