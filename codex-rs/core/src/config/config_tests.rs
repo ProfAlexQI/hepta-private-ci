@@ -5921,11 +5921,11 @@ async fn for_config_writes_selected_user_config_file() -> anyhow::Result<()> {
 
 #[test]
 fn profile_v2_config_path_resolves_validated_names() -> anyhow::Result<()> {
-    let codex_home = TempDir::new()?;
+    let hepta_home = TempDir::new()?;
     let profile_name: ProfileV2Name = "work".parse()?;
     assert_eq!(
-        resolve_profile_v2_config_path(codex_home.path(), &profile_name),
-        codex_home.path().join("work.config.toml").abs()
+        resolve_profile_v2_config_path(hepta_home.path(), &profile_name),
+        hepta_home.path().join("work.config.toml").abs()
     );
     Ok(())
 }

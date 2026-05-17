@@ -2211,20 +2211,20 @@ mod tests {
     #[test]
     fn profile_v2_is_rejected_for_config_management_subcommands() {
         assert!(
-            profile_v2_for_args(&["codex", "--profile-v2", "work", "features", "list"]).is_err()
+            profile_v2_for_args(&["hepta", "--profile-v2", "work", "features", "list"]).is_err()
         );
     }
 
     #[test]
     fn profile_v2_is_allowed_for_runtime_subcommands() {
         assert_eq!(
-            profile_v2_for_args(&["codex", "--profile-v2", "work", "resume"])
+            profile_v2_for_args(&["hepta", "--profile-v2", "work", "resume"])
                 .expect("resume supports profile-v2")
                 .as_deref(),
             Some("work")
         );
         assert_eq!(
-            profile_v2_for_args(&["codex", "--profile-v2", "work", "debug", "prompt-input"])
+            profile_v2_for_args(&["hepta", "--profile-v2", "work", "debug", "prompt-input"])
                 .expect("debug prompt-input supports profile-v2")
                 .as_deref(),
             Some("work")
@@ -2234,7 +2234,7 @@ mod tests {
     #[test]
     fn profile_v2_rejects_non_plain_names_at_parse_time() {
         assert!(
-            MultitoolCli::try_parse_from(["codex", "--profile-v2", "nested/work", "resume"])
+            MultitoolCli::try_parse_from(["hepta", "--profile-v2", "nested/work", "resume"])
                 .is_err()
         );
     }

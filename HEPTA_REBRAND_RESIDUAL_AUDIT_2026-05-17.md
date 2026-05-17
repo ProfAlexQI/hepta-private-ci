@@ -470,6 +470,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   fallback compatibility inputs only; explicit CLI, profile, and config values
   keep higher precedence.
 
+## Cleaned in profile-v2 naming pass
+
+- The profile-v2 protocol documentation now describes selected config files
+  under `$HEPTA_HOME/<name>.config.toml`.
+- CLI parser tests for profile-v2 now exercise the `hepta` binary name for
+  accepted/rejected runtime surfaces.
+- The focused profile-v2 config-path unit test now uses `hepta_home`
+  terminology for its temporary home.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
