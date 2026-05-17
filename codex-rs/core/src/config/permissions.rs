@@ -352,7 +352,7 @@ fn reject_unknown_builtin_permission_profile(profile_name: &str) -> io::Result<(
 }
 
 /// Returns a list of paths that must be readable by shell tools in order
-/// for Codex to function. These should always be added to the
+/// for Hepta to function. These should always be added to the
 /// `FileSystemSandboxPolicy` for a thread.
 pub(crate) fn get_readable_roots_required_for_codex_runtime(
     codex_home: &Path,
@@ -644,7 +644,7 @@ fn remove_trailing_glob_suffix(path: &str) -> &str {
 }
 
 // WARNING: keep this parser forward-compatible.
-// Adding a new `:special_path` must not make older Codex versions reject the
+// Adding a new `:special_path` must not make older Hepta versions reject the
 // config. Unknown values intentionally round-trip through
 // `FileSystemSpecialPath::Unknown` so they can be surfaced as warnings and
 // ignored, rather than aborting config load.

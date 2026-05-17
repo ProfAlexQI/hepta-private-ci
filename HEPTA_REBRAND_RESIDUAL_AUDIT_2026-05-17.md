@@ -401,6 +401,16 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   command approval, and managed sandbox construction without changing wire
   enum names or compatibility fields.
 
+## Cleaned in protocol / rollout diagnostics pass
+
+- Config-lock mismatch diagnostics, execpolicy package metadata, MCP/model
+  protocol docs, permission compatibility notes, and client header comments now
+  use Hepta wording.
+- Rollout-trace reducer diagnostics now report missing or unknown Hepta turn
+  context while keeping the underlying `codex_turn_id` field names intact.
+- Core spawn, sandbox-root, and agent-registry docs now describe Hepta runtime
+  behavior without renaming compatibility environment variables or types.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

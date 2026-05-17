@@ -1719,7 +1719,7 @@ pub enum NonSteerableTurnKind {
     Compact,
 }
 
-/// Codex errors that we expose to clients.
+/// Hepta errors that we expose to clients.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(rename_all = "snake_case")]
