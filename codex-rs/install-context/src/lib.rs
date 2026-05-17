@@ -45,22 +45,22 @@ impl InstallContext {
         managed_by_npm: bool,
         managed_by_bun: bool,
     ) -> Self {
-        let codex_home = codex_utils_home_dir::find_codex_home().ok();
-        Self::from_exe_with_codex_home(
+        let hepta_home = codex_utils_home_dir::find_codex_home().ok();
+        Self::from_exe_with_hepta_home(
             is_macos,
             current_exe,
             managed_by_npm,
             managed_by_bun,
-            codex_home.as_deref(),
+            hepta_home.as_deref(),
         )
     }
 
-    fn from_exe_with_codex_home(
+    fn from_exe_with_hepta_home(
         is_macos: bool,
         current_exe: Option<&Path>,
         managed_by_npm: bool,
         managed_by_bun: bool,
-        codex_home: Option<&Path>,
+        hepta_home: Option<&Path>,
     ) -> Self {
         if managed_by_npm {
             return Self::Npm;
@@ -71,7 +71,7 @@ impl InstallContext {
         }
 
         if let Some(exe_path) = current_exe
-            && let Some(standalone_context) = standalone_install_context(exe_path, codex_home)
+            && let Some(standalone_context) = standalone_install_context(exe_path, hepta_home)
         {
             return standalone_context;
         }
@@ -129,12 +129,12 @@ impl InstallContext {
 
 fn standalone_install_context(
     exe_path: &Path,
-    codex_home: Option<&Path>,
+    hepta_home: Option<&Path>,
 ) -> Option<InstallContext> {
     let canonical_exe = std::fs::canonicalize(exe_path).ok()?;
-    let canonical_codex_home = std::fs::canonicalize(codex_home?).ok()?;
+    let canonical_hepta_home = std::fs::canonicalize(hepta_home?).ok()?;
     let release_dir = canonical_exe.parent()?.to_path_buf();
-    let releases_root = canonical_codex_home
+    let releases_root = canonical_hepta_home
         .join("packages")
         .join(STANDALONE_PACKAGES_DIRNAME)
         .join(RELEASES_DIRNAME);
@@ -178,8 +178,8 @@ mod tests {
 
     #[test]
     fn detects_standalone_install_from_release_layout() -> std::io::Result<()> {
-        let codex_home = tempfile::tempdir()?;
-        let release_dir = codex_home
+        let hepta_home = tempfile::tempdir()?;
+        let release_dir = hepta_home
             .path()
             .join("packages/standalone/releases/1.2.3-x86_64-unknown-linux-musl");
         let resources_dir = release_dir.join(RESOURCES_DIRNAME);
@@ -190,12 +190,12 @@ mod tests {
         let canonical_release_dir = release_dir.canonicalize()?;
         let canonical_resources_dir = resources_dir.canonicalize()?;
 
-        let context = InstallContext::from_exe_with_codex_home(
+        let context = InstallContext::from_exe_with_hepta_home(
             /*is_macos*/ false,
             /*current_exe*/ Some(&exe_path),
             /*managed_by_npm*/ false,
             /*managed_by_bun*/ false,
-            /*codex_home*/ Some(codex_home.path()),
+            /*hepta_home*/ Some(hepta_home.path()),
         );
         assert_eq!(
             context,
@@ -210,20 +210,20 @@ mod tests {
 
     #[test]
     fn standalone_rg_falls_back_when_resources_are_missing() -> std::io::Result<()> {
-        let codex_home = tempfile::tempdir()?;
-        let release_dir = codex_home
+        let hepta_home = tempfile::tempdir()?;
+        let release_dir = hepta_home
             .path()
             .join("packages/standalone/releases/1.2.3-x86_64-unknown-linux-musl");
         fs::create_dir_all(&release_dir)?;
         let exe_path = release_dir.join(if cfg!(windows) { "hepta.exe" } else { "hepta" });
         fs::write(&exe_path, "")?;
 
-        let context = InstallContext::from_exe_with_codex_home(
+        let context = InstallContext::from_exe_with_hepta_home(
             /*is_macos*/ false,
             /*current_exe*/ Some(&exe_path),
             /*managed_by_npm*/ false,
             /*managed_by_bun*/ false,
-            /*codex_home*/ Some(codex_home.path()),
+            /*hepta_home*/ Some(hepta_home.path()),
         );
         assert_eq!(context.rg_command(), default_rg_command());
         Ok(())
@@ -231,33 +231,33 @@ mod tests {
 
     #[test]
     fn npm_and_bun_take_precedence() {
-        let npm_context = InstallContext::from_exe_with_codex_home(
+        let npm_context = InstallContext::from_exe_with_hepta_home(
             /*is_macos*/ false,
             /*current_exe*/ Some(Path::new("/tmp/hepta")),
             /*managed_by_npm*/ true,
             /*managed_by_bun*/ false,
-            /*codex_home*/ None,
+            /*hepta_home*/ None,
         );
         assert_eq!(npm_context, InstallContext::Npm);
 
-        let bun_context = InstallContext::from_exe_with_codex_home(
+        let bun_context = InstallContext::from_exe_with_hepta_home(
             /*is_macos*/ false,
             /*current_exe*/ Some(Path::new("/tmp/hepta")),
             /*managed_by_npm*/ false,
             /*managed_by_bun*/ true,
-            /*codex_home*/ None,
+            /*hepta_home*/ None,
         );
         assert_eq!(bun_context, InstallContext::Bun);
     }
 
     #[test]
     fn brew_is_detected_on_macos_prefixes() {
-        let context = InstallContext::from_exe_with_codex_home(
+        let context = InstallContext::from_exe_with_hepta_home(
             /*is_macos*/ true,
             /*current_exe*/ Some(Path::new("/opt/homebrew/bin/hepta")),
             /*managed_by_npm*/ false,
             /*managed_by_bun*/ false,
-            /*codex_home*/ None,
+            /*hepta_home*/ None,
         );
         assert_eq!(context, InstallContext::Brew);
     }

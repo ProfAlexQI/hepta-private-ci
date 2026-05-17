@@ -575,6 +575,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   typed turn error metadata while continuing to serialize `codexErrorInfo` for
   compatibility with the existing v2 protocol schema.
 
+## Cleaned in install-context home-helper pass
+
+- Install-context standalone detection now uses `hepta_home` local naming and
+  the private `from_exe_with_hepta_home` helper in code and tests.
+- The underlying `find_codex_home()` resolver and `CODEX_MANAGED_*`
+  environment fallbacks remain compatibility inputs while Hepta-owned managed
+  environment variables stay preferred.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
