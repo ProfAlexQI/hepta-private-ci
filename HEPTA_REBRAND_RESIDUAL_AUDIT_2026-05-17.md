@@ -164,6 +164,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   marker are centralized as compatibility constants instead of being repeated
   as raw strings in callback rendering and tests.
 
+## Cleaned in login home naming pass
+
+- Login-server integration tests and local credential persistence internals now
+  use Hepta home terminology for local variables and test names.
+- The public/cross-crate `codex_home` field and auth-manager compatibility API
+  names remain unchanged for now; they describe the same resolved Hepta home
+  path under the current fork.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

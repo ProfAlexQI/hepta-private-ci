@@ -798,7 +798,7 @@ pub(crate) async fn exchange_code_for_tokens(
 /// Persists exchanged credentials using the configured local auth store, then
 /// best-effort revokes any superseded managed ChatGPT tokens.
 pub(crate) async fn persist_tokens_async(
-    codex_home: &Path,
+    hepta_home: &Path,
     api_key: Option<String>,
     id_token: String,
     access_token: String,
@@ -806,9 +806,9 @@ pub(crate) async fn persist_tokens_async(
     auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> io::Result<()> {
     // Reuse existing synchronous logic but run it off the async runtime.
-    let codex_home = codex_home.to_path_buf();
+    let hepta_home = hepta_home.to_path_buf();
     let (previous_auth, auth) = tokio::task::spawn_blocking(move || {
-        let previous_auth = match load_auth_dot_json(&codex_home, auth_credentials_store_mode) {
+        let previous_auth = match load_auth_dot_json(&hepta_home, auth_credentials_store_mode) {
             Ok(auth) => auth,
             Err(err) => {
                 warn!("failed to load previous auth before saving new login: {err}");
@@ -834,7 +834,7 @@ pub(crate) async fn persist_tokens_async(
             last_refresh: Some(Utc::now()),
             agent_identity: None,
         };
-        save_auth(&codex_home, &auth, auth_credentials_store_mode)?;
+        save_auth(&hepta_home, &auth, auth_credentials_store_mode)?;
         Ok::<_, io::Error>((previous_auth, auth))
     })
     .await
@@ -1226,15 +1226,15 @@ mod tests {
             format!("{}/oauth/revoke", server.uri()),
         );
 
-        let codex_home = tempdir()?;
+        let hepta_home = tempdir()?;
         save_auth(
-            codex_home.path(),
+            hepta_home.path(),
             &chatgpt_auth("old-access", "old-refresh", "old-account"),
             AuthCredentialsStoreMode::File,
         )?;
 
         persist_tokens_async(
-            codex_home.path(),
+            hepta_home.path(),
             /*api_key*/ None,
             jwt_for_account("new-account"),
             "new-access".to_string(),
@@ -1243,7 +1243,7 @@ mod tests {
         )
         .await?;
 
-        let auth = load_auth_dot_json(codex_home.path(), AuthCredentialsStoreMode::File)?
+        let auth = load_auth_dot_json(hepta_home.path(), AuthCredentialsStoreMode::File)?
             .context("auth.json should exist after login")?;
         assert_eq!(
             auth.tokens.context("new tokens should be persisted")?,
@@ -1286,15 +1286,15 @@ mod tests {
             format!("{}/oauth/revoke", server.uri()),
         );
 
-        let codex_home = tempdir()?;
+        let hepta_home = tempdir()?;
         save_auth(
-            codex_home.path(),
+            hepta_home.path(),
             &chatgpt_auth("old-access", "shared-refresh", "old-account"),
             AuthCredentialsStoreMode::File,
         )?;
 
         persist_tokens_async(
-            codex_home.path(),
+            hepta_home.path(),
             /*api_key*/ None,
             jwt_for_account("new-account"),
             "new-access".to_string(),
