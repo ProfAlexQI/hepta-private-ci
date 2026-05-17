@@ -9,6 +9,7 @@ const LEGACY_RUNTIME_SLUG: &str = "openclaw";
 const LEGACY_CONFIG_FILE_NAME: &str = "openclaw.json";
 const LOCAL_IMPORT_CONFIG_PATH: &str = ".hepta/local-import/private/config/openclaw.json";
 const LOCAL_IMPORT_MANIFEST_PATH: &str = ".hepta/local-import/manifest.json";
+const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
 const TELEGRAM_ALLOWED_UPDATES: &str =
     "[\"message\",\"edited_message\",\"callback_query\",\"message_reaction\"]";
 
@@ -31,6 +32,7 @@ pub(crate) struct NativeTelegramPluginStatus {
     pub(crate) config: NativeTelegramConfigStatus,
     pub(crate) transport_plan: NativeTelegramTransportPlan,
     pub(crate) ingress_parser: NativeTelegramIngressInspection,
+    pub(crate) cursor_plan: NativeTelegramCursorPlan,
     pub(crate) migration_blocker: Option<&'static str>,
     pub(crate) next_migration_slice: &'static str,
 }
@@ -78,6 +80,7 @@ pub(crate) struct NativeTelegramIngressInspection {
     pub(crate) allowed_update_count: usize,
     pub(crate) latest_observed_update_id: Option<i64>,
     pub(crate) latest_allowed_update_id: Option<i64>,
+    pub(crate) latest_allowed_next_update_offset: Option<i64>,
     pub(crate) latest_allowed_text_present: bool,
     pub(crate) message_count: usize,
     pub(crate) edited_message_count: usize,
@@ -86,6 +89,16 @@ pub(crate) struct NativeTelegramIngressInspection {
     pub(crate) raw_message_text_exposed: bool,
     pub(crate) raw_chat_id_exposed: bool,
     pub(crate) raw_sender_id_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramCursorPlan {
+    pub(crate) cursor_path: &'static str,
+    pub(crate) duplicate_suppression_ready: bool,
+    pub(crate) duplicate_suppression_rule_valid: bool,
+    pub(crate) cursor_represents_next_update_offset: bool,
+    pub(crate) commit_offset_after_delivery: bool,
+    pub(crate) raw_update_payload_persisted: bool,
 }
 
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
@@ -108,6 +121,7 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
             config: NativeTelegramConfigStatus::disabled(),
             transport_plan: NativeTelegramTransportPlan::disabled(),
             ingress_parser: inspect_telegram_updates(&[]),
+            cursor_plan: NativeTelegramCursorPlan::disabled(),
             migration_blocker: None,
             next_migration_slice: "enable --with-telegram-plugin, then wire Bot API polling and model-turn delivery",
         };
@@ -140,6 +154,7 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
         transport_plan: NativeTelegramTransportPlan::for_config(&config),
         config,
         ingress_parser: inspect_telegram_updates(&[]),
+        cursor_plan: NativeTelegramCursorPlan::ready(),
         migration_blocker: Some(
             "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
         ),
@@ -429,6 +444,7 @@ fn inspect_telegram_updates(updates: &[Value]) -> NativeTelegramIngressInspectio
         allowed_update_count: 0,
         latest_observed_update_id: None,
         latest_allowed_update_id: None,
+        latest_allowed_next_update_offset: None,
         latest_allowed_text_present: false,
         message_count: 0,
         edited_message_count: 0,
@@ -481,6 +497,8 @@ fn inspect_telegram_updates(updates: &[Value]) -> NativeTelegramIngressInspectio
                         .map(|current| current.max(update_id))
                         .unwrap_or(update_id),
                 );
+                inspection.latest_allowed_next_update_offset =
+                    telegram_next_update_offset(update_id);
             }
             inspection.latest_allowed_text_present |= text_present;
         }
@@ -511,6 +529,16 @@ fn telegram_message_text_present(message: &Value) -> bool {
             .unwrap_or(false)
 }
 
+fn telegram_update_already_drained(update_id: i64, next_update_offset: Option<i64>) -> bool {
+    next_update_offset
+        .map(|cursor| update_id < cursor)
+        .unwrap_or(false)
+}
+
+fn telegram_next_update_offset(update_id: i64) -> Option<i64> {
+    update_id.checked_add(1)
+}
+
 impl NativeTelegramConfigStatus {
     fn disabled() -> Self {
         Self {
@@ -531,6 +559,31 @@ impl NativeTelegramConfigStatus {
             raw_token_exposed: false,
             binding_ready: false,
             error: None,
+        }
+    }
+}
+
+impl NativeTelegramCursorPlan {
+    fn disabled() -> Self {
+        Self {
+            cursor_path: TELEGRAM_INGRESS_CURSOR_PATH,
+            duplicate_suppression_ready: false,
+            duplicate_suppression_rule_valid: true,
+            cursor_represents_next_update_offset: true,
+            commit_offset_after_delivery: false,
+            raw_update_payload_persisted: false,
+        }
+    }
+
+    fn ready() -> Self {
+        Self {
+            cursor_path: TELEGRAM_INGRESS_CURSOR_PATH,
+            duplicate_suppression_ready: true,
+            duplicate_suppression_rule_valid: telegram_update_already_drained(41, Some(42))
+                && !telegram_update_already_drained(42, Some(42)),
+            cursor_represents_next_update_offset: true,
+            commit_offset_after_delivery: true,
+            raw_update_payload_persisted: false,
         }
     }
 }
@@ -659,6 +712,7 @@ mod tests {
             transport_plan: NativeTelegramTransportPlan::for_config(&config),
             config,
             ingress_parser: inspect_telegram_updates(&[]),
+            cursor_plan: NativeTelegramCursorPlan::ready(),
             migration_blocker: Some(
                 "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
             ),
@@ -674,6 +728,8 @@ mod tests {
         assert!(!plugin.transport_plan.raw_token_exposed);
         assert!(plugin.ingress_parser.parser_ready);
         assert!(!plugin.ingress_parser.raw_message_text_exposed);
+        assert!(plugin.cursor_plan.duplicate_suppression_ready);
+        assert!(plugin.cursor_plan.commit_offset_after_delivery);
     }
 
     #[test]
@@ -694,6 +750,7 @@ mod tests {
         assert_eq!(inspection.allowed_update_count, 1);
         assert_eq!(inspection.latest_observed_update_id, Some(42));
         assert_eq!(inspection.latest_allowed_update_id, Some(42));
+        assert_eq!(inspection.latest_allowed_next_update_offset, Some(43));
         assert!(inspection.latest_allowed_text_present);
 
         let serialized = serde_json::to_string(&inspection).expect("serialize");
@@ -702,5 +759,14 @@ mod tests {
         assert!(!inspection.raw_message_text_exposed);
         assert!(!inspection.raw_chat_id_exposed);
         assert!(!inspection.raw_sender_id_exposed);
+    }
+
+    #[test]
+    fn cursor_helpers_treat_cursor_as_next_update_offset() {
+        assert!(!telegram_update_already_drained(41, None));
+        assert!(telegram_update_already_drained(41, Some(42)));
+        assert!(!telegram_update_already_drained(42, Some(42)));
+        assert_eq!(telegram_next_update_offset(42), Some(43));
+        assert_eq!(telegram_next_update_offset(i64::MAX), None);
     }
 }

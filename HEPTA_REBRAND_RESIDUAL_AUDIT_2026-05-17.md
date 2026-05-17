@@ -727,6 +727,10 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - A native redacted ingress parser is now present for Telegram
   `getUpdates` payloads. It counts allowed update classes and offset ids but
   deliberately does not surface message text, raw chat ids, or raw sender ids.
+- Cursor semantics are now fixed in the status contract: the cursor represents
+  the next Telegram update offset, duplicate suppression treats
+  `update_id < cursor` as already drained, and the status contract keeps raw
+  update payload persistence disabled.
 
 ## Keep for compatibility
 
