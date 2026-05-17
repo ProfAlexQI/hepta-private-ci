@@ -232,6 +232,7 @@ pub(crate) struct NativeTelegramDrainOnceStatus {
     pub(crate) invocation_request: NativeTelegramModelInvocationRequestPlan,
     pub(crate) send_plan: NativeTelegramSendPlan,
     pub(crate) send_request: NativeTelegramSendRequestPlan,
+    pub(crate) send_execution: NativeTelegramSendExecutionReport,
     pub(crate) bot_api_ok: Option<bool>,
     pub(crate) local_next_update_offset: Option<i64>,
     pub(crate) live_read_started: bool,
@@ -410,6 +411,30 @@ pub(crate) struct NativeTelegramSendRequestPlan {
     pub(crate) raw_chat_id_exposed: bool,
     pub(crate) raw_message_id_exposed: bool,
     pub(crate) raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramSendExecutionReport {
+    pub(crate) status: &'static str,
+    pub(crate) execution_ready: bool,
+    pub(crate) send_gate_env: &'static str,
+    pub(crate) send_gate_enabled: bool,
+    pub(crate) model_output_present: bool,
+    pub(crate) reply_target_available: bool,
+    pub(crate) candidate_next_update_offset: Option<i64>,
+    pub(crate) send_allowed: bool,
+    pub(crate) send_attempted: bool,
+    pub(crate) bot_api_ack: Option<bool>,
+    pub(crate) cursor_commit_attempted: bool,
+    pub(crate) cursor_written: bool,
+    pub(crate) request_body_materialized_by_execution: bool,
+    pub(crate) external_network_write: bool,
+    pub(crate) external_send: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
+    pub(crate) error: Option<String>,
 }
 
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
@@ -726,7 +751,6 @@ fn parse_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
     }
 }
 
-#[cfg(test)]
 fn write_telegram_cursor_next_update_offset(path: &Path, offset: i64) -> Result<(), String> {
     if offset < 0 {
         return Err("Telegram cursor next_update_offset must be non-negative".to_string());
@@ -783,6 +807,11 @@ fn telegram_drain_once_status_with_gates(
         build_telegram_send_request_plan(None, false, None, gates.send_gate_enabled)
     } else {
         NativeTelegramSendRequestPlan::disabled(gates.send_gate_enabled)
+    };
+    let send_execution = if requested {
+        NativeTelegramSendExecutionReport::from_send_request(&send_request)
+    } else {
+        NativeTelegramSendExecutionReport::disabled(gates.send_gate_enabled)
     };
     let first_missing_gate = first_missing_drain_once_gate(&gates);
     let all_required_gates_enabled = requested && first_missing_gate.is_none();
@@ -886,6 +915,7 @@ fn telegram_drain_once_status_with_gates(
         invocation_request,
         send_plan,
         send_request,
+        send_execution,
         bot_api_ok,
         local_next_update_offset,
         live_read_started,
@@ -1610,12 +1640,7 @@ fn inspect_telegram_updates(updates: &[Value]) -> NativeTelegramIngressInspectio
 }
 
 fn telegram_message_is_reply_candidate(message: &Value) -> bool {
-    message
-        .get("chat")
-        .and_then(|chat| chat.get("id"))
-        .is_some()
-        && message.get("message_id").is_some()
-        && telegram_message_text_present(message)
+    telegram_message_has_reply_target(message) && telegram_message_text_present(message)
 }
 
 fn telegram_message_text_present(message: &Value) -> bool {
@@ -1680,7 +1705,15 @@ struct NativeTelegramCandidateMaterial {
     kind: String,
     prompt_text: Option<String>,
     has_reply_target: bool,
+    reply_target: Option<NativeTelegramReplyTargetMaterial>,
     requires_model: bool,
+    raw_identifiers_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeTelegramReplyTargetMaterial {
+    chat_id: i64,
+    reply_to_message_id: Option<i64>,
     raw_identifiers_exposed: bool,
 }
 
@@ -1762,6 +1795,115 @@ fn build_telegram_send_request_plan(
     )
 }
 
+#[derive(Debug, Clone, Copy)]
+struct NativeTelegramSendExecutionInput<'a> {
+    token: Option<&'a str>,
+    model_output: Option<&'a str>,
+    reply_target: Option<&'a NativeTelegramReplyTargetMaterial>,
+    candidate_next_update_offset: Option<i64>,
+    send_gate_enabled: bool,
+    cursor_path: &'a Path,
+}
+
+#[allow(dead_code)]
+fn execute_telegram_send_after_model_output<F>(
+    input: NativeTelegramSendExecutionInput<'_>,
+    send_message: F,
+) -> NativeTelegramSendExecutionReport
+where
+    F: FnOnce(&str, i64, &str, Option<i64>) -> Result<Value, String>,
+{
+    let model_output = input
+        .model_output
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let request = build_telegram_send_request_plan(
+        model_output,
+        input.reply_target.is_some(),
+        input.candidate_next_update_offset,
+        input.send_gate_enabled,
+    );
+    let mut report = NativeTelegramSendExecutionReport::from_send_request(&request);
+
+    if !input.send_gate_enabled {
+        report.error = Some(format!(
+            "Telegram send execution is gated by {}",
+            TELEGRAM_SEND_GATE_ENV
+        ));
+        return report;
+    }
+    let Some(model_output) = model_output else {
+        report.error = Some("Telegram send execution requires non-empty model output".to_string());
+        return report;
+    };
+    let Some(reply_target) = input.reply_target else {
+        report.error = Some("Telegram send execution requires an opaque reply target".to_string());
+        return report;
+    };
+    let Some(candidate_next_update_offset) = input.candidate_next_update_offset else {
+        report.error =
+            Some("Telegram send execution requires a candidate next-update offset".to_string());
+        return report;
+    };
+    let Some(token) = input
+        .token
+        .map(str::trim)
+        .filter(|token| token_shape_ok(token))
+    else {
+        report.status = "attention";
+        report.error = Some("Telegram send execution requires a valid Bot API token".to_string());
+        return report;
+    };
+
+    report.status = "sending";
+    report.request_body_materialized_by_execution = true;
+    report.send_attempted = true;
+    report.external_network_write = true;
+
+    match send_message(
+        token,
+        reply_target.chat_id,
+        model_output,
+        reply_target.reply_to_message_id,
+    ) {
+        Ok(api) => {
+            let ok = api.get("ok").and_then(Value::as_bool).unwrap_or(false);
+            report.bot_api_ack = Some(ok);
+            if !ok {
+                report.status = "attention";
+                report.error = api
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(redact_token_like_text)
+                    .or_else(|| Some("Telegram Bot API sendMessage returned ok=false".to_string()));
+                return report;
+            }
+
+            report.external_send = true;
+            report.cursor_commit_attempted = true;
+            match write_telegram_cursor_next_update_offset(
+                input.cursor_path,
+                candidate_next_update_offset,
+            ) {
+                Ok(()) => {
+                    report.status = "delivered";
+                    report.cursor_written = true;
+                }
+                Err(error) => {
+                    report.status = "attention";
+                    report.error = Some(redact_token_like_text(&error));
+                }
+            }
+        }
+        Err(error) => {
+            report.status = "attention";
+            report.error = Some(redact_token_like_text(&error));
+        }
+    }
+
+    report
+}
+
 fn extract_telegram_candidate_material(update: &Value) -> Option<NativeTelegramCandidateMaterial> {
     let update_id = update.get("update_id").and_then(Value::as_i64);
     if let Some(message) = update.get("message") {
@@ -1771,6 +1913,9 @@ fn extract_telegram_candidate_material(update: &Value) -> Option<NativeTelegramC
         return telegram_message_prompt_material(update_id, "edited_message", message);
     }
     if let Some(callback) = update.get("callback_query") {
+        let reply_target = callback
+            .get("message")
+            .and_then(telegram_message_reply_target_material);
         return Some(NativeTelegramCandidateMaterial {
             update_id,
             kind: "callback_query:redacted".to_string(),
@@ -1780,10 +1925,8 @@ fn extract_telegram_candidate_material(update: &Value) -> Option<NativeTelegramC
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(ToOwned::to_owned),
-            has_reply_target: callback
-                .get("message")
-                .map(telegram_message_has_reply_target)
-                .unwrap_or(false),
+            has_reply_target: reply_target.is_some(),
+            reply_target,
             requires_model: true,
             raw_identifiers_exposed: false,
         });
@@ -1794,6 +1937,7 @@ fn extract_telegram_candidate_material(update: &Value) -> Option<NativeTelegramC
             kind: "message_reaction:redacted".to_string(),
             prompt_text: None,
             has_reply_target: false,
+            reply_target: None,
             requires_model: false,
             raw_identifiers_exposed: false,
         });
@@ -1807,11 +1951,13 @@ fn telegram_message_prompt_material(
     message: &Value,
 ) -> Option<NativeTelegramCandidateMaterial> {
     let (kind, prompt_text) = telegram_message_prompt_kind_and_text(message)?;
+    let reply_target = telegram_message_reply_target_material(message);
     Some(NativeTelegramCandidateMaterial {
         update_id,
         kind: format!("{prefix}:{kind}"),
         prompt_text: Some(prompt_text),
-        has_reply_target: telegram_message_has_reply_target(message),
+        has_reply_target: reply_target.is_some(),
+        reply_target,
         requires_model: true,
         raw_identifiers_exposed: false,
     })
@@ -1836,11 +1982,22 @@ fn telegram_message_prompt_kind_and_text(message: &Value) -> Option<(&'static st
 }
 
 fn telegram_message_has_reply_target(message: &Value) -> bool {
-    message
-        .get("chat")
-        .and_then(|chat| chat.get("id"))
-        .is_some()
-        && message.get("message_id").is_some()
+    telegram_message_reply_target_material(message).is_some()
+}
+
+fn telegram_message_reply_target_material(
+    message: &Value,
+) -> Option<NativeTelegramReplyTargetMaterial> {
+    let chat_id = message.get("chat")?.get("id")?.as_i64()?;
+    let reply_to_message_id = message
+        .get("message_id")
+        .and_then(Value::as_i64)
+        .filter(|message_id| *message_id > 0)?;
+    Some(NativeTelegramReplyTargetMaterial {
+        chat_id,
+        reply_to_message_id: Some(reply_to_message_id),
+        raw_identifiers_exposed: false,
+    })
 }
 
 impl NativeTelegramConfigStatus {
@@ -2183,7 +2340,10 @@ impl NativeTelegramSendRequestPlan {
             .map(str::trim)
             .map(|value| !value.is_empty())
             .unwrap_or(false);
-        let send_allowed = send_gate_enabled && model_output_present && reply_target_available;
+        let send_allowed = send_gate_enabled
+            && model_output_present
+            && reply_target_available
+            && candidate_next_update_offset.is_some();
         Self {
             request_builder_ready: true,
             model_output_present,
@@ -2200,6 +2360,74 @@ impl NativeTelegramSendRequestPlan {
             raw_chat_id_exposed: false,
             raw_message_id_exposed: false,
             raw_token_exposed: false,
+        }
+    }
+}
+
+impl NativeTelegramSendExecutionReport {
+    fn disabled(send_gate_enabled: bool) -> Self {
+        Self {
+            status: "disabled",
+            execution_ready: false,
+            send_gate_env: TELEGRAM_SEND_GATE_ENV,
+            send_gate_enabled,
+            model_output_present: false,
+            reply_target_available: false,
+            candidate_next_update_offset: None,
+            send_allowed: false,
+            send_attempted: false,
+            bot_api_ack: None,
+            cursor_commit_attempted: false,
+            cursor_written: false,
+            request_body_materialized_by_execution: false,
+            external_network_write: false,
+            external_send: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+            error: None,
+        }
+    }
+
+    fn from_send_request(request: &NativeTelegramSendRequestPlan) -> Self {
+        let status = if !request.request_builder_ready {
+            "disabled"
+        } else if !request.send_gate_enabled {
+            "gated"
+        } else if !request.model_output_present {
+            "waiting_model_output"
+        } else if !request.reply_target_available {
+            "waiting_reply_target"
+        } else if request.candidate_next_update_offset.is_none() {
+            "waiting_cursor_offset"
+        } else if request.send_allowed {
+            "ready"
+        } else {
+            "attention"
+        };
+
+        Self {
+            status,
+            execution_ready: request.request_builder_ready,
+            send_gate_env: request.send_gate_env,
+            send_gate_enabled: request.send_gate_enabled,
+            model_output_present: request.model_output_present,
+            reply_target_available: request.reply_target_available,
+            candidate_next_update_offset: request.candidate_next_update_offset,
+            send_allowed: request.send_allowed,
+            send_attempted: false,
+            bot_api_ack: None,
+            cursor_commit_attempted: false,
+            cursor_written: false,
+            request_body_materialized_by_execution: false,
+            external_network_write: false,
+            external_send: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+            error: None,
         }
     }
 }
@@ -2537,6 +2765,10 @@ mod tests {
             Some("private prompt text")
         );
         assert!(candidate.has_reply_target);
+        let reply_target = candidate.reply_target.as_ref().expect("reply target");
+        assert_eq!(reply_target.chat_id, 6476198178);
+        assert_eq!(reply_target.reply_to_message_id, Some(9));
+        assert!(!reply_target.raw_identifiers_exposed);
         assert!(candidate.requires_model);
         assert!(!candidate.raw_identifiers_exposed);
 
@@ -2568,6 +2800,10 @@ mod tests {
             Some("button_secret_payload")
         );
         assert!(candidate.has_reply_target);
+        let reply_target = candidate.reply_target.as_ref().expect("reply target");
+        assert_eq!(reply_target.chat_id, 6476198178);
+        assert_eq!(reply_target.reply_to_message_id, Some(10));
+        assert!(!reply_target.raw_identifiers_exposed);
         assert!(candidate.requires_model);
         assert!(!candidate.raw_identifiers_exposed);
 
@@ -2752,6 +2988,13 @@ mod tests {
         assert!(!without_reply_target.send_allowed);
         assert!(!without_reply_target.cursor_commit_allowed_after_delivery);
 
+        let without_offset =
+            build_telegram_send_request_plan(Some("private model response text"), true, None, true);
+        assert!(without_offset.model_output_present);
+        assert!(without_offset.reply_target_available);
+        assert!(!without_offset.send_allowed);
+        assert!(!without_offset.cursor_commit_allowed_after_delivery);
+
         let allowed = build_telegram_send_request_plan(
             Some("private model response text"),
             true,
@@ -2815,6 +3058,136 @@ mod tests {
     }
 
     #[test]
+    fn send_execution_commits_cursor_only_after_bot_api_ack() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("cursor.json");
+        let reply_target = NativeTelegramReplyTargetMaterial {
+            chat_id: 6476198178_i64,
+            reply_to_message_id: Some(11),
+            raw_identifiers_exposed: false,
+        };
+        let token = "123456:ABCDEFGHIJKLMNOPQRSTUVWX";
+
+        let report = execute_telegram_send_after_model_output(
+            NativeTelegramSendExecutionInput {
+                token: Some(token),
+                model_output: Some("  private model response text  "),
+                reply_target: Some(&reply_target),
+                candidate_next_update_offset: Some(50),
+                send_gate_enabled: true,
+                cursor_path: &cursor_path,
+            },
+            |observed_token, chat_id, text, reply_to_message_id| {
+                assert_eq!(observed_token, token);
+                assert_eq!(chat_id, 6476198178_i64);
+                assert_eq!(text, "private model response text");
+                assert_eq!(reply_to_message_id, Some(11));
+                Ok(serde_json::json!({
+                    "ok": true,
+                    "result": { "message_id": 99 }
+                }))
+            },
+        );
+
+        assert_eq!(report.status, "delivered");
+        assert!(report.execution_ready);
+        assert!(report.send_gate_enabled);
+        assert!(report.model_output_present);
+        assert!(report.reply_target_available);
+        assert_eq!(report.candidate_next_update_offset, Some(50));
+        assert!(report.send_allowed);
+        assert!(report.send_attempted);
+        assert_eq!(report.bot_api_ack, Some(true));
+        assert!(report.cursor_commit_attempted);
+        assert!(report.cursor_written);
+        assert!(report.request_body_materialized_by_execution);
+        assert!(report.external_network_write);
+        assert!(report.external_send);
+        assert!(!report.raw_response_text_exposed);
+        assert!(!report.raw_chat_id_exposed);
+        assert!(!report.raw_message_id_exposed);
+        assert!(!report.raw_token_exposed);
+        assert_eq!(report.error, None);
+
+        let cursor = telegram_cursor_status_from_path(&cursor_path);
+        assert_eq!(cursor.next_update_offset, Some(50));
+        let serialized = serde_json::to_string(&report).expect("serialize");
+        assert!(!serialized.contains("private model response text"));
+        assert!(!serialized.contains("6476198178"));
+        assert!(!serialized.contains(token));
+    }
+
+    #[test]
+    fn send_execution_keeps_cursor_uncommitted_on_send_failure() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("cursor.json");
+        let reply_target = NativeTelegramReplyTargetMaterial {
+            chat_id: 6476198178_i64,
+            reply_to_message_id: Some(11),
+            raw_identifiers_exposed: false,
+        };
+
+        let report =
+            execute_telegram_send_after_model_output(
+                NativeTelegramSendExecutionInput {
+                    token: Some("123456:ABCDEFGHIJKLMNOPQRSTUVWX"),
+                    model_output: Some("private model response text"),
+                    reply_target: Some(&reply_target),
+                    candidate_next_update_offset: Some(50),
+                    send_gate_enabled: true,
+                    cursor_path: &cursor_path,
+                },
+                |_, _, _, _| {
+                    Err("Telegram Bot API sendMessage HTTP status 500; description=temporary outage"
+                    .to_string())
+                },
+            );
+
+        assert_eq!(report.status, "attention");
+        assert!(report.send_attempted);
+        assert_eq!(report.bot_api_ack, None);
+        assert!(!report.cursor_commit_attempted);
+        assert!(!report.cursor_written);
+        assert!(report.external_network_write);
+        assert!(!report.external_send);
+        assert!(report.error.unwrap().contains("temporary outage"));
+        assert!(!cursor_path.exists());
+    }
+
+    #[test]
+    fn send_execution_requires_gate_before_network_write() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("cursor.json");
+        let reply_target = NativeTelegramReplyTargetMaterial {
+            chat_id: 6476198178_i64,
+            reply_to_message_id: Some(11),
+            raw_identifiers_exposed: false,
+        };
+
+        let report = execute_telegram_send_after_model_output(
+            NativeTelegramSendExecutionInput {
+                token: Some("123456:ABCDEFGHIJKLMNOPQRSTUVWX"),
+                model_output: Some("private model response text"),
+                reply_target: Some(&reply_target),
+                candidate_next_update_offset: Some(50),
+                send_gate_enabled: false,
+                cursor_path: &cursor_path,
+            },
+            |_, _, _, _| panic!("sendMessage must not run while gated"),
+        );
+
+        assert_eq!(report.status, "gated");
+        assert!(!report.send_allowed);
+        assert!(!report.send_attempted);
+        assert!(!report.cursor_commit_attempted);
+        assert!(!report.cursor_written);
+        assert!(!report.external_network_write);
+        assert!(!report.external_send);
+        assert!(report.error.unwrap().contains(TELEGRAM_SEND_GATE_ENV));
+        assert!(!cursor_path.exists());
+    }
+
+    #[test]
     fn drain_once_without_gates_stops_before_side_effects() {
         let gates = NativeTelegramGatewayGateSummary {
             live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
@@ -2850,6 +3223,9 @@ mod tests {
         assert!(status.send_request.request_builder_ready);
         assert!(!status.send_request.model_output_present);
         assert!(!status.send_request.send_allowed);
+        assert_eq!(status.send_execution.status, "gated");
+        assert!(!status.send_execution.send_attempted);
+        assert!(!status.send_execution.cursor_written);
         assert!(!status.live_read_started);
         assert!(!status.model_turn_started);
         assert!(!status.send_started);
@@ -2892,6 +3268,8 @@ mod tests {
         assert!(status.invocation_request.model_turn_gate_enabled);
         assert!(!status.invocation_request.runner_invocation_allowed);
         assert!(status.send_plan.send_plan_ready);
+        assert_eq!(status.send_execution.status, "waiting_model_output");
+        assert!(!status.send_execution.send_attempted);
         assert!(!status.live_read_started);
         assert!(!status.model_turn_started);
         assert!(!status.send_started);

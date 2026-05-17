@@ -804,6 +804,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `reply_parameters`, no parse mode, disabled web previews, and fail-closed
   validation for empty text or invalid reply ids. The Bot API send helper is
   present but not called by readiness/status probes.
+- Telegram send execution now has a gated ack-to-cursor contract: the execution
+  report stays side-effect-free for status probes, requires
+  `HEPTA_NATIVE_TELEGRAM_SEND=1`, non-empty model output, an opaque reply
+  target, and a candidate next-update offset, and only writes the ingress
+  cursor after a successful Bot API `sendMessage` acknowledgement.
 
 ## Keep for compatibility
 
