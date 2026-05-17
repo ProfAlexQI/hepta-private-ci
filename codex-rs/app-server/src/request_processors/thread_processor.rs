@@ -13,12 +13,12 @@ const PERSIST_EXTENDED_HISTORY_DEPRECATION_DETAILS: &str =
 fn skip_auto_attach_listener_for_test_client(client_name: Option<&str>) -> bool {
     matches!(
         client_name,
-        Some("codex-tui-test" | "codex-app-server-client-test")
+        Some("hepta-tui-test" | "codex-tui-test" | "codex-app-server-client-test")
     )
 }
 
 fn fail_running_resume_for_test_client(client_name: Option<&str>) -> bool {
-    matches!(client_name, Some("codex-tui-test"))
+    matches!(client_name, Some("hepta-tui-test" | "codex-tui-test"))
 }
 
 struct ThreadListFilters {

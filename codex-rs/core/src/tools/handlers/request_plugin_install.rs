@@ -104,10 +104,13 @@ impl ToolExecutor<ToolInvocation> for RequestPluginInstallHandler {
             ));
         }
         if args.tool_type == DiscoverableToolType::Plugin
-            && turn.app_server_client_name.as_deref() == Some("codex-tui")
+            && matches!(
+                turn.app_server_client_name.as_deref(),
+                Some("hepta-tui" | "codex-tui")
+            )
         {
             return Err(FunctionCallError::RespondToModel(
-                "plugin install requests are not available in codex-tui yet".to_string(),
+                "plugin install requests are not available in Hepta TUI yet".to_string(),
             ));
         }
 

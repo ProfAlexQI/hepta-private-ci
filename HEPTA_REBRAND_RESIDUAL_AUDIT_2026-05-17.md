@@ -623,6 +623,18 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   compatibility helper because it already resolves the active Hepta home while
   preserving legacy `CODEX_HOME` fallback behavior.
 
+## Cleaned in TUI client-identity pass
+
+- Embedded and remote TUI app-server sessions now identify the local client as
+  `hepta-tui` instead of `codex-tui`.
+- IDE-context IPC requests now send source client id `hepta-tui`.
+- TUI file logging now writes `hepta-tui.log` instead of `codex-tui.log`.
+- Plugin-install discovery and app-server test-client guards accept both
+  `hepta-tui` and legacy `codex-tui` client ids, preserving behavior for
+  existing clients while making the active fork use the Hepta identity.
+- The plugin-install rejection copy shown to the model now names Hepta TUI
+  instead of codex-tui.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

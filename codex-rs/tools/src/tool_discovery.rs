@@ -2,7 +2,8 @@ use codex_app_server_protocol::AppInfo;
 use serde::Deserialize;
 use serde::Serialize;
 
-const TUI_CLIENT_NAME: &str = "codex-tui";
+const HEPTA_TUI_CLIENT_NAME: &str = "hepta-tui";
+const LEGACY_CODEX_TUI_CLIENT_NAME: &str = "codex-tui";
 pub const TOOL_SEARCH_TOOL_NAME: &str = "tool_search";
 pub const TOOL_SEARCH_DEFAULT_LIMIT: usize = 8;
 pub const REQUEST_PLUGIN_INSTALL_TOOL_NAME: &str = "request_plugin_install";
@@ -79,7 +80,10 @@ pub fn filter_request_plugin_install_discoverable_tools_for_client(
     discoverable_tools: Vec<DiscoverableTool>,
     app_server_client_name: Option<&str>,
 ) -> Vec<DiscoverableTool> {
-    if app_server_client_name != Some(TUI_CLIENT_NAME) {
+    if !matches!(
+        app_server_client_name,
+        Some(HEPTA_TUI_CLIENT_NAME | LEGACY_CODEX_TUI_CLIENT_NAME)
+    ) {
         return discoverable_tools;
     }
 

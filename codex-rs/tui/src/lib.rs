@@ -1,5 +1,5 @@
 // Forbid accidental stdout/stderr writes in the *library* portion of the TUI.
-// The standalone `codex-tui` binary prints a short help message before the
+// The standalone TUI binary prints a short help message before the
 // alternate‑screen mode starts; that file opts‑out locally via `allow`.
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 #![deny(clippy::disallowed_methods)]
@@ -303,7 +303,7 @@ async fn start_embedded_app_server(
         log_db,
         state_db,
         environment_manager,
-        "codex-tui",
+        "hepta-tui",
         InProcessAppServerClient::start,
     )
     .await
@@ -422,7 +422,7 @@ async fn connect_remote_app_server(
 ) -> color_eyre::Result<AppServerClient> {
     let app_server = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
         endpoint,
-        client_name: "codex-tui".to_string(),
+        client_name: "hepta-tui".to_string(),
         client_version: env!("CARGO_PKG_VERSION").to_string(),
         experimental_api: true,
         opt_out_notification_methods: Vec::new(),
@@ -539,7 +539,7 @@ pub(crate) async fn start_embedded_app_server_for_picker(
         /*log_db*/ None,
         state_db,
         Arc::new(EnvironmentManager::default_for_tests()),
-        "codex-tui-test",
+        "hepta-tui-test",
         InProcessAppServerClient::start,
     )
     .await?;
@@ -1116,7 +1116,7 @@ pub async fn run_main(
         log_file_opts.mode(0o600);
     }
 
-    let log_file = log_file_opts.open(log_dir.join("codex-tui.log"))?;
+    let log_file = log_file_opts.open(log_dir.join("hepta-tui.log"))?;
 
     // Wrap file in non‑blocking writer.
     let (non_blocking, _guard) = non_blocking(log_file);
@@ -1863,7 +1863,7 @@ mod tests {
             /*log_db*/ None,
             state_db,
             Arc::new(EnvironmentManager::default_for_tests()),
-            "codex-tui-test",
+            "hepta-tui-test",
             InProcessAppServerClient::start,
         )
         .await
@@ -2450,7 +2450,7 @@ mod tests {
             /*log_db*/ None,
             /*state_db*/ None,
             Arc::new(EnvironmentManager::default_for_tests()),
-            "codex-tui-test",
+            "hepta-tui-test",
             |_args| async { Err(std::io::Error::other("boom")) },
         )
         .await;
