@@ -674,6 +674,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Plugin analytics delivery tests now explicitly opt in before asserting
   hosted compatibility events, matching Hepta's default no-export policy.
 
+## Cleaned in exec / sandbox visible wording pass
+
+- Non-interactive exec startup now reports `Hepta home` if runtime-home
+  resolution fails.
+- Linux bubblewrap fallback warnings no longer point users at upstream Codex
+  sandboxing documentation; the warning now stays local and actionable.
+- App-server test-client websocket connection failures now suggest
+  `hepta app-server --listen <url>` as the primary server startup command.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
