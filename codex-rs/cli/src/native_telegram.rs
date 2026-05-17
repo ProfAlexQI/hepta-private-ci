@@ -230,6 +230,8 @@ pub(crate) struct NativeTelegramDrainOnceStatus {
     pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
     pub(crate) invocation_request: NativeTelegramModelInvocationRequestPlan,
     pub(crate) send_plan: NativeTelegramSendPlan,
+    pub(crate) bot_api_ok: Option<bool>,
+    pub(crate) local_next_update_offset: Option<i64>,
     pub(crate) live_read_started: bool,
     pub(crate) model_turn_started: bool,
     pub(crate) send_started: bool,
@@ -741,13 +743,13 @@ fn telegram_drain_once_status_with_gates(
     } else {
         NativeTelegramCursorPlan::disabled()
     };
-    let inspection = inspect_telegram_updates(&[]);
-    let model_turn_plan = if requested {
+    let mut inspection = inspect_telegram_updates(&[]);
+    let mut model_turn_plan = if requested {
         plan_model_turn_for_updates(&[])
     } else {
         NativeTelegramModelTurnPlan::disabled()
     };
-    let invocation_request = if requested {
+    let mut invocation_request = if requested {
         build_model_invocation_request_plan(&[], None, gates.model_turn_gate_enabled)
     } else {
         NativeTelegramModelInvocationRequestPlan::disabled(gates.model_turn_gate_enabled)
@@ -759,14 +761,15 @@ fn telegram_drain_once_status_with_gates(
     };
     let first_missing_gate = first_missing_drain_once_gate(&gates);
     let all_required_gates_enabled = requested && first_missing_gate.is_none();
-    let status = if !requested {
+    let status_probe_executes_pipeline = requested && gates.live_read_gate_enabled;
+    let mut status = if !requested {
         "disabled"
     } else if all_required_gates_enabled {
         "planned"
     } else {
         "gated"
     };
-    let error = if requested {
+    let mut error = if requested {
         first_missing_gate.map(|gate| {
             format!(
                 "Telegram drain-once pipeline is gated before side effects; first missing gate: {gate}"
@@ -775,6 +778,65 @@ fn telegram_drain_once_status_with_gates(
     } else {
         None
     };
+    let mut bot_api_ok = None;
+    let mut local_next_update_offset = None;
+    let mut live_read_started = false;
+    let mut external_network_read = false;
+
+    if requested && gates.live_read_gate_enabled {
+        let cursor_status =
+            telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH));
+        if !(config.enabled && config.token_shape_ok && config.binding_ready) {
+            status = "attention";
+            error = Some("Telegram config, token shape, or binding is not ready".to_string());
+        } else {
+            match load_effective_telegram_token() {
+                Ok(token) => {
+                    live_read_started = true;
+                    external_network_read = true;
+                    match call_telegram_get_updates(&token, 20) {
+                        Ok(api) => {
+                            bot_api_ok = api.get("ok").and_then(Value::as_bool);
+                            let updates = api
+                                .get("result")
+                                .and_then(Value::as_array)
+                                .cloned()
+                                .unwrap_or_default();
+                            inspection = inspect_telegram_updates(&updates);
+                            local_next_update_offset = inspection.latest_allowed_next_update_offset;
+                            model_turn_plan = plan_model_turn_for_updates(&updates);
+                            invocation_request = build_model_invocation_request_plan(
+                                &updates,
+                                cursor_status.next_update_offset,
+                                gates.model_turn_gate_enabled,
+                            );
+                            if bot_api_ok == Some(false) {
+                                status = "attention";
+                                error = api
+                                    .get("description")
+                                    .and_then(Value::as_str)
+                                    .map(redact_token_like_text)
+                                    .or_else(|| {
+                                        Some(
+                                            "Telegram Bot API getUpdates returned ok=false"
+                                                .to_string(),
+                                        )
+                                    });
+                            }
+                        }
+                        Err(fetch_error) => {
+                            status = "attention";
+                            error = Some(redact_token_like_text(&fetch_error));
+                        }
+                    }
+                }
+                Err(token_error) => {
+                    status = "attention";
+                    error = Some(redact_token_like_text(&token_error));
+                }
+            }
+        }
+    }
 
     NativeTelegramDrainOnceStatus {
         product: "Hepta",
@@ -791,18 +853,20 @@ fn telegram_drain_once_status_with_gates(
             receive_before_model: true,
             send_after_model_success: true,
             cursor_commit_after_delivery: true,
-            status_probe_executes_pipeline: false,
+            status_probe_executes_pipeline,
         },
         cursor_plan,
         inspection,
         model_turn_plan,
         invocation_request,
         send_plan,
-        live_read_started: false,
+        bot_api_ok,
+        local_next_update_offset,
+        live_read_started,
         model_turn_started: false,
         send_started: false,
         cursor_written: false,
-        external_network_read: false,
+        external_network_read,
         external_network_write: false,
         external_send: false,
         raw_update_payload_exposed: false,
@@ -2531,10 +2595,10 @@ mod tests {
     }
 
     #[test]
-    fn drain_once_with_all_gates_still_reports_plan_without_side_effects() {
+    fn drain_once_with_model_and_send_gates_still_waits_for_live_read() {
         let gates = NativeTelegramGatewayGateSummary {
             live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
-            live_read_gate_enabled: true,
+            live_read_gate_enabled: false,
             model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
             model_turn_gate_enabled: true,
             send_gate_env: TELEGRAM_SEND_GATE_ENV,
@@ -2544,9 +2608,12 @@ mod tests {
             readiness_summary_sends_message: false,
         };
         let status = telegram_drain_once_status_with_gates(true, gates);
-        assert_eq!(status.status, "planned");
-        assert!(status.execution_plan.all_required_gates_enabled);
-        assert_eq!(status.execution_plan.first_missing_gate, None);
+        assert_eq!(status.status, "gated");
+        assert!(!status.execution_plan.all_required_gates_enabled);
+        assert_eq!(
+            status.execution_plan.first_missing_gate,
+            Some(TELEGRAM_LIVE_READ_ENV)
+        );
         assert!(!status.execution_plan.status_probe_executes_pipeline);
         assert!(status.cursor_plan.duplicate_suppression_ready);
         assert!(status.model_turn_plan.planner_ready);
@@ -2565,7 +2632,7 @@ mod tests {
         assert!(!status.raw_prompt_text_exposed);
         assert!(!status.raw_response_text_exposed);
         assert!(!status.raw_token_exposed);
-        assert_eq!(status.error, None);
+        assert!(status.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
     }
 
     #[test]

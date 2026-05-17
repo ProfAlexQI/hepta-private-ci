@@ -787,8 +787,12 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   write cursor state, or expose raw prompt/chat/sender/message identifiers.
 - Drain-once status now includes the cursor, ingress parser, model-turn,
   invocation request, and send subplans in one side-effect-free execution
-  snapshot. Even with all three gates enabled in tests, status probes still do
-  not perform live reads, invoke a model, send messages, or write cursor state.
+  snapshot. With the live-read gate off, status probes still do not perform
+  live reads, invoke a model, send messages, or write cursor state.
+- Drain-once can now consume a live `getUpdates` result when
+  `HEPTA_NATIVE_TELEGRAM_LIVE_READ=1` is explicitly enabled: it refreshes the
+  ingress/model/invocation subplans from that result while model invocation and
+  Telegram send remain separately gated.
 
 ## Keep for compatibility
 
