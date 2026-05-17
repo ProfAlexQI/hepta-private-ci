@@ -390,6 +390,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   migration docs, shell-command docs, TUI style notes, and memory
   consolidation templates now describe Hepta as the active runtime.
 
+## Cleaned in TUI / config user-surface pass
+
+- TUI full-access warnings, edit notifications, network-permission history,
+  keypress debug help, and platform tooltip comments now present Hepta as the
+  active runtime.
+- requirements.toml validation errors and loader comments now describe Hepta
+  as the component merging restrictive command policies.
+- Protocol and permission-profile docs now use Hepta wording for rollback,
+  command approval, and managed sandbox construction without changing wire
+  enum names or compatibility fields.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

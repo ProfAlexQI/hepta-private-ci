@@ -231,7 +231,7 @@
       "type": "object"
     },
     "AskForApproval": {
-      "description": "Determines the conditions under which the user is consulted to approve running the command proposed by Codex.",
+      "description": "Determines the conditions under which the user is consulted to approve running the command proposed by Hepta.",
       "oneOf": [
         {
           "description": "Under this policy, only \"known safe\" commands—as determined by `is_safe_command()`—that **only read files** are auto‑approved. Everything else will ask the user to approve.",
@@ -1213,7 +1213,7 @@
     },
     "McpServerOAuthConfig": {
       "additionalProperties": false,
-      "description": "OAuth client settings used when Codex launches an MCP OAuth flow.",
+      "description": "OAuth client settings used when Hepta launches an MCP OAuth flow.",
       "properties": {
         "client_id": {
           "description": "Explicit OAuth client identifier to present during authorization and token exchange.",

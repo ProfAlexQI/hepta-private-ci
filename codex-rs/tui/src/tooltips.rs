@@ -153,7 +153,7 @@ pub(crate) mod announcement {
             } else if cfg!(target_os = "windows") {
                 Self::Windows
             } else {
-                // Codex currently publishes CLI builds for macOS, Windows, and Linux.
+                // Hepta currently supports CLI builds for macOS, Windows, and Linux.
                 Self::Linux
             }
         }
