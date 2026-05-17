@@ -863,7 +863,7 @@ impl AccountRequestProcessor {
     ) -> Result<AddCreditsNudgeEmailStatus, JSONRPCErrorError> {
         let Some(auth) = self.auth_manager.auth().await else {
             return Err(invalid_request(
-                "codex account authentication required to notify workspace owner",
+                "Hepta account authentication required to notify workspace owner",
             ));
         };
 
@@ -908,7 +908,7 @@ impl AccountRequestProcessor {
     > {
         let Some(auth) = self.auth_manager.auth().await else {
             return Err(invalid_request(
-                "codex account authentication required to read rate limits",
+                "Hepta account authentication required to read rate limits",
             ));
         };
 
@@ -924,10 +924,10 @@ impl AccountRequestProcessor {
         let snapshots = client
             .get_rate_limits_many()
             .await
-            .map_err(|err| internal_error(format!("failed to fetch codex rate limits: {err}")))?;
+            .map_err(|err| internal_error(format!("failed to fetch Hepta rate limits: {err}")))?;
         if snapshots.is_empty() {
             return Err(internal_error(
-                "failed to fetch codex rate limits: no snapshots returned",
+                "failed to fetch Hepta rate limits: no snapshots returned",
             ));
         }
 

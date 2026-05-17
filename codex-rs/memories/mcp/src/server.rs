@@ -210,7 +210,7 @@ fn list_tool() -> Tool {
     let mut tool = Tool::new(
         Cow::Borrowed(LIST_TOOL_NAME),
         Cow::Borrowed(
-            "List immediate files and directories under a path in the Codex memories store.",
+            "List immediate files and directories under a path in the Hepta memories store.",
         ),
         Arc::new(schema::input_schema_for::<ListArgs>()),
     );

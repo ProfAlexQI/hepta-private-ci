@@ -287,6 +287,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   configured commands now use Hepta wording while preserving legacy
   compatibility environment names.
 
+## Cleaned in memory/realtime/account diagnostics pass
+
+- Memory list tool descriptions and fallback consolidation prompts now refer
+  to Hepta memories.
+- Realtime startup context and rollback retry warnings now name Hepta.
+- Ollama version, responses-api-proxy API-key guidance, account/rate-limit
+  errors, and memory rate-limit diagnostics now use Hepta wording.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
