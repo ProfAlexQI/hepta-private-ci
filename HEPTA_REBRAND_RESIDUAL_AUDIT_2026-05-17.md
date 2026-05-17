@@ -144,6 +144,18 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Keyring store-key coverage now uses the `~/.hepta` home path; the legacy
   fallback still uses the same auth.json schema if selected by config loading.
 
+## Cleaned in device-code/login URL pass
+
+- The local login redirect error now reports that redirecting back to Hepta
+  failed instead of naming Codex.
+- Device-code login now documents the retained upstream ChatGPT authorization
+  paths as compatibility constants instead of leaving `/codex/device` and
+  `/deviceauth/callback` as unexplained product-surface strings.
+- OAuth authorize/success flow query keys such as `codex_cli_simplified_flow`
+  and `codex_streamlined_login` are now centralized as upstream compatibility
+  constants while preserving the wire names expected by the ChatGPT login
+  service and older browser callbacks.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
@@ -163,6 +175,9 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Auth type/API names such as `CodexAuth`, `codex_home`, and exported
   `read_codex_*_from_env` helpers remain compatibility identifiers. The
   helpers now read Hepta environment variable names first.
+- ChatGPT auth wire paths and query keys such as `/codex/device`,
+  `/deviceauth/callback`, `codex_cli_simplified_flow`, and
+  `codex_streamlined_login` remain upstream compatibility names.
 
 ## Deferred
 

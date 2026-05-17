@@ -55,6 +55,10 @@ const DEFAULT_ISSUER: &str = "https://auth.openai.com";
 const DEFAULT_PORT: u16 = 1455;
 // Keep in sync with the Hepta CLI Hydra redirect URI allow-list.
 const FALLBACK_PORT: u16 = 1457;
+// Upstream ChatGPT auth still expects these legacy query keys. Keep the wire
+// names stable while presenting the local product as Hepta elsewhere.
+const CODEX_CLI_SIMPLIFIED_FLOW_QUERY: &str = "codex_cli_simplified_flow";
+const CODEX_STREAMLINED_LOGIN_QUERY: &str = "codex_streamlined_login";
 static LOGIN_ERROR_PAGE_TEMPLATE: LazyLock<Template> = LazyLock::new(|| {
     Template::parse(include_str!("assets/error.html"))
         .unwrap_or_else(|err| panic!("login error page template must parse: {err}"))
@@ -384,7 +388,7 @@ async fn process_request(
                     match tiny_http::Header::from_bytes(&b"Location"[..], success_url.as_bytes()) {
                         Ok(header) => HandledRequest::RedirectWithHeader(header),
                         Err(_) => login_error_response(
-                            "Sign-in completed but redirecting back to Codex failed.",
+                            "Sign-in completed but redirecting back to Hepta failed.",
                             io::ErrorKind::Other,
                             Some("redirect_failed"),
                             /*error_description*/ None,
@@ -406,7 +410,7 @@ async fn process_request(
         "/success" => {
             let use_streamlined_success = parsed_url
                 .query_pairs()
-                .any(|(key, value)| key == "codex_streamlined_login" && value == "true");
+                .any(|(key, value)| key == CODEX_STREAMLINED_LOGIN_QUERY && value == "true");
             let body = if use_streamlined_success {
                 include_str!("assets/success.html")
             } else {
@@ -503,7 +507,10 @@ fn build_authorize_url(
         ),
         ("code_challenge_method".to_string(), "S256".to_string()),
         ("id_token_add_organizations".to_string(), "true".to_string()),
-        ("codex_cli_simplified_flow".to_string(), "true".to_string()),
+        (
+            CODEX_CLI_SIMPLIFIED_FLOW_QUERY.to_string(),
+            "true".to_string(),
+        ),
         ("state".to_string(), state.to_string()),
         ("originator".to_string(), originator().value),
     ];
@@ -885,7 +892,7 @@ fn compose_success_url(
         ("platform_url", platform_url.to_string()),
     ];
     if codex_streamlined_login {
-        params.push(("codex_streamlined_login", "true".to_string()));
+        params.push((CODEX_STREAMLINED_LOGIN_QUERY, "true".to_string()));
     }
     let qs = params
         .drain(..)

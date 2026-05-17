@@ -14,6 +14,10 @@ use std::io;
 const ANSI_BLUE: &str = "\x1b[94m";
 const ANSI_GRAY: &str = "\x1b[90m";
 const ANSI_RESET: &str = "\x1b[0m";
+// These path names are issued by the upstream ChatGPT auth service. Keep them
+// stable even though the local product surface is Hepta.
+const CHATGPT_DEVICE_CODE_PATH: &str = "/codex/device";
+const CHATGPT_DEVICE_AUTH_CALLBACK_PATH: &str = "/deviceauth/callback";
 
 #[derive(Debug, Clone)]
 pub struct DeviceCode {
@@ -150,7 +154,7 @@ fn print_device_code_prompt(verification_url: &str, code: &str) {
     println!(
         "\nWelcome to Hepta [v{ANSI_GRAY}{version}{ANSI_RESET}]\n{ANSI_GRAY}Local agent runtime{ANSI_RESET}\n\
 \nFollow these steps to sign in with ChatGPT using device code authorization:\n\
-\n1. Open this link in your browser and sign in to your account\n   {ANSI_BLUE}{verification_url}{ANSI_RESET}\n\
+\n1. Open this ChatGPT authorization link in your browser and sign in to your account\n   {ANSI_BLUE}{verification_url}{ANSI_RESET}\n\
 \n2. Enter this one-time code {ANSI_GRAY}(expires in 15 minutes){ANSI_RESET}\n   {ANSI_BLUE}{code}{ANSI_RESET}\n\
 \n{ANSI_GRAY}Device codes are a common phishing target. Never share this code.{ANSI_RESET}\n",
     );
@@ -163,7 +167,7 @@ pub async fn request_device_code(opts: &ServerOptions) -> std::io::Result<Device
     let uc = request_user_code(&client, &api_base_url, &opts.client_id).await?;
 
     Ok(DeviceCode {
-        verification_url: format!("{base_url}/codex/device"),
+        verification_url: format!("{base_url}{CHATGPT_DEVICE_CODE_PATH}"),
         user_code: uc.user_code,
         device_auth_id: uc.device_auth_id,
         interval: uc.interval,
@@ -191,7 +195,7 @@ pub async fn complete_device_code_login(
         code_verifier: code_resp.code_verifier,
         code_challenge: code_resp.code_challenge,
     };
-    let redirect_uri = format!("{base_url}/deviceauth/callback");
+    let redirect_uri = format!("{base_url}{CHATGPT_DEVICE_AUTH_CALLBACK_PATH}");
 
     let tokens = crate::server::exchange_code_for_tokens(
         base_url,
