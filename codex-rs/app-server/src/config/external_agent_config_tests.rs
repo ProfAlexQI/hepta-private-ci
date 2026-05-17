@@ -631,7 +631,7 @@ description = "Research role"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """
-Research with Codex carefully."""
+Research with Hepta carefully."""
 "#,
     )
     .expect("parse expected agent");
@@ -693,7 +693,7 @@ async fn import_home_migrates_supported_config_fields_skills_and_agents_md() {
 
     assert_eq!(
         fs::read_to_string(codex_home.join("AGENTS.md")).expect("read agents"),
-        "Codex guidance"
+        "Hepta guidance"
     );
 
     assert_eq!(
@@ -703,7 +703,7 @@ async fn import_home_migrates_supported_config_fields_skills_and_agents_md() {
     assert_eq!(
         fs::read_to_string(agents_skills.join("skill-a").join("SKILL.md"))
             .expect("read copied skill"),
-        "Use Codex and Codex utilities."
+        "Use Hepta and Hepta utilities."
     );
 }
 
@@ -1016,7 +1016,7 @@ async fn import_repo_agents_md_rewrites_terms_and_skips_non_empty_targets() {
 
     assert_eq!(
         fs::read_to_string(repo_root.join("AGENTS.md")).expect("read target"),
-        "Codex\nCodex\nCodex\nSee AGENTS.md\n"
+        "Hepta\nHepta\nHepta\nSee AGENTS.md\n"
     );
     assert_eq!(
         fs::read_to_string(repo_with_existing_target.join("AGENTS.md"))
@@ -1052,7 +1052,7 @@ async fn import_repo_agents_md_overwrites_empty_targets() {
 
     assert_eq!(
         fs::read_to_string(repo_root.join("AGENTS.md")).expect("read target"),
-        "Codex guidance"
+        "Hepta guidance"
     );
 }
 
@@ -1345,7 +1345,7 @@ async fn import_repo_uses_non_empty_external_agent_agents_source() {
 
     assert_eq!(
         fs::read_to_string(repo_root.join("AGENTS.md")).expect("read target"),
-        "Codex guidance"
+        "Hepta guidance"
     );
 }
 

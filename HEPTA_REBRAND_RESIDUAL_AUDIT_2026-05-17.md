@@ -313,6 +313,20 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   existing installations can still find/update prior rules instead of
   orphaning them.
 
+## Cleaned in general product prose pass
+
+- TUI slash-command descriptions, session help, high-load fallback text,
+  terminal reflow comments/assertions, and debug/version comments now use Hepta
+  product wording.
+- Sleep-inhibitor assertion reasons now say Hepta for active turns on Linux,
+  macOS, and Windows.
+- External-agent migration rewriting now maps Claude/Claude Code source prose to
+  Hepta rather than Codex, with updated import tests.
+- Skill-creator sample guidance, MCP documentation examples, ChatGPT test
+  fixtures, Linux sandbox README, responses proxy README, and auto-review model
+  display copy now use Hepta wording while preserving compatibility slugs and
+  binary names where needed.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

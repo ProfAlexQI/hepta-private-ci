@@ -109,10 +109,10 @@ Example:
 
 ```json
 {
-  "content": [{ "type": "text", "text": "Hello from Codex" }],
+  "content": [{ "type": "text", "text": "Hello from Hepta" }],
   "structuredContent": {
     "threadId": "019bbed6-1e9e-7f31-984c-a05b65045719",
-    "content": "Hello from Codex"
+    "content": "Hello from Hepta"
   }
 }
 ```
