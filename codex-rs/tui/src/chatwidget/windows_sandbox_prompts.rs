@@ -183,7 +183,7 @@ impl ChatWidget {
             header.push(*Box::new(
                 Paragraph::new(vec![
                     line!["Agent mode on Windows uses an experimental sandbox to limit network and filesystem access.".bold()],
-                    line!["Learn more: https://developers.openai.com/codex/windows"],
+                    line!["Review the sandbox settings before enabling extra access."],
                 ])
                 .wrap(Wrap { trim: false }),
             ));
@@ -231,9 +231,9 @@ impl ChatWidget {
 
         let mut header = ColumnRenderable::new();
         header.push(*Box::new(
-            Paragraph::new(vec![
-                line!["Set up the Hepta agent sandbox to protect your files and control network access. Learn more <https://developers.openai.com/codex/windows>"],
-            ])
+            Paragraph::new(vec![line![
+                "Set up the Hepta agent sandbox to protect your files and control network access."
+            ]])
             .wrap(Wrap { trim: false }),
         ));
 
@@ -314,9 +314,7 @@ impl ChatWidget {
         lines.push(line![
             "You can still use Hepta in a non-admin sandbox. It carries greater risk if prompt injected."
         ]);
-        lines.push(line![
-            "Learn more <https://developers.openai.com/codex/windows>"
-        ]);
+        lines.push(line!["Review sandbox settings before continuing."]);
 
         let mut header = ColumnRenderable::new();
         header.push(*Box::new(Paragraph::new(lines).wrap(Wrap { trim: false })));

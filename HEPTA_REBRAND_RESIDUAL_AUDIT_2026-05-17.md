@@ -498,6 +498,16 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   compatibility because the remote service does not expose a distinct Hepta
   platform yet.
 
+## Cleaned in hosted-doc-link pass
+
+- TUI memories, MCP, onboarding security, Windows sandbox, and cyber-risk
+  fallback warning surfaces no longer link users to
+  `developers.openai.com/codex/...` docs.
+- The app-server analytics flag help now points users to the local
+  `[analytics]` config section instead of upstream Codex metrics docs.
+- ChatGPT billing/usage URLs under `chatgpt.com/codex/...` remain compatibility
+  links because they are actual hosted service entry points.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

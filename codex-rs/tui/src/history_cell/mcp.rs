@@ -323,13 +323,9 @@ pub(crate) fn empty_mcp_output() -> PlainHistoryCell {
         vec!["🔌  ".into(), "MCP Tools".bold()].into(),
         "".into(),
         "  • No MCP servers configured.".italic().into(),
-        Line::from(vec![
-            "    See the ".into(),
-            "\u{1b}]8;;https://developers.openai.com/codex/mcp\u{7}MCP docs\u{1b}]8;;\u{7}"
-                .underlined(),
-            " to configure them.".into(),
-        ])
-        .style(Style::default().add_modifier(Modifier::DIM)),
+        "    Configure MCP servers in config.toml, then reopen /mcp."
+            .dim()
+            .into(),
     ];
 
     PlainHistoryCell { lines }

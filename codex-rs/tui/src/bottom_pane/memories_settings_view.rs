@@ -30,8 +30,6 @@ use super::selection_popup_common::GenericDisplayRow;
 use super::selection_popup_common::measure_rows_height;
 use super::selection_popup_common::render_rows;
 
-const MEMORIES_DOC_URL: &str = "https://developers.openai.com/codex/memories";
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MemoriesSetting {
     Use,
@@ -63,7 +61,7 @@ pub(crate) struct MemoriesSettingsView {
     reset_confirmation: Option<ScrollState>,
     complete: bool,
     app_event_tx: AppEventSender,
-    docs_link: Line<'static>,
+    help_line: Line<'static>,
     keymap: ListKeymap,
 }
 
@@ -98,10 +96,9 @@ impl MemoriesSettingsView {
             reset_confirmation: None,
             complete: false,
             app_event_tx,
-            docs_link: Line::from(vec![
-                "Learn more: ".dim(),
-                MEMORIES_DOC_URL.cyan().underlined(),
-            ]),
+            help_line: "Local memory files stay under your Hepta home."
+                .dim()
+                .into(),
             keymap,
         };
         view.initialize_selection();
@@ -420,7 +417,7 @@ impl Renderable for MemoriesSettingsView {
             );
         }
         if self.reset_confirmation.is_none() {
-            self.docs_link.clone().render(docs_area, buf);
+            self.help_line.clone().render(docs_area, buf);
         }
 
         let hint_area = Rect {

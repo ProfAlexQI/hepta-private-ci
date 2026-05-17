@@ -464,7 +464,7 @@ struct AppServerCommand {
     /// enabled = false
     /// ```
     ///
-    /// See https://developers.openai.com/codex/config-advanced/#metrics for more details.
+    /// See the `[analytics]` section in config.toml for metrics configuration.
     #[arg(long = "analytics-default-enabled")]
     analytics_default_enabled: bool,
 
