@@ -1541,10 +1541,10 @@ mod tests {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
         let home = dirs::home_dir().expect("home directory should be available");
-        let codex_home = home.join(".codex");
+        let hepta_home = home.join(".hepta");
         let params = crate::theme_picker::build_theme_picker_params(
             /*current_name*/ None,
-            Some(&codex_home),
+            Some(&hepta_home),
             Some(94),
         );
         let view = new_view(params, tx);
@@ -1557,7 +1557,7 @@ mod tests {
     fn theme_picker_enables_side_content_background_preservation() {
         let params = crate::theme_picker::build_theme_picker_params(
             /*current_name*/ None,
-            /*codex_home*/ None,
+            /*hepta_home*/ None,
             Some(120),
         );
         assert!(

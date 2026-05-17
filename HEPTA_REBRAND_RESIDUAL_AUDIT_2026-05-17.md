@@ -615,6 +615,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   such as `codex/event` and `codex_*` stay compatibility wire names until a
   separate protocol-versioned migration exists.
 
+## Cleaned in TUI theme-picker home pass
+
+- TUI theme-picker helper parameters, preview state, settings popup local
+  variables, and list-selection tests now use `hepta_home` terminology.
+- The underlying home resolver is still the shared `find_codex_home()`
+  compatibility helper because it already resolves the active Hepta home while
+  preserving legacy `CODEX_HOME` fallback behavior.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
