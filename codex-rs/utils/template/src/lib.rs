@@ -338,13 +338,13 @@ mod tests {
     fn render_supports_literal_delimiter_escapes() {
         let rendered = render(
             "literal open: {{{{, literal close: }}}}, value: {{ name }}",
-            [("name", "Codex")],
+            [("name", "Hepta")],
         )
         .unwrap();
 
         assert_eq!(
             rendered,
-            "literal open: {{, literal close: }}, value: Codex"
+            "literal open: {{, literal close: }}, value: Hepta"
         );
     }
 
@@ -399,7 +399,7 @@ mod tests {
         let template = Template::parse("Hello, {{ name }}.").unwrap();
 
         assert_eq!(
-            template.render([("name", "Codex"), ("unused", "extra")]),
+            template.render([("name", "Hepta"), ("unused", "extra")]),
             Err(TemplateRenderError::ExtraValue {
                 name: "unused".to_string()
             })
@@ -411,7 +411,7 @@ mod tests {
         let template = Template::parse("Hello, {{ name }}.").unwrap();
 
         assert_eq!(
-            template.render([("name", "Codex"), ("name", "other")]),
+            template.render([("name", "Hepta"), ("name", "other")]),
             Err(TemplateRenderError::DuplicateValue {
                 name: "name".to_string()
             })
@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn render_function_wraps_parse_errors() {
-        let err = render("Hello, }} world.", [("name", "Codex")]).unwrap_err();
+        let err = render("Hello, }} world.", [("name", "Hepta")]).unwrap_err();
 
         assert_eq!(
             err,
@@ -430,7 +430,7 @@ mod tests {
 
     #[test]
     fn render_function_wraps_render_errors() {
-        let err = render("Hello, {{ name }}.", [("extra", "Codex")]).unwrap_err();
+        let err = render("Hello, {{ name }}.", [("extra", "Hepta")]).unwrap_err();
 
         assert_eq!(
             err,

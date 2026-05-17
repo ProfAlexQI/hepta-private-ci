@@ -356,6 +356,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `codex-core`, `codex-*` crate names, `codex_process_hardening`, and upstream
   ChatGPT `/backend-api/codex/...` paths remain unchanged.
 
+## Cleaned in bundled skill/reference comment pass
+
+- Image-generation and skill-installer bundled skill references now use
+  `HEPTA_HOME` / `~/.hepta` for helper scripts, generated-image paths, and
+  installed-skill locations.
+- Template test fixtures and utility crate docs now use Hepta in example text
+  and comments where the text describes the product/runtime.
+- Core skill loading, model-provider auth/capability comments, hook dispatch
+  comments, thread-store comments, path utilities, and plugin utilities now use
+  Hepta wording while keeping compatibility product enum and crate/type names.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

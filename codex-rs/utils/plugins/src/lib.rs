@@ -1,4 +1,4 @@
-//! Plugin path resolution, plaintext mention sigils, and MCP connector helpers shared across Codex
+//! Plugin path resolution, plaintext mention sigils, and MCP connector helpers shared across Hepta
 //! crates.
 
 use codex_utils_absolute_path::AbsolutePathBuf;

@@ -310,7 +310,7 @@ fn skill_roots_from_layer_stack_inner(
                     });
                 }
 
-                // Embedded system skills are cached under `$CODEX_HOME/skills/.system` and are a
+                // Embedded system skills are cached under `$HEPTA_HOME/skills/.system` and are a
                 // special case (not a config layer).
                 roots.push(SkillRoot {
                     path: system_cache_root_dir(&config_folder),
@@ -320,8 +320,8 @@ fn skill_roots_from_layer_stack_inner(
                 });
             }
             ConfigLayerSource::System { .. } => {
-                // The system config layer lives under `/etc/codex/` on Unix, so treat
-                // `/etc/codex/skills` as admin-scoped skills.
+                // The system config layer lives under `/etc/hepta/` on Unix, so treat
+                // `/etc/hepta/skills` as admin-scoped skills.
                 roots.push(SkillRoot {
                     path: config_folder.join(SKILLS_DIR_NAME),
                     scope: SkillScope::Admin,
@@ -491,7 +491,7 @@ async fn discover_skills_under_root(
         }
     }
 
-    // Follow symlinked directories for user, admin, and repo skills. System skills are written by Codex itself.
+    // Follow symlinked directories for user, admin, and repo skills. System skills are written by Hepta itself.
     let follow_symlinks = matches!(
         scope,
         SkillScope::Repo | SkillScope::User | SkillScope::Admin
