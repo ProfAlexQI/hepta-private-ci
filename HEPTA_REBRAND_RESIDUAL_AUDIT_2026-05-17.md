@@ -428,6 +428,13 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Internal test-sync helper descriptions now say Hepta integration tests while
   preserving crate, tool, and compatibility type names.
 
+## Cleaned in sandbox / session doc pass
+
+- Git worktree guidance, Windows sandbox docs, hook/tool-context docs, session
+  spawn docs, and unauthorized-recovery comments now use Hepta wording.
+- The underlying `Codex` Rust type, `CodexErr` compatibility enum, and Windows
+  provider identifiers remain unchanged where they are API or platform keys.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

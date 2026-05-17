@@ -380,7 +380,7 @@ pub struct Codex {
 
 pub(crate) type SessionLoopTermination = Shared<BoxFuture<'static, ()>>;
 
-/// Wrapper returned by [`Codex::spawn`] containing the spawned [`Codex`] and
+/// Wrapper returned by [`Codex::spawn`] containing the spawned Hepta runtime and
 /// the unique session id.
 pub struct CodexSpawnOk {
     pub codex: Codex,
@@ -425,7 +425,7 @@ const CYBER_VERIFY_URL: &str = "https://chatgpt.com/cyber";
 const CYBER_SAFETY_URL: &str = "https://developers.openai.com/codex/concepts/cyber-safety";
 
 impl Codex {
-    /// Spawn a new [`Codex`] and initialize the session.
+    /// Spawn a new Hepta runtime and initialize the session.
     pub(crate) async fn spawn(args: CodexSpawnArgs) -> CodexResult<CodexSpawnOk> {
         let parent_trace = match args.parent_trace {
             Some(trace) => {

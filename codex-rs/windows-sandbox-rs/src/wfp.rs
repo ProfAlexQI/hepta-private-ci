@@ -242,7 +242,7 @@ fn ensure_provider(engine: HANDLE) -> Result<()> {
     ensure_success_or(result, "FwpmProviderAdd0", &[FWP_E_ALREADY_EXISTS as u32])
 }
 
-/// Ensures the persistent Codex sublayer exists under the Codex provider.
+/// Ensures the persistent Hepta sublayer exists under the Hepta provider.
 fn ensure_sublayer(engine: HANDLE) -> Result<()> {
     let sublayer_name = to_wide(OsStr::new(SUBLAYER_NAME));
     let sublayer_description = to_wide(OsStr::new(SUBLAYER_DESCRIPTION));
