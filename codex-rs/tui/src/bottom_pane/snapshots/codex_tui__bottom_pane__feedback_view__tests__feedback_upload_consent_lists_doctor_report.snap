@@ -7,6 +7,6 @@ Upload logs?
 
 The following files will be sent:
   • codex-logs.log
-  • codex-doctor-report.json
+  • hepta-doctor-report.json
   • rollout.jsonl
   • auto-review-rollout.jsonl

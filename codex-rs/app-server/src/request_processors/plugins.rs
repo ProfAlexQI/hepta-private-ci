@@ -411,7 +411,7 @@ impl PluginRequestProcessor {
             Ok(enabled) => enabled,
             Err(err) => {
                 warn!(
-                    "failed to fetch workspace Codex plugins setting; allowing Codex plugins: {err:#}"
+                    "failed to fetch workspace Hepta plugins setting; allowing Hepta plugins: {err:#}"
                 );
                 true
             }
@@ -1089,7 +1089,7 @@ impl PluginRequestProcessor {
             .await
         {
             return Err(invalid_request(
-                "Codex plugins are disabled for this workspace",
+                "Hepta plugins are disabled for this workspace",
             ));
         }
 

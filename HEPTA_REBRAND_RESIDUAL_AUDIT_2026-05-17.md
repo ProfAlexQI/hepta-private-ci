@@ -260,6 +260,23 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - MCP config comments and protocol README now refer to Hepta command surfaces
   where they describe user-facing behavior.
 
+## Cleaned in user-facing error/prose pass
+
+- Local image attachment placeholders now say Hepta when files cannot be read
+  or are unsupported.
+- Skill-description truncation warnings now say Hepta can still see every
+  skill.
+- Unified exec network denial fallback now names the Hepta sandbox network
+  proxy.
+- TUI API-key status guidance now suggests `hepta login`.
+- Workspace plugin setting warnings/errors now say Hepta plugins.
+- Feedback doctor-report comments and attachment filename now use
+  `hepta-doctor-report.json`.
+- Memory read/search tool descriptions now refer to Hepta memory files.
+- Bubblewrap sandbox warnings, session-storage initialization errors, memory
+  MCP server descriptions, IDE context retry hints, and plugin-disabled tests
+  now use Hepta wording.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

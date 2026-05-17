@@ -536,7 +536,7 @@ async fn plugin_install_rejects_when_workspace_codex_plugins_disabled() -> Resul
     assert!(
         err.error
             .message
-            .contains("Codex plugins are disabled for this workspace")
+            .contains("Hepta plugins are disabled for this workspace")
     );
     Ok(())
 }
