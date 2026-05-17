@@ -435,6 +435,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - The underlying `Codex` Rust type, `CodexErr` compatibility enum, and Windows
   provider identifiers remain unchanged where they are API or platform keys.
 
+## Cleaned in final runtime-comment pass
+
+- Backend requirements comments, MCP exec-approval comments, process-hardening
+  comments, exec-policy comments, CLI strict-config/fork/sandbox comments,
+  protocol shutdown docs, Windows sandbox helper docs, TUI command forwarding
+  docs, and config harness examples now use Hepta wording where the text
+  describes the active runtime rather than an upstream endpoint or
+  compatibility type.
+- Endpoint paths such as `/api/codex/...`, legacy MCP wire fields such as
+  `codex_*`, and crate names such as `codex-core` remain compatibility names.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

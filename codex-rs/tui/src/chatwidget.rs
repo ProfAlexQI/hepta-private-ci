@@ -1675,7 +1675,7 @@ impl ChatWidget {
         ));
     }
 
-    /// Forward a command directly to codex.
+    /// Forward a command directly to the Hepta runtime.
     pub(crate) fn submit_op<T>(&mut self, op: T) -> bool
     where
         T: Into<AppCommand>,

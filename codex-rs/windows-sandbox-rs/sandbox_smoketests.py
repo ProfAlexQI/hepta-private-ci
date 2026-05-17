@@ -74,7 +74,7 @@ def run_sbx(
     env.update(ENV_BASE)
     if env_extra:
         env.update(env_extra)
-    # Map policy to codex CLI overrides.
+    # Map policy to Hepta CLI config overrides.
     # read-only => default; workspace-write => legacy sandbox_mode override
     if policy not in ("read-only", "workspace-write"):
         raise ValueError(f"unknown policy: {policy}")

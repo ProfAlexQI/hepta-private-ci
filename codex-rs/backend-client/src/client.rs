@@ -391,9 +391,9 @@ impl Client {
         self.decode_json::<TurnAttemptsSiblingTurnsResponse>(&url, &ct, &body)
     }
 
-    /// Fetch the managed requirements file from codex-backend.
+    /// Fetch the managed requirements file from the upstream-compatible backend.
     ///
-    /// `GET /api/codex/config/requirements` (Codex API style) or
+    /// `GET /api/codex/config/requirements` (upstream API style) or
     /// `GET /wham/config/requirements` (ChatGPT backend-api style).
     pub async fn get_config_requirements_file(
         &self,

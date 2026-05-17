@@ -25,8 +25,8 @@ pub struct ExecApprovalElicitRequestParams {
     #[serde(rename = "requestedSchema")]
     pub requested_schema: Value,
 
-    // These are additional fields the client can use to
-    // correlate the request with the codex tool call.
+    // These are additional fields the client can use to correlate the request
+    // with the Hepta tool call while preserving legacy wire field names.
     #[serde(rename = "threadId")]
     pub thread_id: ThreadId,
     pub codex_elicitation: String,
@@ -124,7 +124,7 @@ async fn on_exec_approval_response(
         }
     };
 
-    // Try to deserialize `value` and then make the appropriate call to `codex`.
+    // Try to deserialize `value` and then submit the appropriate decision.
     let response = serde_json::from_value::<ExecApprovalResponse>(value).unwrap_or_else(|err| {
         error!("failed to deserialize ExecApprovalResponse: {err}");
         // If we cannot deserialize the response, we deny the request to be

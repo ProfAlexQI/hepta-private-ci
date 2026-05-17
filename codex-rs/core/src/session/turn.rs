@@ -367,7 +367,8 @@ pub(crate) async fn run_turn(
     let skills_outcome = Some(turn_context.turn_skills.outcome.as_ref());
     let mut last_agent_message: Option<String> = None;
     let mut stop_hook_active = false;
-    // Although from the perspective of codex.rs, TurnDiffTracker has the lifecycle of a Task which contains
+    // Although from the perspective of the core turn loop, TurnDiffTracker has
+    // the lifecycle of a Task which contains
     // many turns, from the perspective of the user, it is a single turn.
     #[allow(deprecated)]
     let display_root = get_git_repo_root(turn_context.cwd.as_path())

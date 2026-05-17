@@ -777,7 +777,7 @@ pub enum Op {
     /// Record that the user approved one retry of a concrete Guardian-denied action.
     ApproveGuardianDeniedAction { event: GuardianAssessmentEvent },
 
-    /// Request to shut down codex instance.
+    /// Request to shut down the Hepta instance.
     Shutdown,
 
     /// Execute a user-initiated one-off shell command (triggered by "!cmd").
