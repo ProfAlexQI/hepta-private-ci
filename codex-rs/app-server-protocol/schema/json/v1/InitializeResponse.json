@@ -13,7 +13,7 @@
           "$ref": "#/definitions/AbsolutePathBuf"
         }
       ],
-      "description": "Absolute path to the server's resolved Hepta home directory. The `codexHome` wire field name is retained for compatibility."
+      "description": "Absolute path to the server's resolved Hepta home directory. The `codexHome` wire field name is retained for serialization compatibility; Hepta clients may also deserialize `heptaHome`."
     },
     "platformFamily": {
       "description": "Platform family for the running app-server target, for example `\"unix\"` or `\"windows\"`.",

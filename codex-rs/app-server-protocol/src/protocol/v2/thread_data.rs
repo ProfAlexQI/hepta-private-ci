@@ -190,6 +190,7 @@ pub enum TurnItemsView {
 #[error("{message}")]
 pub struct TurnError {
     pub message: String,
+    #[serde(alias = "heptaErrorInfo")]
     pub codex_error_info: Option<CodexErrorInfo>,
     #[serde(default)]
     pub additional_details: Option<String>,

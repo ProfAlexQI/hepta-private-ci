@@ -566,6 +566,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `codexStreamlinedLogin` compatibility field for clients that already depend
   on that wire name.
 
+## Cleaned in phase-2 protocol schema-alias pass
+
+- `InitializeResponse` now accepts `heptaHome` as a deserialization alias for
+  the resolved runtime home while continuing to serialize `codexHome` for
+  existing app-server clients.
+- `TurnError` now accepts `heptaErrorInfo` as a deserialization alias for
+  typed turn error metadata while continuing to serialize `codexErrorInfo` for
+  compatibility with the existing v2 protocol schema.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

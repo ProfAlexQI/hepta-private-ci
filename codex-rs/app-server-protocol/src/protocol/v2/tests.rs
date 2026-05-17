@@ -3322,6 +3322,43 @@ fn codex_error_info_serializes_active_turn_not_steerable_turn_kind_in_camel_case
 }
 
 #[test]
+fn turn_error_accepts_hepta_error_info_alias() {
+    let error: TurnError = serde_json::from_value(json!({
+        "message": "active turn cannot be steered",
+        "heptaErrorInfo": {
+            "activeTurnNotSteerable": {
+                "turnKind": "review"
+            }
+        }
+    }))
+    .unwrap();
+
+    assert_eq!(
+        error,
+        TurnError {
+            message: "active turn cannot be steered".to_string(),
+            codex_error_info: Some(CodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: NonSteerableTurnKind::Review,
+            }),
+            additional_details: None,
+        }
+    );
+
+    assert_eq!(
+        serde_json::to_value(error).unwrap(),
+        json!({
+            "message": "active turn cannot be steered",
+            "codexErrorInfo": {
+                "activeTurnNotSteerable": {
+                    "turnKind": "review"
+                }
+            },
+            "additionalDetails": null
+        })
+    );
+}
+
+#[test]
 fn dynamic_tool_response_serializes_content_items() {
     let value = serde_json::to_value(DynamicToolCallResponse {
         content_items: vec![DynamicToolCallOutputContentItem::InputText {

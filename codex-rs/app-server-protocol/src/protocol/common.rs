@@ -2047,6 +2047,37 @@ mod tests {
     }
 
     #[test]
+    fn initialize_response_accepts_hepta_home_alias() -> Result<()> {
+        let response: v1::InitializeResponse = serde_json::from_value(json!({
+            "userAgent": "hepta-test/0.1.0",
+            "heptaHome": absolute_path_string("tmp/hepta-home"),
+            "platformFamily": "unix",
+            "platformOs": "macos",
+        }))?;
+
+        assert_eq!(
+            v1::InitializeResponse {
+                user_agent: "hepta-test/0.1.0".to_string(),
+                codex_home: absolute_path("tmp/hepta-home"),
+                platform_family: "unix".to_string(),
+                platform_os: "macos".to_string(),
+            },
+            response,
+        );
+
+        assert_eq!(
+            json!({
+                "userAgent": "hepta-test/0.1.0",
+                "codexHome": absolute_path_string("tmp/hepta-home"),
+                "platformFamily": "unix",
+                "platformOs": "macos",
+            }),
+            serde_json::to_value(&response)?,
+        );
+        Ok(())
+    }
+
+    #[test]
     fn conversation_id_serializes_as_plain_string() -> Result<()> {
         let id = ThreadId::from_string("67e55044-10b1-426f-9247-bb680e5fe0c8")?;
 

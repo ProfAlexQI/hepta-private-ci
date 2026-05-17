@@ -6,7 +6,8 @@ import type { AbsolutePathBuf } from "./AbsolutePathBuf";
 export type InitializeResponse = { userAgent: string,
 /**
  * Absolute path to the server's resolved Hepta home directory.
- * The `codexHome` wire field name is retained for compatibility.
+ * The `codexHome` wire field name is retained for serialization
+ * compatibility; Hepta clients may also deserialize `heptaHome`.
  */
 codexHome: AbsolutePathBuf,
 /**
