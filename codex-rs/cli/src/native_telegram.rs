@@ -240,6 +240,25 @@ pub(crate) struct NativeTelegramDrainOnceStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramCursorStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) cursor_path: &'static str,
+    pub(crate) cursor_file_present: bool,
+    pub(crate) cursor_parse_ok: bool,
+    pub(crate) next_update_offset: Option<i64>,
+    pub(crate) cursor_represents_next_update_offset: bool,
+    pub(crate) duplicate_suppression_rule_valid: bool,
+    pub(crate) cursor_write_policy: &'static str,
+    pub(crate) cursor_written: bool,
+    pub(crate) raw_update_payload_persisted: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramGatewayGateSummary {
     pub(crate) live_read_gate_env: &'static str,
     pub(crate) live_read_gate_enabled: bool,
@@ -549,6 +568,88 @@ pub(crate) fn telegram_send_plan_status(requested: bool) -> NativeTelegramSendPl
 
 pub(crate) fn telegram_drain_once_status(requested: bool) -> NativeTelegramDrainOnceStatus {
     telegram_drain_once_status_with_gates(requested, telegram_gateway_gate_summary())
+}
+
+pub(crate) fn telegram_cursor_status(requested: bool) -> NativeTelegramCursorStatus {
+    if !requested {
+        return NativeTelegramCursorStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested,
+            status: "disabled",
+            cursor_path: TELEGRAM_INGRESS_CURSOR_PATH,
+            cursor_file_present: false,
+            cursor_parse_ok: false,
+            next_update_offset: None,
+            cursor_represents_next_update_offset: true,
+            duplicate_suppression_rule_valid: true,
+            cursor_write_policy: "disabled",
+            cursor_written: false,
+            raw_update_payload_persisted: false,
+            error: None,
+            next_migration_slice: "enable Telegram plugin before reading cursor state",
+        };
+    }
+
+    telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH))
+}
+
+fn telegram_cursor_status_from_path(path: &Path) -> NativeTelegramCursorStatus {
+    let cursor_file_present = path.is_file();
+    let mut status = NativeTelegramCursorStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: true,
+        status: "missing",
+        cursor_path: TELEGRAM_INGRESS_CURSOR_PATH,
+        cursor_file_present,
+        cursor_parse_ok: false,
+        next_update_offset: None,
+        cursor_represents_next_update_offset: true,
+        duplicate_suppression_rule_valid: telegram_update_already_drained(41, Some(42))
+            && !telegram_update_already_drained(42, Some(42)),
+        cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
+        cursor_written: false,
+        raw_update_payload_persisted: false,
+        error: None,
+        next_migration_slice: "wire cursor write after gated send delivery success",
+    };
+
+    if !cursor_file_present {
+        return status;
+    }
+
+    match fs::read_to_string(path)
+        .map_err(|error| format!("failed to read Telegram cursor file: {error}"))
+        .and_then(|raw| parse_telegram_cursor_next_update_offset(&raw))
+    {
+        Ok(next_update_offset) => {
+            status.status = "ready";
+            status.cursor_parse_ok = true;
+            status.next_update_offset = Some(next_update_offset);
+        }
+        Err(error) => {
+            status.status = "attention";
+            status.error = Some(redact_token_like_text(&error));
+        }
+    }
+
+    status
+}
+
+fn parse_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
+    let value: Value = serde_json::from_str(raw)
+        .map_err(|error| format!("failed to parse Telegram cursor JSON: {error}"))?;
+    let offset = value
+        .get("next_update_offset")
+        .or_else(|| value.get("nextUpdateOffset"))
+        .and_then(Value::as_i64)
+        .ok_or_else(|| "Telegram cursor missing next_update_offset".to_string())?;
+    if offset < 0 {
+        Err("Telegram cursor next_update_offset must be non-negative".to_string())
+    } else {
+        Ok(offset)
+    }
 }
 
 fn telegram_drain_once_status_with_gates(
@@ -1913,6 +2014,46 @@ mod tests {
         assert!(!status.raw_response_text_exposed);
         assert!(!status.raw_token_exposed);
         assert!(status.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
+    }
+
+    #[test]
+    fn cursor_status_reads_next_update_offset_without_writing() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("cursor.json");
+        fs::write(
+            &cursor_path,
+            r#"{"next_update_offset": 43, "updated_at_unix_ms": 123}"#,
+        )
+        .expect("write cursor");
+
+        let status = telegram_cursor_status_from_path(&cursor_path);
+        assert_eq!(status.status, "ready");
+        assert!(status.cursor_file_present);
+        assert!(status.cursor_parse_ok);
+        assert_eq!(status.next_update_offset, Some(43));
+        assert!(status.cursor_represents_next_update_offset);
+        assert!(status.duplicate_suppression_rule_valid);
+        assert!(!status.cursor_written);
+        assert!(!status.raw_update_payload_persisted);
+    }
+
+    #[test]
+    fn cursor_status_rejects_negative_offsets() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("cursor.json");
+        fs::write(&cursor_path, r#"{"next_update_offset": -1}"#).expect("write cursor");
+
+        let status = telegram_cursor_status_from_path(&cursor_path);
+        assert_eq!(status.status, "attention");
+        assert!(status.cursor_file_present);
+        assert!(!status.cursor_parse_ok);
+        assert_eq!(status.next_update_offset, None);
+        assert!(
+            status
+                .error
+                .unwrap()
+                .contains("next_update_offset must be non-negative")
+        );
     }
 
     #[test]

@@ -765,6 +765,10 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   receive, duplicate suppression, model turn, send, and cursor commit, but
   status probes stop before the first missing gate and keep all live-read,
   model, send, cursor-write, and raw-payload exposure flags false.
+- A cursor state endpoint now exists at `/api/telegram-cursor`. It treats the
+  cursor file as the next Telegram update offset, validates that offset
+  fail-closed, and reports duplicate-suppression semantics without writing the
+  cursor file or persisting raw update payloads.
 
 ## Keep for compatibility
 

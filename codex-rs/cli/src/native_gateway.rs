@@ -195,6 +195,13 @@ fn route_native_gateway_request(
                 options.with_telegram_plugin,
             )),
         ),
+        "/api/telegram-cursor" => (
+            "200 OK",
+            "application/json; charset=utf-8",
+            json_or_error(&native_telegram::telegram_cursor_status(
+                options.with_telegram_plugin,
+            )),
+        ),
         _ => (
             "404 Not Found",
             "text/plain; charset=utf-8",
@@ -275,6 +282,7 @@ fn native_gateway_json(
         telegram_model_bridge_endpoint: "/api/telegram-model-bridge",
         telegram_send_plan_endpoint: "/api/telegram-send-plan",
         telegram_drain_once_endpoint: "/api/telegram-drain-once",
+        telegram_cursor_endpoint: "/api/telegram-cursor",
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
         telegram_readiness_summary_side_effect_free: true,
         telegram_plugin,
@@ -291,8 +299,9 @@ fn native_gateway_json(
             "Telegram gated model bridge skeleton",
             "Telegram gated send plan surface",
             "Telegram gated drain-once pipeline surface",
+            "Telegram cursor state surface",
         ],
-        next_migration_slice: "replace the gated drain-once pipeline plan with live read, model, send, and cursor execution",
+        next_migration_slice: "replace the gated drain-once pipeline plan with live read, model, send, and cursor commit execution",
     })
 }
 
@@ -330,6 +339,7 @@ struct NativeGatewayResponse<'a> {
     telegram_model_bridge_endpoint: &'static str,
     telegram_send_plan_endpoint: &'static str,
     telegram_drain_once_endpoint: &'static str,
+    telegram_cursor_endpoint: &'static str,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
     telegram_readiness_summary_side_effect_free: bool,
     telegram_plugin: &'a NativeTelegramPluginStatus,
@@ -492,6 +502,7 @@ mod tests {
         assert!(body.contains(r#""telegram_model_bridge_endpoint":"/api/telegram-model-bridge""#));
         assert!(body.contains(r#""telegram_send_plan_endpoint":"/api/telegram-send-plan""#));
         assert!(body.contains(r#""telegram_drain_once_endpoint":"/api/telegram-drain-once""#));
+        assert!(body.contains(r#""telegram_cursor_endpoint":"/api/telegram-cursor""#));
         assert!(body.contains(r#""telegram_readiness_summary_side_effect_free":true"#));
         assert!(body.contains(r#""readiness_summary_performs_live_read":false"#));
         assert!(body.contains(r#""readiness_summary_invokes_model":false"#));
