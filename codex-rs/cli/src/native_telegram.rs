@@ -13,9 +13,9 @@ const LOCAL_IMPORT_MANIFEST_PATH: &str = ".hepta/local-import/manifest.json";
 const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
 const TELEGRAM_ALLOWED_UPDATES: &str =
     "[\"message\",\"edited_message\",\"callback_query\",\"message_reaction\"]";
-const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
-const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
-const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
+pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
+pub(crate) const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
+pub(crate) const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramPluginStatus {
@@ -209,6 +209,19 @@ pub(crate) struct NativeTelegramSendPlanStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramGatewayGateSummary {
+    pub(crate) live_read_gate_env: &'static str,
+    pub(crate) live_read_gate_enabled: bool,
+    pub(crate) model_turn_gate_env: &'static str,
+    pub(crate) model_turn_gate_enabled: bool,
+    pub(crate) send_gate_env: &'static str,
+    pub(crate) send_gate_enabled: bool,
+    pub(crate) readiness_summary_performs_live_read: bool,
+    pub(crate) readiness_summary_invokes_model: bool,
+    pub(crate) readiness_summary_sends_message: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramModelTurnPlan {
     pub(crate) planner_ready: bool,
     pub(crate) candidate_count: usize,
@@ -337,6 +350,20 @@ pub(crate) fn telegram_receive_once_status(
     limit: usize,
 ) -> NativeTelegramReceiveOnceStatus {
     telegram_receive_once_status_with_gate(requested, limit, env_truthy(TELEGRAM_LIVE_READ_ENV))
+}
+
+pub(crate) fn telegram_gateway_gate_summary() -> NativeTelegramGatewayGateSummary {
+    NativeTelegramGatewayGateSummary {
+        live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
+        live_read_gate_enabled: env_truthy(TELEGRAM_LIVE_READ_ENV),
+        model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
+        model_turn_gate_enabled: env_truthy(TELEGRAM_MODEL_TURN_GATE_ENV),
+        send_gate_env: TELEGRAM_SEND_GATE_ENV,
+        send_gate_enabled: env_truthy(TELEGRAM_SEND_GATE_ENV),
+        readiness_summary_performs_live_read: false,
+        readiness_summary_invokes_model: false,
+        readiness_summary_sends_message: false,
+    }
 }
 
 pub(crate) fn telegram_model_turn_plan_status(

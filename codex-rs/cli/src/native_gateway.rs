@@ -263,6 +263,12 @@ fn native_gateway_json(
         telegram_plugin_native_supervisor_ready: telegram_plugin.in_process_supervisor_ready,
         telegram_plugin_reply_loop_ready: telegram_plugin.in_process_reply_loop_ready,
         telegram_plugin_poll_ms: options.telegram_plugin_poll_ms,
+        telegram_receive_once_endpoint: "/api/telegram-receive-once",
+        telegram_model_turn_plan_endpoint: "/api/telegram-model-turn-plan",
+        telegram_model_bridge_endpoint: "/api/telegram-model-bridge",
+        telegram_send_plan_endpoint: "/api/telegram-send-plan",
+        telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
+        telegram_readiness_summary_side_effect_free: true,
         telegram_plugin,
         migrated_surfaces: &[
             "--serve-ui entrypoint",
@@ -310,6 +316,12 @@ struct NativeGatewayResponse<'a> {
     telegram_plugin_native_supervisor_ready: bool,
     telegram_plugin_reply_loop_ready: bool,
     telegram_plugin_poll_ms: u64,
+    telegram_receive_once_endpoint: &'static str,
+    telegram_model_turn_plan_endpoint: &'static str,
+    telegram_model_bridge_endpoint: &'static str,
+    telegram_send_plan_endpoint: &'static str,
+    telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
+    telegram_readiness_summary_side_effect_free: bool,
     telegram_plugin: &'a NativeTelegramPluginStatus,
     migrated_surfaces: &'static [&'static str],
     next_migration_slice: &'static str,
@@ -466,6 +478,13 @@ mod tests {
         assert!(body.contains(r#""launchd_entrypoint_compatible":true"#));
         assert!(body.contains(r#""active_gateway_replacement_ready":false"#));
         assert!(body.contains(r#""telegram_plugin_native_supervisor_ready":"#));
+        assert!(body.contains(r#""telegram_receive_once_endpoint":"/api/telegram-receive-once""#));
+        assert!(body.contains(r#""telegram_model_bridge_endpoint":"/api/telegram-model-bridge""#));
+        assert!(body.contains(r#""telegram_send_plan_endpoint":"/api/telegram-send-plan""#));
+        assert!(body.contains(r#""telegram_readiness_summary_side_effect_free":true"#));
+        assert!(body.contains(r#""readiness_summary_performs_live_read":false"#));
+        assert!(body.contains(r#""readiness_summary_invokes_model":false"#));
+        assert!(body.contains(r#""readiness_summary_sends_message":false"#));
         assert!(!body.contains("pending_migration"));
     }
 

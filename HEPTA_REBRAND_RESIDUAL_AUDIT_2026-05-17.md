@@ -756,6 +756,10 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `HEPTA_NATIVE_TELEGRAM_SEND` is off, so status probes do not materialize a
   request body, perform network writes, deliver Telegram messages, expose model
   output, or expose raw Telegram ids/tokens.
+- The native gateway readiness summary now lists the Telegram receive,
+  model-turn plan, model-bridge, and send-plan endpoints, plus the three
+  runtime gates. The summary itself is explicitly side-effect free: it does
+  not perform live Telegram reads, invoke a model, or send Telegram messages.
 
 ## Keep for compatibility
 
