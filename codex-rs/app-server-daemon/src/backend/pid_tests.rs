@@ -97,7 +97,7 @@ async fn start_retries_stale_empty_pid_file_under_its_own_lock() {
         .await
         .expect("write pid file");
     let backend = PidBackend::new(
-        temp_dir.path().join("missing-codex"),
+        temp_dir.path().join("missing-hepta"),
         pid_file,
         /*remote_control_enabled*/ false,
     );
@@ -145,7 +145,7 @@ async fn stale_record_cleanup_preserves_replacement_record() {
 #[test]
 fn update_loop_uses_hidden_app_server_subcommand() {
     let backend = PidBackend {
-        codex_bin: "codex".into(),
+        hepta_bin: "hepta".into(),
         pid_file: "updater.pid".into(),
         lock_file: "updater.pid.lock".into(),
         command_kind: PidCommandKind::UpdateLoop,
@@ -160,7 +160,7 @@ fn update_loop_uses_hidden_app_server_subcommand() {
 #[test]
 fn app_server_remote_control_uses_runtime_flag() {
     let backend = PidBackend::new(
-        "codex".into(),
+        "hepta".into(),
         "app-server.pid".into(),
         /*remote_control_enabled*/ true,
     );

@@ -22,7 +22,7 @@ const START_TIMEOUT: Duration = Duration::from_secs(10);
 #[derive(Debug)]
 #[cfg_attr(not(unix), allow(dead_code))]
 pub(crate) struct PidBackend {
-    codex_bin: PathBuf,
+    hepta_bin: PathBuf,
     pid_file: PathBuf,
     lock_file: PathBuf,
     command_kind: PidCommandKind,
@@ -50,10 +50,10 @@ enum PidCommandKind {
 }
 
 impl PidBackend {
-    pub(crate) fn new(codex_bin: PathBuf, pid_file: PathBuf, remote_control_enabled: bool) -> Self {
+    pub(crate) fn new(hepta_bin: PathBuf, pid_file: PathBuf, remote_control_enabled: bool) -> Self {
         let lock_file = pid_file.with_extension("pid.lock");
         Self {
-            codex_bin,
+            hepta_bin,
             pid_file,
             lock_file,
             command_kind: PidCommandKind::AppServer {
@@ -62,10 +62,10 @@ impl PidBackend {
         }
     }
 
-    pub(crate) fn new_update_loop(codex_bin: PathBuf, pid_file: PathBuf) -> Self {
+    pub(crate) fn new_update_loop(hepta_bin: PathBuf, pid_file: PathBuf) -> Self {
         let lock_file = pid_file.with_extension("pid.lock");
         Self {
-            codex_bin,
+            hepta_bin,
             pid_file,
             lock_file,
             command_kind: PidCommandKind::UpdateLoop,
@@ -128,7 +128,7 @@ impl PidBackend {
                 }
             }
         };
-        let mut command = Command::new(&self.codex_bin);
+        let mut command = Command::new(&self.hepta_bin);
         command
             .args(self.command_args())
             .stdin(Stdio::null())
@@ -154,7 +154,7 @@ impl PidBackend {
                 return Err(err).with_context(|| {
                     format!(
                         "failed to spawn detached app-server process using {}",
-                        self.codex_bin.display()
+                        self.hepta_bin.display()
                     )
                 });
             }

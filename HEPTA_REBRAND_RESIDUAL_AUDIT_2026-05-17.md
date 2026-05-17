@@ -528,6 +528,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Debug-client output-file tests now use a `hepta-debug-client-output-*.jsonl`
   temp filename instead of a Codex-branded one.
 
+## Cleaned in app-server daemon managed-binary pass
+
+- App-server daemon managed-install helpers now use `managed_hepta_*`
+  terminology for the staged standalone binary, version parsing, updater
+  reexec path, and pid backend launch path.
+- The daemon bootstrap output now serializes the managed standalone path as
+  `managedHeptaPath` instead of `managedCodexPath`.
+- Daemon pid/backend tests now use Hepta binary/socket fixture names while
+  leaving crate imports and the underlying `find_codex_home()` compatibility
+  helper intact.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

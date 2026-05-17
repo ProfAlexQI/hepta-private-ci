@@ -32,7 +32,7 @@ use crate::managed_install::ExecutableIdentity;
 #[cfg(unix)]
 use crate::managed_install::executable_identity;
 #[cfg(unix)]
-use crate::managed_install::resolved_managed_codex_bin;
+use crate::managed_install::resolved_managed_hepta_bin;
 
 #[cfg(unix)]
 const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(5 * 60);
@@ -87,8 +87,8 @@ async fn update_once(
     install_latest_standalone().await?;
 
     let daemon = Daemon::from_environment()?;
-    let managed_codex_bin = resolved_managed_codex_bin(&daemon.managed_codex_bin).await?;
-    let managed_identity = executable_identity(&managed_codex_bin).await?;
+    let managed_hepta_bin = resolved_managed_hepta_bin(&daemon.managed_hepta_bin).await?;
+    let managed_identity = executable_identity(&managed_hepta_bin).await?;
     let (restart_mode, updater_refresh_mode) =
         update_modes_for_identities(running_updater_identity, &managed_identity);
 
@@ -97,7 +97,7 @@ async fn update_once(
             return Ok(UpdateLoopControl::Stop);
         }
         match daemon
-            .try_restart_if_running(restart_mode, updater_refresh_mode, &managed_codex_bin)
+            .try_restart_if_running(restart_mode, updater_refresh_mode, &managed_hepta_bin)
             .await?
         {
             RestartIfRunningOutcome::Busy => {
@@ -133,14 +133,14 @@ fn update_modes_for_identities(
 }
 
 #[cfg(unix)]
-pub(crate) fn reexec_managed_updater(managed_codex_bin: &std::path::Path) -> Result<()> {
-    let err = StdCommand::new(managed_codex_bin)
+pub(crate) fn reexec_managed_updater(managed_hepta_bin: &std::path::Path) -> Result<()> {
+    let err = StdCommand::new(managed_hepta_bin)
         .args(["app-server", "daemon", "pid-update-loop"])
         .exec();
     Err(err).with_context(|| {
         format!(
             "failed to replace updater with managed Hepta binary {}",
-            managed_codex_bin.display()
+            managed_hepta_bin.display()
         )
     })
 }

@@ -14,7 +14,7 @@ pub enum BackendKind {
 
 #[derive(Debug, Clone)]
 pub(crate) struct BackendPaths {
-    pub(crate) codex_bin: PathBuf,
+    pub(crate) hepta_bin: PathBuf,
     pub(crate) pid_file: PathBuf,
     pub(crate) update_pid_file: PathBuf,
     pub(crate) remote_control_enabled: bool,
@@ -22,12 +22,12 @@ pub(crate) struct BackendPaths {
 
 pub(crate) fn pid_backend(paths: BackendPaths) -> PidBackend {
     PidBackend::new(
-        paths.codex_bin,
+        paths.hepta_bin,
         paths.pid_file,
         paths.remote_control_enabled,
     )
 }
 
 pub(crate) fn pid_update_loop_backend(paths: BackendPaths) -> PidBackend {
-    PidBackend::new_update_loop(paths.codex_bin, paths.update_pid_file)
+    PidBackend::new_update_loop(paths.hepta_bin, paths.update_pid_file)
 }

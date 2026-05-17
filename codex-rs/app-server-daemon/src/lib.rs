@@ -15,9 +15,9 @@ pub use backend::BackendKind;
 use backend::BackendPaths;
 use codex_app_server_transport::app_server_control_socket_path;
 use codex_utils_home_dir::find_codex_home;
-use managed_install::managed_codex_bin;
+use managed_install::managed_hepta_bin;
 #[cfg(unix)]
-use managed_install::managed_codex_version;
+use managed_install::managed_hepta_version;
 use serde::Serialize;
 use settings::DaemonSettings;
 use tokio::time::sleep;
@@ -83,7 +83,7 @@ pub struct BootstrapOutput {
     pub backend: BackendKind,
     pub auto_update_enabled: bool,
     pub remote_control_enabled: bool,
-    pub managed_codex_path: PathBuf,
+    pub managed_hepta_path: PathBuf,
     pub socket_path: PathBuf,
     pub cli_version: String,
     pub app_server_version: String,
@@ -207,23 +207,23 @@ struct Daemon {
     update_pid_file: PathBuf,
     operation_lock_file: PathBuf,
     settings_file: PathBuf,
-    managed_codex_bin: PathBuf,
+    managed_hepta_bin: PathBuf,
 }
 
 impl Daemon {
     fn from_environment() -> Result<Self> {
-        let codex_home = find_codex_home().context("failed to resolve HEPTA_HOME")?;
-        let socket_path = app_server_control_socket_path(codex_home.as_path())?
+        let hepta_home = find_codex_home().context("failed to resolve HEPTA_HOME")?;
+        let socket_path = app_server_control_socket_path(hepta_home.as_path())?
             .as_path()
             .to_path_buf();
-        let state_dir = codex_home.as_path().join(STATE_DIR_NAME);
+        let state_dir = hepta_home.as_path().join(STATE_DIR_NAME);
         Ok(Self {
             socket_path,
             pid_file: state_dir.join(PID_FILE_NAME),
             update_pid_file: state_dir.join(UPDATE_PID_FILE_NAME),
             operation_lock_file: state_dir.join(OPERATION_LOCK_FILE_NAME),
             settings_file: state_dir.join(SETTINGS_FILE_NAME),
-            managed_codex_bin: managed_codex_bin(codex_home.as_path()),
+            managed_hepta_bin: managed_hepta_bin(hepta_home.as_path()),
         })
     }
 
@@ -266,7 +266,7 @@ impl Daemon {
             ));
         }
 
-        self.ensure_managed_codex_bin()?;
+        self.ensure_managed_hepta_bin()?;
         let pid = self.start_managed_backend(&settings).await?;
         let info = self.wait_until_ready().await?;
         Ok(self.output(
@@ -287,7 +287,7 @@ impl Daemon {
             ));
         }
 
-        self.ensure_managed_codex_bin()?;
+        self.ensure_managed_hepta_bin()?;
         if let Some(backend) = self.running_backend_instance(&settings).await? {
             backend.stop().await?;
         }
@@ -307,7 +307,7 @@ impl Daemon {
         &self,
         mode: RestartMode,
         updater_refresh_mode: UpdaterRefreshMode,
-        managed_codex_bin: &Path,
+        managed_hepta_bin: &Path,
     ) -> Result<RestartIfRunningOutcome> {
         let operation_lock = self.open_operation_lock_file().await?;
         if !try_lock_file(&operation_lock)? {
@@ -317,7 +317,7 @@ impl Daemon {
         let outcome = if let Some(backend) = self.running_backend_instance(&settings).await? {
             let info = client::probe(&self.socket_path).await.ok();
             let managed_version = if info.is_some() {
-                Some(managed_codex_version(managed_codex_bin).await?)
+                Some(managed_hepta_version(managed_hepta_bin).await?)
             } else {
                 None
             };
@@ -327,7 +327,7 @@ impl Daemon {
                 RestartDecision::Restart => {
                     backend.stop().await?;
                     let _ = self
-                        .start_managed_backend_with_bin(&settings, managed_codex_bin)
+                        .start_managed_backend_with_bin(&settings, managed_hepta_bin)
                         .await?;
                     self.wait_until_ready().await?;
                     RestartIfRunningOutcome::Restarted
@@ -342,7 +342,7 @@ impl Daemon {
         };
 
         if should_reexec_updater(updater_refresh_mode, outcome) {
-            crate::update_loop::reexec_managed_updater(managed_codex_bin)?;
+            crate::update_loop::reexec_managed_updater(managed_hepta_bin)?;
         }
 
         Ok(outcome)
@@ -468,7 +468,7 @@ impl Daemon {
         settings.save(&self.settings_file).await?;
 
         let app_server_version = if let Some(backend) = backend {
-            self.ensure_managed_codex_bin()?;
+            self.ensure_managed_hepta_bin()?;
             backend.stop().await?;
             let _ = self.start_managed_backend(&settings).await?;
             Some(self.wait_until_ready().await?.app_server_version)
@@ -485,7 +485,7 @@ impl Daemon {
     }
 
     async fn bootstrap_locked(&self, options: BootstrapOptions) -> Result<BootstrapOutput> {
-        self.ensure_managed_codex_bin()?;
+        self.ensure_managed_hepta_bin()?;
 
         let settings = DaemonSettings {
             remote_control_enabled: options.remote_control_enabled,
@@ -517,7 +517,7 @@ impl Daemon {
             backend: BackendKind::Pid,
             auto_update_enabled: true,
             remote_control_enabled: settings.remote_control_enabled,
-            managed_codex_path: self.managed_codex_bin.clone(),
+            managed_hepta_path: self.managed_hepta_bin.clone(),
             socket_path: self.socket_path.clone(),
             cli_version: env!("CARGO_PKG_VERSION").to_string(),
             app_server_version: info.app_server_version,
@@ -543,17 +543,17 @@ impl Daemon {
     }
 
     async fn start_managed_backend(&self, settings: &DaemonSettings) -> Result<Option<u32>> {
-        self.start_managed_backend_with_bin(settings, &self.managed_codex_bin)
+        self.start_managed_backend_with_bin(settings, &self.managed_hepta_bin)
             .await
     }
 
     async fn start_managed_backend_with_bin(
         &self,
         settings: &DaemonSettings,
-        managed_codex_bin: &Path,
+        managed_hepta_bin: &Path,
     ) -> Result<Option<u32>> {
         let backend =
-            backend::pid_backend(self.backend_paths_with_bin(settings, managed_codex_bin));
+            backend::pid_backend(self.backend_paths_with_bin(settings, managed_hepta_bin));
         backend.start().await
     }
 
@@ -562,14 +562,14 @@ impl Daemon {
         updater.is_starting_or_running().await
     }
 
-    fn ensure_managed_codex_bin(&self) -> Result<()> {
-        if self.managed_codex_bin.is_file() {
+    fn ensure_managed_hepta_bin(&self) -> Result<()> {
+        if self.managed_hepta_bin.is_file() {
             return Ok(());
         }
 
-        let managed_codex_path = self.managed_codex_bin.display();
+        let managed_hepta_path = self.managed_hepta_bin.display();
         Err(anyhow!(
-            "managed standalone Hepta install not found at {managed_codex_path}\n\n\
+            "managed standalone Hepta install not found at {managed_hepta_path}\n\n\
              This command requires a managed Hepta standalone install, because \
              the daemon starts and updates app-server from that fixed path.\n\n\
              Install or stage a managed Hepta build at that path.\n\n\
@@ -578,16 +578,16 @@ impl Daemon {
     }
 
     fn backend_paths(&self, settings: &DaemonSettings) -> BackendPaths {
-        self.backend_paths_with_bin(settings, &self.managed_codex_bin)
+        self.backend_paths_with_bin(settings, &self.managed_hepta_bin)
     }
 
     fn backend_paths_with_bin(
         &self,
         settings: &DaemonSettings,
-        managed_codex_bin: &Path,
+        managed_hepta_bin: &Path,
     ) -> BackendPaths {
         BackendPaths {
-            codex_bin: managed_codex_bin.to_path_buf(),
+            hepta_bin: managed_hepta_bin.to_path_buf(),
             pid_file: self.pid_file.clone(),
             update_pid_file: self.update_pid_file.clone(),
             remote_control_enabled: settings.remote_control_enabled,
@@ -847,7 +847,7 @@ mod tests {
             status: LifecycleStatus::AlreadyRunning,
             backend: Some(BackendKind::Pid),
             pid: None,
-            socket_path: "codex.sock".into(),
+            socket_path: "hepta.sock".into(),
             cli_version: Some("1.2.3".to_string()),
             app_server_version: Some("1.2.4".to_string()),
         };
@@ -863,8 +863,8 @@ mod tests {
             backend: BackendKind::Pid,
             auto_update_enabled: true,
             remote_control_enabled: true,
-            managed_codex_path: "codex".into(),
-            socket_path: "codex.sock".into(),
+            managed_hepta_path: "hepta".into(),
+            socket_path: "hepta.sock".into(),
             cli_version: "1.2.3".to_string(),
             app_server_version: "1.2.4".to_string(),
         };
