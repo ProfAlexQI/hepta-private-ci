@@ -690,6 +690,18 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Linux sandbox and core README docs now name `hepta sandbox linux` as the
   primary command while documenting `codex debug landlock` as a legacy alias.
 
+## Post-sweep active-visible status
+
+- Targeted scans for active user-facing strings such as `Codex CLI`,
+  `OpenAI Codex`, `Ask Codex`, upstream Codex documentation links, and
+  primary `codex ...` command examples no longer return active product
+  surfaces.
+- Remaining hits in those scans are compatibility or fixture surfaces:
+  TUI diff-render snapshots that intentionally render user-provided diff
+  text, explicit legacy alias docs, the Bazel `codex` target name, hosted
+  ChatGPT Codex service URLs, crate/package names, wire/event schema names,
+  and test-only `codex_home` compatibility variable names.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
