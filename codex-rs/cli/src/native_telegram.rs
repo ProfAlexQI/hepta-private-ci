@@ -30,6 +30,7 @@ pub(crate) struct NativeTelegramPluginStatus {
     pub(crate) allowed_updates: &'static str,
     pub(crate) config: NativeTelegramConfigStatus,
     pub(crate) transport_plan: NativeTelegramTransportPlan,
+    pub(crate) ingress_parser: NativeTelegramIngressInspection,
     pub(crate) migration_blocker: Option<&'static str>,
     pub(crate) next_migration_slice: &'static str,
 }
@@ -70,6 +71,23 @@ pub(crate) struct NativeTelegramTransportPlan {
     pub(crate) external_network_performed_by_status: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramIngressInspection {
+    pub(crate) parser_ready: bool,
+    pub(crate) update_count: usize,
+    pub(crate) allowed_update_count: usize,
+    pub(crate) latest_observed_update_id: Option<i64>,
+    pub(crate) latest_allowed_update_id: Option<i64>,
+    pub(crate) latest_allowed_text_present: bool,
+    pub(crate) message_count: usize,
+    pub(crate) edited_message_count: usize,
+    pub(crate) callback_query_count: usize,
+    pub(crate) reaction_count: usize,
+    pub(crate) raw_message_text_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_sender_id_exposed: bool,
+}
+
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
     if !requested {
         return NativeTelegramPluginStatus {
@@ -89,6 +107,7 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
             allowed_updates: TELEGRAM_ALLOWED_UPDATES,
             config: NativeTelegramConfigStatus::disabled(),
             transport_plan: NativeTelegramTransportPlan::disabled(),
+            ingress_parser: inspect_telegram_updates(&[]),
             migration_blocker: None,
             next_migration_slice: "enable --with-telegram-plugin, then wire Bot API polling and model-turn delivery",
         };
@@ -120,6 +139,7 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
         allowed_updates: TELEGRAM_ALLOWED_UPDATES,
         transport_plan: NativeTelegramTransportPlan::for_config(&config),
         config,
+        ingress_parser: inspect_telegram_updates(&[]),
         migration_blocker: Some(
             "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
         ),
@@ -402,6 +422,95 @@ fn redact_token_like_text(text: &str) -> String {
         .join(" ")
 }
 
+fn inspect_telegram_updates(updates: &[Value]) -> NativeTelegramIngressInspection {
+    let mut inspection = NativeTelegramIngressInspection {
+        parser_ready: true,
+        update_count: updates.len(),
+        allowed_update_count: 0,
+        latest_observed_update_id: None,
+        latest_allowed_update_id: None,
+        latest_allowed_text_present: false,
+        message_count: 0,
+        edited_message_count: 0,
+        callback_query_count: 0,
+        reaction_count: 0,
+        raw_message_text_exposed: false,
+        raw_chat_id_exposed: false,
+        raw_sender_id_exposed: false,
+    };
+
+    for update in updates {
+        let update_id = update.get("update_id").and_then(Value::as_i64);
+        if let Some(update_id) = update_id {
+            inspection.latest_observed_update_id = Some(
+                inspection
+                    .latest_observed_update_id
+                    .map(|current| current.max(update_id))
+                    .unwrap_or(update_id),
+            );
+        }
+
+        let (allowed, text_present) = if let Some(message) = update.get("message") {
+            inspection.message_count = inspection.message_count.saturating_add(1);
+            (
+                telegram_message_is_reply_candidate(message),
+                telegram_message_text_present(message),
+            )
+        } else if let Some(message) = update.get("edited_message") {
+            inspection.edited_message_count = inspection.edited_message_count.saturating_add(1);
+            (
+                telegram_message_is_reply_candidate(message),
+                telegram_message_text_present(message),
+            )
+        } else if update.get("callback_query").is_some() {
+            inspection.callback_query_count = inspection.callback_query_count.saturating_add(1);
+            (true, false)
+        } else if update.get("message_reaction").is_some() {
+            inspection.reaction_count = inspection.reaction_count.saturating_add(1);
+            (true, false)
+        } else {
+            (false, false)
+        };
+
+        if allowed {
+            inspection.allowed_update_count = inspection.allowed_update_count.saturating_add(1);
+            if let Some(update_id) = update_id {
+                inspection.latest_allowed_update_id = Some(
+                    inspection
+                        .latest_allowed_update_id
+                        .map(|current| current.max(update_id))
+                        .unwrap_or(update_id),
+                );
+            }
+            inspection.latest_allowed_text_present |= text_present;
+        }
+    }
+
+    inspection
+}
+
+fn telegram_message_is_reply_candidate(message: &Value) -> bool {
+    message
+        .get("chat")
+        .and_then(|chat| chat.get("id"))
+        .is_some()
+        && message.get("message_id").is_some()
+        && telegram_message_text_present(message)
+}
+
+fn telegram_message_text_present(message: &Value) -> bool {
+    message
+        .get("text")
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+        || message
+            .get("caption")
+            .and_then(Value::as_str)
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+}
+
 impl NativeTelegramConfigStatus {
     fn disabled() -> Self {
         Self {
@@ -549,6 +658,7 @@ mod tests {
             allowed_updates: TELEGRAM_ALLOWED_UPDATES,
             transport_plan: NativeTelegramTransportPlan::for_config(&config),
             config,
+            ingress_parser: inspect_telegram_updates(&[]),
             migration_blocker: Some(
                 "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
             ),
@@ -562,5 +672,35 @@ mod tests {
         assert!(plugin.transport_plan.bot_api_transport_plan_ready);
         assert!(!plugin.transport_plan.external_network_performed_by_status);
         assert!(!plugin.transport_plan.raw_token_exposed);
+        assert!(plugin.ingress_parser.parser_ready);
+        assert!(!plugin.ingress_parser.raw_message_text_exposed);
+    }
+
+    #[test]
+    fn ingress_parser_counts_allowed_updates_without_exposing_private_fields() {
+        let update = serde_json::json!({
+            "update_id": 42,
+            "message": {
+                "message_id": 7,
+                "text": "private prompt text",
+                "chat": { "id": 6476198178_i64, "type": "private" },
+                "from": { "id": 6476198178_i64, "username": "private_user" }
+            }
+        });
+
+        let inspection = inspect_telegram_updates(&[update]);
+        assert!(inspection.parser_ready);
+        assert_eq!(inspection.update_count, 1);
+        assert_eq!(inspection.allowed_update_count, 1);
+        assert_eq!(inspection.latest_observed_update_id, Some(42));
+        assert_eq!(inspection.latest_allowed_update_id, Some(42));
+        assert!(inspection.latest_allowed_text_present);
+
+        let serialized = serde_json::to_string(&inspection).expect("serialize");
+        assert!(!serialized.contains("private prompt text"));
+        assert!(!serialized.contains("6476198178"));
+        assert!(!inspection.raw_message_text_exposed);
+        assert!(!inspection.raw_chat_id_exposed);
+        assert!(!inspection.raw_sender_id_exposed);
     }
 }

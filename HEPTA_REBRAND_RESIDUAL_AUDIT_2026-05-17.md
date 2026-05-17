@@ -724,6 +724,9 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   is a plan/contract surface only: status probes keep
   `external_network_performed_by_status=false`, `external_send=false`, and
   `raw_token_exposed=false`.
+- A native redacted ingress parser is now present for Telegram
+  `getUpdates` payloads. It counts allowed update classes and offset ids but
+  deliberately does not surface message text, raw chat ids, or raw sender ids.
 
 ## Keep for compatibility
 
