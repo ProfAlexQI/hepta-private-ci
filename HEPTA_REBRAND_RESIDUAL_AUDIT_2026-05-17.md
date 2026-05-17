@@ -539,6 +539,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   leaving crate imports and the underlying `find_codex_home()` compatibility
   helper intact.
 
+## Cleaned in app-server daemon pid-fixture pass
+
+- Remaining daemon pid/backend unit-test fixture binary paths now use
+  `hepta` temp filenames instead of `codex`.
+- The remaining app-server-daemon Codex hits are crate/import names, the
+  `find_codex_home()` compatibility helper, and deliberate upstream installer
+  safety wording.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
