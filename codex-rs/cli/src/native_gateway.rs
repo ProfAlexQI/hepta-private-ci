@@ -96,6 +96,17 @@ pub(crate) async fn run_native_gateway(options: NativeGatewayOptions) -> Result<
             "hepta-codex native gateway accepted --with-telegram-plugin; native Telegram supervisor status={} config_ready={} reply_loop_ready=false",
             telegram_plugin.status, telegram_plugin.config.binding_ready
         );
+        if native_telegram::spawn_telegram_poll_loop_if_enabled(
+            true,
+            options.telegram_plugin_poll_ms,
+        )
+        .is_some()
+        {
+            eprintln!(
+                "hepta-codex native Telegram poll loop armed at {} ms",
+                options.telegram_plugin_poll_ms
+            );
+        }
     }
 
     let listener = TcpListener::bind(&options.bind_addr)
@@ -195,6 +206,14 @@ fn route_native_gateway_request(
                 options.with_telegram_plugin,
             )),
         ),
+        "/api/telegram-poll-loop" => (
+            "200 OK",
+            "application/json; charset=utf-8",
+            json_or_error(&native_telegram::telegram_poll_loop_status(
+                options.with_telegram_plugin,
+                options.telegram_plugin_poll_ms,
+            )),
+        ),
         "/api/telegram-cursor" => (
             "200 OK",
             "application/json; charset=utf-8",
@@ -282,8 +301,13 @@ fn native_gateway_json(
         telegram_model_bridge_endpoint: "/api/telegram-model-bridge",
         telegram_send_plan_endpoint: "/api/telegram-send-plan",
         telegram_drain_once_endpoint: "/api/telegram-drain-once",
+        telegram_poll_loop_endpoint: "/api/telegram-poll-loop",
         telegram_cursor_endpoint: "/api/telegram-cursor",
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
+        telegram_poll_loop_status: native_telegram::telegram_poll_loop_status(
+            options.with_telegram_plugin,
+            options.telegram_plugin_poll_ms,
+        ),
         telegram_readiness_summary_side_effect_free: true,
         telegram_plugin,
         migrated_surfaces: &[
@@ -299,9 +323,10 @@ fn native_gateway_json(
             "Telegram gated model bridge skeleton",
             "Telegram gated send plan surface",
             "Telegram gated drain-once pipeline surface",
+            "Telegram gated poll-loop supervisor surface",
             "Telegram cursor state surface",
         ],
-        next_migration_slice: "replace the gated drain-once pipeline plan with live read, model, send, and cursor commit execution",
+        next_migration_slice: "replace the gated child exec runner with an in-process runner and then mark active gateway replacement ready",
     })
 }
 
@@ -339,8 +364,10 @@ struct NativeGatewayResponse<'a> {
     telegram_model_bridge_endpoint: &'static str,
     telegram_send_plan_endpoint: &'static str,
     telegram_drain_once_endpoint: &'static str,
+    telegram_poll_loop_endpoint: &'static str,
     telegram_cursor_endpoint: &'static str,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
+    telegram_poll_loop_status: native_telegram::NativeTelegramPollLoopStatus,
     telegram_readiness_summary_side_effect_free: bool,
     telegram_plugin: &'a NativeTelegramPluginStatus,
     migrated_surfaces: &'static [&'static str],
@@ -502,6 +529,9 @@ mod tests {
         assert!(body.contains(r#""telegram_model_bridge_endpoint":"/api/telegram-model-bridge""#));
         assert!(body.contains(r#""telegram_send_plan_endpoint":"/api/telegram-send-plan""#));
         assert!(body.contains(r#""telegram_drain_once_endpoint":"/api/telegram-drain-once""#));
+        assert!(body.contains(r#""telegram_poll_loop_endpoint":"/api/telegram-poll-loop""#));
+        assert!(body.contains(r#""poll_loop_gate_env":"HEPTA_NATIVE_TELEGRAM_POLL_LOOP""#));
+        assert!(body.contains(r#""worker_spawned_by_status":false"#));
         assert!(body.contains(r#""telegram_cursor_endpoint":"/api/telegram-cursor""#));
         assert!(body.contains(r#""telegram_readiness_summary_side_effect_free":true"#));
         assert!(body.contains(r#""readiness_summary_performs_live_read":false"#));

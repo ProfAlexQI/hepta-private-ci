@@ -18,6 +18,7 @@ const TELEGRAM_ALLOWED_UPDATES: &str =
 pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
 pub(crate) const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
 pub(crate) const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
+pub(crate) const TELEGRAM_POLL_LOOP_ENV: &str = "HEPTA_NATIVE_TELEGRAM_POLL_LOOP";
 const TELEGRAM_MODEL_TIMEOUT_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TIMEOUT_MS";
 const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
 const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
@@ -256,6 +257,30 @@ pub(crate) struct NativeTelegramDrainOnceStatus {
     pub(crate) raw_response_text_exposed: bool,
     pub(crate) raw_token_exposed: bool,
     pub(crate) error: Option<String>,
+    pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramPollLoopStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) poll_loop_gate_env: &'static str,
+    pub(crate) poll_loop_gate_enabled: bool,
+    pub(crate) poll_ms: u64,
+    pub(crate) drain_once_endpoint: &'static str,
+    pub(crate) worker_spawned_by_status: bool,
+    pub(crate) loop_invokes_drain_once: bool,
+    pub(crate) requires_live_read_gate: &'static str,
+    pub(crate) requires_model_turn_gate: &'static str,
+    pub(crate) requires_send_gate: &'static str,
+    pub(crate) external_network_read_by_status: bool,
+    pub(crate) external_send_by_status: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
     pub(crate) next_migration_slice: &'static str,
 }
 
@@ -708,6 +733,73 @@ pub(crate) fn telegram_send_plan_status(requested: bool) -> NativeTelegramSendPl
 
 pub(crate) fn telegram_drain_once_status(requested: bool) -> NativeTelegramDrainOnceStatus {
     telegram_drain_once_status_with_gates(requested, telegram_gateway_gate_summary())
+}
+
+pub(crate) fn telegram_poll_loop_status(
+    requested: bool,
+    poll_ms: u64,
+) -> NativeTelegramPollLoopStatus {
+    let poll_loop_gate_enabled = env_truthy(TELEGRAM_POLL_LOOP_ENV);
+    let status = if !requested {
+        "disabled"
+    } else if poll_loop_gate_enabled {
+        "armed"
+    } else {
+        "gated"
+    };
+    NativeTelegramPollLoopStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested,
+        status,
+        poll_loop_gate_env: TELEGRAM_POLL_LOOP_ENV,
+        poll_loop_gate_enabled,
+        poll_ms,
+        drain_once_endpoint: "/api/telegram-drain-once",
+        worker_spawned_by_status: false,
+        loop_invokes_drain_once: requested && poll_loop_gate_enabled,
+        requires_live_read_gate: TELEGRAM_LIVE_READ_ENV,
+        requires_model_turn_gate: TELEGRAM_MODEL_TURN_GATE_ENV,
+        requires_send_gate: TELEGRAM_SEND_GATE_ENV,
+        external_network_read_by_status: false,
+        external_send_by_status: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        raw_token_exposed: false,
+        next_migration_slice: "spawn the gated Telegram poll loop from --serve-ui and keep drain gates independent",
+    }
+}
+
+pub(crate) fn spawn_telegram_poll_loop_if_enabled(
+    requested: bool,
+    poll_ms: u64,
+) -> Option<thread::JoinHandle<()>> {
+    if !(requested && env_truthy(TELEGRAM_POLL_LOOP_ENV)) {
+        return None;
+    }
+
+    Some(thread::spawn(move || {
+        run_telegram_poll_loop(requested, poll_ms)
+    }))
+}
+
+fn run_telegram_poll_loop(requested: bool, poll_ms: u64) {
+    let poll_ms = poll_ms.clamp(500, 60_000);
+    loop {
+        let status = telegram_drain_once_status(requested);
+        if matches!(status.status, "attention") {
+            eprintln!(
+                "hepta-codex Telegram poll loop attention: {}",
+                status
+                    .error
+                    .as_deref()
+                    .map(redact_token_like_text)
+                    .unwrap_or_else(|| "unknown redacted error".to_string())
+            );
+        }
+        thread::sleep(Duration::from_millis(poll_ms));
+    }
 }
 
 pub(crate) fn telegram_cursor_status(requested: bool) -> NativeTelegramCursorStatus {
