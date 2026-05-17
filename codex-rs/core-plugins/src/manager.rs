@@ -418,7 +418,7 @@ struct CachedPluginLoadOutcome {
 
 impl PluginsManager {
     pub fn new(codex_home: PathBuf) -> Self {
-        Self::new_with_restriction_product(codex_home, Some(Product::Codex))
+        Self::new_with_restriction_product(codex_home, Some(Product::Hepta))
     }
 
     pub fn new_with_restriction_product(

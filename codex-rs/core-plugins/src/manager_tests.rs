@@ -3160,6 +3160,36 @@ plugins = true
     assert_eq!(featured_plugin_ids, vec!["codex-plugin".to_string()]);
 }
 
+#[tokio::test]
+async fn featured_plugin_ids_for_config_hepta_default_uses_codex_platform_compatibility() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_file(
+        &tmp.path().join(CONFIG_TOML_FILE),
+        r#"[features]
+plugins = true
+"#,
+    );
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/backend-api/plugins/featured"))
+        .and(query_param("platform", "codex"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"["hepta-plugin"]"#))
+        .mount(&server)
+        .await;
+
+    let mut config = load_config(tmp.path(), tmp.path()).await;
+    config.chatgpt_base_url = format!("{}/backend-api/", server.uri());
+    let manager = PluginsManager::new(tmp.path().to_path_buf());
+
+    let featured_plugin_ids = manager
+        .featured_plugin_ids_for_config(&config, /*auth*/ None)
+        .await
+        .unwrap();
+
+    assert_eq!(featured_plugin_ids, vec!["hepta-plugin".to_string()]);
+}
+
 #[test]
 fn refresh_curated_plugin_cache_replaces_existing_local_version_with_short_sha_version() {
     let tmp = tempfile::tempdir().unwrap();

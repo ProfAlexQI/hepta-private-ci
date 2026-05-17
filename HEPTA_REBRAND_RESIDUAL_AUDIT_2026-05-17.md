@@ -488,6 +488,16 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   instead of `CODEX_HOME`; behavior is unchanged because it still receives the
   resolved runtime home from final config.
 
+## Cleaned in product-restriction policy pass
+
+- Default CLI/TUI/app-server session sources now resolve to `Product::Hepta`
+  for plugin and skill product restrictions.
+- `Product::Hepta` intentionally matches Codex-restricted plugin/skill policy
+  entries so existing curated and marketplace assets remain available.
+- Hepta featured-plugin API queries still use upstream `platform=codex`
+  compatibility because the remote service does not expose a distinct Hepta
+  platform yet.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

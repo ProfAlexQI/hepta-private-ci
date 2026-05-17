@@ -166,7 +166,7 @@ pub async fn fetch_remote_featured_plugin_ids(
         .get(&url)
         .query(&[(
             "platform",
-            product.unwrap_or(Product::Codex).to_app_platform(),
+            product.unwrap_or(Product::Hepta).to_app_platform(),
         )])
         .timeout(REMOTE_FEATURED_PLUGIN_FETCH_TIMEOUT);
 

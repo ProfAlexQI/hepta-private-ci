@@ -57,7 +57,7 @@ pub struct SkillsManager {
 
 impl SkillsManager {
     pub fn new(codex_home: AbsolutePathBuf, bundled_skills_enabled: bool) -> Self {
-        Self::new_with_restriction_product(codex_home, bundled_skills_enabled, Some(Product::Codex))
+        Self::new_with_restriction_product(codex_home, bundled_skills_enabled, Some(Product::Hepta))
     }
 
     pub fn new_with_restriction_product(

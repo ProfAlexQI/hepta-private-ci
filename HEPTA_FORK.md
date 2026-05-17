@@ -15,6 +15,9 @@ Current first-cut identity changes:
 - Runtime defaults now recognize `HEPTA_DEFAULT_MODEL_PROVIDER` and
   `HEPTA_DEFAULT_MODEL` as Hepta-owned code-default policy inputs, with legacy
   `CODEX_*` names kept only as fallbacks.
+- Runtime product restriction defaults now identify as `Product::Hepta` while
+  preserving compatibility with Codex-restricted plugins, skills, and featured
+  plugin API platform queries.
 - Internal crate names still use `codex-*` for the first migration step, so the
   fork stays buildable while behavior is moved over deliberately.
 
@@ -24,9 +27,10 @@ Hepta-to-upstream bridge:
 1. Continue replacing remaining user-visible upstream product strings in TUI/app-server
    surfaces where they are not protocol compatibility names.
 2. Continue moving provider/profile/session defaults from upstream assumptions
-   to Hepta policy. The first provider/model env-policy slice has landed; the
-   next work should inspect session persistence, profile-v2 naming, and hosted
-   runtime defaults.
+   to Hepta policy. Provider/model env-policy, profile-v2 naming, runtime-home
+   terminology, and product restriction defaults have landed; the next work
+   should inspect hosted runtime URLs/docs and remaining compatibility-only
+   session persistence names.
 3. Port Hepta memory/runtime/plugin semantics into the core crates directly.
 4. Only after the fork is stable, rename internal crates where the churn is
    worth it.

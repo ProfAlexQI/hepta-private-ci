@@ -2687,7 +2687,7 @@ impl SessionSource {
             | SessionSource::VSCode
             | SessionSource::Exec
             | SessionSource::Mcp
-            | SessionSource::Unknown => Some(Product::Codex),
+            | SessionSource::Unknown => Some(Product::Hepta),
             SessionSource::Internal(_) | SessionSource::SubAgent(_) => None,
         }
     }
@@ -3337,6 +3337,8 @@ pub enum Product {
     Codex,
     #[serde(alias = "ATLAS")]
     Atlas,
+    #[serde(alias = "HEPTA")]
+    Hepta,
 }
 impl Product {
     pub fn to_app_platform(self) -> &'static str {
@@ -3344,6 +3346,9 @@ impl Product {
             Self::Chatgpt => "chat",
             Self::Codex => "codex",
             Self::Atlas => "atlas",
+            // The upstream featured-plugin API does not have a distinct Hepta
+            // platform yet. Hepta is intentionally Codex-compatible here.
+            Self::Hepta => "codex",
         }
     }
 
@@ -3353,12 +3358,15 @@ impl Product {
             "chatgpt" => Some(Self::Chatgpt),
             "codex" => Some(Self::Codex),
             "atlas" => Some(Self::Atlas),
+            "hepta" => Some(Self::Hepta),
             _ => None,
         }
     }
 
     pub fn matches_product_restriction(&self, products: &[Product]) -> bool {
-        products.is_empty() || products.contains(self)
+        products.is_empty()
+            || products.contains(self)
+            || matches!(self, Self::Hepta) && products.contains(&Self::Codex)
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -4053,26 +4061,26 @@ mod tests {
     }
 
     #[test]
-    fn session_source_restriction_product_defaults_non_subagent_sources_to_codex() {
+    fn session_source_restriction_product_defaults_non_subagent_sources_to_hepta() {
         assert_eq!(
             SessionSource::Cli.restriction_product(),
-            Some(Product::Codex)
+            Some(Product::Hepta)
         );
         assert_eq!(
             SessionSource::VSCode.restriction_product(),
-            Some(Product::Codex)
+            Some(Product::Hepta)
         );
         assert_eq!(
             SessionSource::Exec.restriction_product(),
-            Some(Product::Codex)
+            Some(Product::Hepta)
         );
         assert_eq!(
             SessionSource::Mcp.restriction_product(),
-            Some(Product::Codex)
+            Some(Product::Hepta)
         );
         assert_eq!(
             SessionSource::Unknown.restriction_product(),
-            Some(Product::Codex)
+            Some(Product::Hepta)
         );
     }
 
@@ -4104,6 +4112,10 @@ mod tests {
             Some(Product::Codex)
         );
         assert_eq!(
+            SessionSource::Custom("hepta".to_string()).restriction_product(),
+            Some(Product::Hepta)
+        );
+        assert_eq!(
             SessionSource::Custom("atlas-dev".to_string()).restriction_product(),
             None
         );
@@ -4120,11 +4132,24 @@ mod tests {
                 .matches_product_restriction(&[Product::Codex])
         );
         assert!(SessionSource::VSCode.matches_product_restriction(&[Product::Codex]));
+        assert!(SessionSource::VSCode.matches_product_restriction(&[Product::Hepta]));
+        assert!(
+            !SessionSource::Custom("codex".to_string())
+                .matches_product_restriction(&[Product::Hepta])
+        );
         assert!(
             !SessionSource::Custom("atlas-dev".to_string())
                 .matches_product_restriction(&[Product::Atlas])
         );
         assert!(SessionSource::Custom("atlas-dev".to_string()).matches_product_restriction(&[]));
+    }
+
+    #[test]
+    fn hepta_product_uses_codex_platform_compatibility() {
+        assert_eq!(Product::Hepta.to_app_platform(), "codex");
+        assert!(Product::Hepta.matches_product_restriction(&[Product::Codex]));
+        assert!(Product::Hepta.matches_product_restriction(&[Product::Hepta]));
+        assert!(!Product::Codex.matches_product_restriction(&[Product::Hepta]));
     }
 
     fn sandbox_policy_probe_paths(policy: &SandboxPolicy, cwd: &Path) -> Vec<PathBuf> {
