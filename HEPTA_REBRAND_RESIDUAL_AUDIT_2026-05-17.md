@@ -327,6 +327,19 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   display copy now use Hepta wording while preserving compatibility slugs and
   binary names where needed.
 
+## Cleaned in docs/sample/commentary pass
+
+- MCP interface documentation now presents Hepta command names and tool names,
+  while documenting legacy codex / codex-reply aliases and codex/event
+  notifications as compatibility surfaces.
+- Bundled skill/plugin creator sample skills now describe Hepta capability,
+  UI ordering, HEPTA_HOME, ~/.hepta, and hepta:// app handoff links.
+- TUI approval history, pet image fallback guidance, model migration fixture
+  copy, and Apps local-file upload errors now use Hepta wording.
+- Core/config/client comments and test-only template fixtures now use Hepta
+  where the text describes the product/runtime rather than an internal crate,
+  path, environment variable, or wire field.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

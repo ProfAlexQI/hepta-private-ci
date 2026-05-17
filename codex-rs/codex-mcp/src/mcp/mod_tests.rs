@@ -224,7 +224,7 @@ fn codex_apps_server_config_uses_legacy_codex_apps_path() {
         .expect("codex apps should use configured transport");
     let url = match &config.transport {
         McpServerTransportConfig::StreamableHttp { url, .. } => url,
-        _ => panic!("expected streamable http transport for codex apps"),
+        _ => panic!("expected streamable http transport for Hepta apps"),
     };
 
     assert_eq!(url, "https://chatgpt.com/backend-api/wham/apps");
@@ -246,7 +246,7 @@ fn codex_apps_server_config_uses_configured_apps_mcp_path_override() {
         .expect("codex apps should use configured transport");
     let url = match &config.transport {
         McpServerTransportConfig::StreamableHttp { url, .. } => url,
-        _ => panic!("expected streamable http transport for codex apps"),
+        _ => panic!("expected streamable http transport for Hepta apps"),
     };
 
     assert_eq!(url, "https://chatgpt.com/backend-api/custom/mcp");

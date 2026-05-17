@@ -292,13 +292,13 @@ mod tests {
     fn render_replaces_placeholders_with_and_without_whitespace() {
         let rendered = render(
             "Hello, {{ name }}. You are in {{place}}. {{ name }} is repeated.",
-            [("name", "Codex"), ("place", "codex-rs")],
+            [("name", "Hepta"), ("place", "codex-rs")],
         )
         .unwrap();
 
         assert_eq!(
             rendered,
-            "Hello, Codex. You are in codex-rs. Codex is repeated."
+            "Hello, Hepta. You are in codex-rs. Hepta is repeated."
         );
     }
 
@@ -307,8 +307,8 @@ mod tests {
         let template = Template::parse("{{greeting}}, {{ name }}!").unwrap();
 
         assert_eq!(
-            template.render([("greeting", "Hello"), ("name", "Codex")]),
-            Ok("Hello, Codex!".to_string())
+            template.render([("greeting", "Hello"), ("name", "Hepta")]),
+            Ok("Hello, Hepta!".to_string())
         );
         assert_eq!(
             template.render([("greeting", "Hi"), ("name", "builder")]),

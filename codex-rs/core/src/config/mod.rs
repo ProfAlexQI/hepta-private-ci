@@ -361,7 +361,7 @@ impl Permissions {
     }
 
     /// Workspace roots that came from user-visible configuration or runtime
-    /// selection. Internal Codex-only writable roots are intentionally excluded.
+    /// selection. Internal Hepta-only writable roots are intentionally excluded.
     pub fn user_visible_workspace_roots(&self) -> &[AbsolutePathBuf] {
         &self.workspace_roots
     }
@@ -482,7 +482,7 @@ impl Permissions {
 }
 
 // A profile override only inherits the selected profile's proxy/allowlist config
-// when Codex is still responsible for the network policy. `Disabled` means no
+// when Hepta is still responsible for the network policy. `Disabled` means no
 // outer sandbox, so starting the managed proxy would narrow the override.
 fn profile_allows_configured_network_proxy(permission_profile: &PermissionProfile) -> bool {
     match permission_profile {
@@ -2753,7 +2753,7 @@ impl Config {
                 )
                 && !materialized_file_system_sandbox_policy.has_full_disk_write_access()
             {
-                // Keep Codex runtime write access while storing the runtime
+                // Keep Hepta runtime write access while storing the runtime
                 // workspace roots separately on the thread.
                 file_system_sandbox_policy = file_system_sandbox_policy
                     .with_additional_legacy_workspace_writable_roots(&internal_writable_roots);

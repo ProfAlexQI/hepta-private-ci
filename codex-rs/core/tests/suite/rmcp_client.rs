@@ -1761,14 +1761,14 @@ impl StreamableHttpTestServer {
     }
 }
 
-/// What this tests: Codex can discover and call a Streamable HTTP MCP tool in
+/// What this tests: Hepta can discover and call a Streamable HTTP MCP tool in
 /// both local and remote-aware placements, and the tool observes the expected
 /// environment value from the server process that actually handled the request.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn streamable_http_tool_call_round_trip() -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
 
-    // Phase 1: script the model responses so Codex will call the MCP echo tool
+    // Phase 1: script the model responses so Hepta will call the MCP echo tool
     // and then complete the turn after the tool result is returned.
     let server = responses::start_mock_server().await;
 
@@ -1935,7 +1935,7 @@ fn streamable_http_with_oauth_round_trip() -> anyhow::Result<()> {
 async fn streamable_http_with_oauth_round_trip_impl() -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
 
-    // Phase 1: script the model responses so Codex will call the OAuth-backed
+    // Phase 1: script the model responses so Hepta will call the OAuth-backed
     // MCP echo tool and then finish the turn after receiving the result.
     let server = responses::start_mock_server().await;
 

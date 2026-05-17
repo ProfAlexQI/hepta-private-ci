@@ -1,6 +1,6 @@
 ---
 name: plugin-creator
-description: Create and scaffold plugin directories for Codex with a required `.codex-plugin/plugin.json`, optional plugin folders/files, and baseline placeholders you can edit before publishing or testing. Use when Codex needs to create a new personal plugin, add optional plugin structure, or generate or update personal or repo-root `.agents/plugins/marketplace.json` entries for plugin ordering and availability metadata.
+description: Create and scaffold plugin directories for Hepta with a required `.codex-plugin/plugin.json`, optional plugin folders/files, and baseline placeholders you can edit before publishing or testing. Use when Hepta needs to create a new personal plugin, add optional plugin structure, or generate or update personal or repo-root `.agents/plugins/marketplace.json` entries for plugin ordering and availability metadata.
 ---
 
 # Plugin Creator
@@ -19,7 +19,7 @@ python3 .agents/skills/plugin-creator/scripts/create_basic_plugin.py <plugin-nam
 
 2. Open `<plugin-path>/.codex-plugin/plugin.json` and replace `[TODO: ...]` placeholders.
 
-3. Generate or update the personal marketplace entry when the plugin should appear in Codex UI ordering:
+3. Generate or update the personal marketplace entry when the plugin should appear in Hepta UI ordering:
 
 ```bash
 # Personal marketplace entries default to ~/.agents/plugins/marketplace.json.
@@ -77,7 +77,7 @@ python3 .agents/skills/plugin-creator/scripts/create_basic_plugin.py my-plugin \
 - Personal plugins use `~/.agents/plugins/marketplace.json`.
 - Repo/team plugins use `<repo-root>/.agents/plugins/marketplace.json`.
 - Marketplace root metadata supports top-level `name` plus optional `interface.displayName`.
-- Treat plugin order in `plugins[]` as render order in Codex. Append new entries unless a user explicitly asks to reorder the list.
+- Treat plugin order in `plugins[]` as render order in Hepta. Append new entries unless a user explicitly asks to reorder the list.
 - `displayName` belongs inside the marketplace `interface` object, not individual `plugins[]` entries.
 - Each generated marketplace entry must include all of:
   - `policy.installation`
@@ -151,14 +151,14 @@ python3 .agents/skills/plugin-creator/scripts/create_basic_plugin.py my-plugin \
 - Add `policy.products` only when the user explicitly asks for that override.
 - Keep marketplace `source.path` relative to the selected marketplace root as `./plugins/<plugin-name>`.
 - When the workflow created or updated a marketplace-backed plugin, end the final user-facing
-  response with a short Codex app handoff. Say `To view this in the Codex app:` and write
+  response with a short Hepta app handoff. Say `To view this in the Hepta app:` and write
   `View <normalized plugin name>` and `Share <normalized plugin name>` as Markdown links, not raw
   URLs or code spans.
-- The View deeplink uses `codex://plugins/<normalized plugin name>?marketplacePath=<absolute marketplace.json path>`.
+- The View deeplink uses `hepta://plugins/<normalized plugin name>?marketplacePath=<absolute marketplace.json path>`.
   The Share deeplink uses the same URL with `&mode=share`.
 - Replace the placeholders with the real normalized plugin name and absolute `marketplace.json`
   path from the scaffolded plugin. URL-encode the path segment and query value when needed.
-- Do not add `pluginName` or `hostId` query parameters to these deeplinks. Codex derives both after
+- Do not add `pluginName` or `hostId` query parameters to these deeplinks. Hepta derives both after
   the user clicks the link.
 - Do not emit the `View <normalized plugin name>` or `Share <normalized plugin name>` links when no marketplace entry was
   created or updated.
