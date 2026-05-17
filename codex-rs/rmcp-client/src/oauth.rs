@@ -14,7 +14,8 @@
 //! keystore that always encrypts secrets when they are transferred across the bus. If DBus isn't installed the keystore will fall back to the json
 //! file because we don't use the "vendored" feature.
 //!
-//! If the keyring is not available or fails, we fall back to CODEX_HOME/.credentials.json which is consistent with other coding CLI agents.
+//! If the keyring is not available or fails, we fall back to the runtime home
+//! `.credentials.json` file which is consistent with other coding CLI agents.
 
 use anyhow::Context;
 use anyhow::Error;
@@ -50,7 +51,8 @@ use tokio::sync::Mutex;
 
 use codex_utils_home_dir::find_codex_home;
 
-const KEYRING_SERVICE: &str = "Codex MCP Credentials";
+const KEYRING_SERVICE: &str = "Hepta MCP Credentials";
+const LEGACY_KEYRING_SERVICE: &str = "Codex MCP Credentials";
 const REFRESH_SKEW_MILLIS: u64 = 30_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -141,15 +143,21 @@ fn load_oauth_tokens_from_keyring<K: KeyringStore>(
 ) -> Result<Option<StoredOAuthTokens>> {
     let key = compute_store_key(server_name, url)?;
     match keyring_store.load(KEYRING_SERVICE, &key) {
-        Ok(Some(serialized)) => {
-            let mut tokens: StoredOAuthTokens = serde_json::from_str(&serialized)
-                .context("failed to deserialize OAuth tokens from keyring")?;
-            refresh_expires_in_from_timestamp(&mut tokens);
-            Ok(Some(tokens))
-        }
-        Ok(None) => Ok(None),
+        Ok(Some(serialized)) => deserialize_oauth_tokens_from_keyring(&serialized).map(Some),
+        Ok(None) => match keyring_store.load(LEGACY_KEYRING_SERVICE, &key) {
+            Ok(Some(serialized)) => deserialize_oauth_tokens_from_keyring(&serialized).map(Some),
+            Ok(None) => Ok(None),
+            Err(error) => Err(Error::new(error.into_error())),
+        },
         Err(error) => Err(Error::new(error.into_error())),
     }
+}
+
+fn deserialize_oauth_tokens_from_keyring(serialized: &str) -> Result<StoredOAuthTokens> {
+    let mut tokens: StoredOAuthTokens = serde_json::from_str(serialized)
+        .context("failed to deserialize OAuth tokens from keyring")?;
+    refresh_expires_in_from_timestamp(&mut tokens);
+    Ok(tokens)
 }
 
 pub fn save_oauth_tokens(
@@ -229,24 +237,43 @@ fn delete_oauth_tokens_from_keyring_and_file<K: KeyringStore>(
     url: &str,
 ) -> Result<bool> {
     let key = compute_store_key(server_name, url)?;
-    let keyring_result = keyring_store.delete(KEYRING_SERVICE, &key);
-    let keyring_removed = match keyring_result {
-        Ok(removed) => removed,
-        Err(error) => {
-            let message = error.message();
-            warn!("failed to delete OAuth tokens from keyring: {message}");
-            match store_mode {
-                OAuthCredentialsStoreMode::Auto | OAuthCredentialsStoreMode::Keyring => {
-                    return Err(error.into_error())
-                        .context("failed to delete OAuth tokens from keyring");
-                }
-                OAuthCredentialsStoreMode::File => false,
-            }
-        }
-    };
+    let primary_keyring_removed = delete_oauth_tokens_from_keyring_service(
+        keyring_store,
+        store_mode,
+        KEYRING_SERVICE,
+        &key,
+    )?;
+    let legacy_keyring_removed = delete_oauth_tokens_from_keyring_service(
+        keyring_store,
+        store_mode,
+        LEGACY_KEYRING_SERVICE,
+        &key,
+    )?;
+    let keyring_removed = primary_keyring_removed || legacy_keyring_removed;
 
     let file_removed = delete_oauth_tokens_from_file(&key)?;
     Ok(keyring_removed || file_removed)
+}
+
+fn delete_oauth_tokens_from_keyring_service<K: KeyringStore>(
+    keyring_store: &K,
+    store_mode: OAuthCredentialsStoreMode,
+    service: &str,
+    key: &str,
+) -> Result<bool> {
+    match keyring_store.delete(service, key) {
+        Ok(removed) => Ok(removed),
+        Err(error) => {
+            let message = error.message();
+            warn!("failed to delete OAuth tokens from keyring service {service}: {message}");
+            match store_mode {
+                OAuthCredentialsStoreMode::Auto | OAuthCredentialsStoreMode::Keyring => {
+                    Err(error.into_error()).context("failed to delete OAuth tokens from keyring")
+                }
+                OAuthCredentialsStoreMode::File => Ok(false),
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -654,6 +681,23 @@ mod tests {
     }
 
     #[test]
+    fn load_oauth_tokens_reads_legacy_keyring_service_when_primary_missing() -> Result<()> {
+        let _env = TempCodexHome::new();
+        let store = MockKeyringStore::default();
+        let tokens = sample_tokens();
+        let expected = tokens.clone();
+        let serialized = serde_json::to_string(&tokens)?;
+        let key = super::compute_store_key(&tokens.server_name, &tokens.url)?;
+        store.save(LEGACY_KEYRING_SERVICE, &key, &serialized)?;
+
+        let loaded =
+            super::load_oauth_tokens_from_keyring(&store, &tokens.server_name, &tokens.url)?
+                .expect("tokens should load from legacy keyring service");
+        assert_tokens_match_without_expiry(&loaded, &expected);
+        Ok(())
+    }
+
+    #[test]
     fn load_oauth_tokens_falls_back_when_missing_in_keyring() -> Result<()> {
         let _env = TempCodexHome::new();
         let store = MockKeyringStore::default();
@@ -710,7 +754,12 @@ mod tests {
 
         let fallback_path = super::fallback_file_path()?;
         assert!(!fallback_path.exists(), "fallback file should be removed");
-        let stored = store.saved_value(&key).expect("value saved to keyring");
+        let stored = store
+            .saved_value_for_service(KEYRING_SERVICE, &key)
+            .expect("value saved to Hepta keyring service");
+        assert!(store
+            .saved_value_for_service(LEGACY_KEYRING_SERVICE, &key)
+            .is_none());
         assert_eq!(serde_json::from_str::<StoredOAuthTokens>(&stored)?, tokens);
         Ok(())
     }
@@ -753,6 +802,7 @@ mod tests {
         let serialized = serde_json::to_string(&tokens)?;
         let key = super::compute_store_key(&tokens.server_name, &tokens.url)?;
         store.save(KEYRING_SERVICE, &key, &serialized)?;
+        store.save(LEGACY_KEYRING_SERVICE, &key, &serialized)?;
         super::save_oauth_tokens_to_file(&tokens)?;
 
         let removed = super::delete_oauth_tokens_from_keyring_and_file(
@@ -762,7 +812,8 @@ mod tests {
             &tokens.url,
         )?;
         assert!(removed);
-        assert!(!store.contains(&key));
+        assert!(!store.contains_for_service(KEYRING_SERVICE, &key));
+        assert!(!store.contains_for_service(LEGACY_KEYRING_SERVICE, &key));
         assert!(!super::fallback_file_path()?.exists());
         Ok(())
     }

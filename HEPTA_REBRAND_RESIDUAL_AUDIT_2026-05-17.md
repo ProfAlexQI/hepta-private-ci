@@ -443,6 +443,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   docs, and config harness examples now use Hepta wording where the text
   describes the active runtime rather than an upstream endpoint or
   compatibility type.
+- MCP OAuth now stores new keyring entries under `Hepta MCP Credentials`,
+  while still reading and deleting legacy `Codex MCP Credentials` entries so
+  existing credentials survive the rebrand.
+- Rollout path examples now use Hepta/runtime-home wording instead of
+  hard-coded `~/.codex/sessions` examples.
 - Endpoint paths such as `/api/codex/...`, legacy MCP wire fields such as
   `codex_*`, and crate names such as `codex-core` remain compatibility names.
 
