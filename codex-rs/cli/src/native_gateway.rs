@@ -12,6 +12,8 @@ use crate::native_telegram::NativeTelegramPluginStatus;
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:7373";
 const DEFAULT_TELEGRAM_POLL_MS: u64 = 1500;
+const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
+const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NativeGatewayOptions {
@@ -165,6 +167,11 @@ fn route_native_gateway_request(
             "application/json; charset=utf-8",
             native_gateway_json(options, &telegram_plugin),
         ),
+        "/api/gateway-replacement-readiness" => (
+            "200 OK",
+            "application/json; charset=utf-8",
+            json_or_error(&gateway_replacement_readiness(options, &telegram_plugin)),
+        ),
         "/api/telegram-plugin" => (
             "200 OK",
             "application/json; charset=utf-8",
@@ -282,6 +289,9 @@ fn native_gateway_json(
     options: &NativeGatewayOptions,
     telegram_plugin: &NativeTelegramPluginStatus,
 ) -> String {
+    let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
+    let active_gateway_replacement_ready = gateway_replacement_readiness.ready;
+    let replacement_blocker = gateway_replacement_readiness.blockers.first().copied();
     json_or_error(&NativeGatewayResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -289,8 +299,10 @@ fn native_gateway_json(
         migration_mode: "codex_fork_native",
         bind_addr: &options.bind_addr,
         launchd_entrypoint_compatible: true,
-        active_gateway_replacement_ready: false,
-        replacement_blocker: "Telegram Bot API polling/send, Codex model-turn bridge, and full Hepta Control UI route surface are still migrating into hepta-codex",
+        active_gateway_replacement_ready,
+        replacement_blocker,
+        gateway_replacement_readiness_endpoint: "/api/gateway-replacement-readiness",
+        gateway_replacement_readiness,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
         telegram_plugin_native_supervisor_ready: telegram_plugin.in_process_supervisor_ready,
@@ -326,8 +338,145 @@ fn native_gateway_json(
             "Telegram gated poll-loop supervisor surface",
             "Telegram cursor state surface",
         ],
-        next_migration_slice: "replace the gated child exec runner with an in-process runner and then mark active gateway replacement ready",
+        next_migration_slice: "replace the gated child exec runner with an in-process runner, pass release/UI parity gates, then mark active gateway replacement ready",
     })
+}
+
+fn gateway_replacement_readiness(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> NativeGatewayReplacementReadiness {
+    let telegram_gate_summary = native_telegram::telegram_gateway_gate_summary();
+    let telegram_poll_loop_status = native_telegram::telegram_poll_loop_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
+    let release_build_verified = env_truthy(RELEASE_BUILD_VERIFIED_ENV);
+    let control_ui_parity_verified = env_truthy(CONTROL_UI_PARITY_VERIFIED_ENV);
+    let in_process_model_runner_ready = false;
+    let side_effect_free = true;
+
+    let checks = vec![
+        NativeGatewayReplacementCheck {
+            name: "launchd_entrypoint_compatible",
+            ready: true,
+            detail: "serve-ui loopback entrypoint is available in hepta-codex",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_plugin_requested",
+            ready: options.with_telegram_plugin,
+            detail: "production replacement requires --with-telegram-plugin",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_config_binding_ready",
+            ready: telegram_plugin.config.binding_ready,
+            detail: "Telegram config and secret binding are redacted and resolvable",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_native_supervisor_ready",
+            ready: telegram_plugin.in_process_supervisor_ready,
+            detail: "native supervisor can load without OpenClaw gateway runtime dependency",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_live_read_gate_enabled",
+            ready: telegram_gate_summary.live_read_gate_enabled,
+            detail: "HEPTA_NATIVE_TELEGRAM_LIVE_READ must be enabled for active polling",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_model_turn_gate_enabled",
+            ready: telegram_gate_summary.model_turn_gate_enabled,
+            detail: "HEPTA_NATIVE_TELEGRAM_MODEL_TURN must be enabled for active replies",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_send_gate_enabled",
+            ready: telegram_gate_summary.send_gate_enabled,
+            detail: "HEPTA_NATIVE_TELEGRAM_SEND must be enabled for active delivery",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_poll_loop_gate_enabled",
+            ready: telegram_poll_loop_status.poll_loop_gate_enabled,
+            detail: "HEPTA_NATIVE_TELEGRAM_POLL_LOOP must be enabled for background draining",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_poll_loop_invokes_drain_once",
+            ready: telegram_poll_loop_status.loop_invokes_drain_once,
+            detail: "poll loop must route through the gated drain-once pipeline",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_cursor_policy_ready",
+            ready: telegram_plugin.cursor_plan.duplicate_suppression_ready
+                && telegram_plugin.cursor_plan.commit_offset_after_delivery
+                && !telegram_plugin.cursor_plan.raw_update_payload_persisted,
+            detail: "cursor commits only after delivery or duplicate suppression without raw payload persistence",
+        },
+        NativeGatewayReplacementCheck {
+            name: "in_process_model_runner_ready",
+            ready: in_process_model_runner_ready,
+            detail: "current Telegram model path still uses the gated child exec runner",
+        },
+        NativeGatewayReplacementCheck {
+            name: "release_build_verified",
+            ready: release_build_verified,
+            detail: "release fat-LTO build must pass before replacing the active gateway",
+        },
+        NativeGatewayReplacementCheck {
+            name: "control_ui_route_parity_verified",
+            ready: control_ui_parity_verified,
+            detail: "Hepta Control UI route parity must be verified before production replacement",
+        },
+        NativeGatewayReplacementCheck {
+            name: "readiness_report_side_effect_free",
+            ready: side_effect_free,
+            detail: "readiness report does not read Telegram, invoke model, send message, or write cursor",
+        },
+    ];
+
+    let blockers = checks
+        .iter()
+        .filter(|check| !check.ready)
+        .map(|check| check.name)
+        .collect::<Vec<_>>();
+    let ready = blockers.is_empty();
+    let status = if ready { "ready" } else { "blocked" };
+
+    NativeGatewayReplacementReadiness {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status,
+        ready,
+        active_install_allowed: ready,
+        side_effect_free,
+        blocker_count: blockers.len(),
+        blockers,
+        checks,
+        required_env_gates: NativeGatewayReplacementEnvGates {
+            live_read: NativeGatewayReplacementGate {
+                env: native_telegram::TELEGRAM_LIVE_READ_ENV,
+                enabled: telegram_gate_summary.live_read_gate_enabled,
+            },
+            model_turn: NativeGatewayReplacementGate {
+                env: native_telegram::TELEGRAM_MODEL_TURN_GATE_ENV,
+                enabled: telegram_gate_summary.model_turn_gate_enabled,
+            },
+            send: NativeGatewayReplacementGate {
+                env: native_telegram::TELEGRAM_SEND_GATE_ENV,
+                enabled: telegram_gate_summary.send_gate_enabled,
+            },
+            poll_loop: NativeGatewayReplacementGate {
+                env: native_telegram::TELEGRAM_POLL_LOOP_ENV,
+                enabled: telegram_poll_loop_status.poll_loop_gate_enabled,
+            },
+            release_build_verified: NativeGatewayReplacementGate {
+                env: RELEASE_BUILD_VERIFIED_ENV,
+                enabled: release_build_verified,
+            },
+            control_ui_parity_verified: NativeGatewayReplacementGate {
+                env: CONTROL_UI_PARITY_VERIFIED_ENV,
+                enabled: control_ui_parity_verified,
+            },
+        },
+        next_migration_slice: "replace the child exec Telegram model runner with an in-process runner, then rerun release and route-parity gates",
+    }
 }
 
 fn json_or_error<T: Serialize>(value: &T) -> String {
@@ -353,7 +502,9 @@ struct NativeGatewayResponse<'a> {
     bind_addr: &'a str,
     launchd_entrypoint_compatible: bool,
     active_gateway_replacement_ready: bool,
-    replacement_blocker: &'static str,
+    replacement_blocker: Option<&'static str>,
+    gateway_replacement_readiness_endpoint: &'static str,
+    gateway_replacement_readiness: NativeGatewayReplacementReadiness,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
     telegram_plugin_native_supervisor_ready: bool,
@@ -372,6 +523,44 @@ struct NativeGatewayResponse<'a> {
     telegram_plugin: &'a NativeTelegramPluginStatus,
     migrated_surfaces: &'static [&'static str],
     next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeGatewayReplacementReadiness {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    ready: bool,
+    active_install_allowed: bool,
+    side_effect_free: bool,
+    blocker_count: usize,
+    blockers: Vec<&'static str>,
+    checks: Vec<NativeGatewayReplacementCheck>,
+    required_env_gates: NativeGatewayReplacementEnvGates,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeGatewayReplacementCheck {
+    name: &'static str,
+    ready: bool,
+    detail: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeGatewayReplacementEnvGates {
+    live_read: NativeGatewayReplacementGate,
+    model_turn: NativeGatewayReplacementGate,
+    send: NativeGatewayReplacementGate,
+    poll_loop: NativeGatewayReplacementGate,
+    release_build_verified: NativeGatewayReplacementGate,
+    control_ui_parity_verified: NativeGatewayReplacementGate,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeGatewayReplacementGate {
+    env: &'static str,
+    enabled: bool,
 }
 
 fn allow_non_loopback_ui() -> bool {
@@ -524,6 +713,14 @@ mod tests {
         assert!(body.contains(r#""runtime":"hepta-codex""#));
         assert!(body.contains(r#""launchd_entrypoint_compatible":true"#));
         assert!(body.contains(r#""active_gateway_replacement_ready":false"#));
+        assert!(body.contains(
+            r#""gateway_replacement_readiness_endpoint":"/api/gateway-replacement-readiness""#
+        ));
+        assert!(body.contains(r#""status":"blocked""#));
+        assert!(body.contains(r#""active_install_allowed":false"#));
+        assert!(body.contains(r#""in_process_model_runner_ready""#));
+        assert!(body.contains(r#""release_build_verified""#));
+        assert!(body.contains(r#""control_ui_route_parity_verified""#));
         assert!(body.contains(r#""telegram_plugin_native_supervisor_ready":"#));
         assert!(body.contains(r#""telegram_receive_once_endpoint":"/api/telegram-receive-once""#));
         assert!(body.contains(r#""telegram_model_bridge_endpoint":"/api/telegram-model-bridge""#));
@@ -538,6 +735,38 @@ mod tests {
         assert!(body.contains(r#""readiness_summary_invokes_model":false"#));
         assert!(body.contains(r#""readiness_summary_sends_message":false"#));
         assert!(!body.contains("pending_migration"));
+    }
+
+    #[test]
+    fn gateway_replacement_readiness_endpoint_reports_blockers_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", "/api/gateway-replacement-readiness", &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect("readiness json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["ready"], false);
+        assert_eq!(value["active_install_allowed"], false);
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(
+            value["required_env_gates"]["live_read"]["env"],
+            native_telegram::TELEGRAM_LIVE_READ_ENV
+        );
+        let blockers = value["blockers"]
+            .as_array()
+            .expect("blockers")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>();
+        assert!(blockers.contains(&"in_process_model_runner_ready"));
+        assert!(blockers.contains(&"release_build_verified"));
+        assert!(blockers.contains(&"control_ui_route_parity_verified"));
     }
 
     #[test]
