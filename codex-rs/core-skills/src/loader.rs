@@ -291,8 +291,8 @@ fn skill_roots_from_layer_stack_inner(
                 }
             }
             ConfigLayerSource::User { .. } => {
-                // Deprecated user skills location (`$CODEX_HOME/skills`), kept for backward
-                // compatibility.
+                // Deprecated legacy user skills location (`$CODEX_HOME/skills`), kept for
+                // backward compatibility.
                 roots.push(SkillRoot {
                     path: config_folder.join(SKILLS_DIR_NAME),
                     scope: SkillScope::User,

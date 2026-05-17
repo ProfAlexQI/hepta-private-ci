@@ -479,6 +479,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - The focused profile-v2 config-path unit test now uses `hepta_home`
   terminology for its temporary home.
 
+## Cleaned in home-terminology pass
+
+- Internal docs/comments for exec-server environment loading, plugin admission,
+  test home isolation, rollout fixtures, and legacy skill roots now describe the
+  active runtime home as Hepta home.
+- The TUI syntax-highlighting custom-theme singleton is now named `HEPTA_HOME`
+  instead of `CODEX_HOME`; behavior is unchanged because it still receives the
+  resolved runtime home from final config.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

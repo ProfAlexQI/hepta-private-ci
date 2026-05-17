@@ -101,11 +101,12 @@ impl EnvironmentManager {
         Self::from_default_provider_url(exec_server_url, local_runtime_paths).await
     }
 
-    /// Builds a manager from `CODEX_HOME` and local runtime paths used when
-    /// creating local filesystem helpers.
+    /// Builds a manager from the resolved Hepta home and local runtime paths
+    /// used when creating local filesystem helpers.
     ///
-    /// If `CODEX_HOME/environments.toml` is present, it defines the configured
-    /// environments. Otherwise this preserves the legacy
+    /// If `HEPTA_HOME/environments.toml` is present, it defines the configured
+    /// environments. Legacy `CODEX_HOME` resolution is handled before this
+    /// point. Otherwise this preserves the legacy
     /// `CODEX_EXEC_SERVER_URL` behavior.
     pub async fn from_codex_home(
         codex_home: impl AsRef<std::path::Path>,
@@ -116,7 +117,7 @@ impl EnvironmentManager {
     }
 
     /// Builds a manager from the legacy environment-variable provider without
-    /// reading user config files from `CODEX_HOME`.
+    /// reading user config files from the resolved Hepta home.
     pub async fn from_env(
         local_runtime_paths: ExecServerRuntimePaths,
     ) -> Result<Self, ExecServerError> {
