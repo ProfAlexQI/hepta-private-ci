@@ -1103,8 +1103,13 @@ fn telegram_drain_once_status_with_gates(
                             }
                         }
                         Err(fetch_error) => {
-                            status = "attention";
-                            error = Some(redact_token_like_text(&fetch_error));
+                            let redacted_error = redact_token_like_text(&fetch_error);
+                            status = if is_telegram_get_updates_conflict_error(&redacted_error) {
+                                "busy"
+                            } else {
+                                "attention"
+                            };
+                            error = Some(redacted_error);
                         }
                     }
                 }
@@ -1380,9 +1385,15 @@ fn telegram_receive_once_status_with_gate(
             report
         }
         Err(error) => {
+            let redacted_error = redact_token_like_text(&error);
+            let status = if is_telegram_get_updates_conflict_error(&redacted_error) {
+                "busy"
+            } else {
+                "attention"
+            };
             let mut report = NativeTelegramReceiveOnceStatus::base(
                 requested,
-                "attention",
+                status,
                 true,
                 true,
                 limit,
@@ -1390,7 +1401,7 @@ fn telegram_receive_once_status_with_gate(
                 transport_plan,
                 cursor_plan,
                 inspect_telegram_updates(&[]),
-                Some(redact_token_like_text(&error)),
+                Some(redacted_error),
             );
             report.get_updates_offset = get_updates_offset;
             report
@@ -1680,6 +1691,11 @@ fn call_telegram_get_updates(
                 .unwrap_or_else(|| "missing".to_string())
         ))
     }
+}
+
+fn is_telegram_get_updates_conflict_error(error: &str) -> bool {
+    error.contains("Telegram Bot API getUpdates HTTP status 409")
+        && error.contains("terminated by other getUpdates request")
 }
 
 fn telegram_get_updates_query(limit: usize, offset: Option<i64>) -> Vec<(&'static str, String)> {
@@ -4631,5 +4647,14 @@ mod tests {
         assert!(!report.raw_update_payload_exposed);
         assert!(!report.raw_token_exposed);
         assert!(report.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
+    }
+
+    #[test]
+    fn get_updates_conflict_error_is_busy_not_attention() {
+        let conflict = "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request; make sure that only one bot instance is running";
+        assert!(is_telegram_get_updates_conflict_error(conflict));
+
+        let auth_error = "Telegram Bot API getUpdates HTTP status 401; description=Unauthorized";
+        assert!(!is_telegram_get_updates_conflict_error(auth_error));
     }
 }
