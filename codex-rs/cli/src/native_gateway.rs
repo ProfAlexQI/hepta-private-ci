@@ -167,6 +167,13 @@ fn route_native_gateway_request(
                 20,
             )),
         ),
+        "/api/telegram-model-turn-plan" => (
+            "200 OK",
+            "application/json; charset=utf-8",
+            json_or_error(&native_telegram::telegram_model_turn_plan_status(
+                options.with_telegram_plugin,
+            )),
+        ),
         _ => (
             "404 Not Found",
             "text/plain; charset=utf-8",
@@ -252,8 +259,9 @@ fn native_gateway_json(
             "Telegram plugin redacted config contract",
             "Telegram native supervisor readiness surface",
             "Telegram gated one-shot receive surface",
+            "Telegram redacted model-turn planning surface",
         ],
-        next_migration_slice: "wire native Bot API getUpdates/sendMessage loop behind explicit delivery gates",
+        next_migration_slice: "wire planned Telegram candidates into a bounded Codex model-turn bridge, then enable gated send",
     })
 }
 

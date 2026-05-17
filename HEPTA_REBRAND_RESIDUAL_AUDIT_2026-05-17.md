@@ -738,6 +738,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   redacted parser statistics and keeps `external_send=false`,
   `model_turn_started=false`, `cursor_written=false`,
   `raw_update_payload_exposed=false`, and `raw_token_exposed=false`.
+- A redacted model-turn planning endpoint now exists at
+  `/api/telegram-model-turn-plan`. It exposes candidate counts, candidate
+  classes, session-key/reply-target strategy, and model/send gates without
+  invoking a model runner, writing cursor state, sending Telegram messages, or
+  exposing raw prompt text, callback data, chat ids, sender ids, or message ids.
 
 ## Keep for compatibility
 

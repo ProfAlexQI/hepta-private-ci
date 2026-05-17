@@ -35,6 +35,7 @@ pub(crate) struct NativeTelegramPluginStatus {
     pub(crate) transport_plan: NativeTelegramTransportPlan,
     pub(crate) ingress_parser: NativeTelegramIngressInspection,
     pub(crate) cursor_plan: NativeTelegramCursorPlan,
+    pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
     pub(crate) migration_blocker: Option<&'static str>,
     pub(crate) next_migration_slice: &'static str,
 }
@@ -124,8 +125,54 @@ pub(crate) struct NativeTelegramReceiveOnceStatus {
     pub(crate) transport_plan: NativeTelegramTransportPlan,
     pub(crate) cursor_plan: NativeTelegramCursorPlan,
     pub(crate) inspection: NativeTelegramIngressInspection,
+    pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
     pub(crate) error: Option<String>,
     pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramModelTurnPlanStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) model_turn_bridge_ready: bool,
+    pub(crate) model_turn_started: bool,
+    pub(crate) session_runner_invoked: bool,
+    pub(crate) external_send: bool,
+    pub(crate) cursor_written: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_sender_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
+    pub(crate) config: NativeTelegramConfigStatus,
+    pub(crate) cursor_plan: NativeTelegramCursorPlan,
+    pub(crate) inspection: NativeTelegramIngressInspection,
+    pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
+    pub(crate) error: Option<String>,
+    pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramModelTurnPlan {
+    pub(crate) planner_ready: bool,
+    pub(crate) candidate_count: usize,
+    pub(crate) text_candidate_count: usize,
+    pub(crate) callback_candidate_count: usize,
+    pub(crate) reaction_candidate_count: usize,
+    pub(crate) reply_target_count: usize,
+    pub(crate) candidate_kinds: Vec<String>,
+    pub(crate) prompt_material_policy: &'static str,
+    pub(crate) session_key_strategy: &'static str,
+    pub(crate) reply_target_strategy: &'static str,
+    pub(crate) model_turn_invocation_gate: &'static str,
+    pub(crate) send_delivery_gate: &'static str,
+    pub(crate) raw_message_text_exposed: bool,
+    pub(crate) raw_callback_data_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_sender_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
 }
 
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
@@ -149,6 +196,7 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
             transport_plan: NativeTelegramTransportPlan::disabled(),
             ingress_parser: inspect_telegram_updates(&[]),
             cursor_plan: NativeTelegramCursorPlan::disabled(),
+            model_turn_plan: NativeTelegramModelTurnPlan::disabled(),
             migration_blocker: None,
             next_migration_slice: "enable --with-telegram-plugin, then wire Bot API polling and model-turn delivery",
         };
@@ -182,6 +230,7 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
         config,
         ingress_parser: inspect_telegram_updates(&[]),
         cursor_plan: NativeTelegramCursorPlan::ready(),
+        model_turn_plan: plan_model_turn_for_updates(&[]),
         migration_blocker: Some(
             "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
         ),
@@ -194,6 +243,63 @@ pub(crate) fn telegram_receive_once_status(
     limit: usize,
 ) -> NativeTelegramReceiveOnceStatus {
     telegram_receive_once_status_with_gate(requested, limit, env_truthy(TELEGRAM_LIVE_READ_ENV))
+}
+
+pub(crate) fn telegram_model_turn_plan_status(
+    requested: bool,
+) -> NativeTelegramModelTurnPlanStatus {
+    let config = if requested {
+        load_telegram_config_status()
+    } else {
+        NativeTelegramConfigStatus::disabled()
+    };
+    let cursor_plan = if requested {
+        NativeTelegramCursorPlan::ready()
+    } else {
+        NativeTelegramCursorPlan::disabled()
+    };
+    let inspection = inspect_telegram_updates(&[]);
+    let model_turn_plan = if requested {
+        plan_model_turn_for_updates(&[])
+    } else {
+        NativeTelegramModelTurnPlan::disabled()
+    };
+    let config_ready = requested && config.enabled && config.token_shape_ok && config.binding_ready;
+    let status = if !requested {
+        "disabled"
+    } else if config_ready {
+        "planned"
+    } else {
+        "attention"
+    };
+    let error = if requested && !config_ready {
+        Some("Telegram config, token shape, or binding is not ready".to_string())
+    } else {
+        None
+    };
+
+    NativeTelegramModelTurnPlanStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested,
+        status,
+        model_turn_bridge_ready: false,
+        model_turn_started: false,
+        session_runner_invoked: false,
+        external_send: false,
+        cursor_written: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_chat_id_exposed: false,
+        raw_sender_id_exposed: false,
+        raw_message_id_exposed: false,
+        config,
+        cursor_plan,
+        inspection,
+        model_turn_plan,
+        error,
+        next_migration_slice: "wire the planned redacted candidates into a bounded Codex session runner",
+    }
 }
 
 fn telegram_receive_once_status_with_gate(
@@ -281,6 +387,7 @@ fn telegram_receive_once_status_with_gate(
                 .unwrap_or_default();
             let inspection = inspect_telegram_updates(&updates);
             let local_next_update_offset = inspection.latest_allowed_next_update_offset;
+            let model_turn_plan = plan_model_turn_for_updates(&updates);
             let status = if bot_api_ok.unwrap_or(false) {
                 "ready"
             } else {
@@ -307,6 +414,7 @@ fn telegram_receive_once_status_with_gate(
                     .map(redact_token_like_text)
                     .or_else(|| Some("Telegram Bot API getUpdates returned ok=false".to_string()));
             }
+            report.model_turn_plan = model_turn_plan;
             report
         }
         Err(error) => NativeTelegramReceiveOnceStatus::base(
@@ -792,6 +900,79 @@ fn telegram_next_update_offset(update_id: i64) -> Option<i64> {
     update_id.checked_add(1)
 }
 
+fn plan_model_turn_for_updates(updates: &[Value]) -> NativeTelegramModelTurnPlan {
+    let mut plan = NativeTelegramModelTurnPlan::ready();
+
+    for update in updates.iter().take(20) {
+        if let Some(message) = update.get("message") {
+            if let Some(kind) = telegram_message_prompt_kind(message) {
+                plan.candidate_count = plan.candidate_count.saturating_add(1);
+                plan.text_candidate_count = plan.text_candidate_count.saturating_add(1);
+                if telegram_message_has_reply_target(message) {
+                    plan.reply_target_count = plan.reply_target_count.saturating_add(1);
+                }
+                plan.candidate_kinds.push(format!("message:{kind}"));
+            }
+        } else if let Some(message) = update.get("edited_message") {
+            if let Some(kind) = telegram_message_prompt_kind(message) {
+                plan.candidate_count = plan.candidate_count.saturating_add(1);
+                plan.text_candidate_count = plan.text_candidate_count.saturating_add(1);
+                if telegram_message_has_reply_target(message) {
+                    plan.reply_target_count = plan.reply_target_count.saturating_add(1);
+                }
+                plan.candidate_kinds.push(format!("edited_message:{kind}"));
+            }
+        } else if let Some(callback) = update.get("callback_query") {
+            plan.candidate_count = plan.candidate_count.saturating_add(1);
+            plan.callback_candidate_count = plan.callback_candidate_count.saturating_add(1);
+            if callback
+                .get("message")
+                .map(telegram_message_has_reply_target)
+                .unwrap_or(false)
+            {
+                plan.reply_target_count = plan.reply_target_count.saturating_add(1);
+            }
+            plan.candidate_kinds
+                .push("callback_query:redacted".to_string());
+        } else if update.get("message_reaction").is_some() {
+            plan.candidate_count = plan.candidate_count.saturating_add(1);
+            plan.reaction_candidate_count = plan.reaction_candidate_count.saturating_add(1);
+            plan.candidate_kinds
+                .push("message_reaction:redacted".to_string());
+        }
+    }
+
+    plan
+}
+
+fn telegram_message_prompt_kind(message: &Value) -> Option<&'static str> {
+    if message
+        .get("text")
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    {
+        Some("text")
+    } else if message
+        .get("caption")
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    {
+        Some("caption")
+    } else {
+        None
+    }
+}
+
+fn telegram_message_has_reply_target(message: &Value) -> bool {
+    message
+        .get("chat")
+        .and_then(|chat| chat.get("id"))
+        .is_some()
+        && message.get("message_id").is_some()
+}
+
 impl NativeTelegramConfigStatus {
     fn disabled() -> Self {
         Self {
@@ -841,6 +1022,52 @@ impl NativeTelegramCursorPlan {
     }
 }
 
+impl NativeTelegramModelTurnPlan {
+    fn disabled() -> Self {
+        Self {
+            planner_ready: false,
+            candidate_count: 0,
+            text_candidate_count: 0,
+            callback_candidate_count: 0,
+            reaction_candidate_count: 0,
+            reply_target_count: 0,
+            candidate_kinds: Vec::new(),
+            prompt_material_policy: "disabled",
+            session_key_strategy: "disabled",
+            reply_target_strategy: "disabled",
+            model_turn_invocation_gate: "disabled",
+            send_delivery_gate: "disabled",
+            raw_message_text_exposed: false,
+            raw_callback_data_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+
+    fn ready() -> Self {
+        Self {
+            planner_ready: true,
+            candidate_count: 0,
+            text_candidate_count: 0,
+            callback_candidate_count: 0,
+            reaction_candidate_count: 0,
+            reply_target_count: 0,
+            candidate_kinds: Vec::new(),
+            prompt_material_policy: "carry prompt text only inside the later model-turn call; never expose it in readiness JSON",
+            session_key_strategy: "derive a stable internal session key from redacted Telegram binding metadata",
+            reply_target_strategy: "retain only an opaque reply target handle for later sendMessage reply_parameters",
+            model_turn_invocation_gate: "requires receive candidate, duplicate-suppression decision, and explicit model bridge enablement",
+            send_delivery_gate: "requires successful model-turn output and explicit Telegram send gate",
+            raw_message_text_exposed: false,
+            raw_callback_data_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+}
+
 impl NativeTelegramReceiveOnceStatus {
     #[allow(clippy::too_many_arguments)]
     fn base(
@@ -875,6 +1102,11 @@ impl NativeTelegramReceiveOnceStatus {
             transport_plan,
             cursor_plan,
             inspection,
+            model_turn_plan: if requested {
+                plan_model_turn_for_updates(&[])
+            } else {
+                NativeTelegramModelTurnPlan::disabled()
+            },
             error,
             next_migration_slice: "connect redacted receive candidates to Codex model-turn bridge, then enable gated send",
         }
@@ -1006,6 +1238,7 @@ mod tests {
             config,
             ingress_parser: inspect_telegram_updates(&[]),
             cursor_plan: NativeTelegramCursorPlan::ready(),
+            model_turn_plan: plan_model_turn_for_updates(&[]),
             migration_blocker: Some(
                 "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
             ),
@@ -1023,6 +1256,8 @@ mod tests {
         assert!(!plugin.ingress_parser.raw_message_text_exposed);
         assert!(plugin.cursor_plan.duplicate_suppression_ready);
         assert!(plugin.cursor_plan.commit_offset_after_delivery);
+        assert!(plugin.model_turn_plan.planner_ready);
+        assert!(!plugin.model_turn_plan.raw_message_text_exposed);
     }
 
     #[test]
@@ -1061,6 +1296,67 @@ mod tests {
         assert!(!telegram_update_already_drained(42, Some(42)));
         assert_eq!(telegram_next_update_offset(42), Some(43));
         assert_eq!(telegram_next_update_offset(i64::MAX), None);
+    }
+
+    #[test]
+    fn model_turn_plan_counts_candidates_without_exposing_private_fields() {
+        let updates = vec![
+            serde_json::json!({
+                "update_id": 42,
+                "message": {
+                    "message_id": 7,
+                    "text": "private prompt text",
+                    "chat": { "id": 6476198178_i64, "type": "private" },
+                    "from": { "id": 6476198178_i64, "username": "private_user" }
+                }
+            }),
+            serde_json::json!({
+                "update_id": 43,
+                "callback_query": {
+                    "id": "opaque-callback-id",
+                    "data": "button_secret_payload",
+                    "message": {
+                        "message_id": 8,
+                        "chat": { "id": 6476198178_i64, "type": "private" }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "update_id": 44,
+                "message_reaction": {
+                    "chat": { "id": 6476198178_i64 },
+                    "user": { "id": 6476198178_i64 }
+                }
+            }),
+        ];
+
+        let plan = plan_model_turn_for_updates(&updates);
+        assert!(plan.planner_ready);
+        assert_eq!(plan.candidate_count, 3);
+        assert_eq!(plan.text_candidate_count, 1);
+        assert_eq!(plan.callback_candidate_count, 1);
+        assert_eq!(plan.reaction_candidate_count, 1);
+        assert_eq!(plan.reply_target_count, 2);
+        assert_eq!(
+            plan.candidate_kinds,
+            vec![
+                "message:text".to_string(),
+                "callback_query:redacted".to_string(),
+                "message_reaction:redacted".to_string(),
+            ]
+        );
+
+        let serialized = serde_json::to_string(&plan).expect("serialize");
+        assert!(!serialized.contains("private prompt text"));
+        assert!(!serialized.contains("button_secret_payload"));
+        assert!(!serialized.contains("opaque-callback-id"));
+        assert!(!serialized.contains("6476198178"));
+        assert!(!serialized.contains("private_user"));
+        assert!(!plan.raw_message_text_exposed);
+        assert!(!plan.raw_callback_data_exposed);
+        assert!(!plan.raw_chat_id_exposed);
+        assert!(!plan.raw_sender_id_exposed);
+        assert!(!plan.raw_message_id_exposed);
     }
 
     #[test]
