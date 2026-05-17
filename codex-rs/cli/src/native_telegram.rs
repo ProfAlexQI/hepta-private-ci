@@ -895,11 +895,27 @@ fn telegram_cursor_status_from_path(path: &Path) -> NativeTelegramCursorStatus {
 fn parse_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
     let value: Value = serde_json::from_str(raw)
         .map_err(|error| format!("failed to parse Telegram cursor JSON: {error}"))?;
-    let offset = value
+    let explicit_next_update_offset = value
         .get("next_update_offset")
         .or_else(|| value.get("nextUpdateOffset"))
         .and_then(Value::as_i64)
-        .ok_or_else(|| "Telegram cursor missing next_update_offset".to_string())?;
+        .or_else(|| {
+            value
+                .get("next_server_offset")
+                .or_else(|| value.get("nextServerOffset"))
+                .and_then(Value::as_i64)
+        });
+    let legacy_last_drained_next_offset = value
+        .get("last_drained_update_id")
+        .or_else(|| value.get("lastDrainedUpdateId"))
+        .and_then(Value::as_i64)
+        .filter(|offset| *offset >= 0)
+        .and_then(|offset| offset.checked_add(1));
+    let offset = explicit_next_update_offset
+        .or(legacy_last_drained_next_offset)
+        .ok_or_else(|| {
+            "Telegram cursor missing next_update_offset or legacy next_server_offset".to_string()
+        })?;
     if offset < 0 {
         Err("Telegram cursor next_update_offset must be non-negative".to_string())
     } else {
@@ -4358,6 +4374,42 @@ mod tests {
         assert_eq!(status.next_update_offset, Some(43));
         assert!(status.cursor_represents_next_update_offset);
         assert!(status.duplicate_suppression_rule_valid);
+        assert!(!status.cursor_written);
+        assert!(!status.raw_update_payload_persisted);
+    }
+
+    #[test]
+    fn cursor_status_reads_legacy_next_server_offset_without_writing() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("cursor.json");
+        fs::write(
+            &cursor_path,
+            r#"{"next_server_offset": 917025960, "last_drained_update_id": 917025959}"#,
+        )
+        .expect("write cursor");
+
+        let status = telegram_cursor_status_from_path(&cursor_path);
+        assert_eq!(status.status, "ready");
+        assert!(status.cursor_file_present);
+        assert!(status.cursor_parse_ok);
+        assert_eq!(status.next_update_offset, Some(917025960));
+        assert!(status.cursor_represents_next_update_offset);
+        assert!(status.duplicate_suppression_rule_valid);
+        assert!(!status.cursor_written);
+        assert!(!status.raw_update_payload_persisted);
+    }
+
+    #[test]
+    fn cursor_status_derives_legacy_next_offset_from_last_drained_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("cursor.json");
+        fs::write(&cursor_path, r#"{"last_drained_update_id": 917025959}"#).expect("write cursor");
+
+        let status = telegram_cursor_status_from_path(&cursor_path);
+        assert_eq!(status.status, "ready");
+        assert!(status.cursor_file_present);
+        assert!(status.cursor_parse_ok);
+        assert_eq!(status.next_update_offset, Some(917025960));
         assert!(!status.cursor_written);
         assert!(!status.raw_update_payload_persisted);
     }
