@@ -776,6 +776,10 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Duplicate-suppression decision helpers now have unit coverage for already
   drained updates versus new model candidates. The helper computes the
   candidate next-update offset and keeps raw update payload exposure disabled.
+- Candidate extraction now separates in-memory prompt/callback material from
+  public readiness JSON. Model-turn planning uses the extracted material for
+  counts and candidate classes, while serialized status keeps prompt text,
+  callback data, and Telegram identifiers redacted.
 
 ## Keep for compatibility
 

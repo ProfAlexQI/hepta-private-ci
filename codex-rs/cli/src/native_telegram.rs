@@ -1452,68 +1452,112 @@ fn telegram_next_update_offset(update_id: i64) -> Option<i64> {
     update_id.checked_add(1)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeTelegramCandidateMaterial {
+    kind: String,
+    prompt_text: Option<String>,
+    has_reply_target: bool,
+    requires_model: bool,
+    raw_identifiers_exposed: bool,
+}
+
 fn plan_model_turn_for_updates(updates: &[Value]) -> NativeTelegramModelTurnPlan {
     let mut plan = NativeTelegramModelTurnPlan::ready();
 
     for update in updates.iter().take(20) {
-        if let Some(message) = update.get("message") {
-            if let Some(kind) = telegram_message_prompt_kind(message) {
-                plan.candidate_count = plan.candidate_count.saturating_add(1);
-                plan.text_candidate_count = plan.text_candidate_count.saturating_add(1);
-                if telegram_message_has_reply_target(message) {
-                    plan.reply_target_count = plan.reply_target_count.saturating_add(1);
-                }
-                plan.candidate_kinds.push(format!("message:{kind}"));
-            }
-        } else if let Some(message) = update.get("edited_message") {
-            if let Some(kind) = telegram_message_prompt_kind(message) {
-                plan.candidate_count = plan.candidate_count.saturating_add(1);
-                plan.text_candidate_count = plan.text_candidate_count.saturating_add(1);
-                if telegram_message_has_reply_target(message) {
-                    plan.reply_target_count = plan.reply_target_count.saturating_add(1);
-                }
-                plan.candidate_kinds.push(format!("edited_message:{kind}"));
-            }
-        } else if let Some(callback) = update.get("callback_query") {
+        if let Some(candidate) = extract_telegram_candidate_material(update) {
+            let _prompt_material_is_held_in_memory = candidate.prompt_text.is_some();
             plan.candidate_count = plan.candidate_count.saturating_add(1);
-            plan.callback_candidate_count = plan.callback_candidate_count.saturating_add(1);
-            if callback
-                .get("message")
-                .map(telegram_message_has_reply_target)
-                .unwrap_or(false)
+            if candidate.requires_model
+                && (candidate.kind.starts_with("message:")
+                    || candidate.kind.starts_with("edited_message:"))
             {
+                plan.text_candidate_count = plan.text_candidate_count.saturating_add(1);
+            } else if candidate.requires_model && candidate.kind == "callback_query:redacted" {
+                plan.callback_candidate_count = plan.callback_candidate_count.saturating_add(1);
+            } else if candidate.kind == "message_reaction:redacted" {
+                plan.reaction_candidate_count = plan.reaction_candidate_count.saturating_add(1);
+            }
+            if candidate.has_reply_target {
                 plan.reply_target_count = plan.reply_target_count.saturating_add(1);
             }
-            plan.candidate_kinds
-                .push("callback_query:redacted".to_string());
-        } else if update.get("message_reaction").is_some() {
-            plan.candidate_count = plan.candidate_count.saturating_add(1);
-            plan.reaction_candidate_count = plan.reaction_candidate_count.saturating_add(1);
-            plan.candidate_kinds
-                .push("message_reaction:redacted".to_string());
+            if candidate.raw_identifiers_exposed {
+                plan.raw_chat_id_exposed = true;
+                plan.raw_sender_id_exposed = true;
+                plan.raw_message_id_exposed = true;
+            }
+            plan.candidate_kinds.push(candidate.kind);
         }
     }
 
     plan
 }
 
-fn telegram_message_prompt_kind(message: &Value) -> Option<&'static str> {
-    if message
+fn extract_telegram_candidate_material(update: &Value) -> Option<NativeTelegramCandidateMaterial> {
+    if let Some(message) = update.get("message") {
+        return telegram_message_prompt_material("message", message);
+    }
+    if let Some(message) = update.get("edited_message") {
+        return telegram_message_prompt_material("edited_message", message);
+    }
+    if let Some(callback) = update.get("callback_query") {
+        return Some(NativeTelegramCandidateMaterial {
+            kind: "callback_query:redacted".to_string(),
+            prompt_text: callback
+                .get("data")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            has_reply_target: callback
+                .get("message")
+                .map(telegram_message_has_reply_target)
+                .unwrap_or(false),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        });
+    }
+    if update.get("message_reaction").is_some() {
+        return Some(NativeTelegramCandidateMaterial {
+            kind: "message_reaction:redacted".to_string(),
+            prompt_text: None,
+            has_reply_target: false,
+            requires_model: false,
+            raw_identifiers_exposed: false,
+        });
+    }
+    None
+}
+
+fn telegram_message_prompt_material(
+    prefix: &str,
+    message: &Value,
+) -> Option<NativeTelegramCandidateMaterial> {
+    let (kind, prompt_text) = telegram_message_prompt_kind_and_text(message)?;
+    Some(NativeTelegramCandidateMaterial {
+        kind: format!("{prefix}:{kind}"),
+        prompt_text: Some(prompt_text),
+        has_reply_target: telegram_message_has_reply_target(message),
+        requires_model: true,
+        raw_identifiers_exposed: false,
+    })
+}
+
+fn telegram_message_prompt_kind_and_text(message: &Value) -> Option<(&'static str, String)> {
+    if let Some(text) = message
         .get("text")
         .and_then(Value::as_str)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
     {
-        Some("text")
-    } else if message
-        .get("caption")
-        .and_then(Value::as_str)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
-    {
-        Some("caption")
+        Some(("text", text.to_string()))
     } else {
-        None
+        message
+            .get("caption")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|caption| ("caption", caption.to_string()))
     }
 }
 
@@ -2020,6 +2064,67 @@ mod tests {
         assert!(!plan.raw_chat_id_exposed);
         assert!(!plan.raw_sender_id_exposed);
         assert!(!plan.raw_message_id_exposed);
+    }
+
+    #[test]
+    fn candidate_material_holds_prompt_in_memory_without_public_plan_exposure() {
+        let update = serde_json::json!({
+            "update_id": 45,
+            "message": {
+                "message_id": 9,
+                "text": "private prompt text",
+                "chat": { "id": 6476198178_i64, "type": "private" },
+                "from": { "id": 6476198178_i64, "username": "private_user" }
+            }
+        });
+
+        let candidate = extract_telegram_candidate_material(&update).expect("candidate");
+        assert_eq!(candidate.kind, "message:text");
+        assert_eq!(
+            candidate.prompt_text.as_deref(),
+            Some("private prompt text")
+        );
+        assert!(candidate.has_reply_target);
+        assert!(candidate.requires_model);
+        assert!(!candidate.raw_identifiers_exposed);
+
+        let plan = plan_model_turn_for_updates(&[update]);
+        let serialized = serde_json::to_string(&plan).expect("serialize");
+        assert!(!serialized.contains("private prompt text"));
+        assert!(!serialized.contains("6476198178"));
+        assert!(!serialized.contains("private_user"));
+    }
+
+    #[test]
+    fn candidate_material_redacts_callback_kind_but_keeps_data_in_memory() {
+        let update = serde_json::json!({
+            "update_id": 46,
+            "callback_query": {
+                "id": "opaque-callback-id",
+                "data": "button_secret_payload",
+                "message": {
+                    "message_id": 10,
+                    "chat": { "id": 6476198178_i64, "type": "private" }
+                }
+            }
+        });
+
+        let candidate = extract_telegram_candidate_material(&update).expect("candidate");
+        assert_eq!(candidate.kind, "callback_query:redacted");
+        assert_eq!(
+            candidate.prompt_text.as_deref(),
+            Some("button_secret_payload")
+        );
+        assert!(candidate.has_reply_target);
+        assert!(candidate.requires_model);
+        assert!(!candidate.raw_identifiers_exposed);
+
+        let plan = plan_model_turn_for_updates(&[update]);
+        let serialized = serde_json::to_string(&plan).expect("serialize");
+        assert!(serialized.contains("callback_query:redacted"));
+        assert!(!serialized.contains("button_secret_payload"));
+        assert!(!serialized.contains("opaque-callback-id"));
+        assert!(!serialized.contains("6476198178"));
     }
 
     #[test]
