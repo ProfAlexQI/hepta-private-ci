@@ -114,12 +114,12 @@ fn print_login_server_start(actual_port: u16, auth_url: &str) {
 }
 
 pub async fn login_with_chatgpt(
-    codex_home: PathBuf,
+    hepta_home: PathBuf,
     forced_chatgpt_workspace_id: Option<Vec<String>>,
     cli_auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> std::io::Result<()> {
     let opts = ServerOptions::new(
-        codex_home,
+        hepta_home,
         CLIENT_ID.to_string(),
         forced_chatgpt_workspace_id,
         cli_auth_credentials_store_mode,

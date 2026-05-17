@@ -191,6 +191,13 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - The public AuthConfig::codex_home field and AuthManagerConfig::codex_home
   method remain compatibility API names for now.
 
+## Cleaned in CLI login home naming pass
+
+- The direct browser-login helper now accepts a Hepta-named resolved-home
+  parameter before constructing the compatibility ServerOptions value.
+- CLI login integration-test helpers now use hepta_command and hepta_home local
+  names while still exercising the HEPTA_HOME runtime environment.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
