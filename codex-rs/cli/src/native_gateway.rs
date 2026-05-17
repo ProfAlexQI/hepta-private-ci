@@ -15,6 +15,11 @@ const DEFAULT_TELEGRAM_POLL_MS: u64 = 1500;
 const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
 const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
 const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
+const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
+const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
+const ACTIVE_GATEWAY_LABEL: &str = "ai.hepta.gateway";
+const ACTIVE_GATEWAY_LEGACY_BINARY: &str = "/Users/qianqi/.local/opt/hepta/bin/hepta";
+const HEPTA_CODEX_RELEASE_BINARY: &str = "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex";
 
 const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
     ControlUiRouteSpec {
@@ -464,11 +469,18 @@ fn route_native_gateway_request(
                     native_gateway_json(options, &telegram_plugin),
                 );
             }
-            "/api/gateway-replacement-readiness" => {
+            GATEWAY_REPLACEMENT_READINESS_ENDPOINT => {
                 return (
                     "200 OK",
                     "application/json; charset=utf-8",
                     json_or_error(&gateway_replacement_readiness(options, &telegram_plugin)),
+                );
+            }
+            GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&gateway_live_activation_plan(options, &telegram_plugin)),
                 );
             }
             CONTROL_UI_ROUTE_PARITY_ENDPOINT => {
@@ -639,8 +651,10 @@ fn native_gateway_json(
         launchd_entrypoint_compatible: true,
         active_gateway_replacement_ready,
         replacement_blocker,
-        gateway_replacement_readiness_endpoint: "/api/gateway-replacement-readiness",
+        gateway_replacement_readiness_endpoint: GATEWAY_REPLACEMENT_READINESS_ENDPOINT,
         gateway_replacement_readiness,
+        gateway_live_activation_plan_endpoint: GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
+        gateway_live_activation_plan: gateway_live_activation_plan(options, telegram_plugin),
         control_ui_route_parity_endpoint: CONTROL_UI_ROUTE_PARITY_ENDPOINT,
         control_ui_route_parity_ready: control_ui_route_parity.ready,
         control_ui_route_parity,
@@ -680,6 +694,7 @@ fn native_gateway_json(
             "Telegram cursor state surface",
             "Control UI route parity report",
             "Control UI side-effect-free compatibility endpoints",
+            "Gateway live activation side-effect-free plan",
         ],
         next_migration_slice: "finish live Telegram gate smoke under explicit operator approval, then mark active gateway replacement ready",
     })
@@ -844,6 +859,118 @@ fn gateway_replacement_readiness(
     }
 }
 
+fn gateway_live_activation_plan(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> NativeGatewayLiveActivationPlan {
+    let readiness = gateway_replacement_readiness(options, telegram_plugin);
+    let telegram_gate_summary = native_telegram::telegram_gateway_gate_summary();
+    let poll_loop_status = native_telegram::telegram_poll_loop_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
+    let status = if readiness.ready {
+        "ready_for_operator_live_smoke"
+    } else if telegram_gate_summary.delivery_approval_gate_enabled {
+        "blocked_after_operator_approval"
+    } else {
+        "operator_approval_required"
+    };
+
+    NativeGatewayLiveActivationPlan {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status,
+        endpoint: GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
+        operator_approval_required: true,
+        active_install_allowed: readiness.ready,
+        readiness_blocker_count: readiness.blocker_count,
+        readiness_blockers: readiness.blockers.clone(),
+        active_gateway_label: ACTIVE_GATEWAY_LABEL,
+        current_legacy_binary: ACTIVE_GATEWAY_LEGACY_BINARY,
+        replacement_binary: HEPTA_CODEX_RELEASE_BINARY,
+        bind_addr: options.bind_addr.clone(),
+        launch_arguments: vec![
+            HEPTA_CODEX_RELEASE_BINARY.to_string(),
+            "--serve-ui".to_string(),
+            options.bind_addr.clone(),
+            "--with-telegram-plugin".to_string(),
+            "--telegram-plugin-poll-ms".to_string(),
+            options.telegram_plugin_poll_ms.to_string(),
+        ],
+        required_env_gates: vec![
+            NativeGatewayLiveActivationEnv {
+                env: native_telegram::TELEGRAM_DELIVERY_APPROVED_ENV,
+                enabled: telegram_gate_summary.delivery_approval_gate_enabled,
+                purpose: "explicit operator approval before any live Telegram drain side effects",
+            },
+            NativeGatewayLiveActivationEnv {
+                env: native_telegram::TELEGRAM_LIVE_READ_ENV,
+                enabled: telegram_gate_summary.live_read_gate_enabled,
+                purpose: "allow one-shot getUpdates and poll-loop live reads",
+            },
+            NativeGatewayLiveActivationEnv {
+                env: native_telegram::TELEGRAM_MODEL_TURN_GATE_ENV,
+                enabled: telegram_gate_summary.model_turn_gate_enabled,
+                purpose: "allow model execution for redacted Telegram candidates",
+            },
+            NativeGatewayLiveActivationEnv {
+                env: native_telegram::TELEGRAM_SEND_GATE_ENV,
+                enabled: telegram_gate_summary.send_gate_enabled,
+                purpose: "allow sendMessage only after model success and reply-target validation",
+            },
+            NativeGatewayLiveActivationEnv {
+                env: native_telegram::TELEGRAM_POLL_LOOP_ENV,
+                enabled: poll_loop_status.poll_loop_gate_enabled,
+                purpose: "allow supervised background drain loop from --serve-ui",
+            },
+            NativeGatewayLiveActivationEnv {
+                env: native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV,
+                enabled: env_truthy(native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV),
+                purpose: "use library-backed in-process runner instead of child exec fallback",
+            },
+            NativeGatewayLiveActivationEnv {
+                env: RELEASE_BUILD_VERIFIED_ENV,
+                enabled: env_truthy(RELEASE_BUILD_VERIFIED_ENV),
+                purpose: "operator asserts current release binary passed the fat-LTO build gate",
+            },
+            NativeGatewayLiveActivationEnv {
+                env: CONTROL_UI_PARITY_VERIFIED_ENV,
+                enabled: env_truthy(CONTROL_UI_PARITY_VERIFIED_ENV),
+                purpose: "operator asserts Control UI route parity smoke passed",
+            },
+        ],
+        live_smoke_sequence: &[
+            "start isolated hepta-codex release binary on a non-production loopback port",
+            "GET /api/gateway-replacement-readiness and require active_install_allowed=false until delivery approval is explicit",
+            "GET /api/control-ui-route-parity and require missing_route_count=0",
+            "GET /api/telegram-poll-loop and require no status-triggered external read/send",
+            "with explicit approval gates only, call /api/telegram-drain-once once and inspect redacted status",
+            "allow production replacement only if readiness has no blockers after the smoke",
+        ],
+        production_replacement_sequence: &[
+            "keep the old Hepta gateway binary and launchd label as rollback anchors",
+            "install the verified hepta-codex release binary under the isolated hepta-codex path",
+            "switch the active launchd ProgramArguments to hepta-codex --serve-ui loopback with Telegram plugin flags",
+            "set only the audited HEPTA_NATIVE_* and HEPTA_CODEX_* gate env vars",
+            "kickstart the gateway service and verify /health plus /api/native-gateway",
+            "rollback by restoring the old ProgramArguments/binary and kickstarting ai.hepta.gateway",
+        ],
+        safety: NativeGatewayLiveActivationSafety {
+            side_effect_free: true,
+            status_probe_reads_telegram: false,
+            status_probe_invokes_model: false,
+            status_probe_sends_message: false,
+            status_probe_writes_cursor: false,
+            raw_token_exposed: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+        },
+        next_migration_slice: "perform an explicit operator-approved live Telegram drain smoke, then replace the active gateway if readiness is green",
+    }
+}
+
 fn json_or_error<T: Serialize>(value: &T) -> String {
     match serde_json::to_string(value) {
         Ok(json) => json,
@@ -870,6 +997,8 @@ struct NativeGatewayResponse<'a> {
     replacement_blocker: Option<&'static str>,
     gateway_replacement_readiness_endpoint: &'static str,
     gateway_replacement_readiness: NativeGatewayReplacementReadiness,
+    gateway_live_activation_plan_endpoint: &'static str,
+    gateway_live_activation_plan: NativeGatewayLiveActivationPlan,
     control_ui_route_parity_endpoint: &'static str,
     control_ui_route_parity_ready: bool,
     control_ui_route_parity: ControlUiRouteParityReport,
@@ -932,6 +1061,48 @@ struct NativeGatewayReplacementEnvGates {
 struct NativeGatewayReplacementGate {
     env: &'static str,
     enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeGatewayLiveActivationPlan {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    endpoint: &'static str,
+    operator_approval_required: bool,
+    active_install_allowed: bool,
+    readiness_blocker_count: usize,
+    readiness_blockers: Vec<&'static str>,
+    active_gateway_label: &'static str,
+    current_legacy_binary: &'static str,
+    replacement_binary: &'static str,
+    bind_addr: String,
+    launch_arguments: Vec<String>,
+    required_env_gates: Vec<NativeGatewayLiveActivationEnv>,
+    live_smoke_sequence: &'static [&'static str],
+    production_replacement_sequence: &'static [&'static str],
+    safety: NativeGatewayLiveActivationSafety,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeGatewayLiveActivationEnv {
+    env: &'static str,
+    enabled: bool,
+    purpose: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeGatewayLiveActivationSafety {
+    side_effect_free: bool,
+    status_probe_reads_telegram: bool,
+    status_probe_invokes_model: bool,
+    status_probe_sends_message: bool,
+    status_probe_writes_cursor: bool,
+    raw_token_exposed: bool,
+    raw_update_payload_exposed: bool,
+    raw_prompt_text_exposed: bool,
+    raw_response_text_exposed: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -1214,6 +1385,10 @@ mod tests {
         assert!(body.contains(
             r#""gateway_replacement_readiness_endpoint":"/api/gateway-replacement-readiness""#
         ));
+        assert!(body.contains(
+            r#""gateway_live_activation_plan_endpoint":"/api/gateway-live-activation-plan""#
+        ));
+        assert!(body.contains(r#""operator_approval_required":true"#));
         assert!(
             body.contains(r#""control_ui_route_parity_endpoint":"/api/control-ui-route-parity""#)
         );
@@ -1278,6 +1453,45 @@ mod tests {
                 .expect("route count")
                 >= 40
         );
+    }
+
+    #[test]
+    fn gateway_live_activation_plan_is_side_effect_free_and_lists_operator_gates() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value = serde_json::from_str(&body).expect("activation plan json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["operator_approval_required"], true);
+        assert_eq!(value["active_gateway_label"], ACTIVE_GATEWAY_LABEL);
+        assert_eq!(value["replacement_binary"], HEPTA_CODEX_RELEASE_BINARY);
+        assert_eq!(
+            value["safety"]["status_probe_reads_telegram"], false,
+            "activation planning must not read Telegram"
+        );
+        assert_eq!(value["safety"]["status_probe_invokes_model"], false);
+        assert_eq!(value["safety"]["status_probe_sends_message"], false);
+        assert_eq!(value["safety"]["status_probe_writes_cursor"], false);
+        let envs = value["required_env_gates"]
+            .as_array()
+            .expect("required env gates")
+            .iter()
+            .filter_map(|item| item["env"].as_str())
+            .collect::<Vec<_>>();
+        assert!(envs.contains(&native_telegram::TELEGRAM_DELIVERY_APPROVED_ENV));
+        assert!(envs.contains(&native_telegram::TELEGRAM_LIVE_READ_ENV));
+        assert!(envs.contains(&native_telegram::TELEGRAM_MODEL_TURN_GATE_ENV));
+        assert!(envs.contains(&native_telegram::TELEGRAM_SEND_GATE_ENV));
+        assert!(envs.contains(&native_telegram::TELEGRAM_POLL_LOOP_ENV));
+        assert!(envs.contains(&native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV));
+        assert!(envs.contains(&RELEASE_BUILD_VERIFIED_ENV));
+        assert!(envs.contains(&CONTROL_UI_PARITY_VERIFIED_ENV));
     }
 
     #[test]
