@@ -478,6 +478,58 @@ region = "us-west-2"
     );
 }
 
+#[test]
+fn hepta_default_model_provider_policy_prefers_hepta_env() {
+    let provider = hepta_default_model_provider_id_with(|key| match key {
+        HEPTA_DEFAULT_MODEL_PROVIDER_ENV => Some(" ollama ".to_string()),
+        LEGACY_CODEX_DEFAULT_MODEL_PROVIDER_ENV => Some("legacy-provider".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(provider, "ollama");
+}
+
+#[test]
+fn hepta_default_model_provider_policy_keeps_legacy_fallback() {
+    let provider = hepta_default_model_provider_id_with(|key| match key {
+        HEPTA_DEFAULT_MODEL_PROVIDER_ENV => Some("  ".to_string()),
+        LEGACY_CODEX_DEFAULT_MODEL_PROVIDER_ENV => Some("legacy-provider".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(provider, "legacy-provider");
+}
+
+#[test]
+fn hepta_default_model_provider_policy_falls_back_to_openai() {
+    assert_eq!(
+        hepta_default_model_provider_id_with(|_| None),
+        DEFAULT_MODEL_PROVIDER_ID
+    );
+}
+
+#[test]
+fn hepta_default_model_policy_prefers_hepta_env() {
+    let model = hepta_default_model_from_env_with(|key| match key {
+        HEPTA_DEFAULT_MODEL_ENV => Some(" gpt-5.5 ".to_string()),
+        LEGACY_CODEX_DEFAULT_MODEL_ENV => Some("legacy-model".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(model.as_deref(), Some("gpt-5.5"));
+}
+
+#[test]
+fn hepta_default_model_policy_keeps_legacy_fallback() {
+    let model = hepta_default_model_from_env_with(|key| match key {
+        HEPTA_DEFAULT_MODEL_ENV => Some("  ".to_string()),
+        LEGACY_CODEX_DEFAULT_MODEL_ENV => Some("legacy-model".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(model.as_deref(), Some("legacy-model"));
+}
+
 #[tokio::test]
 async fn load_config_applies_amazon_bedrock_aws_profile_override() {
     let cfg = toml::from_str::<ConfigToml>(

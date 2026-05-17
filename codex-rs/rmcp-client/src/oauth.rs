@@ -237,12 +237,8 @@ fn delete_oauth_tokens_from_keyring_and_file<K: KeyringStore>(
     url: &str,
 ) -> Result<bool> {
     let key = compute_store_key(server_name, url)?;
-    let primary_keyring_removed = delete_oauth_tokens_from_keyring_service(
-        keyring_store,
-        store_mode,
-        KEYRING_SERVICE,
-        &key,
-    )?;
+    let primary_keyring_removed =
+        delete_oauth_tokens_from_keyring_service(keyring_store, store_mode, KEYRING_SERVICE, &key)?;
     let legacy_keyring_removed = delete_oauth_tokens_from_keyring_service(
         keyring_store,
         store_mode,
@@ -757,9 +753,11 @@ mod tests {
         let stored = store
             .saved_value_for_service(KEYRING_SERVICE, &key)
             .expect("value saved to Hepta keyring service");
-        assert!(store
-            .saved_value_for_service(LEGACY_KEYRING_SERVICE, &key)
-            .is_none());
+        assert!(
+            store
+                .saved_value_for_service(LEGACY_KEYRING_SERVICE, &key)
+                .is_none()
+        );
         assert_eq!(serde_json::from_str::<StoredOAuthTokens>(&stored)?, tokens);
         Ok(())
     }

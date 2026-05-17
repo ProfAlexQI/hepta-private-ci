@@ -192,6 +192,11 @@ const LOCAL_DEV_BUILD_VERSION: &str = "0.0.0";
 
 pub const CONFIG_TOML_FILE: &str = "config.toml";
 const CONFIG_PROFILE_V2_SUFFIX: &str = ".config.toml";
+const DEFAULT_MODEL_PROVIDER_ID: &str = "openai";
+const HEPTA_DEFAULT_MODEL_ENV: &str = "HEPTA_DEFAULT_MODEL";
+const LEGACY_CODEX_DEFAULT_MODEL_ENV: &str = "CODEX_DEFAULT_MODEL";
+const HEPTA_DEFAULT_MODEL_PROVIDER_ENV: &str = "HEPTA_DEFAULT_MODEL_PROVIDER";
+const LEGACY_CODEX_DEFAULT_MODEL_PROVIDER_ENV: &str = "CODEX_DEFAULT_MODEL_PROVIDER";
 
 fn resolve_sqlite_home_env(resolved_cwd: &Path) -> Option<PathBuf> {
     let raw = std::env::var(codex_state::SQLITE_HOME_ENV)
@@ -207,6 +212,51 @@ fn resolve_sqlite_home_env(resolved_cwd: &Path) -> Option<PathBuf> {
     } else {
         Some(resolved_cwd.join(path))
     }
+}
+
+fn non_empty_env(primary: &str, legacy: &str) -> Option<String> {
+    non_empty_env_with(primary, legacy, |key| std::env::var(key).ok())
+}
+
+fn non_empty_env_with(
+    primary: &str,
+    legacy: &str,
+    get_env: impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    get_env(primary)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            get_env(legacy)
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+}
+
+fn hepta_default_model_from_env() -> Option<String> {
+    non_empty_env(HEPTA_DEFAULT_MODEL_ENV, LEGACY_CODEX_DEFAULT_MODEL_ENV)
+}
+
+#[cfg(test)]
+fn hepta_default_model_from_env_with(get_env: impl Fn(&str) -> Option<String>) -> Option<String> {
+    non_empty_env_with(
+        HEPTA_DEFAULT_MODEL_ENV,
+        LEGACY_CODEX_DEFAULT_MODEL_ENV,
+        get_env,
+    )
+}
+
+fn hepta_default_model_provider_id() -> String {
+    hepta_default_model_provider_id_with(|key| std::env::var(key).ok())
+}
+
+fn hepta_default_model_provider_id_with(get_env: impl Fn(&str) -> Option<String>) -> String {
+    non_empty_env_with(
+        HEPTA_DEFAULT_MODEL_PROVIDER_ENV,
+        LEGACY_CODEX_DEFAULT_MODEL_PROVIDER_ENV,
+        get_env,
+    )
+    .unwrap_or_else(|| DEFAULT_MODEL_PROVIDER_ID.to_string())
 }
 
 fn resolve_cli_auth_credentials_store_mode(
@@ -2860,7 +2910,7 @@ impl Config {
         let model_provider_id = model_provider
             .or(config_profile.model_provider)
             .or(cfg.model_provider)
-            .unwrap_or_else(|| "openai".to_string());
+            .unwrap_or_else(hepta_default_model_provider_id);
         let model_provider = model_providers
             .get(&model_provider_id)
             .ok_or_else(|| {
@@ -3019,7 +3069,10 @@ impl Config {
 
         let forced_login_method = cfg.forced_login_method;
 
-        let model = model.or(config_profile.model).or(cfg.model);
+        let model = model
+            .or(config_profile.model)
+            .or(cfg.model)
+            .or_else(hepta_default_model_from_env);
         let mut notices = cfg.notice.unwrap_or_default();
         let service_tier = match service_tier_override {
             Some(Some(service_tier)) => Some(service_tier),

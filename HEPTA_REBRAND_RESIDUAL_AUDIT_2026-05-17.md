@@ -459,6 +459,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Endpoint paths such as `/api/codex/...`, legacy MCP wire fields such as
   `codex_*`, and crate names such as `codex-core` remain compatibility names.
 
+## Cleaned in provider/default policy pass
+
+- The hardcoded final model-provider default is now centralized as Hepta policy
+  instead of being an inline upstream assumption.
+- `HEPTA_DEFAULT_MODEL_PROVIDER` and `HEPTA_DEFAULT_MODEL` are now preferred
+  environment-driven code defaults when CLI/profile/config do not select a
+  provider or model.
+- Legacy `CODEX_DEFAULT_MODEL_PROVIDER` and `CODEX_DEFAULT_MODEL` remain
+  fallback compatibility inputs only; explicit CLI, profile, and config values
+  keep higher precedence.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

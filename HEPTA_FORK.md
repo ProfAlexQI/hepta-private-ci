@@ -12,6 +12,9 @@ Current first-cut identity changes:
 - Login browser pages, entitlement errors, MCP/plugin marketplace help, and
   debug-build update errors identify as Hepta.
 - Auth keyring storage now uses a Hepta service name for new credentials.
+- Runtime defaults now recognize `HEPTA_DEFAULT_MODEL_PROVIDER` and
+  `HEPTA_DEFAULT_MODEL` as Hepta-owned code-default policy inputs, with legacy
+  `CODEX_*` names kept only as fallbacks.
 - Internal crate names still use `codex-*` for the first migration step, so the
   fork stays buildable while behavior is moved over deliberately.
 
@@ -20,8 +23,10 @@ Hepta-to-upstream bridge:
 
 1. Continue replacing remaining user-visible upstream product strings in TUI/app-server
    surfaces where they are not protocol compatibility names.
-2. Move provider/profile/session defaults from upstream assumptions to Hepta
-   policy.
+2. Continue moving provider/profile/session defaults from upstream assumptions
+   to Hepta policy. The first provider/model env-policy slice has landed; the
+   next work should inspect session persistence, profile-v2 naming, and hosted
+   runtime defaults.
 3. Port Hepta memory/runtime/plugin semantics into the core crates directly.
 4. Only after the fork is stable, rename internal crates where the churn is
    worth it.

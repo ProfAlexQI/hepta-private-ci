@@ -153,11 +153,9 @@ pub mod tests {
                     .credentials
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner);
-                guard
-                    .iter()
-                    .find_map(|(key, credential)| {
-                        account_matches(key, account).then(|| credential.clone())
-                    })
+                guard.iter().find_map(|(key, credential)| {
+                    account_matches(key, account).then(|| credential.clone())
+                })
             }?;
             credential.get_password().ok()
         }
