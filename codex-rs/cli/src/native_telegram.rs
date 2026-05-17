@@ -29,6 +29,7 @@ pub(crate) struct NativeTelegramPluginStatus {
     pub(crate) poll_ms: u64,
     pub(crate) allowed_updates: &'static str,
     pub(crate) config: NativeTelegramConfigStatus,
+    pub(crate) transport_plan: NativeTelegramTransportPlan,
     pub(crate) migration_blocker: Option<&'static str>,
     pub(crate) next_migration_slice: &'static str,
 }
@@ -54,6 +55,21 @@ pub(crate) struct NativeTelegramConfigStatus {
     pub(crate) error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramTransportPlan {
+    pub(crate) bot_api_transport_plan_ready: bool,
+    pub(crate) endpoint_template: &'static str,
+    pub(crate) get_updates_method: &'static str,
+    pub(crate) send_message_method: &'static str,
+    pub(crate) send_chat_action_method: &'static str,
+    pub(crate) allowed_updates: &'static str,
+    pub(crate) offset_commit_strategy: &'static str,
+    pub(crate) send_delivery_gate: &'static str,
+    pub(crate) typing_keepalive_plan: &'static str,
+    pub(crate) raw_token_exposed: bool,
+    pub(crate) external_network_performed_by_status: bool,
+}
+
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
     if !requested {
         return NativeTelegramPluginStatus {
@@ -72,6 +88,7 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
             poll_ms,
             allowed_updates: TELEGRAM_ALLOWED_UPDATES,
             config: NativeTelegramConfigStatus::disabled(),
+            transport_plan: NativeTelegramTransportPlan::disabled(),
             migration_blocker: None,
             next_migration_slice: "enable --with-telegram-plugin, then wire Bot API polling and model-turn delivery",
         };
@@ -101,6 +118,7 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
         external_send: false,
         poll_ms,
         allowed_updates: TELEGRAM_ALLOWED_UPDATES,
+        transport_plan: NativeTelegramTransportPlan::for_config(&config),
         config,
         migration_blocker: Some(
             "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
@@ -408,6 +426,41 @@ impl NativeTelegramConfigStatus {
     }
 }
 
+impl NativeTelegramTransportPlan {
+    fn disabled() -> Self {
+        Self {
+            bot_api_transport_plan_ready: false,
+            endpoint_template: "https://api.telegram.org/bot<redacted-token>/{method}",
+            get_updates_method: "getUpdates",
+            send_message_method: "sendMessage",
+            send_chat_action_method: "sendChatAction",
+            allowed_updates: TELEGRAM_ALLOWED_UPDATES,
+            offset_commit_strategy: "disabled",
+            send_delivery_gate: "disabled",
+            typing_keepalive_plan: "disabled",
+            raw_token_exposed: false,
+            external_network_performed_by_status: false,
+        }
+    }
+
+    fn for_config(config: &NativeTelegramConfigStatus) -> Self {
+        let ready = config.enabled && config.token_shape_ok && config.binding_ready;
+        Self {
+            bot_api_transport_plan_ready: ready,
+            endpoint_template: "https://api.telegram.org/bot<redacted-token>/{method}",
+            get_updates_method: "getUpdates",
+            send_message_method: "sendMessage",
+            send_chat_action_method: "sendChatAction",
+            allowed_updates: TELEGRAM_ALLOWED_UPDATES,
+            offset_commit_strategy: "commit getUpdates offset only after delivery succeeds or duplicate suppression is recorded",
+            send_delivery_gate: "sendMessage requires a successful model-turn or command dispatch plus explicit confirm-send runtime gate",
+            typing_keepalive_plan: "sendChatAction typing keepalive is planned while the model turn is running, with bounded TTL",
+            raw_token_exposed: false,
+            external_network_performed_by_status: false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,6 +547,7 @@ mod tests {
             external_send: false,
             poll_ms: 1500,
             allowed_updates: TELEGRAM_ALLOWED_UPDATES,
+            transport_plan: NativeTelegramTransportPlan::for_config(&config),
             config,
             migration_blocker: Some(
                 "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
@@ -505,5 +559,8 @@ mod tests {
         assert!(plugin.in_process_supervisor_ready);
         assert!(!plugin.in_process_reply_loop_ready);
         assert!(!plugin.external_send);
+        assert!(plugin.transport_plan.bot_api_transport_plan_ready);
+        assert!(!plugin.transport_plan.external_network_performed_by_status);
+        assert!(!plugin.transport_plan.raw_token_exposed);
     }
 }

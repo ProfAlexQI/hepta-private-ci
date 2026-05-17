@@ -718,6 +718,12 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   and Telegram binding readiness are present. It still reports
   `in_process_reply_loop_ready=false` until Bot API polling/send and the
   Codex model-turn bridge are ported into the native gateway process.
+- The same status payload now includes a redacted Bot API transport plan for
+  `getUpdates`, `sendMessage`, `sendChatAction`, allowed update classes,
+  delivery-gated offset commit semantics, and typing keepalive strategy. This
+  is a plan/contract surface only: status probes keep
+  `external_network_performed_by_status=false`, `external_send=false`, and
+  `raw_token_exposed=false`.
 
 ## Keep for compatibility
 
