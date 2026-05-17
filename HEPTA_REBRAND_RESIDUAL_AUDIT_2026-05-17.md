@@ -635,6 +635,13 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - The plugin-install rejection copy shown to the model now names Hepta TUI
   instead of codex-tui.
 
+## Cleaned in app-server-client test identity pass
+
+- App-server-client in-process test sessions now use
+  `hepta-app-server-client-test` as their local client identity.
+- App-server thread-processing test guards accept both the new Hepta test
+  identity and the legacy `codex-app-server-client-test` value.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

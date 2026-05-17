@@ -13,7 +13,12 @@ const PERSIST_EXTENDED_HISTORY_DEPRECATION_DETAILS: &str =
 fn skip_auto_attach_listener_for_test_client(client_name: Option<&str>) -> bool {
     matches!(
         client_name,
-        Some("hepta-tui-test" | "codex-tui-test" | "codex-app-server-client-test")
+        Some(
+            "hepta-tui-test"
+                | "codex-tui-test"
+                | "hepta-app-server-client-test"
+                | "codex-app-server-client-test"
+        )
     )
 }
 
