@@ -1,7 +1,9 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -16,6 +18,9 @@ const TELEGRAM_ALLOWED_UPDATES: &str =
 pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
 pub(crate) const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
 pub(crate) const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
+const TELEGRAM_MODEL_TIMEOUT_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TIMEOUT_MS";
+const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
+const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
 const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
     "receive_getUpdates",
     "duplicate_suppression",
@@ -915,20 +920,18 @@ fn telegram_drain_once_status_with_gates(
                                 gates.model_turn_gate_enabled,
                             );
                             if bot_api_ok != Some(false) {
-                                let pipeline = execute_telegram_drain_pipeline_for_updates(
+                                let mut pipeline = execute_telegram_drain_pipeline_for_updates(
                                     &updates,
                                     cursor_status.next_update_offset,
                                     Some(token.as_str()),
                                     &gates,
                                     Path::new(TELEGRAM_INGRESS_CURSOR_PATH),
-                                    |_| {
-                                        Err(
-                                            "native Telegram session runner is not wired into hepta-codex yet"
-                                                .to_string(),
-                                        )
-                                    },
+                                    run_hepta_exec_child_model_turn,
                                     call_telegram_send_message,
                                 );
+                                if pipeline.model_execution.session_runner_invoked {
+                                    pipeline.model_execution.local_process_spawned = true;
+                                }
                                 invocation_request = pipeline.invocation_request;
                                 model_execution = pipeline.model_execution;
                                 send_request = pipeline.send_request;
@@ -1018,7 +1021,7 @@ fn telegram_drain_once_status_with_gates(
         raw_response_text_exposed: false,
         raw_token_exposed: false,
         error,
-        next_migration_slice: "wire the real in-process Hepta session runner into the gated Telegram model execution branch",
+        next_migration_slice: "replace the gated Hepta exec child runner with an in-process session runner, then enable the supervised poll loop",
     }
 }
 
@@ -2274,6 +2277,106 @@ where
     }
 }
 
+fn run_hepta_exec_child_model_turn(prompt: &str) -> Result<String, String> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Err("Telegram model runner requires non-empty prompt material".to_string());
+    }
+
+    let exe = env::current_exe()
+        .map_err(|error| format!("failed to resolve current Hepta executable: {error}"))?;
+    let tempdir = tempfile::Builder::new()
+        .prefix("hepta-telegram-model-")
+        .tempdir()
+        .map_err(|error| format!("failed to create Telegram model tempdir: {error}"))?;
+    let last_message_path = tempdir.path().join("last-message.txt");
+    let args = hepta_exec_child_args(&last_message_path, prompt);
+    let timeout = telegram_model_timeout();
+    let mut child = Command::new(&exe)
+        .args(args)
+        .env("HEPTA_NATIVE_TELEGRAM_EXEC_CHILD", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| {
+            format!(
+                "failed to spawn gated Hepta exec runner {}: {error}",
+                exe.display()
+            )
+        })?;
+
+    let status = wait_for_telegram_model_child(&mut child, timeout)?;
+    if !status.success() {
+        return Err(format!(
+            "gated Hepta exec runner exited with status {}",
+            status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "signal".to_string())
+        ));
+    }
+
+    let output = fs::read_to_string(&last_message_path)
+        .map_err(|error| format!("failed to read gated Hepta exec last message: {error}"))?;
+    let output = output.trim();
+    if output.is_empty() {
+        return Err("gated Hepta exec runner produced an empty final message".to_string());
+    }
+    Ok(output.to_string())
+}
+
+fn hepta_exec_child_args(last_message_path: &Path, prompt: &str) -> Vec<String> {
+    vec![
+        "-c".to_string(),
+        "approval_policy=\"never\"".to_string(),
+        "exec".to_string(),
+        "--skip-git-repo-check".to_string(),
+        "--ephemeral".to_string(),
+        "--ignore-rules".to_string(),
+        "--sandbox".to_string(),
+        "read-only".to_string(),
+        "--output-last-message".to_string(),
+        last_message_path.to_string_lossy().to_string(),
+        prompt.to_string(),
+    ]
+}
+
+fn telegram_model_timeout() -> Duration {
+    let millis = env::var(TELEGRAM_MODEL_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|ms| ms.clamp(1_000, MAX_TELEGRAM_MODEL_TIMEOUT_MS))
+        .unwrap_or(DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS);
+    Duration::from_millis(millis)
+}
+
+fn wait_for_telegram_model_child(
+    child: &mut std::process::Child,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus, String> {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if started.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "gated Hepta exec runner timed out after {} ms",
+                    timeout.as_millis()
+                ));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(50)),
+            Err(error) => {
+                return Err(format!(
+                    "failed while waiting for gated Hepta exec runner: {error}"
+                ));
+            }
+        }
+    }
+}
+
 fn extract_telegram_candidate_material(update: &Value) -> Option<NativeTelegramCandidateMaterial> {
     let update_id = update.get("update_id").and_then(Value::as_i64);
     if let Some(message) = update.get("message") {
@@ -2688,8 +2791,8 @@ impl NativeTelegramSessionBridgePlan {
     fn ready() -> Self {
         Self {
             bridge_plan_ready: true,
-            runner_kind: "codex_session_runner",
-            runner_invocation_strategy: "in-process session runner preferred; local process spawn remains disabled for status probes",
+            runner_kind: "hepta_exec_child_runner",
+            runner_invocation_strategy: "gated hepta exec child runner with read-only sandbox and output-last-message capture; in-process runner remains the next migration step",
             prompt_material_policy: "raw Telegram text is held only in the pending model-turn invocation and is never serialized into status JSON",
             session_key_strategy: "map each Telegram conversation to a stable internal Hepta session key without exposing raw chat ids",
             duplicate_policy: "suppress candidates whose update id is below the committed next-update cursor before any model turn",
@@ -3914,6 +4017,32 @@ mod tests {
                 .contains(TELEGRAM_MODEL_TURN_GATE_ENV)
         );
         assert!(!cursor_path.exists());
+    }
+
+    #[test]
+    fn hepta_exec_child_args_are_ephemeral_read_only_and_capture_last_message() {
+        let last_message_path = Path::new("/tmp/hepta-telegram-last-message.txt");
+        let args = hepta_exec_child_args(last_message_path, "private prompt");
+
+        assert_eq!(args[0], "-c");
+        assert_eq!(args[1], "approval_policy=\"never\"");
+        assert_eq!(args[2], "exec");
+        assert!(args.contains(&"--skip-git-repo-check".to_string()));
+        assert!(args.contains(&"--ephemeral".to_string()));
+        assert!(args.contains(&"--ignore-rules".to_string()));
+        assert_eq!(
+            args.windows(2)
+                .find(|pair| pair[0] == "--sandbox")
+                .map(|pair| pair[1].as_str()),
+            Some("read-only")
+        );
+        assert_eq!(
+            args.windows(2)
+                .find(|pair| pair[0] == "--output-last-message")
+                .map(|pair| pair[1].as_str()),
+            Some("/tmp/hepta-telegram-last-message.txt")
+        );
+        assert_eq!(args.last().map(String::as_str), Some("private prompt"));
     }
 
     #[test]
