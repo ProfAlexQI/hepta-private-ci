@@ -508,6 +508,18 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - ChatGPT billing/usage URLs under `chatgpt.com/codex/...` remain compatibility
   links because they are actual hosted service entry points.
 
+## Cleaned in test harness runtime-home pass
+
+- RMCP OAuth storage tests now use `HEPTA_HOME` temp homes while keeping the
+  legacy `Codex MCP Credentials` keyring service as a migration fallback.
+- RMCP remote exec-server tests now launch the `hepta` binary and isolate it
+  with `HEPTA_HOME`, while mirroring `CODEX_HOME` to the same temp dir for
+  legacy helper compatibility.
+- Exec-server's shared test-binary dispatch remains on legacy `CODEX_HOME`
+  for now. A clean baseline check showed its HTTP request integration tests are
+  sensitive to changing that harness, so it stays listed as compatibility
+  infrastructure rather than a branding target in this pass.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

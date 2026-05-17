@@ -628,40 +628,48 @@ mod tests {
 
     use codex_keyring_store::tests::MockKeyringStore;
 
-    struct TempCodexHome {
+    struct TempHeptaHome {
         _guard: MutexGuard<'static, ()>,
         _dir: tempfile::TempDir,
+        previous_hepta_home: Option<std::ffi::OsString>,
     }
 
-    impl TempCodexHome {
+    impl TempHeptaHome {
         fn new() -> Self {
             static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
             let guard = LOCK
                 .get_or_init(Mutex::default)
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
-            let dir = tempdir().expect("create CODEX_HOME temp dir");
+            let dir = tempdir().expect("create HEPTA_HOME temp dir");
+            let previous_hepta_home = std::env::var_os("HEPTA_HOME");
             unsafe {
-                std::env::set_var("CODEX_HOME", dir.path());
+                std::env::set_var("HEPTA_HOME", dir.path());
             }
             Self {
                 _guard: guard,
                 _dir: dir,
+                previous_hepta_home,
             }
         }
     }
 
-    impl Drop for TempCodexHome {
+    impl Drop for TempHeptaHome {
         fn drop(&mut self) {
-            unsafe {
-                std::env::remove_var("CODEX_HOME");
+            match self.previous_hepta_home.as_ref() {
+                Some(value) => unsafe {
+                    std::env::set_var("HEPTA_HOME", value);
+                },
+                None => unsafe {
+                    std::env::remove_var("HEPTA_HOME");
+                },
             }
         }
     }
 
     #[test]
     fn load_oauth_tokens_reads_from_keyring_when_available() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let expected = tokens.clone();
@@ -678,7 +686,7 @@ mod tests {
 
     #[test]
     fn load_oauth_tokens_reads_legacy_keyring_service_when_primary_missing() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let expected = tokens.clone();
@@ -695,7 +703,7 @@ mod tests {
 
     #[test]
     fn load_oauth_tokens_falls_back_when_missing_in_keyring() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let expected = tokens.clone();
@@ -714,7 +722,7 @@ mod tests {
 
     #[test]
     fn load_oauth_tokens_falls_back_when_keyring_errors() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let expected = tokens.clone();
@@ -735,7 +743,7 @@ mod tests {
 
     #[test]
     fn save_oauth_tokens_prefers_keyring_when_available() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let key = super::compute_store_key(&tokens.server_name, &tokens.url)?;
@@ -764,7 +772,7 @@ mod tests {
 
     #[test]
     fn save_oauth_tokens_writes_fallback_when_keyring_fails() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let key = super::compute_store_key(&tokens.server_name, &tokens.url)?;
@@ -794,7 +802,7 @@ mod tests {
 
     #[test]
     fn delete_oauth_tokens_removes_all_storage() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let serialized = serde_json::to_string(&tokens)?;
@@ -818,7 +826,7 @@ mod tests {
 
     #[test]
     fn delete_oauth_tokens_file_mode_removes_keyring_only_entry() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let serialized = serde_json::to_string(&tokens)?;
@@ -840,7 +848,7 @@ mod tests {
 
     #[test]
     fn delete_oauth_tokens_propagates_keyring_errors() -> Result<()> {
-        let _env = TempCodexHome::new();
+        let _env = TempHeptaHome::new();
         let store = MockKeyringStore::default();
         let tokens = sample_tokens();
         let key = super::compute_store_key(&tokens.server_name, &tokens.url)?;

@@ -210,7 +210,7 @@ pub(crate) async fn spawn_streamable_http_server() -> anyhow::Result<(Child, Str
 
 /// Owns the exec-server process used by the remote-client integration test.
 pub(crate) struct ExecServerProcess {
-    _codex_home: TempDir,
+    _hepta_home: TempDir,
     child: Child,
     pub(crate) client: ExecServerClient,
 }
@@ -224,14 +224,15 @@ impl Drop for ExecServerProcess {
 
 /// Starts a local exec-server and connects an initialized `ExecServerClient`.
 pub(crate) async fn spawn_exec_server() -> anyhow::Result<ExecServerProcess> {
-    let codex_home = TempDir::new()?;
-    let mut child = Command::new(codex_utils_cargo_bin::cargo_bin("codex")?)
+    let hepta_home = TempDir::new()?;
+    let mut child = Command::new(codex_utils_cargo_bin::cargo_bin("hepta")?)
         .args(["exec-server", "--listen", "ws://127.0.0.1:0"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .kill_on_drop(true)
-        .env("CODEX_HOME", codex_home.path())
+        .env("HEPTA_HOME", hepta_home.path())
+        .env("CODEX_HOME", hepta_home.path())
         .spawn()?;
 
     let websocket_url = read_exec_server_listen_url(&mut child).await?;
@@ -242,13 +243,13 @@ pub(crate) async fn spawn_exec_server() -> anyhow::Result<ExecServerProcess> {
     .await?;
 
     Ok(ExecServerProcess {
-        _codex_home: codex_home,
+        _hepta_home: hepta_home,
         child,
         client,
     })
 }
 
-/// Reads the websocket URL printed by `codex exec-server --listen`.
+/// Reads the websocket URL printed by `hepta exec-server --listen`.
 async fn read_exec_server_listen_url(child: &mut Child) -> anyhow::Result<String> {
     let stdout = child
         .stdout
