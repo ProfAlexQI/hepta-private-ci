@@ -780,6 +780,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   public readiness JSON. Model-turn planning uses the extracted material for
   counts and candidate classes, while serialized status keeps prompt text,
   callback data, and Telegram identifiers redacted.
+- Model invocation request planning now consumes the in-memory candidate
+  material and duplicate decision to produce a runner-ready request boundary.
+  The public bridge status exposes only redacted policy/state fields and still
+  does not invoke a session runner, spawn a process, send Telegram messages,
+  write cursor state, or expose raw prompt/chat/sender/message identifiers.
 
 ## Keep for compatibility
 
