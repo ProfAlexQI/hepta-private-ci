@@ -53,7 +53,7 @@ struct EnabledToolDispatchTraceContext {
     tool_call_id: ToolCallId,
 }
 
-/// Core-facing request data for the canonical Codex tool boundary.
+/// Core-facing request data for the canonical Hepta tool boundary.
 pub struct ToolDispatchInvocation {
     pub thread_id: AgentThreadId,
     pub codex_turn_id: CodexTurnId,
@@ -105,7 +105,7 @@ pub enum ToolDispatchResult {
     CodeModeResponse { value: JsonValue },
 }
 
-/// Raw invocation payload for the canonical Codex tool boundary.
+/// Raw invocation payload for the canonical Hepta tool boundary.
 #[derive(Serialize)]
 struct DispatchedToolTraceRequest<'a> {
     tool_name: &'a str,

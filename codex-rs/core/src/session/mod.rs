@@ -365,7 +365,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 #[cfg(test)]
 use codex_utils_stream_parser::ProposedPlanSegment;
 
-/// The high-level interface to the Codex system.
+/// The high-level interface to the Hepta system.
 /// It operates as a queue pair where you send submissions and receive events.
 pub struct Codex {
     pub(crate) tx_sub: Sender<Submission>,

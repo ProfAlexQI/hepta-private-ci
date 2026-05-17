@@ -367,6 +367,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   comments, thread-store comments, path utilities, and plugin utilities now use
   Hepta wording while keeping compatibility product enum and crate/type names.
 
+## Cleaned in developer docs / trace-comment pass
+
+- Root developer instructions, the Nix flake description, and the direct-fork
+  note now refer to Hepta as the active product/runtime while still documenting
+  the upstream Codex source relationship.
+- Protocol v1 docs now describe the Hepta backend/core system and use Hepta in
+  the sequence diagram participant names.
+- Analytics, core thread/session comments, and rollout-trace model/raw-event
+  comments now use Hepta wording for product/runtime behavior while retaining
+  `Codex*` Rust type names and trace enum names as compatibility identifiers.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
