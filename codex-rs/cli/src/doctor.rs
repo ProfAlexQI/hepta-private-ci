@@ -142,6 +142,10 @@ pub struct DoctorCommand {
     #[arg(long, default_value_t = false)]
     json: bool,
 
+    /// Skip provider, WebSocket, and MCP HTTP reachability probes.
+    #[arg(long, default_value_t = false)]
+    no_network: bool,
+
     /// Only show grouped check rows and the final count summary.
     #[arg(long, default_value_t = false)]
     summary: bool,
@@ -327,6 +331,7 @@ async fn build_report(
     arg0_paths: &Arg0DispatchPaths,
 ) -> DoctorReport {
     let progress = doctor_progress(command.json);
+    let no_network = command.no_network;
     let mut checks = Vec::new();
     checks.push(run_sync_check("installation", progress.clone(), || {
         installation_check(!command.summary)
@@ -361,9 +366,9 @@ async fn build_report(
                 run_async_check(
                     "websocket",
                     progress.clone(),
-                    websocket_reachability_check(config, Some(auth_manager)),
+                    websocket_reachability_check_or_skip(config, Some(auth_manager), no_network,),
                 ),
-                run_async_check("MCP", progress.clone(), mcp_check(config)),
+                run_async_check("MCP", progress.clone(), mcp_check(config, no_network)),
                 async {
                     run_sync_check("sandbox", progress.clone(), || {
                         sandbox_check(config, arg0_paths)
@@ -383,7 +388,7 @@ async fn build_report(
                 run_async_check(
                     "provider reachability",
                     progress.clone(),
-                    provider_reachability_check(reachability_plan),
+                    provider_reachability_check_or_skip(reachability_plan, no_network),
                 ),
             );
             checks.extend([
@@ -425,7 +430,7 @@ async fn build_report(
                 run_async_check(
                     "provider reachability",
                     progress.clone(),
-                    provider_reachability_check(reachability_plan),
+                    provider_reachability_check_or_skip(reachability_plan, no_network),
                 ),
             );
             checks.extend([
@@ -1358,11 +1363,14 @@ fn read_probe_file(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-async fn mcp_check(config: &Config) -> DoctorCheck {
-    mcp_check_from_servers(config.mcp_servers.get()).await
+async fn mcp_check(config: &Config, no_network: bool) -> DoctorCheck {
+    mcp_check_from_servers(config.mcp_servers.get(), no_network).await
 }
 
-async fn mcp_check_from_servers(servers: &HashMap<String, McpServerConfig>) -> DoctorCheck {
+async fn mcp_check_from_servers(
+    servers: &HashMap<String, McpServerConfig>,
+    no_network: bool,
+) -> DoctorCheck {
     if servers.is_empty() {
         return DoctorCheck::new(
             "mcp.config",
@@ -1449,7 +1457,9 @@ async fn mcp_check_from_servers(servers: &HashMap<String, McpServerConfig>) -> D
                         }
                     }
                 }
-                if let Err(err) = mcp_http_probe_url(url).await {
+                if no_network {
+                    details.push(format!("{name}: HTTP reachability skipped by --no-network"));
+                } else if let Err(err) = mcp_http_probe_url(url).await {
                     let detail = format!("{name}: {url} ({err})");
                     if server.required {
                         unreachable_required_http.push(detail);
@@ -2240,6 +2250,27 @@ async fn websocket_reachability_check(
     }
 }
 
+async fn websocket_reachability_check_or_skip(
+    config: &Config,
+    auth_manager: Option<Arc<AuthManager>>,
+    no_network: bool,
+) -> DoctorCheck {
+    if no_network {
+        return skipped_websocket_reachability_check();
+    }
+    websocket_reachability_check(config, auth_manager).await
+}
+
+fn skipped_websocket_reachability_check() -> DoctorCheck {
+    DoctorCheck::new(
+        "network.websocket_reachability",
+        "websocket",
+        CheckStatus::Ok,
+        "Responses WebSocket reachability was skipped",
+    )
+    .detail("network probes: disabled by --no-network")
+}
+
 fn websocket_probe_warning(
     summary: &'static str,
     mut details: Vec<String>,
@@ -2619,6 +2650,27 @@ async fn provider_reachability_check(plan: ReachabilityPlan) -> DoctorCheck {
     check
 }
 
+async fn provider_reachability_check_or_skip(
+    plan: ReachabilityPlan,
+    no_network: bool,
+) -> DoctorCheck {
+    if no_network {
+        return skipped_provider_reachability_check(plan.description);
+    }
+    provider_reachability_check(plan).await
+}
+
+fn skipped_provider_reachability_check(description: String) -> DoctorCheck {
+    DoctorCheck::new(
+        "network.provider_reachability",
+        "reachability",
+        CheckStatus::Ok,
+        "active provider HTTP reachability was skipped",
+    )
+    .detail(format!("reachability mode: {description}"))
+    .detail("network probes: disabled by --no-network")
+}
+
 enum RouteProbeOutcome {
     Ok(String),
     Warning(String),
@@ -2961,6 +3013,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn doctor_command_accepts_no_network() {
+        let command = DoctorCommand::parse_from(["doctor", "--no-network"]);
+
+        assert!(command.no_network);
+    }
+
     #[tokio::test]
     async fn run_async_check_notifies_progress() {
         let progress_impl = Arc::new(RecordingProgress::default());
@@ -3130,7 +3189,7 @@ mod tests {
         .expect("should deserialize disabled MCP config");
         let servers = HashMap::from([("disabled".to_string(), disabled_server)]);
 
-        let check = mcp_check_from_servers(&servers).await;
+        let check = mcp_check_from_servers(&servers, false).await;
 
         assert_eq!(check.status, CheckStatus::Ok);
         assert_eq!(check.summary, "MCP configuration is locally consistent");
@@ -3159,7 +3218,7 @@ mod tests {
         .expect("should deserialize optional MCP config");
         let servers = HashMap::from([("optional".to_string(), optional_server)]);
 
-        let check = mcp_check_from_servers(&servers).await;
+        let check = mcp_check_from_servers(&servers, false).await;
 
         assert_eq!(check.status, CheckStatus::Warning);
         assert_eq!(check.summary, "MCP configuration has optional issues");
@@ -3168,6 +3227,34 @@ mod tests {
                 .details
                 .iter()
                 .any(|detail| detail.contains("optional reachability failed: optional:"))
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_check_skips_http_reachability_when_no_network() {
+        let optional_server: McpServerConfig = toml::from_str(
+            r#"
+                url = "http://127.0.0.1:9/mcp"
+            "#,
+        )
+        .expect("should deserialize optional MCP config");
+        let servers = HashMap::from([("optional".to_string(), optional_server)]);
+
+        let check = mcp_check_from_servers(&servers, true).await;
+
+        assert_eq!(check.status, CheckStatus::Ok);
+        assert_eq!(check.summary, "MCP configuration is locally consistent");
+        assert!(
+            check
+                .details
+                .iter()
+                .any(|detail| { detail == "optional: HTTP reachability skipped by --no-network" })
+        );
+        assert!(
+            check
+                .details
+                .iter()
+                .all(|detail| !detail.contains("reachability failed"))
         );
     }
 
@@ -3189,7 +3276,7 @@ mod tests {
         .expect("should deserialize required MCP config");
         let servers = HashMap::from([("required".to_string(), required_server)]);
 
-        let check = mcp_check_from_servers(&servers).await;
+        let check = mcp_check_from_servers(&servers, false).await;
 
         assert_eq!(check.status, CheckStatus::Fail);
         assert!(check.details.iter().any(|detail| {
@@ -3412,6 +3499,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn provider_reachability_skips_probes_when_no_network() {
+        let plan = ReachabilityPlan {
+            description: "ChatGPT auth".to_string(),
+            endpoints: vec![ReachabilityEndpoint {
+                label: "ChatGPT".to_string(),
+                url: "http://127.0.0.1:9/backend-api/".to_string(),
+                required: true,
+                route_probe_url: None,
+            }],
+        };
+
+        let check = provider_reachability_check_or_skip(plan, true).await;
+
+        assert_eq!(check.status, CheckStatus::Ok);
+        assert_eq!(
+            check.summary,
+            "active provider HTTP reachability was skipped"
+        );
+        assert!(
+            check
+                .details
+                .contains(&"reachability mode: ChatGPT auth".to_string())
+        );
+        assert!(
+            check
+                .details
+                .contains(&"network probes: disabled by --no-network".to_string())
+        );
+    }
+
+    #[test]
+    fn websocket_reachability_skip_is_ok_without_provider_setup() {
+        let check = skipped_websocket_reachability_check();
+
+        assert_eq!(check.status, CheckStatus::Ok);
+        assert_eq!(
+            check.summary,
+            "Responses WebSocket reachability was skipped"
+        );
+        assert!(
+            check
+                .details
+                .contains(&"network probes: disabled by --no-network".to_string())
+        );
+    }
+
+    #[tokio::test]
     async fn provider_reachability_route_404_fails_bad_base_url_path() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
         let addr = listener.local_addr().expect("listener address");
@@ -3578,7 +3712,7 @@ mod tests {
         .expect("should deserialize required MCP config");
         let servers = HashMap::from([("required".to_string(), required_server)]);
 
-        let check = mcp_check_from_servers(&servers).await;
+        let check = mcp_check_from_servers(&servers, false).await;
 
         assert_eq!(check.status, CheckStatus::Fail);
         assert_eq!(

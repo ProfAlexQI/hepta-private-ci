@@ -77,10 +77,23 @@ Important observed fields:
 - `runtime.provenance`: `ok`, current executable points at the release smoke
   binary.
 
-Note: `doctor --json` still performs its built-in reachability checks. In this
-run it contacted provider endpoints without credentials and reported reachable
-HTTP plus an expected unauthorized WebSocket handshake. Future strictly
-offline preflight should avoid `doctor` or add a no-network doctor mode.
+Note: plain `doctor --json` still performs its built-in reachability checks. In
+this run it contacted provider endpoints without credentials and reported
+reachable HTTP plus an expected unauthorized WebSocket handshake.
+
+Follow-up hardening landed after this preflight: `hepta doctor --no-network`
+now skips provider HTTP, Responses WebSocket, and MCP HTTP reachability probes
+while preserving local config/auth/path checks.
+
+Post-hardening release smoke:
+
+- Rebuilt `/tmp/hepta-codex-release-target/release/hepta` after the
+  `doctor --no-network` change.
+- `hepta doctor --no-network --json` with temporary Hepta homes still exits
+  `1` for expected local auth/terminal failures, but provider and WebSocket
+  checks now report skipped summaries.
+- The no-network JSON output contains no provider endpoint field, no
+  `reachable over HTTP` result, and no WebSocket handshake transport error.
 
 ## Current Readiness Judgment
 
@@ -92,8 +105,6 @@ service should be a separate step because it mutates the user's current runtime.
 
 Before replacing the active service:
 
-1. Add or identify a strictly offline doctor/readiness mode for source-fork
-   smoke validation.
-2. Run one installed-path dry smoke against a staged copy of the release binary.
-3. Only then perform `hepta install` / service restart and verify the running
+1. Run one installed-path dry smoke against a staged copy of the release binary.
+2. Only then perform `hepta install` / service restart and verify the running
    service binary path.
