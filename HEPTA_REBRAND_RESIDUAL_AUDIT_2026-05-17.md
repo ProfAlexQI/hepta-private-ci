@@ -712,9 +712,12 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - The fork serves a local Hepta Control UI shell plus readiness endpoints at
   `/health`, `/api/native-gateway`, `/api/gateway-runtime`, and
   `/api/telegram-plugin`.
-- Telegram plugin execution is not faked. The fork reports
-  `pending_migration` until the old Hepta reply loop is ported into the
-  native gateway process.
+- Telegram plugin execution is not faked. The fork now owns a native
+  Telegram plugin supervisor/config contract and reports
+  `native_supervisor_ready` only when redacted config shape, token shape,
+  and Telegram binding readiness are present. It still reports
+  `in_process_reply_loop_ready=false` until Bot API polling/send and the
+  Codex model-turn bridge are ported into the native gateway process.
 
 ## Keep for compatibility
 

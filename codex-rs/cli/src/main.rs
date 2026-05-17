@@ -52,6 +52,7 @@ mod doctor;
 mod marketplace_cmd;
 mod mcp_cmd;
 mod native_gateway;
+mod native_telegram;
 mod plugin_cmd;
 mod state_db_recovery;
 #[cfg(not(windows))]

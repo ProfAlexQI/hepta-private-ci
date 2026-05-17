@@ -7,6 +7,9 @@ use anyhow::Context;
 use anyhow::Result;
 use serde::Serialize;
 
+use crate::native_telegram;
+use crate::native_telegram::NativeTelegramPluginStatus;
+
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:7373";
 const DEFAULT_TELEGRAM_POLL_MS: u64 = 1500;
 
@@ -87,8 +90,11 @@ pub(crate) async fn run_native_gateway(options: NativeGatewayOptions) -> Result<
     }
 
     if options.with_telegram_plugin {
+        let telegram_plugin =
+            native_telegram::telegram_plugin_status(true, options.telegram_plugin_poll_ms);
         eprintln!(
-            "hepta-codex native gateway accepted --with-telegram-plugin; Telegram reply-loop migration is pending and is exposed in /api/native-gateway"
+            "hepta-codex native gateway accepted --with-telegram-plugin; native Telegram supervisor status={} config_ready={} reply_loop_ready=false",
+            telegram_plugin.status, telegram_plugin.config.binding_ready
         );
     }
 
@@ -124,8 +130,16 @@ fn route_native_gateway_request(
         );
     }
 
+    let telegram_plugin = native_telegram::telegram_plugin_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
     match path {
-        "/" | "/index.html" => ("200 OK", "text/html; charset=utf-8", index_html(options)),
+        "/" | "/index.html" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            index_html(options, &telegram_plugin),
+        ),
         "/health" | "/api/health" => (
             "200 OK",
             "application/json; charset=utf-8",
@@ -138,24 +152,12 @@ fn route_native_gateway_request(
         "/api/native-gateway" | "/api/gateway-runtime" => (
             "200 OK",
             "application/json; charset=utf-8",
-            native_gateway_json(options),
+            native_gateway_json(options, &telegram_plugin),
         ),
         "/api/telegram-plugin" => (
             "200 OK",
             "application/json; charset=utf-8",
-            json_or_error(&TelegramPluginResponse {
-                product: "Hepta",
-                runtime: "hepta-codex",
-                requested: options.with_telegram_plugin,
-                status: if options.with_telegram_plugin {
-                    "pending_migration"
-                } else {
-                    "disabled"
-                },
-                in_process_reply_loop_ready: false,
-                poll_ms: options.telegram_plugin_poll_ms,
-                next_migration_slice: "port Hepta Telegram plugin reply-loop into hepta-codex native gateway",
-            }),
+            json_or_error(&telegram_plugin),
         ),
         _ => (
             "404 Not Found",
@@ -165,8 +167,11 @@ fn route_native_gateway_request(
     }
 }
 
-fn index_html(options: &NativeGatewayOptions) -> String {
-    let readiness = native_gateway_json(options);
+fn index_html(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> String {
+    let readiness = native_gateway_json(options, telegram_plugin);
     format!(
         r#"<!doctype html>
 <html lang="en" data-runtime="hepta-codex-native-gateway">
@@ -206,16 +211,15 @@ fn index_html(options: &NativeGatewayOptions) -> String {
   </body>
 </html>
 "#,
-        telegram_status = if options.with_telegram_plugin {
-            "pending migration"
-        } else {
-            "disabled"
-        },
+        telegram_status = telegram_plugin.status.replace('_', " "),
         readiness = escape_html(&readiness),
     )
 }
 
-fn native_gateway_json(options: &NativeGatewayOptions) -> String {
+fn native_gateway_json(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> String {
     json_or_error(&NativeGatewayResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -224,22 +228,23 @@ fn native_gateway_json(options: &NativeGatewayOptions) -> String {
         bind_addr: &options.bind_addr,
         launchd_entrypoint_compatible: true,
         active_gateway_replacement_ready: false,
-        replacement_blocker: "Telegram reply-loop and full Hepta Control UI route surface are still migrating into hepta-codex",
+        replacement_blocker: "Telegram Bot API polling/send, Codex model-turn bridge, and full Hepta Control UI route surface are still migrating into hepta-codex",
         telegram_plugin_requested: options.with_telegram_plugin,
-        telegram_plugin_status: if options.with_telegram_plugin {
-            "pending_migration"
-        } else {
-            "disabled"
-        },
+        telegram_plugin_status: telegram_plugin.status,
+        telegram_plugin_native_supervisor_ready: telegram_plugin.in_process_supervisor_ready,
+        telegram_plugin_reply_loop_ready: telegram_plugin.in_process_reply_loop_ready,
         telegram_plugin_poll_ms: options.telegram_plugin_poll_ms,
+        telegram_plugin,
         migrated_surfaces: &[
             "--serve-ui entrypoint",
             "loopback guard",
             "native gateway readiness JSON",
             "health endpoint",
             "Control UI shell",
+            "Telegram plugin redacted config contract",
+            "Telegram native supervisor readiness surface",
         ],
-        next_migration_slice: "port Hepta Telegram plugin reply-loop and API route command surface into hepta-codex",
+        next_migration_slice: "wire native Bot API getUpdates/sendMessage loop behind explicit delivery gates",
     })
 }
 
@@ -258,17 +263,6 @@ struct HealthResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct TelegramPluginResponse {
-    product: &'static str,
-    runtime: &'static str,
-    requested: bool,
-    status: &'static str,
-    in_process_reply_loop_ready: bool,
-    poll_ms: u64,
-    next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
 struct NativeGatewayResponse<'a> {
     product: &'static str,
     runtime: &'static str,
@@ -280,7 +274,10 @@ struct NativeGatewayResponse<'a> {
     replacement_blocker: &'static str,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
+    telegram_plugin_native_supervisor_ready: bool,
+    telegram_plugin_reply_loop_ready: bool,
     telegram_plugin_poll_ms: u64,
+    telegram_plugin: &'a NativeTelegramPluginStatus,
     migrated_surfaces: &'static [&'static str],
     next_migration_slice: &'static str,
 }
@@ -429,11 +426,14 @@ mod tests {
             with_telegram_plugin: true,
             telegram_plugin_poll_ms: 1500,
         };
-        let body = native_gateway_json(&options);
+        let telegram_plugin =
+            native_telegram::telegram_plugin_status(true, options.telegram_plugin_poll_ms);
+        let body = native_gateway_json(&options, &telegram_plugin);
         assert!(body.contains(r#""runtime":"hepta-codex""#));
         assert!(body.contains(r#""launchd_entrypoint_compatible":true"#));
         assert!(body.contains(r#""active_gateway_replacement_ready":false"#));
-        assert!(body.contains(r#""telegram_plugin_status":"pending_migration""#));
+        assert!(body.contains(r#""telegram_plugin_native_supervisor_ready":"#));
+        assert!(!body.contains("pending_migration"));
     }
 
     #[test]
