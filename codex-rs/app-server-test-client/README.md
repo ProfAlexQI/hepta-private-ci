@@ -1,17 +1,17 @@
 # App Server Test Client
-Quickstart for running and hitting `codex app-server`.
+Quickstart for running and hitting `hepta app-server`.
 
 ## Quickstart
 
 Run from `<reporoot>/codex-rs`.
 
 ```bash
-# 1) Build debug codex binary
-cargo build -p codex-cli --bin codex
+# 1) Build debug Hepta binary
+cargo build -p codex-cli --bin hepta
 
 # 2) Start websocket app-server in background
 cargo run -p codex-app-server-test-client -- \
-  --codex-bin ./target/debug/codex \
+  --hepta-bin ./target/debug/hepta \
   serve --listen ws://127.0.0.1:4222 --kill
 
 # 3) Call app-server (defaults to ws://127.0.0.1:4222)
@@ -29,7 +29,7 @@ cargo run -p codex-app-server-test-client -- watch
 
 ## Testing Thread Rejoin Behavior
 
-Build and start an app server using commands above. The app-server log is written to `/tmp/codex-app-server-test-client/app-server.log`
+Build and start an app server using commands above. The app-server log is written to `/tmp/hepta-app-server-test-client/app-server.log`
 
 ### 1) Get a thread id
 

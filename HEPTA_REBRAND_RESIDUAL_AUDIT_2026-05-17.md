@@ -229,6 +229,22 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - The crate/package name remains `codex-message-history` as an internal
   compatibility identifier.
 
+## Cleaned in developer tooling pass
+
+- Root `justfile` now makes `hepta` the primary local run recipe and keeps
+  `codex` only as a compatibility convenience that runs the Hepta binary.
+- The app-server test-client README now documents `hepta app-server`,
+  `--hepta-bin`, and the Hepta temp runtime directory.
+- Bubblewrap build-time diagnostics now prefer `HEPTA_BWRAP_SOURCE_DIR` and
+  `HEPTA_SKIP_BWRAP_BUILD`, while keeping `CODEX_*` fallbacks.
+- Bazel test launcher templates now prefer `HEPTA_BAZEL_TEST_SKIP_FILTERS`
+  and retain the older `CODEX_BAZEL_TEST_SKIP_FILTERS` fallback.
+- RMCP test servers and resource fixtures now use `memo://hepta/*` and Hepta
+  memo titles for local test resources; protocol metadata keys such as
+  `codex/imageDetail` remain compatibility names.
+- TUI source-level comments now describe the Hepta TUI where they are
+  human-readable documentation rather than crate names.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

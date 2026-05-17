@@ -114,7 +114,7 @@ struct Cli {
         env = "HEPTA_BIN",
         global = true
     )]
-    codex_bin: Option<PathBuf>,
+    hepta_bin: Option<PathBuf>,
 
     /// Existing websocket server URL to connect to.
     ///
@@ -280,13 +280,13 @@ enum CliCommand {
 
 pub async fn run() -> Result<()> {
     let Cli {
-        codex_bin,
+        hepta_bin,
         url,
         config_overrides,
         dynamic_tools,
         command,
     } = Cli::parse();
-    let codex_bin = codex_bin.or_else(|| std::env::var_os("CODEX_BIN").map(PathBuf::from));
+    let hepta_bin = hepta_bin.or_else(|| std::env::var_os("CODEX_BIN").map(PathBuf::from));
     let url = url.or_else(|| std::env::var("CODEX_APP_SERVER_URL").ok());
 
     let dynamic_tools = parse_dynamic_tools_arg(&dynamic_tools)?;
@@ -294,19 +294,19 @@ pub async fn run() -> Result<()> {
     match command {
         CliCommand::Serve { listen, kill } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "serve")?;
-            let codex_bin = codex_bin.unwrap_or_else(|| PathBuf::from("hepta"));
-            serve(&codex_bin, &config_overrides, &listen, kill)
+            let hepta_bin = hepta_bin.unwrap_or_else(|| PathBuf::from("hepta"));
+            serve(&hepta_bin, &config_overrides, &listen, kill)
         }
         CliCommand::SendMessage { user_message } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "send-message")?;
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             send_message(&endpoint, &config_overrides, user_message).await
         }
         CliCommand::SendMessageV2 {
             experimental_api,
             user_message,
         } => {
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             send_message_v2_endpoint(
                 &endpoint,
                 &config_overrides,
@@ -320,7 +320,7 @@ pub async fn run() -> Result<()> {
             thread_id,
             user_message,
         } => {
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             resume_message_v2(
                 &endpoint,
                 &config_overrides,
@@ -332,31 +332,31 @@ pub async fn run() -> Result<()> {
         }
         CliCommand::ThreadResume { thread_id } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "thread-resume")?;
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             thread_resume_follow(&endpoint, &config_overrides, thread_id).await
         }
         CliCommand::Watch => {
             ensure_dynamic_tools_unused(&dynamic_tools, "watch")?;
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             watch(&endpoint, &config_overrides).await
         }
         CliCommand::TriggerCmdApproval { user_message } => {
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             trigger_cmd_approval(&endpoint, &config_overrides, user_message, &dynamic_tools).await
         }
         CliCommand::TriggerPatchApproval { user_message } => {
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             trigger_patch_approval(&endpoint, &config_overrides, user_message, &dynamic_tools).await
         }
         CliCommand::NoTriggerCmdApproval => {
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             no_trigger_cmd_approval(&endpoint, &config_overrides, &dynamic_tools).await
         }
         CliCommand::SendFollowUpV2 {
             first_message,
             follow_up_message,
         } => {
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             send_follow_up_v2(
                 &endpoint,
                 &config_overrides,
@@ -371,7 +371,7 @@ pub async fn run() -> Result<()> {
             min_approvals,
             abort_on,
         } => {
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             trigger_zsh_fork_multi_cmd_approval(
                 &endpoint,
                 &config_overrides,
@@ -384,32 +384,32 @@ pub async fn run() -> Result<()> {
         }
         CliCommand::TestLogin { device_code } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "test-login")?;
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             test_login(&endpoint, &config_overrides, device_code).await
         }
         CliCommand::GetAccountRateLimits => {
             ensure_dynamic_tools_unused(&dynamic_tools, "get-account-rate-limits")?;
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             get_account_rate_limits(&endpoint, &config_overrides).await
         }
         CliCommand::ModelList => {
             ensure_dynamic_tools_unused(&dynamic_tools, "model-list")?;
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             model_list(&endpoint, &config_overrides).await
         }
         CliCommand::ThreadList { limit } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "thread-list")?;
-            let endpoint = resolve_endpoint(codex_bin, url)?;
+            let endpoint = resolve_endpoint(hepta_bin, url)?;
             thread_list(&endpoint, &config_overrides, limit).await
         }
         CliCommand::ThreadIncrementElicitation { thread_id } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "thread-increment-elicitation")?;
-            let url = resolve_shared_websocket_url(codex_bin, url, "thread-increment-elicitation")?;
+            let url = resolve_shared_websocket_url(hepta_bin, url, "thread-increment-elicitation")?;
             thread_increment_elicitation(&url, thread_id)
         }
         CliCommand::ThreadDecrementElicitation { thread_id } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "thread-decrement-elicitation")?;
-            let url = resolve_shared_websocket_url(codex_bin, url, "thread-decrement-elicitation")?;
+            let url = resolve_shared_websocket_url(hepta_bin, url, "thread-decrement-elicitation")?;
             thread_decrement_elicitation(&url, thread_id)
         }
         CliCommand::LiveElicitationTimeoutPause {
@@ -420,7 +420,7 @@ pub async fn run() -> Result<()> {
         } => {
             ensure_dynamic_tools_unused(&dynamic_tools, "live-elicitation-timeout-pause")?;
             live_elicitation_timeout_pause(
-                codex_bin,
+                hepta_bin,
                 url,
                 &config_overrides,
                 model,
@@ -433,7 +433,7 @@ pub async fn run() -> Result<()> {
 }
 
 enum Endpoint {
-    SpawnCodex(PathBuf),
+    SpawnHepta(PathBuf),
     ConnectWs(String),
 }
 
@@ -442,12 +442,12 @@ struct BackgroundAppServer {
     url: String,
 }
 
-fn resolve_endpoint(codex_bin: Option<PathBuf>, url: Option<String>) -> Result<Endpoint> {
-    if codex_bin.is_some() && url.is_some() {
+fn resolve_endpoint(hepta_bin: Option<PathBuf>, url: Option<String>) -> Result<Endpoint> {
+    if hepta_bin.is_some() && url.is_some() {
         bail!("--hepta-bin and --url are mutually exclusive");
     }
-    if let Some(codex_bin) = codex_bin {
-        return Ok(Endpoint::SpawnCodex(codex_bin));
+    if let Some(hepta_bin) = hepta_bin {
+        return Ok(Endpoint::SpawnHepta(hepta_bin));
     }
     if let Some(url) = url {
         return Ok(Endpoint::ConnectWs(url));
@@ -456,11 +456,11 @@ fn resolve_endpoint(codex_bin: Option<PathBuf>, url: Option<String>) -> Result<E
 }
 
 fn resolve_shared_websocket_url(
-    codex_bin: Option<PathBuf>,
+    hepta_bin: Option<PathBuf>,
     url: Option<String>,
     command: &str,
 ) -> Result<String> {
-    if codex_bin.is_some() {
+    if hepta_bin.is_some() {
         bail!(
             "{command} requires --url or an already-running websocket app-server; --hepta-bin would spawn a private stdio app-server instead"
         );
@@ -470,16 +470,16 @@ fn resolve_shared_websocket_url(
 }
 
 impl BackgroundAppServer {
-    fn spawn(codex_bin: &Path, config_overrides: &[String]) -> Result<Self> {
+    fn spawn(hepta_bin: &Path, config_overrides: &[String]) -> Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0")
             .context("failed to reserve a local port for websocket app-server")?;
         let addr = listener.local_addr()?;
         drop(listener);
 
         let url = format!("ws://{addr}");
-        let mut cmd = Command::new(codex_bin);
-        if let Some(codex_bin_parent) = codex_bin.parent() {
-            let mut path = OsString::from(codex_bin_parent.as_os_str());
+        let mut cmd = Command::new(hepta_bin);
+        if let Some(hepta_bin_parent) = hepta_bin.parent() {
+            let mut path = OsString::from(hepta_bin_parent.as_os_str());
             if let Some(existing_path) = std::env::var_os("PATH") {
                 path.push(":");
                 path.push(existing_path);
@@ -497,7 +497,7 @@ impl BackgroundAppServer {
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .spawn()
-            .with_context(|| format!("failed to start `{}` app-server", codex_bin.display()))?;
+            .with_context(|| format!("failed to start `{}` app-server", hepta_bin.display()))?;
 
         Ok(Self { process, url })
     }
@@ -515,7 +515,7 @@ impl Drop for BackgroundAppServer {
     }
 }
 
-fn serve(codex_bin: &Path, config_overrides: &[String], listen: &str, kill: bool) -> Result<()> {
+fn serve(hepta_bin: &Path, config_overrides: &[String], listen: &str, kill: bool) -> Result<()> {
     let runtime_dir = PathBuf::from("/tmp/hepta-app-server-test-client");
     fs::create_dir_all(&runtime_dir)
         .with_context(|| format!("failed to create runtime dir {}", runtime_dir.display()))?;
@@ -535,7 +535,7 @@ fn serve(codex_bin: &Path, config_overrides: &[String], listen: &str, kill: bool
 
     let mut cmdline = format!(
         "tail -f /dev/null | RUST_BACKTRACE=full RUST_LOG=warn,codex_=trace {}",
-        shell_quote(&codex_bin.display().to_string())
+        shell_quote(&hepta_bin.display().to_string())
     );
     for override_kv in config_overrides {
         cmdline.push_str(&format!(" --config {}", shell_quote(override_kv)));
@@ -550,7 +550,7 @@ fn serve(codex_bin: &Path, config_overrides: &[String], listen: &str, kill: bool
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_stderr))
         .spawn()
-        .with_context(|| format!("failed to start `{}` app-server", codex_bin.display()))?;
+        .with_context(|| format!("failed to start `{}` app-server", hepta_bin.display()))?;
 
     let pid = child.id();
 
@@ -657,12 +657,12 @@ async fn send_message(
 }
 
 pub async fn send_message_v2(
-    codex_bin: &Path,
+    hepta_bin: &Path,
     config_overrides: &[String],
     user_message: String,
     dynamic_tools: &Option<Vec<DynamicToolSpec>>,
 ) -> Result<()> {
-    let endpoint = Endpoint::SpawnCodex(codex_bin.to_path_buf());
+    let endpoint = Endpoint::SpawnHepta(hepta_bin.to_path_buf());
     send_message_v2_endpoint(
         &endpoint,
         config_overrides,
@@ -1146,7 +1146,7 @@ async fn with_client<T>(
     command_name: &'static str,
     endpoint: &Endpoint,
     config_overrides: &[String],
-    f: impl FnOnce(&mut CodexClient) -> Result<T>,
+    f: impl FnOnce(&mut HeptaClient) -> Result<T>,
 ) -> Result<T> {
     let tracing = TestClientTracing::initialize(config_overrides).await?;
     let command_span = info_span!(
@@ -1157,7 +1157,7 @@ async fn with_client<T>(
     );
     let trace_summary = command_span.in_scope(|| TraceSummary::capture(tracing.traces_enabled));
     let result = command_span.in_scope(|| {
-        let mut client = CodexClient::connect(endpoint, config_overrides)?;
+        let mut client = HeptaClient::connect(endpoint, config_overrides)?;
         f(&mut client)
     });
     print_trace_summary(&trace_summary);
@@ -1166,7 +1166,7 @@ async fn with_client<T>(
 
 fn thread_increment_elicitation(url: &str, thread_id: String) -> Result<()> {
     let endpoint = Endpoint::ConnectWs(url.to_string());
-    let mut client = CodexClient::connect(&endpoint, &[])?;
+    let mut client = HeptaClient::connect(&endpoint, &[])?;
 
     let initialize = client.initialize()?;
     println!("< initialize response: {initialize:?}");
@@ -1180,7 +1180,7 @@ fn thread_increment_elicitation(url: &str, thread_id: String) -> Result<()> {
 
 fn thread_decrement_elicitation(url: &str, thread_id: String) -> Result<()> {
     let endpoint = Endpoint::ConnectWs(url.to_string());
-    let mut client = CodexClient::connect(&endpoint, &[])?;
+    let mut client = HeptaClient::connect(&endpoint, &[])?;
 
     let initialize = client.initialize()?;
     println!("< initialize response: {initialize:?}");
@@ -1193,7 +1193,7 @@ fn thread_decrement_elicitation(url: &str, thread_id: String) -> Result<()> {
 }
 
 fn live_elicitation_timeout_pause(
-    codex_bin: Option<PathBuf>,
+    hepta_bin: Option<PathBuf>,
     url: Option<String>,
     config_overrides: &[String],
     model: String,
@@ -1209,10 +1209,10 @@ fn live_elicitation_timeout_pause(
     }
 
     let mut _background_server = None;
-    let websocket_url = match (codex_bin, url) {
+    let websocket_url = match (hepta_bin, url) {
         (Some(_), Some(_)) => bail!("--hepta-bin and --url are mutually exclusive"),
-        (Some(codex_bin), None) => {
-            let server = BackgroundAppServer::spawn(&codex_bin, config_overrides)?;
+        (Some(hepta_bin), None) => {
+            let server = BackgroundAppServer::spawn(&hepta_bin, config_overrides)?;
             let websocket_url = server.url.clone();
             _background_server = Some(server);
             websocket_url
@@ -1236,7 +1236,7 @@ fn live_elicitation_timeout_pause(
     let app_server_test_client_bin = std::env::current_exe()
         .context("failed to resolve codex-app-server-test-client binary path")?;
     let endpoint = Endpoint::ConnectWs(websocket_url.clone());
-    let mut client = CodexClient::connect(&endpoint, &[])?;
+    let mut client = HeptaClient::connect(&endpoint, &[])?;
 
     let initialize = client.initialize()?;
     println!("< initialize response: {initialize:?}");
@@ -1394,7 +1394,7 @@ enum ClientTransport {
     },
 }
 
-struct CodexClient {
+struct HeptaClient {
     transport: ClientTransport,
     pending_notifications: VecDeque<JSONRPCNotification>,
     command_approval_behavior: CommandApprovalBehavior,
@@ -1429,19 +1429,19 @@ fn item_started_before_helper_done_is_unexpected(
     !matches!(item, ThreadItem::UserMessage { .. })
 }
 
-impl CodexClient {
+impl HeptaClient {
     fn connect(endpoint: &Endpoint, config_overrides: &[String]) -> Result<Self> {
         match endpoint {
-            Endpoint::SpawnCodex(codex_bin) => Self::spawn_stdio(codex_bin, config_overrides),
+            Endpoint::SpawnHepta(hepta_bin) => Self::spawn_stdio(hepta_bin, config_overrides),
             Endpoint::ConnectWs(url) => Self::connect_websocket(url),
         }
     }
 
-    fn spawn_stdio(codex_bin: &Path, config_overrides: &[String]) -> Result<Self> {
-        let codex_bin_display = codex_bin.display();
-        let mut cmd = Command::new(codex_bin);
-        if let Some(codex_bin_parent) = codex_bin.parent() {
-            let mut path = OsString::from(codex_bin_parent.as_os_str());
+    fn spawn_stdio(hepta_bin: &Path, config_overrides: &[String]) -> Result<Self> {
+        let hepta_bin_display = hepta_bin.display();
+        let mut cmd = Command::new(hepta_bin);
+        if let Some(hepta_bin_parent) = hepta_bin.parent() {
+            let mut path = OsString::from(hepta_bin_parent.as_os_str());
             if let Some(existing_path) = std::env::var_os("PATH") {
                 path.push(":");
                 path.push(existing_path);
@@ -1451,26 +1451,26 @@ impl CodexClient {
         for override_kv in config_overrides {
             cmd.arg("--config").arg(override_kv);
         }
-        let mut codex_app_server = cmd
+        let mut hepta_app_server = cmd
             .arg("app-server")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .with_context(|| format!("failed to start `{codex_bin_display}` app-server"))?;
+            .with_context(|| format!("failed to start `{hepta_bin_display}` app-server"))?;
 
-        let stdin = codex_app_server
+        let stdin = hepta_app_server
             .stdin
             .take()
             .context("hepta app-server stdin unavailable")?;
-        let stdout = codex_app_server
+        let stdout = hepta_app_server
             .stdout
             .take()
             .context("hepta app-server stdout unavailable")?;
 
         Ok(Self {
             transport: ClientTransport::Stdio {
-                child: codex_app_server,
+                child: hepta_app_server,
                 stdin: Some(stdin),
                 stdout: BufReader::new(stdout),
             },
@@ -2205,7 +2205,7 @@ fn print_trace_summary(trace_summary: &TraceSummary) {
     }
 }
 
-impl Drop for CodexClient {
+impl Drop for HeptaClient {
     fn drop(&mut self) {
         let ClientTransport::Stdio { child, stdin, .. } = &mut self.transport else {
             return;

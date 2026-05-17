@@ -7,16 +7,21 @@ rust_min_stack := "8388608" # 8 MiB
 help:
     just -l
 
-# `codex`
-alias c := codex
+# `hepta`
+alias h := hepta
+alias c := hepta
+hepta *args:
+    cargo run --bin hepta -- "$@"
+
+# `codex` compatibility convenience for old local muscle memory.
 codex *args:
-    cargo run --bin codex -- "$@"
+    cargo run --bin hepta -- "$@"
 
-# `codex exec`
+# `hepta exec`
 exec *args:
-    cargo run --bin codex -- exec "$@"
+    cargo run --bin hepta -- exec "$@"
 
-# Start `codex exec-server` and run codex-tui.
+# Start the Hepta TUI through the exec-server harness.
 [no-cd]
 tui-with-exec-server *args:
     {{ justfile_directory() }}/scripts/run_tui_with_exec_server.sh "$@"
@@ -25,10 +30,10 @@ tui-with-exec-server *args:
 file-search *args:
     cargo run --bin codex-file-search -- "$@"
 
-# Build the CLI and run the app-server test client
+# Build the Hepta CLI and run the app-server test client.
 app-server-test-client *args:
-    cargo build -p codex-cli
-    cargo run -p codex-app-server-test-client -- --codex-bin ./target/debug/codex "$@"
+    cargo build -p codex-cli --bin hepta
+    cargo run -p codex-app-server-test-client -- --hepta-bin ./target/debug/hepta "$@"
 
 # Format Rust and Python SDK code.
 fmt:
@@ -55,7 +60,7 @@ install:
 test:
     RUST_MIN_STACK={{ rust_min_stack }} cargo nextest run --no-fail-fast
 
-# Build and run Codex from source using Bazel.
+# Build and run the legacy Bazel CLI target from source.
 # Note we have to use the combination of `[no-cd]` and `--run_under="cd $PWD &&"`
 # to ensure that Bazel runs the command in the current working directory.
 [no-cd]

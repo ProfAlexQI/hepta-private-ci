@@ -40,7 +40,7 @@ struct TestToolServer {
     resource_templates: Arc<Vec<ResourceTemplate>>,
 }
 
-const MEMO_URI: &str = "memo://codex/example-note";
+const MEMO_URI: &str = "memo://hepta/example-note";
 const MEMO_CONTENT: &str = "This is a sample MCP resource served by the rmcp test server.";
 const SANDBOX_STATE_META_CAPABILITY: &str = "codex/sandbox-state-meta";
 const SMALL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
@@ -227,16 +227,16 @@ impl TestToolServer {
         tool
     }
 
-    /// Tool intended for manual testing of Codex TUI rendering for MCP image tool results.
+    /// Tool intended for manual testing of Hepta TUI rendering for MCP image tool results.
     ///
     /// This exists to exercise edge cases where a `CallToolResult.content` includes image blocks
     /// that aren't the first item (or includes invalid image blocks before a valid image).
     ///
-    /// Manual testing approach (Codex TUI):
+    /// Manual testing approach (Hepta TUI):
     /// - Build this binary: `cargo build -p codex-rmcp-client --bin test_stdio_server`
     /// - Register it:
-    ///   - `codex mcp add mcpimg -- /abs/path/to/test_stdio_server`
-    /// - Then in Codex TUI, ask it to call:
+    ///   - `hepta mcp add mcpimg -- /abs/path/to/test_stdio_server`
+    /// - Then in Hepta TUI, ask it to call:
     ///   - `mcpimg.image_scenario({"scenario":"image_only"})`
     ///   - `mcpimg.image_scenario({"scenario":"image_only_original_detail"})`
     ///   - `mcpimg.image_scenario({"scenario":"text_then_image","caption":"Here is the image:"})`
@@ -302,11 +302,11 @@ impl TestToolServer {
 
     fn memo_template() -> ResourceTemplate {
         let raw = RawResourceTemplate {
-            uri_template: "memo://codex/{slug}".to_string(),
-            name: "codex-memo".to_string(),
-            title: Some("Codex Memo".to_string()),
+            uri_template: "memo://hepta/{slug}".to_string(),
+            name: "hepta-memo".to_string(),
+            title: Some("Hepta Memo".to_string()),
             description: Some(
-                "Template for memo://codex/{slug} resources used in tests.".to_string(),
+                "Template for memo://hepta/{slug} resources used in tests.".to_string(),
             ),
             mime_type: Some("text/plain".to_string()),
             icons: None,
@@ -363,7 +363,7 @@ fn sync_barrier_map() -> &'static tokio::sync::Mutex<HashMap<String, SyncBarrier
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
-/// Scenarios for `image_scenario`, intended to exercise Codex TUI handling of MCP image outputs.
+/// Scenarios for `image_scenario`, intended to exercise Hepta TUI handling of MCP image outputs.
 ///
 /// The key behavior under test is that the TUI should render an image output cell if *any*
 /// decodable image block exists in the tool result content, even if the first block is text or an

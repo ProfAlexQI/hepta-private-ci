@@ -4,10 +4,12 @@ use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rustc-check-cfg=cfg(bwrap_available)");
+    println!("cargo:rerun-if-env-changed=HEPTA_BWRAP_SOURCE_DIR");
     println!("cargo:rerun-if-env-changed=CODEX_BWRAP_SOURCE_DIR");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_ALLOW_CROSS");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR");
+    println!("cargo:rerun-if-env-changed=HEPTA_SKIP_BWRAP_BUILD");
     println!("cargo:rerun-if-env-changed=CODEX_SKIP_BWRAP_BUILD");
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
@@ -20,7 +22,9 @@ fn main() {
     }
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if target_os != "linux" || env::var_os("CODEX_SKIP_BWRAP_BUILD").is_some() {
+    let skip_build = env::var_os("HEPTA_SKIP_BWRAP_BUILD").is_some()
+        || env::var_os("CODEX_SKIP_BWRAP_BUILD").is_some();
+    if target_os != "linux" || skip_build {
         return;
     }
 
@@ -43,7 +47,7 @@ fn try_build_bwrap() -> Result<(), String> {
     std::fs::write(
         &config_h,
         r#"#pragma once
-#define PACKAGE_STRING "bubblewrap built for Codex"
+#define PACKAGE_STRING "bubblewrap built for Hepta"
 "#,
     )
     .map_err(|err| format!("failed to write {}: {err}", config_h.display()))?;
@@ -79,18 +83,21 @@ fn try_build_bwrap() -> Result<(), String> {
 /// Resolve the bubblewrap source directory used for build-time compilation.
 ///
 /// Priority:
-/// 1. `CODEX_BWRAP_SOURCE_DIR` points at an existing bubblewrap checkout.
-/// 2. The vendored bubblewrap tree under `codex-rs/vendor/bubblewrap`.
+/// 1. `HEPTA_BWRAP_SOURCE_DIR` points at an existing bubblewrap checkout.
+/// 2. Legacy `CODEX_BWRAP_SOURCE_DIR` points at an existing checkout.
+/// 3. The vendored bubblewrap tree under `codex-rs/vendor/bubblewrap`.
 fn resolve_bwrap_source_dir(manifest_dir: &Path) -> Result<PathBuf, String> {
-    if let Ok(path) = env::var("CODEX_BWRAP_SOURCE_DIR") {
-        let src_dir = PathBuf::from(path);
-        if src_dir.exists() {
-            return Ok(src_dir);
+    for var_name in ["HEPTA_BWRAP_SOURCE_DIR", "CODEX_BWRAP_SOURCE_DIR"] {
+        if let Ok(path) = env::var(var_name) {
+            let src_dir = PathBuf::from(path);
+            if src_dir.exists() {
+                return Ok(src_dir);
+            }
+            return Err(format!(
+                "{var_name} was set but does not exist: {}",
+                src_dir.display()
+            ));
         }
-        return Err(format!(
-            "CODEX_BWRAP_SOURCE_DIR was set but does not exist: {}",
-            src_dir.display()
-        ));
     }
 
     let vendor_dir = manifest_dir.join("../vendor/bubblewrap");
@@ -100,7 +107,7 @@ fn resolve_bwrap_source_dir(manifest_dir: &Path) -> Result<PathBuf, String> {
 
     Err(format!(
         "expected vendored bubblewrap at {}, but it was not found.\n\
-Set CODEX_BWRAP_SOURCE_DIR to an existing checkout or vendor bubblewrap under codex-rs/vendor.",
+Set HEPTA_BWRAP_SOURCE_DIR to an existing checkout or vendor bubblewrap under codex-rs/vendor.",
         vendor_dir.display()
     ))
 }

@@ -21,7 +21,7 @@ use rmcp::model::ReadResourceRequestParams;
 use rmcp::model::ResourceContents;
 use serde_json::json;
 
-const RESOURCE_URI: &str = "memo://codex/example-note";
+const RESOURCE_URI: &str = "memo://hepta/example-note";
 
 fn stdio_server_bin() -> Result<PathBuf, CargoBinError> {
     codex_utils_cargo_bin::cargo_bin("test_stdio_server")
@@ -116,11 +116,11 @@ async fn rmcp_client_can_list_and_read_resources() -> anyhow::Result<()> {
             next_cursor: None,
             resource_templates: vec![
                 rmcp::model::RawResourceTemplate {
-                    uri_template: "memo://codex/{slug}".to_string(),
-                    name: "codex-memo".to_string(),
-                    title: Some("Codex Memo".to_string()),
+                    uri_template: "memo://hepta/{slug}".to_string(),
+                    name: "hepta-memo".to_string(),
+                    title: Some("Hepta Memo".to_string()),
                     description: Some(
-                        "Template for memo://codex/{slug} resources used in tests.".to_string(),
+                        "Template for memo://hepta/{slug} resources used in tests.".to_string(),
                     ),
                     mime_type: Some("text/plain".to_string()),
                     icons: None,
