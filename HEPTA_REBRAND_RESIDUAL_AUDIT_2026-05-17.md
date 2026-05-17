@@ -220,6 +220,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Compatibility uses of config.codex_home and MCP protocol/event aliases stay
   unchanged.
 
+## Cleaned in message history home naming pass
+
+- Message-history docs now describe the default persistence path as
+  `~/.hepta/history.jsonl`.
+- The message-history config now stores its resolved runtime directory as
+  `hepta_home`, and its local tests use Hepta home terminology.
+- The crate/package name remains `codex-message-history` as an internal
+  compatibility identifier.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

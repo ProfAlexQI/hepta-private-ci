@@ -1,6 +1,6 @@
 //! Persistence layer for the global, append-only *message history* file.
 //!
-//! The history is stored at `~/.codex/history.jsonl` with **one JSON object per
+//! The history is stored at `~/.hepta/history.jsonl` with **one JSON object per
 //! line** so that it can be efficiently appended to and parsed with standard
 //! JSON-Lines tooling. Each record has the following schema:
 //!
@@ -41,7 +41,7 @@ use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-/// Filename that stores the message history inside `~/.codex`.
+/// Filename that stores the message history inside the resolved Hepta home.
 const HISTORY_FILENAME: &str = "history.jsonl";
 
 /// When history exceeds the hard cap, trim it down to this fraction of `max_bytes`.
@@ -59,15 +59,15 @@ pub struct HistoryEntry {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoryConfig {
-    pub codex_home: PathBuf,
+    pub hepta_home: PathBuf,
     pub persistence: HistoryPersistence,
     pub max_bytes: Option<usize>,
 }
 
 impl HistoryConfig {
-    pub fn new(codex_home: impl Into<PathBuf>, history: &History) -> Self {
+    pub fn new(hepta_home: impl Into<PathBuf>, history: &History) -> Self {
         Self {
-            codex_home: codex_home.into(),
+            hepta_home: hepta_home.into(),
             persistence: history.persistence,
             max_bytes: history.max_bytes,
         }
@@ -75,7 +75,7 @@ impl HistoryConfig {
 }
 
 fn history_filepath(config: &HistoryConfig) -> PathBuf {
-    config.codex_home.join(HISTORY_FILENAME)
+    config.hepta_home.join(HISTORY_FILENAME)
 }
 
 /// Append a `text` entry associated with `conversation_id` to the history file.
@@ -110,7 +110,7 @@ pub async fn append_entry(
 
     // TODO: check `text` for sensitive patterns
 
-    // Resolve `~/.codex/history.jsonl` and ensure the parent directory exists.
+    // Resolve `~/.hepta/history.jsonl` and ensure the parent directory exists.
     let path = history_filepath(config);
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
