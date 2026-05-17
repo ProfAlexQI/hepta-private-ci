@@ -769,6 +769,10 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   cursor file as the next Telegram update offset, validates that offset
   fail-closed, and reports duplicate-suppression semantics without writing the
   cursor file or persisting raw update payloads.
+- Cursor write helpers now have unit coverage for future delivery/duplicate
+  paths: they write only schema, next-update offset, and
+  `raw_update_payload_persisted=false`, and reject negative offsets before
+  touching disk.
 
 ## Keep for compatibility
 

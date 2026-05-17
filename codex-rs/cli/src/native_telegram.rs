@@ -652,6 +652,29 @@ fn parse_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
     }
 }
 
+#[cfg(test)]
+fn write_telegram_cursor_next_update_offset(path: &Path, offset: i64) -> Result<(), String> {
+    if offset < 0 {
+        return Err("Telegram cursor next_update_offset must be non-negative".to_string());
+    }
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create Telegram cursor directory: {error}"))?;
+    }
+    let body = serde_json::json!({
+        "schema": "hepta.telegram.cursor.v1",
+        "next_update_offset": offset,
+        "raw_update_payload_persisted": false,
+    });
+    let raw = serde_json::to_string_pretty(&body)
+        .map_err(|error| format!("failed to encode Telegram cursor JSON: {error}"))?;
+    fs::write(path, format!("{raw}\n"))
+        .map_err(|error| format!("failed to write Telegram cursor file: {error}"))
+}
+
 fn telegram_drain_once_status_with_gates(
     requested: bool,
     gates: NativeTelegramGatewayGateSummary,
@@ -2054,6 +2077,35 @@ mod tests {
                 .unwrap()
                 .contains("next_update_offset must be non-negative")
         );
+    }
+
+    #[test]
+    fn cursor_write_helper_persists_next_offset_without_raw_payload() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("nested").join("cursor.json");
+
+        write_telegram_cursor_next_update_offset(&cursor_path, 77).expect("write cursor");
+        let raw = fs::read_to_string(&cursor_path).expect("read cursor");
+        assert!(raw.contains("\"schema\": \"hepta.telegram.cursor.v1\""));
+        assert!(raw.contains("\"next_update_offset\": 77"));
+        assert!(raw.contains("\"raw_update_payload_persisted\": false"));
+
+        let status = telegram_cursor_status_from_path(&cursor_path);
+        assert_eq!(status.status, "ready");
+        assert_eq!(status.next_update_offset, Some(77));
+        assert!(!status.cursor_written);
+        assert!(!status.raw_update_payload_persisted);
+    }
+
+    #[test]
+    fn cursor_write_helper_rejects_negative_offsets() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cursor_path = temp.path().join("cursor.json");
+
+        let err = write_telegram_cursor_next_update_offset(&cursor_path, -1)
+            .expect_err("negative offset should be rejected");
+        assert!(err.contains("next_update_offset must be non-negative"));
+        assert!(!cursor_path.exists());
     }
 
     #[test]
