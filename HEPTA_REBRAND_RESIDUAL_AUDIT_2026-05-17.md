@@ -411,6 +411,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Core spawn, sandbox-root, and agent-registry docs now describe Hepta runtime
   behavior without renaming compatibility environment variables or types.
 
+## Cleaned in git baseline / TUI companion pass
+
+- Git baseline commit messages and generated signatures now use Hepta as the
+  local runtime identity.
+- TUI onboarding, local-link rendering docs, terminal-title docs, skill mention
+  fixtures, and the built-in companion display name now use Hepta wording.
+- Built-in pet ids, spritesheet filenames, and CDN compatibility details remain
+  unchanged where they are cache or upstream asset identifiers.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

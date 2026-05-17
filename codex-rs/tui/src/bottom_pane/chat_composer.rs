@@ -6331,7 +6331,7 @@ mod tests {
         let skill_path = test_path_buf("/tmp/skill/SKILL.md").abs();
         composer.set_skill_mentions(Some(vec![SkillMetadata {
             name: "codex".to_string(),
-            description: "Primary personal Codex repo skill.".to_string(),
+            description: "Primary personal Hepta repo skill.".to_string(),
             short_description: None,
             interface: None,
             dependencies: None,
