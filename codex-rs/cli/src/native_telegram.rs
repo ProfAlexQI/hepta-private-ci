@@ -21,6 +21,7 @@ pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ
 pub(crate) const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
 pub(crate) const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
 pub(crate) const TELEGRAM_POLL_LOOP_ENV: &str = "HEPTA_NATIVE_TELEGRAM_POLL_LOOP";
+pub(crate) const TELEGRAM_DELIVERY_APPROVED_ENV: &str = "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED";
 pub(crate) const TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER";
 const TELEGRAM_MODEL_TIMEOUT_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TIMEOUT_MS";
@@ -272,6 +273,8 @@ pub(crate) struct NativeTelegramPollLoopStatus {
     pub(crate) status: &'static str,
     pub(crate) poll_loop_gate_env: &'static str,
     pub(crate) poll_loop_gate_enabled: bool,
+    pub(crate) delivery_approval_gate_env: &'static str,
+    pub(crate) delivery_approval_gate_enabled: bool,
     pub(crate) poll_ms: u64,
     pub(crate) drain_once_endpoint: &'static str,
     pub(crate) worker_spawned_by_status: bool,
@@ -279,6 +282,7 @@ pub(crate) struct NativeTelegramPollLoopStatus {
     pub(crate) requires_live_read_gate: &'static str,
     pub(crate) requires_model_turn_gate: &'static str,
     pub(crate) requires_send_gate: &'static str,
+    pub(crate) requires_delivery_approval_gate: &'static str,
     pub(crate) external_network_read_by_status: bool,
     pub(crate) external_send_by_status: bool,
     pub(crate) raw_update_payload_exposed: bool,
@@ -309,6 +313,8 @@ pub(crate) struct NativeTelegramCursorStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramGatewayGateSummary {
+    pub(crate) delivery_approval_gate_env: &'static str,
+    pub(crate) delivery_approval_gate_enabled: bool,
     pub(crate) live_read_gate_env: &'static str,
     pub(crate) live_read_gate_enabled: bool,
     pub(crate) model_turn_gate_env: &'static str,
@@ -573,6 +579,8 @@ pub(crate) fn telegram_receive_once_status(
 
 pub(crate) fn telegram_gateway_gate_summary() -> NativeTelegramGatewayGateSummary {
     NativeTelegramGatewayGateSummary {
+        delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
+        delivery_approval_gate_enabled: env_truthy(TELEGRAM_DELIVERY_APPROVED_ENV),
         live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
         live_read_gate_enabled: env_truthy(TELEGRAM_LIVE_READ_ENV),
         model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
@@ -744,10 +752,13 @@ pub(crate) fn telegram_poll_loop_status(
     poll_ms: u64,
 ) -> NativeTelegramPollLoopStatus {
     let poll_loop_gate_enabled = env_truthy(TELEGRAM_POLL_LOOP_ENV);
+    let delivery_approval_gate_enabled = env_truthy(TELEGRAM_DELIVERY_APPROVED_ENV);
     let status = if !requested {
         "disabled"
-    } else if poll_loop_gate_enabled {
+    } else if poll_loop_gate_enabled && delivery_approval_gate_enabled {
         "armed"
+    } else if poll_loop_gate_enabled {
+        "approval_required"
     } else {
         "gated"
     };
@@ -758,13 +769,18 @@ pub(crate) fn telegram_poll_loop_status(
         status,
         poll_loop_gate_env: TELEGRAM_POLL_LOOP_ENV,
         poll_loop_gate_enabled,
+        delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
+        delivery_approval_gate_enabled,
         poll_ms,
         drain_once_endpoint: "/api/telegram-drain-once",
         worker_spawned_by_status: false,
-        loop_invokes_drain_once: requested && poll_loop_gate_enabled,
+        loop_invokes_drain_once: requested
+            && poll_loop_gate_enabled
+            && delivery_approval_gate_enabled,
         requires_live_read_gate: TELEGRAM_LIVE_READ_ENV,
         requires_model_turn_gate: TELEGRAM_MODEL_TURN_GATE_ENV,
         requires_send_gate: TELEGRAM_SEND_GATE_ENV,
+        requires_delivery_approval_gate: TELEGRAM_DELIVERY_APPROVED_ENV,
         external_network_read_by_status: false,
         external_send_by_status: false,
         raw_update_payload_exposed: false,
@@ -779,7 +795,10 @@ pub(crate) fn spawn_telegram_poll_loop_if_enabled(
     requested: bool,
     poll_ms: u64,
 ) -> Option<thread::JoinHandle<()>> {
-    if !(requested && env_truthy(TELEGRAM_POLL_LOOP_ENV)) {
+    if !(requested
+        && env_truthy(TELEGRAM_POLL_LOOP_ENV)
+        && env_truthy(TELEGRAM_DELIVERY_APPROVED_ENV))
+    {
         return None;
     }
 
@@ -957,7 +976,8 @@ fn telegram_drain_once_status_with_gates(
     };
     let first_missing_gate = first_missing_drain_once_gate(&gates);
     let all_required_gates_enabled = requested && first_missing_gate.is_none();
-    let status_probe_executes_pipeline = requested && gates.live_read_gate_enabled;
+    let status_probe_executes_pipeline =
+        requested && gates.delivery_approval_gate_enabled && gates.live_read_gate_enabled;
     let mut status = if !requested {
         "disabled"
     } else if all_required_gates_enabled {
@@ -980,7 +1000,7 @@ fn telegram_drain_once_status_with_gates(
     let mut live_read_started = false;
     let mut external_network_read = false;
 
-    if requested && gates.live_read_gate_enabled {
+    if status_probe_executes_pipeline {
         let cursor_status =
             telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH));
         get_updates_offset = cursor_status.next_update_offset;
@@ -1124,7 +1144,9 @@ fn telegram_drain_once_status_with_gates(
 }
 
 fn first_missing_drain_once_gate(gates: &NativeTelegramGatewayGateSummary) -> Option<&'static str> {
-    if !gates.live_read_gate_enabled {
+    if !gates.delivery_approval_gate_enabled {
+        Some(TELEGRAM_DELIVERY_APPROVED_ENV)
+    } else if !gates.live_read_gate_enabled {
         Some(TELEGRAM_LIVE_READ_ENV)
     } else if !gates.model_turn_gate_enabled {
         Some(TELEGRAM_MODEL_TURN_GATE_ENV)
@@ -4066,6 +4088,8 @@ mod tests {
             }
         });
         let gates = NativeTelegramGatewayGateSummary {
+            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
+            delivery_approval_gate_enabled: true,
             live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
             live_read_gate_enabled: true,
             model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
@@ -4142,6 +4166,8 @@ mod tests {
             }
         });
         let gates = NativeTelegramGatewayGateSummary {
+            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
+            delivery_approval_gate_enabled: true,
             live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
             live_read_gate_enabled: true,
             model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
@@ -4209,6 +4235,8 @@ mod tests {
     #[test]
     fn drain_once_without_gates_stops_before_side_effects() {
         let gates = NativeTelegramGatewayGateSummary {
+            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
+            delivery_approval_gate_enabled: false,
             live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
             live_read_gate_enabled: false,
             model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
@@ -4223,7 +4251,7 @@ mod tests {
         assert_eq!(status.status, "gated");
         assert_eq!(
             status.execution_plan.first_missing_gate,
-            Some(TELEGRAM_LIVE_READ_ENV)
+            Some(TELEGRAM_DELIVERY_APPROVED_ENV)
         );
         assert!(!status.execution_plan.all_required_gates_enabled);
         assert!(status.execution_plan.receive_before_model);
@@ -4258,12 +4286,19 @@ mod tests {
         assert!(!status.raw_prompt_text_exposed);
         assert!(!status.raw_response_text_exposed);
         assert!(!status.raw_token_exposed);
-        assert!(status.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
+        assert!(
+            status
+                .error
+                .unwrap()
+                .contains(TELEGRAM_DELIVERY_APPROVED_ENV)
+        );
     }
 
     #[test]
     fn drain_once_with_model_and_send_gates_still_waits_for_live_read() {
         let gates = NativeTelegramGatewayGateSummary {
+            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
+            delivery_approval_gate_enabled: true,
             live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
             live_read_gate_enabled: false,
             model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,

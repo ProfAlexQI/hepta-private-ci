@@ -724,6 +724,11 @@ fn gateway_replacement_readiness(
             detail: "native supervisor can load without OpenClaw gateway runtime dependency",
         },
         NativeGatewayReplacementCheck {
+            name: "telegram_delivery_approval_gate_enabled",
+            ready: telegram_gate_summary.delivery_approval_gate_enabled,
+            detail: "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED must be enabled before live poll loop drain side effects",
+        },
+        NativeGatewayReplacementCheck {
             name: "telegram_live_read_gate_enabled",
             ready: telegram_gate_summary.live_read_gate_enabled,
             detail: "HEPTA_NATIVE_TELEGRAM_LIVE_READ must be enabled for active polling",
@@ -801,6 +806,10 @@ fn gateway_replacement_readiness(
         blockers,
         checks,
         required_env_gates: NativeGatewayReplacementEnvGates {
+            delivery_approval: NativeGatewayReplacementGate {
+                env: native_telegram::TELEGRAM_DELIVERY_APPROVED_ENV,
+                enabled: telegram_gate_summary.delivery_approval_gate_enabled,
+            },
             live_read: NativeGatewayReplacementGate {
                 env: native_telegram::TELEGRAM_LIVE_READ_ENV,
                 enabled: telegram_gate_summary.live_read_gate_enabled,
@@ -909,6 +918,7 @@ struct NativeGatewayReplacementCheck {
 
 #[derive(Debug, Serialize)]
 struct NativeGatewayReplacementEnvGates {
+    delivery_approval: NativeGatewayReplacementGate,
     live_read: NativeGatewayReplacementGate,
     model_turn: NativeGatewayReplacementGate,
     send: NativeGatewayReplacementGate,
