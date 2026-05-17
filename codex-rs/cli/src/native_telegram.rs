@@ -283,6 +283,20 @@ pub(crate) struct NativeTelegramExecutionPlan {
     pub(crate) status_probe_executes_pipeline: bool,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramDuplicateDecision {
+    pub(crate) decision: &'static str,
+    pub(crate) update_id: i64,
+    pub(crate) current_next_update_offset: Option<i64>,
+    pub(crate) candidate_next_update_offset: Option<i64>,
+    pub(crate) already_drained: bool,
+    pub(crate) should_invoke_model: bool,
+    pub(crate) should_record_duplicate: bool,
+    pub(crate) cursor_write_allowed_after_delivery: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramModelTurnPlan {
     pub(crate) planner_ready: bool,
@@ -1400,6 +1414,40 @@ fn telegram_update_already_drained(update_id: i64, next_update_offset: Option<i6
         .unwrap_or(false)
 }
 
+#[cfg(test)]
+fn telegram_duplicate_decision(
+    update_id: i64,
+    next_update_offset: Option<i64>,
+) -> NativeTelegramDuplicateDecision {
+    let already_drained = telegram_update_already_drained(update_id, next_update_offset);
+    let candidate_next_update_offset = telegram_next_update_offset(update_id);
+    if already_drained {
+        NativeTelegramDuplicateDecision {
+            decision: "skip_already_drained",
+            update_id,
+            current_next_update_offset: next_update_offset,
+            candidate_next_update_offset,
+            already_drained: true,
+            should_invoke_model: false,
+            should_record_duplicate: true,
+            cursor_write_allowed_after_delivery: false,
+            raw_update_payload_exposed: false,
+        }
+    } else {
+        NativeTelegramDuplicateDecision {
+            decision: "model_candidate",
+            update_id,
+            current_next_update_offset: next_update_offset,
+            candidate_next_update_offset,
+            already_drained: false,
+            should_invoke_model: true,
+            should_record_duplicate: false,
+            cursor_write_allowed_after_delivery: candidate_next_update_offset.is_some(),
+            raw_update_payload_exposed: false,
+        }
+    }
+}
+
 fn telegram_next_update_offset(update_id: i64) -> Option<i64> {
     update_id.checked_add(1)
 }
@@ -1888,6 +1936,29 @@ mod tests {
         assert!(!telegram_update_already_drained(42, Some(42)));
         assert_eq!(telegram_next_update_offset(42), Some(43));
         assert_eq!(telegram_next_update_offset(i64::MAX), None);
+    }
+
+    #[test]
+    fn duplicate_decision_skips_already_drained_updates() {
+        let decision = telegram_duplicate_decision(41, Some(42));
+        assert_eq!(decision.decision, "skip_already_drained");
+        assert!(decision.already_drained);
+        assert!(!decision.should_invoke_model);
+        assert!(decision.should_record_duplicate);
+        assert!(!decision.cursor_write_allowed_after_delivery);
+        assert!(!decision.raw_update_payload_exposed);
+    }
+
+    #[test]
+    fn duplicate_decision_allows_new_model_candidate() {
+        let decision = telegram_duplicate_decision(42, Some(42));
+        assert_eq!(decision.decision, "model_candidate");
+        assert!(!decision.already_drained);
+        assert!(decision.should_invoke_model);
+        assert!(!decision.should_record_duplicate);
+        assert!(decision.cursor_write_allowed_after_delivery);
+        assert_eq!(decision.candidate_next_update_offset, Some(43));
+        assert!(!decision.raw_update_payload_exposed);
     }
 
     #[test]

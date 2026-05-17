@@ -773,6 +773,9 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   paths: they write only schema, next-update offset, and
   `raw_update_payload_persisted=false`, and reject negative offsets before
   touching disk.
+- Duplicate-suppression decision helpers now have unit coverage for already
+  drained updates versus new model candidates. The helper computes the
+  candidate next-update offset and keeps raw update payload exposure disabled.
 
 ## Keep for compatibility
 
