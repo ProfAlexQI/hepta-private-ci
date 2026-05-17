@@ -186,6 +186,29 @@ pub(crate) struct NativeTelegramModelBridgeStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramSendPlanStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) send_gate_env: &'static str,
+    pub(crate) send_gate_enabled: bool,
+    pub(crate) bot_api_send_ready: bool,
+    pub(crate) external_network_write: bool,
+    pub(crate) external_send: bool,
+    pub(crate) cursor_written: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
+    pub(crate) config: NativeTelegramConfigStatus,
+    pub(crate) transport_plan: NativeTelegramTransportPlan,
+    pub(crate) send_plan: NativeTelegramSendPlan,
+    pub(crate) error: Option<String>,
+    pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramModelTurnPlan {
     pub(crate) planner_ready: bool,
     pub(crate) candidate_count: usize,
@@ -223,6 +246,27 @@ pub(crate) struct NativeTelegramSessionBridgePlan {
     pub(crate) raw_chat_id_exposed: bool,
     pub(crate) raw_sender_id_exposed: bool,
     pub(crate) raw_message_id_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramSendPlan {
+    pub(crate) send_plan_ready: bool,
+    pub(crate) method: &'static str,
+    pub(crate) request_builder_strategy: &'static str,
+    pub(crate) response_source_policy: &'static str,
+    pub(crate) reply_target_policy: &'static str,
+    pub(crate) parse_mode_policy: &'static str,
+    pub(crate) typing_keepalive_policy: &'static str,
+    pub(crate) rate_limit_policy: &'static str,
+    pub(crate) retry_policy: &'static str,
+    pub(crate) cursor_commit_policy: &'static str,
+    pub(crate) failure_policy: &'static str,
+    pub(crate) request_body_materialized_by_status: bool,
+    pub(crate) delivery_performed_by_status: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
 }
 
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
@@ -426,6 +470,68 @@ fn telegram_model_bridge_status_with_gate(
         bridge_plan,
         error,
         next_migration_slice: "implement the gated session-runner invocation and keep Telegram send behind HEPTA_NATIVE_TELEGRAM_SEND",
+    }
+}
+
+pub(crate) fn telegram_send_plan_status(requested: bool) -> NativeTelegramSendPlanStatus {
+    telegram_send_plan_status_with_gate(requested, env_truthy(TELEGRAM_SEND_GATE_ENV))
+}
+
+fn telegram_send_plan_status_with_gate(
+    requested: bool,
+    send_gate_enabled: bool,
+) -> NativeTelegramSendPlanStatus {
+    let config = if requested {
+        load_telegram_config_status()
+    } else {
+        NativeTelegramConfigStatus::disabled()
+    };
+    let transport_plan = NativeTelegramTransportPlan::for_config(&config);
+    let send_plan = if requested {
+        NativeTelegramSendPlan::ready()
+    } else {
+        NativeTelegramSendPlan::disabled()
+    };
+    let config_ready = requested && config.enabled && config.token_shape_ok && config.binding_ready;
+    let status = if !requested {
+        "disabled"
+    } else if !send_gate_enabled {
+        "gated"
+    } else if config_ready {
+        "planned"
+    } else {
+        "attention"
+    };
+    let error = if requested && !send_gate_enabled {
+        Some(format!(
+            "Telegram send is gated; set {TELEGRAM_SEND_GATE_ENV}=1 only after model-turn delivery wiring is ready"
+        ))
+    } else if requested && !config_ready {
+        Some("Telegram config, token shape, or binding is not ready".to_string())
+    } else {
+        None
+    };
+
+    NativeTelegramSendPlanStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested,
+        status,
+        send_gate_env: TELEGRAM_SEND_GATE_ENV,
+        send_gate_enabled,
+        bot_api_send_ready: requested && send_gate_enabled && config_ready,
+        external_network_write: false,
+        external_send: false,
+        cursor_written: false,
+        raw_response_text_exposed: false,
+        raw_chat_id_exposed: false,
+        raw_message_id_exposed: false,
+        raw_token_exposed: false,
+        config,
+        transport_plan,
+        send_plan,
+        error,
+        next_migration_slice: "wire sendMessage execution after model output, then commit cursor only after delivery success",
     }
 }
 
@@ -1237,6 +1343,52 @@ impl NativeTelegramSessionBridgePlan {
     }
 }
 
+impl NativeTelegramSendPlan {
+    fn disabled() -> Self {
+        Self {
+            send_plan_ready: false,
+            method: "disabled",
+            request_builder_strategy: "disabled",
+            response_source_policy: "disabled",
+            reply_target_policy: "disabled",
+            parse_mode_policy: "disabled",
+            typing_keepalive_policy: "disabled",
+            rate_limit_policy: "disabled",
+            retry_policy: "disabled",
+            cursor_commit_policy: "disabled",
+            failure_policy: "disabled",
+            request_body_materialized_by_status: false,
+            delivery_performed_by_status: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+
+    fn ready() -> Self {
+        Self {
+            send_plan_ready: true,
+            method: "sendMessage",
+            request_builder_strategy: "build a Telegram sendMessage request only from successful model output and an opaque reply target handle",
+            response_source_policy: "model output stays in memory until the gated send execution path; status JSON exposes only policy metadata",
+            reply_target_policy: "use reply_parameters when an opaque reply target is available, otherwise send to the resolved conversation handle",
+            parse_mode_policy: "start with plain text; enable parse_mode only after escaping and formatting tests land",
+            typing_keepalive_policy: "sendChatAction typing may run only while a gated model turn is active and must stop before final send",
+            rate_limit_policy: "apply per-chat send throttling before Bot API delivery",
+            retry_policy: "retry transient Bot API failures with bounded backoff; never duplicate sends after an acknowledged delivery",
+            cursor_commit_policy: "commit next-update cursor only after sendMessage succeeds or duplicate suppression is recorded",
+            failure_policy: "on send failure, keep cursor uncommitted and return redacted diagnostics without exposing model output",
+            request_body_materialized_by_status: false,
+            delivery_performed_by_status: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+}
+
 impl NativeTelegramReceiveOnceStatus {
     #[allow(clippy::too_many_arguments)]
     fn base(
@@ -1551,6 +1703,31 @@ mod tests {
         assert!(!status.bridge_plan.process_spawned_by_status);
         assert!(!status.bridge_plan.raw_prompt_text_exposed);
         assert!(status.error.unwrap().contains(TELEGRAM_MODEL_TURN_GATE_ENV));
+    }
+
+    #[test]
+    fn send_plan_without_gate_is_gated_and_side_effect_free() {
+        let status = telegram_send_plan_status_with_gate(true, false);
+        assert_eq!(status.status, "gated");
+        assert_eq!(status.send_gate_env, TELEGRAM_SEND_GATE_ENV);
+        assert!(!status.send_gate_enabled);
+        assert!(!status.bot_api_send_ready);
+        assert!(!status.external_network_write);
+        assert!(!status.external_send);
+        assert!(!status.cursor_written);
+        assert!(!status.raw_response_text_exposed);
+        assert!(!status.raw_chat_id_exposed);
+        assert!(!status.raw_message_id_exposed);
+        assert!(!status.raw_token_exposed);
+        assert!(status.send_plan.send_plan_ready);
+        assert_eq!(status.send_plan.method, "sendMessage");
+        assert!(!status.send_plan.request_body_materialized_by_status);
+        assert!(!status.send_plan.delivery_performed_by_status);
+        assert!(!status.send_plan.raw_response_text_exposed);
+        assert!(!status.send_plan.raw_chat_id_exposed);
+        assert!(!status.send_plan.raw_message_id_exposed);
+        assert!(!status.send_plan.raw_token_exposed);
+        assert!(status.error.unwrap().contains(TELEGRAM_SEND_GATE_ENV));
     }
 
     #[test]

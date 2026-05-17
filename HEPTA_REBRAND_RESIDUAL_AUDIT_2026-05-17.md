@@ -749,6 +749,13 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   boundary. By default `HEPTA_NATIVE_TELEGRAM_MODEL_TURN` is off, so status
   probes do not invoke a runner, spawn a process, write cursor state, perform
   network work, send Telegram messages, or expose raw Telegram identifiers.
+- A gated send plan endpoint now exists at `/api/telegram-send-plan`. It
+  defines the `sendMessage` request-building strategy, model-output source
+  policy, reply-target policy, parse-mode policy, typing/rate-limit/retry
+  behavior, cursor-commit rule, and failure handling. By default
+  `HEPTA_NATIVE_TELEGRAM_SEND` is off, so status probes do not materialize a
+  request body, perform network writes, deliver Telegram messages, expose model
+  output, or expose raw Telegram ids/tokens.
 
 ## Keep for compatibility
 

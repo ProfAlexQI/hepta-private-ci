@@ -181,6 +181,13 @@ fn route_native_gateway_request(
                 options.with_telegram_plugin,
             )),
         ),
+        "/api/telegram-send-plan" => (
+            "200 OK",
+            "application/json; charset=utf-8",
+            json_or_error(&native_telegram::telegram_send_plan_status(
+                options.with_telegram_plugin,
+            )),
+        ),
         _ => (
             "404 Not Found",
             "text/plain; charset=utf-8",
@@ -268,8 +275,9 @@ fn native_gateway_json(
             "Telegram gated one-shot receive surface",
             "Telegram redacted model-turn planning surface",
             "Telegram gated model bridge skeleton",
+            "Telegram gated send plan surface",
         ],
-        next_migration_slice: "implement gated Telegram candidate execution through the Codex session runner, then enable gated send",
+        next_migration_slice: "wire gated Telegram candidate execution through the Codex session runner and sendMessage executor",
     })
 }
 
