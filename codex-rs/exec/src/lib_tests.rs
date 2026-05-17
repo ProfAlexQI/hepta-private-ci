@@ -548,6 +548,69 @@ async fn session_configured_from_thread_response_uses_permission_profile_from_co
     );
 }
 
+#[test]
+fn capture_last_message_processor_records_completed_agent_message() {
+    let final_message = Arc::new(Mutex::new(None));
+    let mut processor = CaptureLastMessageProcessor::new(final_message.clone());
+
+    let status = processor.process_server_notification(
+        codex_app_server_protocol::ServerNotification::ItemCompleted(
+            codex_app_server_protocol::ItemCompletedNotification {
+                item: codex_app_server_protocol::ThreadItem::AgentMessage {
+                    id: "item-1".to_string(),
+                    text: "final answer".to_string(),
+                    phase: None,
+                    memory_citation: None,
+                },
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                completed_at_ms: 0,
+            },
+        ),
+    );
+
+    assert_eq!(status, CodexStatus::Running);
+    assert_eq!(
+        final_message.lock().expect("final message lock").as_deref(),
+        Some("final answer")
+    );
+}
+
+#[test]
+fn capture_last_message_processor_shutdowns_on_turn_completion() {
+    let final_message = Arc::new(Mutex::new(None));
+    let mut processor = CaptureLastMessageProcessor::new(final_message.clone());
+
+    let status = processor.process_server_notification(
+        codex_app_server_protocol::ServerNotification::TurnCompleted(
+            codex_app_server_protocol::TurnCompletedNotification {
+                thread_id: "thread-1".to_string(),
+                turn: codex_app_server_protocol::Turn {
+                    id: "turn-1".to_string(),
+                    items: vec![codex_app_server_protocol::ThreadItem::AgentMessage {
+                        id: "item-1".to_string(),
+                        text: "turn final".to_string(),
+                        phase: None,
+                        memory_citation: None,
+                    }],
+                    items_view: codex_app_server_protocol::TurnItemsView::Full,
+                    status: codex_app_server_protocol::TurnStatus::Completed,
+                    error: None,
+                    started_at: None,
+                    completed_at: None,
+                    duration_ms: None,
+                },
+            },
+        ),
+    );
+
+    assert_eq!(status, CodexStatus::InitiateShutdown);
+    assert_eq!(
+        final_message.lock().expect("final message lock").as_deref(),
+        Some("turn final")
+    );
+}
+
 fn sample_thread_start_response() -> ThreadStartResponse {
     ThreadStartResponse {
         thread: codex_app_server_protocol::Thread {

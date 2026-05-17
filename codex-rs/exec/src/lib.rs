@@ -10,6 +10,7 @@ mod event_processor_with_human_output;
 pub(crate) mod event_processor_with_jsonl_output;
 pub(crate) mod exec_events;
 
+use clap::Parser;
 pub use cli::Cli;
 pub use cli::Command;
 pub use cli::ReviewArgs;
@@ -139,6 +140,8 @@ use std::io::IsTerminal;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
 use supports_color::Stream;
 use tokio::sync::mpsc;
 use tracing::Instrument;
@@ -213,6 +216,64 @@ struct ExecRunArgs {
     stderr_with_ansi: bool,
 }
 
+enum ExecProcessorMode {
+    Cli,
+    CaptureLastMessage(Arc<Mutex<Option<String>>>),
+}
+
+struct CaptureLastMessageProcessor {
+    final_message: Arc<Mutex<Option<String>>>,
+}
+
+impl CaptureLastMessageProcessor {
+    fn new(final_message: Arc<Mutex<Option<String>>>) -> Self {
+        Self { final_message }
+    }
+
+    fn record_agent_message(&mut self, text: String) {
+        if let Ok(mut final_message) = self.final_message.lock() {
+            *final_message = Some(text);
+        }
+    }
+}
+
+impl EventProcessor for CaptureLastMessageProcessor {
+    fn print_config_summary(&mut self, _: &Config, _: &str, _: &SessionConfiguredEvent) {}
+
+    fn process_server_notification(&mut self, notification: ServerNotification) -> CodexStatus {
+        match notification {
+            ServerNotification::ItemCompleted(notification) => {
+                if let codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } =
+                    notification.item
+                {
+                    self.record_agent_message(text);
+                }
+                CodexStatus::Running
+            }
+            ServerNotification::TurnCompleted(notification) => {
+                for item in notification.turn.items {
+                    if let codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } = item {
+                        self.record_agent_message(text);
+                    }
+                }
+                match notification.turn.status {
+                    codex_app_server_protocol::TurnStatus::Completed
+                    | codex_app_server_protocol::TurnStatus::Failed
+                    | codex_app_server_protocol::TurnStatus::Interrupted => {
+                        CodexStatus::InitiateShutdown
+                    }
+                    codex_app_server_protocol::TurnStatus::InProgress => CodexStatus::Running,
+                }
+            }
+            _ => CodexStatus::Running,
+        }
+    }
+
+    fn process_warning(&mut self, _: String) -> CodexStatus {
+        CodexStatus::Running
+    }
+}
+
 fn exec_root_span() -> tracing::Span {
     info_span!(
         "hepta.exec",
@@ -231,6 +292,44 @@ fn exec_stderr_env_filter() -> EnvFilter {
 }
 
 pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
+    run_main_with_processor_mode(cli, arg0_paths, ExecProcessorMode::Cli).await
+}
+
+pub async fn run_prompt_to_last_message(
+    prompt: String,
+    arg0_paths: Arg0DispatchPaths,
+) -> anyhow::Result<String> {
+    let final_message = Arc::new(Mutex::new(None));
+    let cli = Cli::try_parse_from([
+        "hepta",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--ignore-rules",
+        "--sandbox",
+        "read-only",
+        "--",
+        prompt.as_str(),
+    ])?;
+    run_main_with_processor_mode(
+        cli,
+        arg0_paths,
+        ExecProcessorMode::CaptureLastMessage(final_message.clone()),
+    )
+    .await?;
+    final_message
+        .lock()
+        .ok()
+        .and_then(|message| message.clone())
+        .map(|message| message.trim().to_string())
+        .filter(|message| !message.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("in-process Hepta exec returned no final message"))
+}
+
+async fn run_main_with_processor_mode(
+    cli: Cli,
+    arg0_paths: Arg0DispatchPaths,
+    processor_mode: ExecProcessorMode,
+) -> anyhow::Result<()> {
     #[allow(clippy::print_stderr)]
     if let Some(message) = cli.removed_full_auto_warning() {
         eprintln!("{message}");
@@ -298,7 +397,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         #[allow(clippy::print_stderr)]
         Err(e) => {
             eprintln!("Error parsing -c overrides: {e}");
-            std::process::exit(1);
+            anyhow::bail!("Error parsing -c overrides: {e}");
         }
     };
 
@@ -316,7 +415,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         Ok(codex_home) => codex_home,
         Err(err) => {
             eprintln!("Error finding Hepta home: {err}");
-            std::process::exit(1);
+            anyhow::bail!("Error finding Hepta home: {err}");
         }
     };
     let user_config_path = config_profile_v2
@@ -348,14 +447,16 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
                 .and_then(|err| err.downcast_ref::<ConfigLoadError>())
                 .map(ConfigLoadError::config_error);
             if let Some(config_error) = config_error {
-                eprintln!(
+                let message = format!(
                     "Error loading config.toml:\n{}",
                     format_config_error_with_source(config_error)
                 );
+                eprintln!("{message}");
+                anyhow::bail!("{message}");
             } else {
                 eprintln!("Error loading config.toml: {err}");
+                anyhow::bail!("Error loading config.toml: {err}");
             }
-            std::process::exit(1);
         }
     };
 
@@ -448,11 +549,12 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     match check_execpolicy_for_warnings(&config.config_layer_stack).await {
         Ok(None) => {}
         Ok(Some(err)) | Err(err) => {
-            eprintln!(
+            let message = format!(
                 "Error loading rules:\n{}",
                 format_exec_policy_error_with_source(&err)
             );
-            std::process::exit(1);
+            eprintln!("{message}");
+            anyhow::bail!("{message}");
         }
     }
 
@@ -468,7 +570,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     .await
     {
         eprintln!("{err}");
-        std::process::exit(1);
+        anyhow::bail!("{err}");
     }
 
     let otel = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -546,28 +648,34 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         opt_out_notification_methods: Vec::new(),
         channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
     };
-    run_exec_session(ExecRunArgs {
-        in_process_start_args,
-        state_db,
-        command,
-        config,
-        dangerously_bypass_approvals_and_sandbox,
-        exec_span: exec_span.clone(),
-        images,
-        json_mode,
-        last_message_file,
-        model_provider,
-        oss,
-        output_schema_path,
-        prompt,
-        skip_git_repo_check,
-        stderr_with_ansi,
-    })
+    run_exec_session(
+        ExecRunArgs {
+            in_process_start_args,
+            state_db,
+            command,
+            config,
+            dangerously_bypass_approvals_and_sandbox,
+            exec_span: exec_span.clone(),
+            images,
+            json_mode,
+            last_message_file,
+            model_provider,
+            oss,
+            output_schema_path,
+            prompt,
+            skip_git_repo_check,
+            stderr_with_ansi,
+        },
+        processor_mode,
+    )
     .instrument(exec_span)
     .await
 }
 
-async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
+async fn run_exec_session(
+    args: ExecRunArgs,
+    processor_mode: ExecProcessorMode,
+) -> anyhow::Result<()> {
     let ExecRunArgs {
         in_process_start_args,
         state_db,
@@ -586,9 +694,14 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
         stderr_with_ansi,
     } = args;
 
-    let mut event_processor: Box<dyn EventProcessor> = match json_mode {
-        true => Box::new(EventProcessorWithJsonOutput::new(last_message_file.clone())),
-        _ => Box::new(EventProcessorWithHumanOutput::create_with_ansi(
+    let mut event_processor: Box<dyn EventProcessor> = match processor_mode {
+        ExecProcessorMode::CaptureLastMessage(final_message) => {
+            Box::new(CaptureLastMessageProcessor::new(final_message))
+        }
+        ExecProcessorMode::Cli if json_mode => {
+            Box::new(EventProcessorWithJsonOutput::new(last_message_file.clone()))
+        }
+        ExecProcessorMode::Cli => Box::new(EventProcessorWithHumanOutput::create_with_ansi(
             stderr_with_ansi,
             &config,
             last_message_file.clone(),
@@ -681,8 +794,9 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
         && !dangerously_bypass_approvals_and_sandbox
         && get_git_repo_root(&default_cwd).is_none()
     {
-        eprintln!("Not inside a trusted directory and --skip-git-repo-check was not specified.");
-        std::process::exit(1);
+        anyhow::bail!(
+            "Not inside a trusted directory and --skip-git-repo-check was not specified."
+        );
     }
 
     let mut request_ids = RequestIdSequencer::new();
@@ -943,7 +1057,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
     }
     event_processor.print_final_output();
     if error_seen {
-        std::process::exit(1);
+        anyhow::bail!("Hepta exec turn failed");
     }
 
     Ok(())

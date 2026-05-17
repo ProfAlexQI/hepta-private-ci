@@ -353,7 +353,8 @@ fn gateway_replacement_readiness(
     );
     let release_build_verified = env_truthy(RELEASE_BUILD_VERIFIED_ENV);
     let control_ui_parity_verified = env_truthy(CONTROL_UI_PARITY_VERIFIED_ENV);
-    let in_process_model_runner_ready = false;
+    let in_process_model_runner_ready =
+        env_truthy(native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV);
     let side_effect_free = true;
 
     let checks = vec![
@@ -412,7 +413,7 @@ fn gateway_replacement_readiness(
         NativeGatewayReplacementCheck {
             name: "in_process_model_runner_ready",
             ready: in_process_model_runner_ready,
-            detail: "current Telegram model path still uses the gated child exec runner",
+            detail: "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER must be enabled after in-process runner smoke passes",
         },
         NativeGatewayReplacementCheck {
             name: "release_build_verified",
@@ -465,6 +466,10 @@ fn gateway_replacement_readiness(
             poll_loop: NativeGatewayReplacementGate {
                 env: native_telegram::TELEGRAM_POLL_LOOP_ENV,
                 enabled: telegram_poll_loop_status.poll_loop_gate_enabled,
+            },
+            in_process_model_runner: NativeGatewayReplacementGate {
+                env: native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV,
+                enabled: in_process_model_runner_ready,
             },
             release_build_verified: NativeGatewayReplacementGate {
                 env: RELEASE_BUILD_VERIFIED_ENV,
@@ -553,6 +558,7 @@ struct NativeGatewayReplacementEnvGates {
     model_turn: NativeGatewayReplacementGate,
     send: NativeGatewayReplacementGate,
     poll_loop: NativeGatewayReplacementGate,
+    in_process_model_runner: NativeGatewayReplacementGate,
     release_build_verified: NativeGatewayReplacementGate,
     control_ui_parity_verified: NativeGatewayReplacementGate,
 }

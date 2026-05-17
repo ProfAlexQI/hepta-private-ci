@@ -5,8 +5,10 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use codex_arg0::Arg0DispatchPaths;
 use serde::Serialize;
 use serde_json::Value;
+use tokio::runtime::Handle;
 
 const LEGACY_RUNTIME_SLUG: &str = "openclaw";
 const LEGACY_CONFIG_FILE_NAME: &str = "openclaw.json";
@@ -19,6 +21,8 @@ pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ
 pub(crate) const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
 pub(crate) const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
 pub(crate) const TELEGRAM_POLL_LOOP_ENV: &str = "HEPTA_NATIVE_TELEGRAM_POLL_LOOP";
+pub(crate) const TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV: &str =
+    "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER";
 const TELEGRAM_MODEL_TIMEOUT_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TIMEOUT_MS";
 const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
 const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
@@ -672,7 +676,7 @@ fn telegram_model_bridge_status_with_gate(
         NativeTelegramModelExecutionReport::disabled(model_turn_gate_enabled)
     };
     let bridge_plan = if requested {
-        NativeTelegramSessionBridgePlan::ready()
+        NativeTelegramSessionBridgePlan::ready(telegram_in_process_model_runner_enabled())
     } else {
         NativeTelegramSessionBridgePlan::disabled()
     };
@@ -1018,10 +1022,12 @@ fn telegram_drain_once_status_with_gates(
                                     Some(token.as_str()),
                                     &gates,
                                     Path::new(TELEGRAM_INGRESS_CURSOR_PATH),
-                                    run_hepta_exec_child_model_turn,
+                                    run_hepta_model_turn,
                                     call_telegram_send_message,
                                 );
-                                if pipeline.model_execution.session_runner_invoked {
+                                if pipeline.model_execution.session_runner_invoked
+                                    && !telegram_in_process_model_runner_enabled()
+                                {
                                     pipeline.model_execution.local_process_spawned = true;
                                 }
                                 invocation_request = pipeline.invocation_request;
@@ -2369,6 +2375,58 @@ where
     }
 }
 
+fn run_hepta_model_turn(prompt: &str) -> Result<String, String> {
+    if telegram_in_process_model_runner_enabled() {
+        run_hepta_in_process_model_turn(prompt)
+    } else {
+        run_hepta_exec_child_model_turn(prompt)
+    }
+}
+
+fn run_hepta_in_process_model_turn(prompt: &str) -> Result<String, String> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Err("Telegram model runner requires non-empty prompt material".to_string());
+    }
+
+    let timeout = telegram_model_timeout();
+    let prompt = prompt.to_string();
+    let arg0_paths = Arg0DispatchPaths {
+        codex_self_exe: env::current_exe().ok(),
+        codex_linux_sandbox_exe: None,
+        main_execve_wrapper_exe: None,
+    };
+    let run = async move {
+        tokio::time::timeout(
+            timeout,
+            codex_exec::run_prompt_to_last_message(prompt, arg0_paths),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "gated in-process Hepta exec runner timed out after {} ms",
+                timeout.as_millis()
+            )
+        })?
+        .map_err(|error| format!("gated in-process Hepta exec runner failed: {error}"))
+    };
+
+    match Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(run)),
+        Err(_) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                format!("failed to build runtime for in-process Hepta exec runner: {error}")
+            })?
+            .block_on(run),
+    }
+}
+
+fn telegram_in_process_model_runner_enabled() -> bool {
+    env_truthy(TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV)
+}
+
 fn run_hepta_exec_child_model_turn(prompt: &str) -> Result<String, String> {
     let prompt = prompt.trim();
     if prompt.is_empty() {
@@ -2880,11 +2938,22 @@ impl NativeTelegramSessionBridgePlan {
         }
     }
 
-    fn ready() -> Self {
+    fn ready(in_process_runner_enabled: bool) -> Self {
+        let (runner_kind, runner_invocation_strategy) = if in_process_runner_enabled {
+            (
+                "hepta_in_process_exec_runner",
+                "gated in-process Hepta exec runner with read-only sandbox and final-message capture",
+            )
+        } else {
+            (
+                "hepta_exec_child_runner",
+                "gated hepta exec child runner with read-only sandbox and output-last-message capture; set HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER=1 to use the in-process runner",
+            )
+        };
         Self {
             bridge_plan_ready: true,
-            runner_kind: "hepta_exec_child_runner",
-            runner_invocation_strategy: "gated hepta exec child runner with read-only sandbox and output-last-message capture; in-process runner remains the next migration step",
+            runner_kind,
+            runner_invocation_strategy,
             prompt_material_policy: "raw Telegram text is held only in the pending model-turn invocation and is never serialized into status JSON",
             session_key_strategy: "map each Telegram conversation to a stable internal Hepta session key without exposing raw chat ids",
             duplicate_policy: "suppress candidates whose update id is below the committed next-update cursor before any model turn",
