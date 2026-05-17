@@ -785,6 +785,10 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   The public bridge status exposes only redacted policy/state fields and still
   does not invoke a session runner, spawn a process, send Telegram messages,
   write cursor state, or expose raw prompt/chat/sender/message identifiers.
+- Drain-once status now includes the cursor, ingress parser, model-turn,
+  invocation request, and send subplans in one side-effect-free execution
+  snapshot. Even with all three gates enabled in tests, status probes still do
+  not perform live reads, invoke a model, send messages, or write cursor state.
 
 ## Keep for compatibility
 

@@ -225,6 +225,11 @@ pub(crate) struct NativeTelegramDrainOnceStatus {
     pub(crate) gates: NativeTelegramGatewayGateSummary,
     pub(crate) config: NativeTelegramConfigStatus,
     pub(crate) execution_plan: NativeTelegramExecutionPlan,
+    pub(crate) cursor_plan: NativeTelegramCursorPlan,
+    pub(crate) inspection: NativeTelegramIngressInspection,
+    pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
+    pub(crate) invocation_request: NativeTelegramModelInvocationRequestPlan,
+    pub(crate) send_plan: NativeTelegramSendPlan,
     pub(crate) live_read_started: bool,
     pub(crate) model_turn_started: bool,
     pub(crate) send_started: bool,
@@ -731,6 +736,27 @@ fn telegram_drain_once_status_with_gates(
     } else {
         NativeTelegramConfigStatus::disabled()
     };
+    let cursor_plan = if requested {
+        NativeTelegramCursorPlan::ready()
+    } else {
+        NativeTelegramCursorPlan::disabled()
+    };
+    let inspection = inspect_telegram_updates(&[]);
+    let model_turn_plan = if requested {
+        plan_model_turn_for_updates(&[])
+    } else {
+        NativeTelegramModelTurnPlan::disabled()
+    };
+    let invocation_request = if requested {
+        build_model_invocation_request_plan(&[], None, gates.model_turn_gate_enabled)
+    } else {
+        NativeTelegramModelInvocationRequestPlan::disabled(gates.model_turn_gate_enabled)
+    };
+    let send_plan = if requested {
+        NativeTelegramSendPlan::ready()
+    } else {
+        NativeTelegramSendPlan::disabled()
+    };
     let first_missing_gate = first_missing_drain_once_gate(&gates);
     let all_required_gates_enabled = requested && first_missing_gate.is_none();
     let status = if !requested {
@@ -767,6 +793,11 @@ fn telegram_drain_once_status_with_gates(
             cursor_commit_after_delivery: true,
             status_probe_executes_pipeline: false,
         },
+        cursor_plan,
+        inspection,
+        model_turn_plan,
+        invocation_request,
+        send_plan,
         live_read_started: false,
         model_turn_started: false,
         send_started: false,
@@ -2476,6 +2507,15 @@ mod tests {
         assert!(status.execution_plan.send_after_model_success);
         assert!(status.execution_plan.cursor_commit_after_delivery);
         assert!(!status.execution_plan.status_probe_executes_pipeline);
+        assert!(status.cursor_plan.duplicate_suppression_ready);
+        assert!(status.inspection.parser_ready);
+        assert_eq!(status.inspection.update_count, 0);
+        assert!(status.model_turn_plan.planner_ready);
+        assert!(status.invocation_request.request_builder_ready);
+        assert!(!status.invocation_request.candidate_present);
+        assert!(!status.invocation_request.runner_invocation_allowed);
+        assert!(status.send_plan.send_plan_ready);
+        assert!(!status.send_plan.delivery_performed_by_status);
         assert!(!status.live_read_started);
         assert!(!status.model_turn_started);
         assert!(!status.send_started);
@@ -2488,6 +2528,44 @@ mod tests {
         assert!(!status.raw_response_text_exposed);
         assert!(!status.raw_token_exposed);
         assert!(status.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
+    }
+
+    #[test]
+    fn drain_once_with_all_gates_still_reports_plan_without_side_effects() {
+        let gates = NativeTelegramGatewayGateSummary {
+            live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
+            live_read_gate_enabled: true,
+            model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
+            model_turn_gate_enabled: true,
+            send_gate_env: TELEGRAM_SEND_GATE_ENV,
+            send_gate_enabled: true,
+            readiness_summary_performs_live_read: false,
+            readiness_summary_invokes_model: false,
+            readiness_summary_sends_message: false,
+        };
+        let status = telegram_drain_once_status_with_gates(true, gates);
+        assert_eq!(status.status, "planned");
+        assert!(status.execution_plan.all_required_gates_enabled);
+        assert_eq!(status.execution_plan.first_missing_gate, None);
+        assert!(!status.execution_plan.status_probe_executes_pipeline);
+        assert!(status.cursor_plan.duplicate_suppression_ready);
+        assert!(status.model_turn_plan.planner_ready);
+        assert!(status.invocation_request.request_builder_ready);
+        assert!(!status.invocation_request.candidate_present);
+        assert!(status.invocation_request.model_turn_gate_enabled);
+        assert!(!status.invocation_request.runner_invocation_allowed);
+        assert!(status.send_plan.send_plan_ready);
+        assert!(!status.live_read_started);
+        assert!(!status.model_turn_started);
+        assert!(!status.send_started);
+        assert!(!status.cursor_written);
+        assert!(!status.external_network_read);
+        assert!(!status.external_network_write);
+        assert!(!status.external_send);
+        assert!(!status.raw_prompt_text_exposed);
+        assert!(!status.raw_response_text_exposed);
+        assert!(!status.raw_token_exposed);
+        assert_eq!(status.error, None);
     }
 
     #[test]
