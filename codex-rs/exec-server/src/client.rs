@@ -89,7 +89,7 @@ const PROCESS_EVENT_RETAINED_BYTES: usize = 1024 * 1024;
 impl Default for ExecServerClientConnectOptions {
     fn default() -> Self {
         Self {
-            client_name: "codex-core".to_string(),
+            client_name: "hepta-core".to_string(),
             initialize_timeout: INITIALIZE_TIMEOUT,
             resume_session_id: None,
         }
@@ -913,6 +913,14 @@ mod tests {
     use crate::protocol::INITIALIZED_METHOD;
     use crate::protocol::InitializeResponse;
     use crate::protocol::ProcessOutputChunk;
+
+    #[test]
+    fn default_connect_options_use_hepta_core_client_name() {
+        assert_eq!(
+            ExecServerClientConnectOptions::default().client_name,
+            "hepta-core"
+        );
+    }
 
     async fn read_jsonrpc_line<R>(lines: &mut tokio::io::Lines<BufReader<R>>) -> JSONRPCMessage
     where

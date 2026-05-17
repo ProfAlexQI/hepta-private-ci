@@ -651,6 +651,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN` while preserving
   `CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN` as a legacy fallback.
 
+## Cleaned in exec-server client identity pass
+
+- Exec-server default client connection identity is now `hepta-core`.
+- Exec-server environment transport identity is now `hepta-environment`.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

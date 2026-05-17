@@ -17,7 +17,7 @@ use crate::client_api::StdioExecServerConnectArgs;
 use crate::connection::JsonRpcConnection;
 use crate::relay::harness_connection_from_websocket;
 
-const ENVIRONMENT_CLIENT_NAME: &str = "codex-environment";
+const ENVIRONMENT_CLIENT_NAME: &str = "hepta-environment";
 
 impl ExecServerClient {
     pub(crate) async fn connect_for_transport(
