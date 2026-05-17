@@ -14,6 +14,304 @@ const DEFAULT_BIND_ADDR: &str = "127.0.0.1:7373";
 const DEFAULT_TELEGRAM_POLL_MS: u64 = 1500;
 const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
 const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
+const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
+
+const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/control-ui",
+        source_command: "/control-ui --json",
+        capability: "control-ui-shell",
+        side_effect_boundary: "read-only status shell",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/ui-contract-audit",
+        source_command: "/ui-contract-audit --json",
+        capability: "ui-contract-audit",
+        side_effect_boundary: "read-only contract report",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/operator-snapshot",
+        source_command: "/operator-snapshot --json",
+        capability: "operator-snapshot",
+        side_effect_boundary: "read-only aggregate snapshot",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/operator-security",
+        source_command: "/operator-security --json",
+        capability: "operator-security",
+        side_effect_boundary: "read-only security guard matrix",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/ui-action-plan/gateway-dispatch",
+        source_command: "/ui-action-plan gateway-dispatch --dry-run --json",
+        capability: "dry-run-action-plan",
+        side_effect_boundary: "dry-run plan only",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/actions/<action>",
+        source_command: "/ui-action-plan <action> --dry-run --json",
+        capability: "guarded-action-post",
+        side_effect_boundary: "dry-run plan only; no mutation",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/commands/<id>",
+        source_command: "/<allowlisted read-only command> --json",
+        capability: "readonly-command-runner",
+        side_effect_boundary: "allowlisted read-only command plan; not executed by parity shell",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/operator-console",
+        source_command: "/operator-console --json",
+        capability: "operator-console",
+        side_effect_boundary: "read-only operator console snapshot",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/sessions",
+        source_command: "/sessions --json",
+        capability: "session-list",
+        side_effect_boundary: "read-only session metadata",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/session-activity",
+        source_command: "/session-activity --json",
+        capability: "session-activity",
+        side_effect_boundary: "read-only session activity",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/transcript",
+        source_command: "/transcript --json",
+        capability: "transcript-preview",
+        side_effect_boundary: "read-only redacted transcript preview",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/query-transcript/<query>",
+        source_command: "/query-transcript <query> --json",
+        capability: "transcript-search",
+        side_effect_boundary: "read-only bounded transcript query",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/task/<task_id>",
+        source_command: "/task <task_id> --json",
+        capability: "task-drilldown",
+        side_effect_boundary: "read-only task detail",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/task-patches/<task_id>",
+        source_command: "/task-patches <task_id> --json",
+        capability: "task-patches",
+        side_effect_boundary: "read-only patch preview",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/task-evidence/<task_id>",
+        source_command: "/task-evidence <task_id> --json",
+        capability: "task-evidence",
+        side_effect_boundary: "read-only evidence preview",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/task-replay/<task_id>",
+        source_command: "/task-replay <task_id> --json",
+        capability: "task-replay",
+        side_effect_boundary: "read-only replay preview",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/promotion-ledger/<task_id>",
+        source_command: "/promotion-ledger <task_id> --json",
+        capability: "promotion-ledger",
+        side_effect_boundary: "read-only promotion ledger",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/handoff-bundle/<task_id>",
+        source_command: "/handoff-bundle <task_id> --json",
+        capability: "handoff-evidence-review",
+        side_effect_boundary: "read-only handoff bundle preview",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/approvals",
+        source_command: "/approvals --json",
+        capability: "approval-review",
+        side_effect_boundary: "read-only approvals list",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/policy",
+        source_command: "/policy --json",
+        capability: "policy-view",
+        side_effect_boundary: "read-only policy snapshot",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/approvals/exec/apply",
+        source_command: "/approvals exec apply --dry-run --json",
+        capability: "exec-approvals-apply-bridge",
+        side_effect_boundary: "requires confirmation in old Hepta; parity shell never mutates",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/subagent-observatory",
+        source_command: "/subagent-observatory --json",
+        capability: "subagent-observatory",
+        side_effect_boundary: "read-only subagent observability",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/events",
+        source_command: "/events --json",
+        capability: "events",
+        side_effect_boundary: "read-only event history",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/live-events/<cursor>",
+        source_command: "/live-events <cursor> --json",
+        capability: "cursor-live-events",
+        side_effect_boundary: "read-only cursor event page",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/events-report",
+        source_command: "/events-report --json",
+        capability: "events-report",
+        side_effect_boundary: "read-only event report",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/activity",
+        source_command: "/activity --json",
+        capability: "activity",
+        side_effect_boundary: "read-only activity summary",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/gateway-runtime",
+        source_command: "/gateway-runtime --json",
+        capability: "gateway-runtime",
+        side_effect_boundary: "read-only native gateway runtime",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/gateway-dispatch",
+        source_command: "/gateway-dispatch --dry-run --json",
+        capability: "gateway-dispatch",
+        side_effect_boundary: "dry-run dispatch report",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/gateway-ledger",
+        source_command: "/gateway-ledger --json",
+        capability: "gateway-ledger",
+        side_effect_boundary: "read-only gateway ledger",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/gateway-retry-dead-letter",
+        source_command: "/gateway-retry-dead-letter --json",
+        capability: "gateway-dead-letter",
+        side_effect_boundary: "read-only retry/dead-letter report",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/multi-agent-runtime",
+        source_command: "/multi-agent-runtime --agents 4 --messages 8 --json",
+        capability: "multi-agent-runtime",
+        side_effect_boundary: "read-only multi-agent runtime summary",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/config",
+        source_command: "/config-surface --json",
+        capability: "config-surface",
+        side_effect_boundary: "read-only config surface",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/optional-configs",
+        source_command: "/optional-configs --json",
+        capability: "optional-configs",
+        side_effect_boundary: "read-only optional config catalog",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/tasks/plan",
+        source_command: "/tasks plan --dry-run --json",
+        capability: "task-publisher-plan",
+        side_effect_boundary: "dry-run task publishing plan",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/tasks/publish",
+        source_command: "/tasks publish --confirm --json",
+        capability: "task-publisher-publish",
+        side_effect_boundary: "confirm-required in old Hepta; parity shell never publishes",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/chat/register",
+        source_command: "/chat register --json",
+        capability: "agent-chat-register",
+        side_effect_boundary: "dry-run registration plan",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/chat/archive",
+        source_command: "/chat archive --json",
+        capability: "agent-chat-archive",
+        side_effect_boundary: "dry-run archive plan",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/chat/unarchive",
+        source_command: "/chat unarchive --json",
+        capability: "agent-chat-unarchive",
+        side_effect_boundary: "dry-run unarchive plan",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/chat/delete",
+        source_command: "/chat delete --json",
+        capability: "agent-chat-delete",
+        side_effect_boundary: "dry-run delete plan",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/chat/plan",
+        source_command: "/chat plan --json",
+        capability: "agent-chat-plan",
+        side_effect_boundary: "dry-run chat plan",
+    },
+    ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/chat",
+        source_command: "/chat send --json",
+        capability: "agent-chat-send",
+        side_effect_boundary: "confirm-required in old Hepta; parity shell never sends",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/external-agent-benchmark",
+        source_command: "/external-agent-benchmark --json",
+        capability: "external-agent-benchmark",
+        side_effect_boundary: "read-only benchmark contract surface",
+    },
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NativeGatewayOptions {
@@ -135,104 +433,143 @@ fn route_native_gateway_request(
     path: &str,
     options: &NativeGatewayOptions,
 ) -> (&'static str, &'static str, String) {
-    if method != "GET" {
-        return (
-            "405 Method Not Allowed",
-            "text/plain; charset=utf-8",
-            "method not allowed".to_string(),
-        );
-    }
-
     let telegram_plugin = native_telegram::telegram_plugin_status(
         options.with_telegram_plugin,
         options.telegram_plugin_poll_ms,
     );
-    match path {
-        "/" | "/index.html" => (
-            "200 OK",
-            "text/html; charset=utf-8",
-            index_html(options, &telegram_plugin),
-        ),
-        "/health" | "/api/health" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&HealthResponse {
-                product: "Hepta",
-                runtime: "hepta-codex",
-                status: "ready",
-            }),
-        ),
-        "/api/native-gateway" | "/api/gateway-runtime" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            native_gateway_json(options, &telegram_plugin),
-        ),
-        "/api/gateway-replacement-readiness" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&gateway_replacement_readiness(options, &telegram_plugin)),
-        ),
-        "/api/telegram-plugin" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&telegram_plugin),
-        ),
-        "/api/telegram-receive-once" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&native_telegram::telegram_receive_once_status(
-                options.with_telegram_plugin,
-                20,
-            )),
-        ),
-        "/api/telegram-model-turn-plan" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&native_telegram::telegram_model_turn_plan_status(
-                options.with_telegram_plugin,
-            )),
-        ),
-        "/api/telegram-model-bridge" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&native_telegram::telegram_model_bridge_status(
-                options.with_telegram_plugin,
-            )),
-        ),
-        "/api/telegram-send-plan" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&native_telegram::telegram_send_plan_status(
-                options.with_telegram_plugin,
-            )),
-        ),
-        "/api/telegram-drain-once" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&native_telegram::telegram_drain_once_status(
-                options.with_telegram_plugin,
-            )),
-        ),
-        "/api/telegram-poll-loop" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&native_telegram::telegram_poll_loop_status(
-                options.with_telegram_plugin,
-                options.telegram_plugin_poll_ms,
-            )),
-        ),
-        "/api/telegram-cursor" => (
-            "200 OK",
-            "application/json; charset=utf-8",
-            json_or_error(&native_telegram::telegram_cursor_status(
-                options.with_telegram_plugin,
-            )),
-        ),
-        _ => (
+    if method == "GET" {
+        match path {
+            "/" | "/index.html" => {
+                return (
+                    "200 OK",
+                    "text/html; charset=utf-8",
+                    index_html(options, &telegram_plugin),
+                );
+            }
+            "/health" | "/api/health" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&HealthResponse {
+                        product: "Hepta",
+                        runtime: "hepta-codex",
+                        status: "ready",
+                    }),
+                );
+            }
+            "/api/native-gateway" | "/api/gateway-runtime" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_gateway_json(options, &telegram_plugin),
+                );
+            }
+            "/api/gateway-replacement-readiness" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&gateway_replacement_readiness(options, &telegram_plugin)),
+                );
+            }
+            CONTROL_UI_ROUTE_PARITY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&control_ui_route_parity_report()),
+                );
+            }
+            "/api/telegram-plugin" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&telegram_plugin),
+                );
+            }
+            "/api/telegram-receive-once" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&native_telegram::telegram_receive_once_status(
+                        options.with_telegram_plugin,
+                        20,
+                    )),
+                );
+            }
+            "/api/telegram-model-turn-plan" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&native_telegram::telegram_model_turn_plan_status(
+                        options.with_telegram_plugin,
+                    )),
+                );
+            }
+            "/api/telegram-model-bridge" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&native_telegram::telegram_model_bridge_status(
+                        options.with_telegram_plugin,
+                    )),
+                );
+            }
+            "/api/telegram-send-plan" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&native_telegram::telegram_send_plan_status(
+                        options.with_telegram_plugin,
+                    )),
+                );
+            }
+            "/api/telegram-drain-once" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&native_telegram::telegram_drain_once_status(
+                        options.with_telegram_plugin,
+                    )),
+                );
+            }
+            "/api/telegram-poll-loop" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&native_telegram::telegram_poll_loop_status(
+                        options.with_telegram_plugin,
+                        options.telegram_plugin_poll_ms,
+                    )),
+                );
+            }
+            "/api/telegram-cursor" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&native_telegram::telegram_cursor_status(
+                        options.with_telegram_plugin,
+                    )),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(body) = control_ui_route_response(method, path) {
+        return ("200 OK", "application/json; charset=utf-8", body);
+    }
+
+    if method != "GET" {
+        (
+            "405 Method Not Allowed",
+            "text/plain; charset=utf-8",
+            "method not allowed".to_string(),
+        )
+    } else {
+        (
             "404 Not Found",
             "text/plain; charset=utf-8",
             "not found".to_string(),
-        ),
+        )
     }
 }
 
@@ -290,6 +627,7 @@ fn native_gateway_json(
     telegram_plugin: &NativeTelegramPluginStatus,
 ) -> String {
     let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
+    let control_ui_route_parity = control_ui_route_parity_report();
     let active_gateway_replacement_ready = gateway_replacement_readiness.ready;
     let replacement_blocker = gateway_replacement_readiness.blockers.first().copied();
     json_or_error(&NativeGatewayResponse {
@@ -303,6 +641,9 @@ fn native_gateway_json(
         replacement_blocker,
         gateway_replacement_readiness_endpoint: "/api/gateway-replacement-readiness",
         gateway_replacement_readiness,
+        control_ui_route_parity_endpoint: CONTROL_UI_ROUTE_PARITY_ENDPOINT,
+        control_ui_route_parity_ready: control_ui_route_parity.ready,
+        control_ui_route_parity,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
         telegram_plugin_native_supervisor_ready: telegram_plugin.in_process_supervisor_ready,
@@ -337,8 +678,10 @@ fn native_gateway_json(
             "Telegram gated drain-once pipeline surface",
             "Telegram gated poll-loop supervisor surface",
             "Telegram cursor state surface",
+            "Control UI route parity report",
+            "Control UI side-effect-free compatibility endpoints",
         ],
-        next_migration_slice: "replace the gated child exec runner with an in-process runner, pass release/UI parity gates, then mark active gateway replacement ready",
+        next_migration_slice: "finish live Telegram gate smoke under explicit operator approval, then mark active gateway replacement ready",
     })
 }
 
@@ -351,8 +694,10 @@ fn gateway_replacement_readiness(
         options.with_telegram_plugin,
         options.telegram_plugin_poll_ms,
     );
+    let control_ui_route_parity = control_ui_route_parity_report();
     let release_build_verified = env_truthy(RELEASE_BUILD_VERIFIED_ENV);
-    let control_ui_parity_verified = env_truthy(CONTROL_UI_PARITY_VERIFIED_ENV);
+    let control_ui_parity_verified =
+        control_ui_route_parity.ready && env_truthy(CONTROL_UI_PARITY_VERIFIED_ENV);
     let in_process_model_runner_ready =
         env_truthy(native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV);
     let side_effect_free = true;
@@ -421,9 +766,14 @@ fn gateway_replacement_readiness(
             detail: "release fat-LTO build must pass before replacing the active gateway",
         },
         NativeGatewayReplacementCheck {
+            name: "control_ui_route_matrix_ready",
+            ready: control_ui_route_parity.ready,
+            detail: "hepta-codex must expose the old Hepta Control UI HTTP route matrix",
+        },
+        NativeGatewayReplacementCheck {
             name: "control_ui_route_parity_verified",
             ready: control_ui_parity_verified,
-            detail: "Hepta Control UI route parity must be verified before production replacement",
+            detail: "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED must be enabled after route parity smoke passes",
         },
         NativeGatewayReplacementCheck {
             name: "readiness_report_side_effect_free",
@@ -480,7 +830,8 @@ fn gateway_replacement_readiness(
                 enabled: control_ui_parity_verified,
             },
         },
-        next_migration_slice: "replace the child exec Telegram model runner with an in-process runner, then rerun release and route-parity gates",
+        control_ui_route_parity,
+        next_migration_slice: "run explicit live Telegram gate smoke only with operator approval, then replace the active gateway",
     }
 }
 
@@ -510,6 +861,9 @@ struct NativeGatewayResponse<'a> {
     replacement_blocker: Option<&'static str>,
     gateway_replacement_readiness_endpoint: &'static str,
     gateway_replacement_readiness: NativeGatewayReplacementReadiness,
+    control_ui_route_parity_endpoint: &'static str,
+    control_ui_route_parity_ready: bool,
+    control_ui_route_parity: ControlUiRouteParityReport,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
     telegram_plugin_native_supervisor_ready: bool,
@@ -542,6 +896,7 @@ struct NativeGatewayReplacementReadiness {
     blockers: Vec<&'static str>,
     checks: Vec<NativeGatewayReplacementCheck>,
     required_env_gates: NativeGatewayReplacementEnvGates,
+    control_ui_route_parity: ControlUiRouteParityReport,
     next_migration_slice: &'static str,
 }
 
@@ -567,6 +922,133 @@ struct NativeGatewayReplacementEnvGates {
 struct NativeGatewayReplacementGate {
     env: &'static str,
     enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct ControlUiRouteSpec {
+    method: &'static str,
+    pattern: &'static str,
+    source_command: &'static str,
+    capability: &'static str,
+    side_effect_boundary: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct ControlUiRouteParityReport {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    ready: bool,
+    route_count: usize,
+    implemented_route_count: usize,
+    missing_route_count: usize,
+    missing_routes: Vec<String>,
+    side_effect_free: bool,
+    legacy_source: &'static str,
+    routes: &'static [ControlUiRouteSpec],
+}
+
+#[derive(Debug, Serialize)]
+struct ControlUiRouteCompatibilityResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    method: &'static str,
+    pattern: &'static str,
+    path: String,
+    source_command: &'static str,
+    capability: &'static str,
+    side_effect_boundary: &'static str,
+    compatibility_mode: &'static str,
+    dry_run_only: bool,
+    confirmation_required_for_real_mutation: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+}
+
+fn control_ui_route_parity_report() -> ControlUiRouteParityReport {
+    let missing_routes = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| !control_ui_route_has_handler(route))
+        .map(|route| format!("{} {}", route.method, route.pattern))
+        .collect::<Vec<_>>();
+    let implemented_route_count = CONTROL_UI_ROUTE_SPECS.len() - missing_routes.len();
+    let ready = missing_routes.is_empty();
+    ControlUiRouteParityReport {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if ready { "ready" } else { "blocked" },
+        ready,
+        route_count: CONTROL_UI_ROUTE_SPECS.len(),
+        implemented_route_count,
+        missing_route_count: missing_routes.len(),
+        missing_routes,
+        side_effect_free: true,
+        legacy_source: "Hepta Control UI live operator DevEx 100 route matrix and hepta-core::control_ui markers",
+        routes: CONTROL_UI_ROUTE_SPECS,
+    }
+}
+
+fn control_ui_route_response(method: &str, path: &str) -> Option<String> {
+    let route = control_ui_route_spec_for(method, path)?;
+    Some(json_or_error(&ControlUiRouteCompatibilityResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if route.method == "POST" {
+            "dry_run_compatibility"
+        } else {
+            "ready"
+        },
+        method: route.method,
+        pattern: route.pattern,
+        path: path.to_string(),
+        source_command: route.source_command,
+        capability: route.capability,
+        side_effect_boundary: route.side_effect_boundary,
+        compatibility_mode: "native_control_ui_route_parity_shell",
+        dry_run_only: route.method == "POST",
+        confirmation_required_for_real_mutation: route.method == "POST"
+            && !route.side_effect_boundary.contains("read-only"),
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+    }))
+}
+
+fn control_ui_route_has_handler(route: &ControlUiRouteSpec) -> bool {
+    let sample_path = control_ui_sample_path(route.pattern);
+    control_ui_route_spec_for(route.method, &sample_path).is_some()
+}
+
+fn control_ui_route_spec_for(method: &str, path: &str) -> Option<&'static ControlUiRouteSpec> {
+    CONTROL_UI_ROUTE_SPECS.iter().find(|route| {
+        route.method == method && control_ui_route_pattern_matches(route.pattern, path)
+    })
+}
+
+fn control_ui_route_pattern_matches(pattern: &str, path: &str) -> bool {
+    if let Some(start) = pattern.find("/<") {
+        let prefix = &pattern[..start + 1];
+        path.starts_with(prefix) && path.len() > prefix.len()
+    } else {
+        pattern == path
+    }
+}
+
+fn control_ui_sample_path(pattern: &str) -> String {
+    pattern
+        .replace("<action>", "gateway-dispatch")
+        .replace("<id>", "gateway-status")
+        .replace("<query>", "sample")
+        .replace("<task_id>", "sample-task")
+        .replace("<cursor>", "0")
 }
 
 fn allow_non_loopback_ui() -> bool {
@@ -722,10 +1204,15 @@ mod tests {
         assert!(body.contains(
             r#""gateway_replacement_readiness_endpoint":"/api/gateway-replacement-readiness""#
         ));
+        assert!(
+            body.contains(r#""control_ui_route_parity_endpoint":"/api/control-ui-route-parity""#)
+        );
+        assert!(body.contains(r#""control_ui_route_parity_ready":true"#));
         assert!(body.contains(r#""status":"blocked""#));
         assert!(body.contains(r#""active_install_allowed":false"#));
         assert!(body.contains(r#""in_process_model_runner_ready""#));
         assert!(body.contains(r#""release_build_verified""#));
+        assert!(body.contains(r#""control_ui_route_matrix_ready""#));
         assert!(body.contains(r#""control_ui_route_parity_verified""#));
         assert!(body.contains(r#""telegram_plugin_native_supervisor_ready":"#));
         assert!(body.contains(r#""telegram_receive_once_endpoint":"/api/telegram-receive-once""#));
@@ -773,6 +1260,81 @@ mod tests {
         assert!(blockers.contains(&"in_process_model_runner_ready"));
         assert!(blockers.contains(&"release_build_verified"));
         assert!(blockers.contains(&"control_ui_route_parity_verified"));
+        assert!(!blockers.contains(&"control_ui_route_matrix_ready"));
+        assert_eq!(value["control_ui_route_parity"]["ready"], true);
+        assert!(
+            value["control_ui_route_parity"]["route_count"]
+                .as_u64()
+                .expect("route count")
+                >= 40
+        );
+    }
+
+    #[test]
+    fn control_ui_route_parity_report_covers_old_hepta_routes() {
+        let report = control_ui_route_parity_report();
+        assert!(report.ready);
+        assert_eq!(report.missing_route_count, 0);
+        assert!(report.route_count >= 40);
+        let routes = report
+            .routes
+            .iter()
+            .map(|route| format!("{} {}", route.method, route.pattern))
+            .collect::<Vec<_>>();
+        assert!(routes.contains(&"GET /api/operator-console".to_string()));
+        assert!(routes.contains(&"GET /api/query-transcript/<query>".to_string()));
+        assert!(routes.contains(&"POST /api/commands/<id>".to_string()));
+        assert!(routes.contains(&"POST /api/actions/<action>".to_string()));
+        assert!(routes.contains(&"POST /api/chat".to_string()));
+        assert!(routes.contains(&"GET /api/external-agent-benchmark".to_string()));
+    }
+
+    #[test]
+    fn control_ui_legacy_routes_are_reachable_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (method, path) in [
+            ("GET", "/api/operator-console"),
+            ("GET", "/api/query-transcript/sample"),
+            ("GET", "/api/task/sample-task"),
+            ("GET", "/api/live-events/0"),
+            ("GET", "/api/external-agent-benchmark"),
+            ("POST", "/api/actions/gateway-dispatch"),
+            ("POST", "/api/commands/gateway-status"),
+            ("POST", "/api/chat"),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request(method, path, &options);
+            assert_eq!(status, "200 OK", "{method} {path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            let value: serde_json::Value = serde_json::from_str(&body).expect("compat route json");
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["external_side_effects"], false);
+            assert_eq!(value["gateway_mutation_performed"], false);
+            assert_eq!(value["telegram_read_performed"], false);
+            assert_eq!(value["model_invoked"], false);
+            assert_eq!(value["message_sent"], false);
+            assert_eq!(value["cursor_written"], false);
+        }
+    }
+
+    #[test]
+    fn control_ui_route_parity_endpoint_returns_ready_report() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: false,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", CONTROL_UI_ROUTE_PARITY_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value = serde_json::from_str(&body).expect("parity json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["ready"], true);
+        assert_eq!(value["missing_route_count"], 0);
     }
 
     #[test]
