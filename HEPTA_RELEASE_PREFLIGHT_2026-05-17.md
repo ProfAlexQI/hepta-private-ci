@@ -95,6 +95,34 @@ Post-hardening release smoke:
 - The no-network JSON output contains no provider endpoint field, no
   `reachable over HTTP` result, and no WebSocket handshake transport error.
 
+## Staged Installed-Path Dry Smoke
+
+A follow-up dry smoke copied the rebuilt release binary out of Cargo's target
+tree into a temporary staged install path:
+
+```text
+/tmp/hepta-staged-install.<suffix>/bin/hepta
+```
+
+The staged smoke deliberately unset package-manager provenance env vars so the
+binary was validated as a direct local source-fork executable rather than as the
+currently installed npm shim.
+
+Observed result:
+
+- `hepta --version` printed `hepta 0.0.0`.
+- `hepta doctor --no-network --json` still returned expected exit code `1`
+  for temporary-home auth and non-interactive terminal failures.
+- `installation`: `ok`, `installation looks consistent`, install context
+  `other`, current executable pointing at the staged binary.
+- `runtime.provenance`: `ok`, `running local build on macos-aarch64`, install
+  method `other`.
+- `updates.status`: `ok`, update channel is `local source fork`, update
+  action is `manual source fork update`.
+- Provider HTTP and WebSocket reachability remained skipped; output contained no
+  provider endpoint field, no `reachable over HTTP` result, and no WebSocket
+  handshake transport error.
+
 ## Current Readiness Judgment
 
 Release build and CLI help surfaces are clean enough for an install candidate.
@@ -105,6 +133,7 @@ service should be a separate step because it mutates the user's current runtime.
 
 Before replacing the active service:
 
-1. Run one installed-path dry smoke against a staged copy of the release binary.
-2. Only then perform `hepta install` / service restart and verify the running
+1. Perform `hepta install` / service restart only as an explicit runtime
+   replacement step.
+2. After replacement, verify the running
    service binary path.
