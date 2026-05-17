@@ -180,6 +180,17 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Auth storage unit tests now use Hepta home terminology for local variables
   and helper parameters.
 
+## Cleaned in auth manager home naming pass
+
+- Auth-manager private storage/load/logout helper parameters now use
+  Hepta home terminology while preserving the existing auth storage behavior.
+- AuthManager now stores its resolved runtime home in a private hepta_home
+  field and reports that name in debug output.
+- AuthManager::new, AuthManager::shared, and test-only home constructors now
+  use Hepta home terminology for their local parameter names.
+- The public AuthConfig::codex_home field and AuthManagerConfig::codex_home
+  method remain compatibility API names for now.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

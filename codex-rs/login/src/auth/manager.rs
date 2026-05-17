@@ -197,7 +197,7 @@ impl From<RefreshTokenError> for std::io::Error {
 
 impl CodexAuth {
     async fn from_auth_dot_json(
-        codex_home: &Path,
+        hepta_home: &Path,
         auth_dot_json: AuthDotJson,
         auth_credentials_store_mode: AuthCredentialsStoreMode,
         chatgpt_base_url: Option<&str>,
@@ -227,7 +227,7 @@ impl CodexAuth {
 
         match auth_mode {
             ApiAuthMode::Chatgpt => {
-                let storage = create_auth_storage(codex_home.to_path_buf(), storage_mode);
+                let storage = create_auth_storage(hepta_home.to_path_buf(), storage_mode);
                 Ok(Self::Chatgpt(ChatgptAuth { state, storage }))
             }
             ApiAuthMode::ChatgptAuthTokens => {
@@ -239,12 +239,12 @@ impl CodexAuth {
     }
 
     pub async fn from_auth_storage(
-        codex_home: &Path,
+        hepta_home: &Path,
         auth_credentials_store_mode: AuthCredentialsStoreMode,
         chatgpt_base_url: Option<&str>,
     ) -> std::io::Result<Option<Self>> {
         load_auth(
-            codex_home,
+            hepta_home,
             /*enable_codex_api_key_env*/ false,
             auth_credentials_store_mode,
             chatgpt_base_url,
@@ -515,19 +515,19 @@ async fn verified_agent_identity_record(
 /// Delete the Hepta auth.json file inside the resolved runtime home if it exists.
 /// Returns `Ok(true)` if a file was removed, `Ok(false)` if no auth file was present.
 pub fn logout(
-    codex_home: &Path,
+    hepta_home: &Path,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> std::io::Result<bool> {
-    let storage = create_auth_storage(codex_home.to_path_buf(), auth_credentials_store_mode);
+    let storage = create_auth_storage(hepta_home.to_path_buf(), auth_credentials_store_mode);
     storage.delete()
 }
 
 pub async fn logout_with_revoke(
-    codex_home: &Path,
+    hepta_home: &Path,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> std::io::Result<bool> {
     AuthManager::new(
-        codex_home.to_path_buf(),
+        hepta_home.to_path_buf(),
         /*enable_codex_api_key_env*/ false,
         auth_credentials_store_mode,
         /*chatgpt_base_url*/ None,
@@ -539,7 +539,7 @@ pub async fn logout_with_revoke(
 
 /// Writes a Hepta `auth.json` that contains only the API key.
 pub fn login_with_api_key(
-    codex_home: &Path,
+    hepta_home: &Path,
     api_key: &str,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> std::io::Result<()> {
@@ -550,12 +550,12 @@ pub fn login_with_api_key(
         last_refresh: None,
         agent_identity: None,
     };
-    save_auth(codex_home, &auth_dot_json, auth_credentials_store_mode)
+    save_auth(hepta_home, &auth_dot_json, auth_credentials_store_mode)
 }
 
 /// Writes a Hepta `auth.json` that contains only the access token.
 pub async fn login_with_access_token(
-    codex_home: &Path,
+    hepta_home: &Path,
     access_token: &str,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
     chatgpt_base_url: Option<&str>,
@@ -572,12 +572,12 @@ pub async fn login_with_access_token(
         last_refresh: None,
         agent_identity: Some(access_token.to_string()),
     };
-    save_auth(codex_home, &auth_dot_json, auth_credentials_store_mode)
+    save_auth(hepta_home, &auth_dot_json, auth_credentials_store_mode)
 }
 
 /// Writes an in-memory auth payload for externally managed ChatGPT tokens.
 pub fn login_with_chatgpt_auth_tokens(
-    codex_home: &Path,
+    hepta_home: &Path,
     access_token: &str,
     chatgpt_account_id: &str,
     chatgpt_plan_type: Option<&str>,
@@ -588,7 +588,7 @@ pub fn login_with_chatgpt_auth_tokens(
         chatgpt_plan_type,
     )?;
     save_auth(
-        codex_home,
+        hepta_home,
         &auth_dot_json,
         AuthCredentialsStoreMode::Ephemeral,
     )
@@ -596,11 +596,11 @@ pub fn login_with_chatgpt_auth_tokens(
 
 /// Persist the provided auth payload using the specified backend.
 pub fn save_auth(
-    codex_home: &Path,
+    hepta_home: &Path,
     auth: &AuthDotJson,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> std::io::Result<()> {
-    let storage = create_auth_storage(codex_home.to_path_buf(), auth_credentials_store_mode);
+    let storage = create_auth_storage(hepta_home.to_path_buf(), auth_credentials_store_mode);
     storage.save(auth)
 }
 
@@ -610,10 +610,10 @@ pub fn save_auth(
 /// ordinary production reads; this helper is for tests and write-side
 /// maintenance that must inspect the exact payload in storage.
 pub fn load_auth_dot_json(
-    codex_home: &Path,
+    hepta_home: &Path,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> std::io::Result<Option<AuthDotJson>> {
-    let storage = create_auth_storage(codex_home.to_path_buf(), auth_credentials_store_mode);
+    let storage = create_auth_storage(hepta_home.to_path_buf(), auth_credentials_store_mode);
     storage.load()
 }
 
@@ -714,13 +714,13 @@ pub async fn enforce_login_restrictions(config: &AuthConfig) -> std::io::Result<
 }
 
 fn logout_with_message(
-    codex_home: &Path,
+    hepta_home: &Path,
     message: String,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> std::io::Result<()> {
     // External auth tokens live in the ephemeral store, but persistent auth may still exist
     // from earlier logins. Clear both so a forced logout truly removes all active auth.
-    let removal_result = logout_all_stores(codex_home, auth_credentials_store_mode);
+    let removal_result = logout_all_stores(hepta_home, auth_credentials_store_mode);
     let error_message = match removal_result {
         Ok(_) => message,
         Err(err) => format!("{message}. Failed to remove auth.json: {err}"),
@@ -729,19 +729,19 @@ fn logout_with_message(
 }
 
 fn logout_all_stores(
-    codex_home: &Path,
+    hepta_home: &Path,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
 ) -> std::io::Result<bool> {
     if auth_credentials_store_mode == AuthCredentialsStoreMode::Ephemeral {
-        return logout(codex_home, AuthCredentialsStoreMode::Ephemeral);
+        return logout(hepta_home, AuthCredentialsStoreMode::Ephemeral);
     }
-    let removed_ephemeral = logout(codex_home, AuthCredentialsStoreMode::Ephemeral)?;
-    let removed_managed = logout(codex_home, auth_credentials_store_mode)?;
+    let removed_ephemeral = logout(hepta_home, AuthCredentialsStoreMode::Ephemeral)?;
+    let removed_managed = logout(hepta_home, auth_credentials_store_mode)?;
     Ok(removed_ephemeral || removed_managed)
 }
 
 async fn load_auth(
-    codex_home: &Path,
+    hepta_home: &Path,
     enable_codex_api_key_env: bool,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
     chatgpt_base_url: Option<&str>,
@@ -754,12 +754,12 @@ async fn load_auth(
     // External ChatGPT auth tokens live in the in-memory (ephemeral) store. Always check this
     // first so external auth takes precedence over any persisted credentials.
     let ephemeral_storage = create_auth_storage(
-        codex_home.to_path_buf(),
+        hepta_home.to_path_buf(),
         AuthCredentialsStoreMode::Ephemeral,
     );
     if let Some(auth_dot_json) = ephemeral_storage.load()? {
         let auth = CodexAuth::from_auth_dot_json(
-            codex_home,
+            hepta_home,
             auth_dot_json,
             AuthCredentialsStoreMode::Ephemeral,
             chatgpt_base_url,
@@ -780,14 +780,14 @@ async fn load_auth(
     }
 
     // Fall back to the configured persistent store (file/keyring/auto) for managed auth.
-    let storage = create_auth_storage(codex_home.to_path_buf(), auth_credentials_store_mode);
+    let storage = create_auth_storage(hepta_home.to_path_buf(), auth_credentials_store_mode);
     let auth_dot_json = match storage.load()? {
         Some(auth) => auth,
         None => return Ok(None),
     };
 
     let auth = CodexAuth::from_auth_dot_json(
-        codex_home,
+        hepta_home,
         auth_dot_json,
         auth_credentials_store_mode,
         chatgpt_base_url,
@@ -1262,7 +1262,7 @@ impl UnauthorizedRecovery {
 /// `reload()` is called explicitly. This matches the design goal of avoiding
 /// different parts of the program seeing inconsistent auth data mid‑run.
 pub struct AuthManager {
-    codex_home: PathBuf,
+    hepta_home: PathBuf,
     inner: RwLock<CachedAuth>,
     enable_codex_api_key_env: bool,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
@@ -1295,7 +1295,7 @@ pub trait AuthManagerConfig {
 impl Debug for AuthManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AuthManager")
-            .field("codex_home", &self.codex_home)
+            .field("hepta_home", &self.hepta_home)
             .field("inner", &self.inner)
             .field("enable_codex_api_key_env", &self.enable_codex_api_key_env)
             .field(
@@ -1318,13 +1318,13 @@ impl AuthManager {
     /// simply return `None` in that case so callers can treat it as an
     /// unauthenticated state.
     pub async fn new(
-        codex_home: PathBuf,
+        hepta_home: PathBuf,
         enable_codex_api_key_env: bool,
         auth_credentials_store_mode: AuthCredentialsStoreMode,
         chatgpt_base_url: Option<String>,
     ) -> Self {
         let managed_auth = load_auth(
-            &codex_home,
+            &hepta_home,
             enable_codex_api_key_env,
             auth_credentials_store_mode,
             chatgpt_base_url.as_deref(),
@@ -1333,7 +1333,7 @@ impl AuthManager {
         .ok()
         .flatten();
         Self {
-            codex_home,
+            hepta_home,
             inner: RwLock::new(CachedAuth {
                 auth: managed_auth,
                 permanent_refresh_failure: None,
@@ -1355,7 +1355,7 @@ impl AuthManager {
         };
 
         Arc::new(Self {
-            codex_home: PathBuf::from("non-existent"),
+            hepta_home: PathBuf::from("non-existent"),
             inner: RwLock::new(cached),
             enable_codex_api_key_env: false,
             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
@@ -1366,14 +1366,14 @@ impl AuthManager {
         })
     }
 
-    /// Create an AuthManager with a specific CodexAuth and codex home, for testing only.
-    pub fn from_auth_for_testing_with_home(auth: CodexAuth, codex_home: PathBuf) -> Arc<Self> {
+    /// Create an AuthManager with a specific CodexAuth and Hepta home, for testing only.
+    pub fn from_auth_for_testing_with_home(auth: CodexAuth, hepta_home: PathBuf) -> Arc<Self> {
         let cached = CachedAuth {
             auth: Some(auth),
             permanent_refresh_failure: None,
         };
         Arc::new(Self {
-            codex_home,
+            hepta_home,
             inner: RwLock::new(cached),
             enable_codex_api_key_env: false,
             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
@@ -1386,7 +1386,7 @@ impl AuthManager {
 
     pub fn external_bearer_only(config: ModelProviderAuthInfo) -> Arc<Self> {
         Arc::new(Self {
-            codex_home: PathBuf::from("non-existent"),
+            hepta_home: PathBuf::from("non-existent"),
             inner: RwLock::new(CachedAuth {
                 auth: None,
                 permanent_refresh_failure: None,
@@ -1528,7 +1528,7 @@ impl AuthManager {
 
     async fn load_auth_from_storage(&self) -> Option<CodexAuth> {
         load_auth(
-            &self.codex_home,
+            &self.hepta_home,
             self.enable_codex_api_key_env,
             self.auth_credentials_store_mode,
             self.chatgpt_base_url.as_deref(),
@@ -1598,14 +1598,14 @@ impl AuthManager {
 
     /// Convenience constructor returning an `Arc` wrapper.
     pub async fn shared(
-        codex_home: PathBuf,
+        hepta_home: PathBuf,
         enable_codex_api_key_env: bool,
         auth_credentials_store_mode: AuthCredentialsStoreMode,
         chatgpt_base_url: Option<String>,
     ) -> Arc<Self> {
         Arc::new(
             Self::new(
-                codex_home,
+                hepta_home,
                 enable_codex_api_key_env,
                 auth_credentials_store_mode,
                 chatgpt_base_url,
@@ -1762,7 +1762,7 @@ impl AuthManager {
     /// reloads the in‑memory auth cache so callers immediately observe the
     /// unauthenticated state.
     pub async fn logout(&self) -> std::io::Result<bool> {
-        let removed = logout_all_stores(&self.codex_home, self.auth_credentials_store_mode)?;
+        let removed = logout_all_stores(&self.hepta_home, self.auth_credentials_store_mode)?;
         // Always reload to clear any cached auth (even if file absent).
         self.reload().await;
         Ok(removed)
@@ -1775,7 +1775,7 @@ impl AuthManager {
         if let Err(err) = revoke_auth_tokens(auth_dot_json.as_ref()).await {
             tracing::warn!("failed to revoke auth tokens during logout: {err}");
         }
-        let result = logout_all_stores(&self.codex_home, self.auth_credentials_store_mode)?;
+        let result = logout_all_stores(&self.hepta_home, self.auth_credentials_store_mode)?;
         // Always reload to clear any cached auth (even if file absent).
         self.reload().await;
         Ok(result)
@@ -1868,7 +1868,7 @@ impl AuthManager {
         let auth_dot_json =
             AuthDotJson::from_external_tokens(&refreshed).map_err(RefreshTokenError::Transient)?;
         save_auth(
-            &self.codex_home,
+            &self.hepta_home,
             &auth_dot_json,
             AuthCredentialsStoreMode::Ephemeral,
         )
