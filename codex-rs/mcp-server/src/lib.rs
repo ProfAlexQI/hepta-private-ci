@@ -40,8 +40,14 @@ use crate::outgoing_message::OutgoingJsonRpcMessage;
 use crate::outgoing_message::OutgoingMessage;
 use crate::outgoing_message::OutgoingMessageSender;
 
+pub use crate::codex_tool_config::CodexToolCallApprovalPolicy;
 pub use crate::codex_tool_config::CodexToolCallParam;
 pub use crate::codex_tool_config::CodexToolCallReplyParam;
+pub use crate::codex_tool_config::CodexToolCallSandboxMode;
+pub use crate::codex_tool_config::HeptaToolCallApprovalPolicy;
+pub use crate::codex_tool_config::HeptaToolCallParam;
+pub use crate::codex_tool_config::HeptaToolCallReplyParam;
+pub use crate::codex_tool_config::HeptaToolCallSandboxMode;
 pub use crate::exec_approval::ExecApprovalElicitRequestParams;
 pub use crate::exec_approval::ExecApprovalResponse;
 pub use crate::patch_approval::PatchApprovalElicitRequestParams;
@@ -218,9 +224,9 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_server_builds_otel_provider_with_logs_traces_and_metrics() -> anyhow::Result<()> {
-        let codex_home = TempDir::new()?;
+        let hepta_home = TempDir::new()?;
         let mut config = ConfigBuilder::default()
-            .codex_home(codex_home.path().to_path_buf())
+            .codex_home(hepta_home.path().to_path_buf())
             .build()
             .await?;
         let exporter = OtelExporterKind::OtlpGrpc {

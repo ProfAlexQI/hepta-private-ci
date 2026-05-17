@@ -4,9 +4,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR;
-use codex_mcp_server::CodexToolCallParam;
 use codex_mcp_server::ExecApprovalElicitRequestParams;
 use codex_mcp_server::ExecApprovalResponse;
+use codex_mcp_server::HeptaToolCallParam;
 use codex_mcp_server::PatchApprovalElicitRequestParams;
 use codex_mcp_server::PatchApprovalResponse;
 use codex_protocol::protocol::FileChange;
@@ -101,8 +101,8 @@ async fn shell_command_approval_triggers_elicitation() -> anyhow::Result<()> {
     // Send a "hepta" tool request, which should hit the responses endpoint.
     // In turn, it should reply with a tool call, which the MCP should forward
     // as an elicitation.
-    let codex_request_id = mcp_process
-        .send_hepta_tool_call(CodexToolCallParam {
+    let hepta_request_id = mcp_process
+        .send_hepta_tool_call(HeptaToolCallParam {
             prompt: "run `git init`".to_string(),
             ..Default::default()
         })
@@ -129,7 +129,7 @@ async fn shell_command_approval_triggers_elicitation() -> anyhow::Result<()> {
         Some(create_expected_elicitation_request_params(
             expected_shell_command,
             workdir_for_shell_function_call.path(),
-            codex_request_id.to_string(),
+            hepta_request_id.to_string(),
             params.codex_event_id.clone(),
             params.thread_id,
         )?)
@@ -156,15 +156,15 @@ async fn shell_command_approval_triggers_elicitation() -> anyhow::Result<()> {
     .expect("task_complete_notification resp");
 
     // Verify the original `hepta` tool call completes and that the file was created.
-    let codex_response = timeout(
+    let hepta_response = timeout(
         DEFAULT_READ_TIMEOUT,
-        mcp_process.read_stream_until_response_message(RequestId::Number(codex_request_id)),
+        mcp_process.read_stream_until_response_message(RequestId::Number(hepta_request_id)),
     )
     .await??;
     assert_eq!(
         JsonRpcResponse {
             jsonrpc: JsonRpcVersion2_0,
-            id: RequestId::Number(codex_request_id),
+            id: RequestId::Number(hepta_request_id),
             result: json!({
                 "content": [
                     {
@@ -178,7 +178,7 @@ async fn shell_command_approval_triggers_elicitation() -> anyhow::Result<()> {
                 }
             }),
         },
-        codex_response
+        hepta_response
     );
 
     assert!(created_file.is_file(), "created file should exist");
@@ -257,8 +257,8 @@ async fn patch_approval_triggers_elicitation() -> anyhow::Result<()> {
     .await?;
 
     // Send a "hepta" tool request that will trigger the apply_patch command
-    let codex_request_id = mcp_process
-        .send_hepta_tool_call(CodexToolCallParam {
+    let hepta_request_id = mcp_process
+        .send_hepta_tool_call(HeptaToolCallParam {
             cwd: Some(cwd.path().to_string_lossy().to_string()),
             prompt: "please modify the test file".to_string(),
             // This test exercises patch approval elicitation, not local sandbox setup.
@@ -302,7 +302,7 @@ async fn patch_approval_triggers_elicitation() -> anyhow::Result<()> {
             expected_changes,
             /*grant_root*/ None, // No grant_root expected
             /*reason*/ None,
-            codex_request_id.to_string(),
+            hepta_request_id.to_string(),
             params.codex_event_id.clone(),
             params.thread_id,
         )?)
@@ -319,15 +319,15 @@ async fn patch_approval_triggers_elicitation() -> anyhow::Result<()> {
         .await?;
 
     // Verify the original `hepta` tool call completes
-    let codex_response = timeout(
+    let hepta_response = timeout(
         DEFAULT_READ_TIMEOUT,
-        mcp_process.read_stream_until_response_message(RequestId::Number(codex_request_id)),
+        mcp_process.read_stream_until_response_message(RequestId::Number(hepta_request_id)),
     )
     .await??;
     assert_eq!(
         JsonRpcResponse {
             jsonrpc: JsonRpcVersion2_0,
-            id: RequestId::Number(codex_request_id),
+            id: RequestId::Number(hepta_request_id),
             result: json!({
                 "content": [
                     {
@@ -341,7 +341,7 @@ async fn patch_approval_triggers_elicitation() -> anyhow::Result<()> {
                 }
             }),
         },
-        codex_response
+        hepta_response
     );
 
     let file_contents = std::fs::read_to_string(test_file.as_path())?;
@@ -351,32 +351,32 @@ async fn patch_approval_triggers_elicitation() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_codex_tool_passes_base_instructions() {
+async fn test_hepta_tool_passes_base_instructions() {
     skip_if_no_network!();
 
     // Apparently `#[tokio::test]` must return `()`, so we create a helper
     // function that returns `Result` so we can use `?` in favor of `unwrap`.
-    if let Err(err) = codex_tool_passes_base_instructions().await {
+    if let Err(err) = hepta_tool_passes_base_instructions().await {
         panic!("failure: {err}");
     }
 }
 
-async fn codex_tool_passes_base_instructions() -> anyhow::Result<()> {
+async fn hepta_tool_passes_base_instructions() -> anyhow::Result<()> {
     #![expect(clippy::expect_used, clippy::unwrap_used)]
 
     let server =
         create_mock_responses_server(vec![create_final_assistant_message_sse_response("Enjoy!")?])
             .await;
 
-    // Run `codex mcp` with a specific config.toml.
-    let codex_home = TempDir::new()?;
-    create_config_toml(codex_home.path(), &server.uri())?;
-    let mut mcp_process = McpProcess::new(codex_home.path()).await?;
+    // Run `hepta mcp` with a specific config.toml.
+    let hepta_home = TempDir::new()?;
+    create_config_toml(hepta_home.path(), &server.uri())?;
+    let mut mcp_process = McpProcess::new(hepta_home.path()).await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp_process.initialize()).await??;
 
     // Send a "hepta" tool request, which should hit the responses endpoint.
-    let codex_request_id = mcp_process
-        .send_hepta_tool_call(CodexToolCallParam {
+    let hepta_request_id = mcp_process
+        .send_hepta_tool_call(HeptaToolCallParam {
             prompt: "How are you?".to_string(),
             base_instructions: Some("You are a helpful assistant.".to_string()),
             developer_instructions: Some("Foreshadow upcoming tool calls.".to_string()),
@@ -384,15 +384,15 @@ async fn codex_tool_passes_base_instructions() -> anyhow::Result<()> {
         })
         .await?;
 
-    let codex_response = timeout(
+    let hepta_response = timeout(
         DEFAULT_READ_TIMEOUT,
-        mcp_process.read_stream_until_response_message(RequestId::Number(codex_request_id)),
+        mcp_process.read_stream_until_response_message(RequestId::Number(hepta_request_id)),
     )
     .await??;
-    assert_eq!(codex_response.jsonrpc, JsonRpcVersion2_0);
-    assert_eq!(codex_response.id, RequestId::Number(codex_request_id));
+    assert_eq!(hepta_response.jsonrpc, JsonRpcVersion2_0);
+    assert_eq!(hepta_response.id, RequestId::Number(hepta_request_id));
     assert_eq!(
-        codex_response.result,
+        hepta_response.result,
         json!({
             "content": [
                 {
@@ -401,7 +401,7 @@ async fn codex_tool_passes_base_instructions() -> anyhow::Result<()> {
                 }
             ],
             "structuredContent": {
-                "threadId": codex_response
+                "threadId": hepta_response
                     .result
                     .get("structuredContent")
                     .and_then(|v| v.get("threadId"))
@@ -489,22 +489,22 @@ pub struct McpHandle {
 
 async fn create_mcp_process(responses: Vec<String>) -> anyhow::Result<McpHandle> {
     let server = create_mock_responses_server(responses).await;
-    let codex_home = TempDir::new()?;
-    create_config_toml(codex_home.path(), &server.uri())?;
-    let mut mcp_process = McpProcess::new(codex_home.path()).await?;
+    let hepta_home = TempDir::new()?;
+    create_config_toml(hepta_home.path(), &server.uri())?;
+    let mut mcp_process = McpProcess::new(hepta_home.path()).await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp_process.initialize()).await??;
     Ok(McpHandle {
         process: mcp_process,
         server,
-        dir: codex_home,
+        dir: hepta_home,
     })
 }
 
 /// Create a Hepta config that uses the mock server as the model provider.
 /// It also uses `approval_policy = "untrusted"` so that we exercise the
 /// elicitation code path for shell commands.
-fn create_config_toml(codex_home: &Path, server_uri: &str) -> std::io::Result<()> {
-    let config_toml = codex_home.join("config.toml");
+fn create_config_toml(hepta_home: &Path, server_uri: &str) -> std::io::Result<()> {
+    let config_toml = hepta_home.join("config.toml");
     std::fs::write(
         config_toml,
         format!(

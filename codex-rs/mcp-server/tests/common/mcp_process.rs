@@ -10,7 +10,7 @@ use tokio::process::ChildStdin;
 use tokio::process::ChildStdout;
 
 use anyhow::Context;
-use codex_mcp_server::CodexToolCallParam;
+use codex_mcp_server::HeptaToolCallParam;
 
 use pretty_assertions::assert_eq;
 use rmcp::model::CallToolRequestParams;
@@ -193,9 +193,9 @@ impl McpProcess {
     /// correlating notifications.
     pub async fn send_hepta_tool_call(
         &mut self,
-        params: CodexToolCallParam,
+        params: HeptaToolCallParam,
     ) -> anyhow::Result<i64> {
-        let codex_tool_call_params = CallToolRequestParams {
+        let hepta_tool_call_params = CallToolRequestParams {
             meta: None,
             name: "hepta".into(),
             arguments: Some(match serde_json::to_value(params)? {
@@ -206,7 +206,7 @@ impl McpProcess {
         };
         self.send_request(
             "tools/call",
-            Some(serde_json::to_value(codex_tool_call_params)?),
+            Some(serde_json::to_value(hepta_tool_call_params)?),
         )
         .await
     }
@@ -363,7 +363,7 @@ impl McpProcess {
 
 impl Drop for McpProcess {
     fn drop(&mut self) {
-        // These tests spawn a `codex-mcp-server` child process.
+        // These tests spawn the MCP server child process.
         //
         // We keep that child alive for the test and rely on Tokio's `kill_on_drop(true)` when this
         // helper is dropped. Tokio documents kill-on-drop as best-effort: dropping requests

@@ -52,7 +52,7 @@ pub(crate) async fn handle_exec_approval_request(
     command: Vec<String>,
     cwd: PathBuf,
     outgoing: Arc<crate::outgoing_message::OutgoingMessageSender>,
-    codex: Arc<CodexThread>,
+    hepta_thread: Arc<CodexThread>,
     request_id: RequestId,
     tool_call_id: String,
     event_id: String,
@@ -100,11 +100,11 @@ pub(crate) async fn handle_exec_approval_request(
 
     // Listen for the response on a separate task so we don't block the main agent loop.
     {
-        let codex = codex.clone();
+        let hepta_thread = hepta_thread.clone();
         let approval_id = approval_id.clone();
         let event_id = event_id.clone();
         tokio::spawn(async move {
-            on_exec_approval_response(approval_id, event_id, on_response, codex).await;
+            on_exec_approval_response(approval_id, event_id, on_response, hepta_thread).await;
         });
     }
 }
@@ -113,7 +113,7 @@ async fn on_exec_approval_response(
     approval_id: String,
     event_id: String,
     receiver: tokio::sync::oneshot::Receiver<serde_json::Value>,
-    codex: Arc<CodexThread>,
+    hepta_thread: Arc<CodexThread>,
 ) {
     let response = receiver.await;
     let value = match response {
@@ -134,7 +134,7 @@ async fn on_exec_approval_response(
         }
     });
 
-    if let Err(err) = codex
+    if let Err(err) = hepta_thread
         .submit(Op::ExecApproval {
             id: approval_id,
             turn_id: Some(event_id),

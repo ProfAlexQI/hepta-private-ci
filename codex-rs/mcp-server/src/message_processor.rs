@@ -31,10 +31,10 @@ use serde_json::json;
 use tokio::sync::Mutex;
 use tokio::task;
 
-use crate::codex_tool_config::CodexToolCallParam;
-use crate::codex_tool_config::CodexToolCallReplyParam;
-use crate::codex_tool_config::create_tool_for_codex_tool_call_param;
-use crate::codex_tool_config::create_tool_for_codex_tool_call_reply_param;
+use crate::codex_tool_config::HeptaToolCallParam;
+use crate::codex_tool_config::HeptaToolCallReplyParam;
+use crate::codex_tool_config::create_tool_for_hepta_tool_call_param;
+use crate::codex_tool_config::create_tool_for_hepta_tool_call_reply_param;
 use crate::outgoing_message::OutgoingMessageSender;
 
 pub(crate) struct MessageProcessor {
@@ -42,7 +42,7 @@ pub(crate) struct MessageProcessor {
     initialized: bool,
     arg0_paths: Arg0DispatchPaths,
     thread_manager: Arc<ThreadManager>,
-    running_requests_id_to_codex_uuid: Arc<Mutex<HashMap<RequestId, ThreadId>>>,
+    running_requests_id_to_hepta_thread_id: Arc<Mutex<HashMap<RequestId, ThreadId>>>,
 }
 
 impl MessageProcessor {
@@ -79,7 +79,7 @@ impl MessageProcessor {
             initialized: false,
             arg0_paths,
             thread_manager,
-            running_requests_id_to_codex_uuid: Arc::new(Mutex::new(HashMap::new())),
+            running_requests_id_to_hepta_thread_id: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -329,8 +329,8 @@ impl MessageProcessor {
         let result = rmcp::model::ListToolsResult {
             meta: None,
             tools: vec![
-                create_tool_for_codex_tool_call_param(),
-                create_tool_for_codex_tool_call_reply_param(),
+                create_tool_for_hepta_tool_call_param(),
+                create_tool_for_hepta_tool_call_reply_param(),
             ],
             next_cursor: None,
         };
@@ -346,11 +346,11 @@ impl MessageProcessor {
 
         match name.as_ref() {
             "hepta" | "codex" => {
-                self.handle_tool_call_codex(id, arguments, name.as_ref())
+                self.handle_tool_call_hepta(id, arguments, name.as_ref())
                     .await
             }
             "hepta-reply" | "codex-reply" => {
-                self.handle_tool_call_codex_session_reply(id, arguments, name.as_ref())
+                self.handle_tool_call_hepta_session_reply(id, arguments, name.as_ref())
                     .await
             }
             _ => {
@@ -365,7 +365,7 @@ impl MessageProcessor {
         }
     }
 
-    async fn handle_tool_call_codex(
+    async fn handle_tool_call_hepta(
         &self,
         id: RequestId,
         arguments: Option<rmcp::model::JsonObject>,
@@ -373,7 +373,7 @@ impl MessageProcessor {
     ) {
         let arguments = arguments.map(serde_json::Value::Object);
         let (initial_prompt, config): (String, Config) = match arguments {
-            Some(json_val) => match serde_json::from_value::<CodexToolCallParam>(json_val) {
+            Some(json_val) => match serde_json::from_value::<HeptaToolCallParam>(json_val) {
                 Ok(tool_cfg) => match tool_cfg.into_config(self.arg0_paths.clone()).await {
                     Ok(cfg) => cfg,
                     Err(e) => {
@@ -419,25 +419,26 @@ impl MessageProcessor {
         // Clone outgoing and server to move into async task.
         let outgoing = self.outgoing.clone();
         let thread_manager = self.thread_manager.clone();
-        let running_requests_id_to_codex_uuid = self.running_requests_id_to_codex_uuid.clone();
+        let running_requests_id_to_hepta_thread_id =
+            self.running_requests_id_to_hepta_thread_id.clone();
 
         // Spawn an async task to handle the Hepta session so that we do not
         // block the synchronous message-processing loop.
         task::spawn(async move {
             // Run the Hepta session and stream events back to the client.
-            crate::codex_tool_runner::run_codex_tool_session(
+            crate::codex_tool_runner::run_hepta_tool_session(
                 id,
                 initial_prompt,
                 config,
                 outgoing,
                 thread_manager,
-                running_requests_id_to_codex_uuid,
+                running_requests_id_to_hepta_thread_id,
             )
             .await;
         });
     }
 
-    async fn handle_tool_call_codex_session_reply(
+    async fn handle_tool_call_hepta_session_reply(
         &self,
         request_id: RequestId,
         arguments: Option<rmcp::model::JsonObject>,
@@ -447,8 +448,8 @@ impl MessageProcessor {
         tracing::info!("tools/call -> params: {:?}", arguments);
 
         // parse arguments
-        let codex_tool_call_reply_param: CodexToolCallReplyParam = match arguments {
-            Some(json_val) => match serde_json::from_value::<CodexToolCallReplyParam>(json_val) {
+        let hepta_tool_call_reply_param: HeptaToolCallReplyParam = match arguments {
+            Some(json_val) => match serde_json::from_value::<HeptaToolCallReplyParam>(json_val) {
                 Ok(params) => params,
                 Err(e) => {
                     tracing::error!("Failed to parse Hepta MCP tool reply parameters: {e}");
@@ -481,7 +482,7 @@ impl MessageProcessor {
             }
         };
 
-        let thread_id = match codex_tool_call_reply_param.get_thread_id() {
+        let thread_id = match hepta_tool_call_reply_param.get_thread_id() {
             Ok(id) => id,
             Err(e) => {
                 tracing::error!("Failed to parse thread_id: {e}");
@@ -500,9 +501,10 @@ impl MessageProcessor {
 
         // Clone outgoing to move into async task.
         let outgoing = self.outgoing.clone();
-        let running_requests_id_to_codex_uuid = self.running_requests_id_to_codex_uuid.clone();
+        let running_requests_id_to_hepta_thread_id =
+            self.running_requests_id_to_hepta_thread_id.clone();
 
-        let codex = match self.thread_manager.get_thread(thread_id).await {
+        let hepta_thread = match self.thread_manager.get_thread(thread_id).await {
             Ok(c) => c,
             Err(_) => {
                 tracing::warn!("Session not found for thread_id: {thread_id}");
@@ -517,19 +519,20 @@ impl MessageProcessor {
         };
 
         // Spawn the long-running reply handler.
-        let prompt = codex_tool_call_reply_param.prompt.clone();
+        let prompt = hepta_tool_call_reply_param.prompt.clone();
         tokio::spawn({
             let outgoing = outgoing.clone();
-            let running_requests_id_to_codex_uuid = running_requests_id_to_codex_uuid.clone();
+            let running_requests_id_to_hepta_thread_id =
+                running_requests_id_to_hepta_thread_id.clone();
 
             async move {
-                crate::codex_tool_runner::run_codex_tool_session_reply(
+                crate::codex_tool_runner::run_hepta_tool_session_reply(
                     thread_id,
-                    codex,
+                    hepta_thread,
                     outgoing,
                     request_id,
                     prompt,
-                    running_requests_id_to_codex_uuid,
+                    running_requests_id_to_hepta_thread_id,
                 )
                 .await;
             }
@@ -568,7 +571,7 @@ impl MessageProcessor {
 
         // Obtain the thread id while holding the first lock, then release.
         let thread_id = {
-            let map_guard = self.running_requests_id_to_codex_uuid.lock().await;
+            let map_guard = self.running_requests_id_to_hepta_thread_id.lock().await;
             match map_guard.get(&request_id) {
                 Some(id) => *id,
                 None => {
@@ -580,7 +583,7 @@ impl MessageProcessor {
         tracing::info!("thread_id: {thread_id}");
 
         // Obtain the Hepta thread from the server.
-        let codex_arc = match self.thread_manager.get_thread(thread_id).await {
+        let hepta_thread = match self.thread_manager.get_thread(thread_id).await {
             Ok(c) => c,
             Err(_) => {
                 tracing::warn!("Session not found for thread_id: {thread_id}");
@@ -589,7 +592,7 @@ impl MessageProcessor {
         };
 
         // Submit interrupt to Hepta.
-        if let Err(e) = codex_arc
+        if let Err(e) = hepta_thread
             .submit_with_id(Submission {
                 id: request_id_string,
                 op: codex_protocol::protocol::Op::Interrupt,
@@ -601,7 +604,7 @@ impl MessageProcessor {
             return;
         }
         // unregister the id so we don't keep it in the map
-        self.running_requests_id_to_codex_uuid
+        self.running_requests_id_to_hepta_thread_id
             .lock()
             .await
             .remove(&request_id);

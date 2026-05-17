@@ -599,6 +599,22 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   field for now; field-level migration should happen only with a broader
   thread-store/core API compatibility plan.
 
+## Cleaned in MCP tool primary-surface pass
+
+- MCP tool-call parameter types now use Hepta primary names:
+  `HeptaToolCallParam`, `HeptaToolCallReplyParam`,
+  `HeptaToolCallApprovalPolicy`, and `HeptaToolCallSandboxMode`.
+- The upstream `CodexToolCall*` public type names remain exported as source
+  compatibility aliases for downstream clients.
+- MCP message-processing and tool-runner internals now use Hepta primary
+  naming for session handler functions, request-to-thread maps, and test helper
+  variables.
+- The `hepta` and `hepta-reply` tool names remain the primary listed tools;
+  `codex` and `codex-reply` stay accepted aliases.
+- Legacy MCP notification/event method names and elicitation metadata fields
+  such as `codex/event` and `codex_*` stay compatibility wire names until a
+  separate protocol-versioned migration exists.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
