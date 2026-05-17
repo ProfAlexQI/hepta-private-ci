@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -12,6 +13,7 @@ const LOCAL_IMPORT_MANIFEST_PATH: &str = ".hepta/local-import/manifest.json";
 const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
 const TELEGRAM_ALLOWED_UPDATES: &str =
     "[\"message\",\"edited_message\",\"callback_query\",\"message_reaction\"]";
+const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramPluginStatus {
@@ -101,6 +103,31 @@ pub(crate) struct NativeTelegramCursorPlan {
     pub(crate) raw_update_payload_persisted: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramReceiveOnceStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) live_read_gate_env: &'static str,
+    pub(crate) live_read_gate_enabled: bool,
+    pub(crate) external_network_read: bool,
+    pub(crate) external_send: bool,
+    pub(crate) model_turn_started: bool,
+    pub(crate) cursor_written: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
+    pub(crate) limit: usize,
+    pub(crate) bot_api_ok: Option<bool>,
+    pub(crate) local_next_update_offset: Option<i64>,
+    pub(crate) config: NativeTelegramConfigStatus,
+    pub(crate) transport_plan: NativeTelegramTransportPlan,
+    pub(crate) cursor_plan: NativeTelegramCursorPlan,
+    pub(crate) inspection: NativeTelegramIngressInspection,
+    pub(crate) error: Option<String>,
+    pub(crate) next_migration_slice: &'static str,
+}
+
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
     if !requested {
         return NativeTelegramPluginStatus {
@@ -159,6 +186,141 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
             "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
         ),
         next_migration_slice: "wire native Bot API getUpdates/sendMessage loop behind explicit delivery gates",
+    }
+}
+
+pub(crate) fn telegram_receive_once_status(
+    requested: bool,
+    limit: usize,
+) -> NativeTelegramReceiveOnceStatus {
+    telegram_receive_once_status_with_gate(requested, limit, env_truthy(TELEGRAM_LIVE_READ_ENV))
+}
+
+fn telegram_receive_once_status_with_gate(
+    requested: bool,
+    limit: usize,
+    live_read_gate_enabled: bool,
+) -> NativeTelegramReceiveOnceStatus {
+    let limit = limit.clamp(1, 20);
+    let config = load_telegram_config_status();
+    let transport_plan = NativeTelegramTransportPlan::for_config(&config);
+    let cursor_plan = NativeTelegramCursorPlan::ready();
+
+    if !requested {
+        return NativeTelegramReceiveOnceStatus::base(
+            requested,
+            "disabled",
+            live_read_gate_enabled,
+            false,
+            limit,
+            config,
+            transport_plan,
+            cursor_plan,
+            inspect_telegram_updates(&[]),
+            None,
+        );
+    }
+
+    if !live_read_gate_enabled {
+        return NativeTelegramReceiveOnceStatus::base(
+            requested,
+            "gated",
+            false,
+            false,
+            limit,
+            config,
+            transport_plan,
+            cursor_plan,
+            inspect_telegram_updates(&[]),
+            Some(format!(
+                "live Telegram receive is gated; set {TELEGRAM_LIVE_READ_ENV}=1 to run one redacted getUpdates read"
+            )),
+        );
+    }
+
+    if !(config.enabled && config.token_shape_ok && config.binding_ready) {
+        return NativeTelegramReceiveOnceStatus::base(
+            requested,
+            "attention",
+            true,
+            false,
+            limit,
+            config,
+            transport_plan,
+            cursor_plan,
+            inspect_telegram_updates(&[]),
+            Some("Telegram config, token shape, or binding is not ready".to_string()),
+        );
+    }
+
+    let token = match load_effective_telegram_token() {
+        Ok(token) => token,
+        Err(error) => {
+            return NativeTelegramReceiveOnceStatus::base(
+                requested,
+                "attention",
+                true,
+                false,
+                limit,
+                config,
+                transport_plan,
+                cursor_plan,
+                inspect_telegram_updates(&[]),
+                Some(redact_token_like_text(&error)),
+            );
+        }
+    };
+
+    match call_telegram_get_updates(&token, limit) {
+        Ok(api) => {
+            let bot_api_ok = api.get("ok").and_then(Value::as_bool);
+            let updates = api
+                .get("result")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let inspection = inspect_telegram_updates(&updates);
+            let local_next_update_offset = inspection.latest_allowed_next_update_offset;
+            let status = if bot_api_ok.unwrap_or(false) {
+                "ready"
+            } else {
+                "attention"
+            };
+            let mut report = NativeTelegramReceiveOnceStatus::base(
+                requested,
+                status,
+                true,
+                true,
+                limit,
+                config,
+                transport_plan,
+                cursor_plan,
+                inspection,
+                None,
+            );
+            report.bot_api_ok = bot_api_ok;
+            report.local_next_update_offset = local_next_update_offset;
+            if bot_api_ok == Some(false) {
+                report.error = api
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(redact_token_like_text)
+                    .or_else(|| Some("Telegram Bot API getUpdates returned ok=false".to_string()));
+            }
+            report
+        }
+        Err(error) => NativeTelegramReceiveOnceStatus::base(
+            requested,
+            "attention",
+            true,
+            true,
+            limit,
+            config,
+            transport_plan,
+            cursor_plan,
+            inspect_telegram_updates(&[]),
+            Some(redact_token_like_text(&error)),
+        ),
     }
 }
 
@@ -335,6 +497,47 @@ fn load_telegram_config_status_from_path(
     })
 }
 
+fn load_effective_telegram_token() -> Result<String, String> {
+    let config_path = resolve_private_hepta_runtime_config_path()
+        .ok_or_else(|| "Hepta private Telegram config not found".to_string())?;
+    let raw = fs::read_to_string(&config_path)
+        .map_err(|error| format!("failed to read Hepta private Telegram config: {error}"))?;
+    let config: Value = serde_json::from_str(&raw)
+        .map_err(|error| format!("failed to parse Hepta private Telegram config: {error}"))?;
+    let telegram = config
+        .pointer("/channels/telegram")
+        .ok_or_else(|| "channels.telegram config is missing".to_string())?;
+    let bot_token_ref = telegram.get("botToken");
+    let token_secret_provider = bot_token_ref
+        .and_then(|value| value.get("provider"))
+        .and_then(Value::as_str);
+    let token_path = token_secret_provider
+        .and_then(|provider| secret_provider_path(&config_path, &config, provider));
+    let inline_token = bot_token_ref
+        .and_then(Value::as_str)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let env_token = env::var("HEPTA_TELEGRAM_BOT_TOKEN")
+        .ok()
+        .or_else(|| env::var("TELEGRAM_BOT_TOKEN").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let file_token = token_path
+        .as_ref()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let token = env_token
+        .or(file_token)
+        .or(inline_token)
+        .ok_or_else(|| "Telegram bot token is not configured".to_string())?;
+    if token_shape_ok(&token) {
+        Ok(token)
+    } else {
+        Err("Telegram bot token shape is invalid".to_string())
+    }
+}
+
 fn resolve_private_hepta_runtime_config_path() -> Option<PathBuf> {
     if let Ok(path) = env::var("HEPTA_CONFIG_PATH") {
         let path = PathBuf::from(path);
@@ -368,6 +571,56 @@ fn resolve_private_hepta_runtime_config_path() -> Option<PathBuf> {
             .join(LEGACY_CONFIG_FILE_NAME)
     });
     home_config.filter(|path| path.is_file())
+}
+
+fn call_telegram_get_updates(token: &str, limit: usize) -> Result<Value, String> {
+    let endpoint = format!("https://api.telegram.org/bot{token}/getUpdates");
+    let limit = limit.clamp(1, 20).to_string();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|error| format!("failed to build Telegram Bot API client: {error}"))?;
+    let response = client
+        .get(endpoint)
+        .query(&[
+            ("timeout", "0"),
+            ("limit", limit.as_str()),
+            ("allowed_updates", TELEGRAM_ALLOWED_UPDATES),
+        ])
+        .send()
+        .map_err(|error| {
+            format!(
+                "Telegram Bot API getUpdates request failed: {}",
+                error.without_url()
+            )
+        })?;
+    let status = response.status();
+    let body = response
+        .json::<Value>()
+        .map_err(|error| format!("failed to parse Telegram Bot API response JSON: {error}"))?;
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(format!(
+            "Telegram Bot API getUpdates HTTP status {}; description={}",
+            status.as_u16(),
+            body.get("description")
+                .and_then(Value::as_str)
+                .map(redact_token_like_text)
+                .unwrap_or_else(|| "missing".to_string())
+        ))
+    }
+}
+
+fn env_truthy(name: &str) -> bool {
+    env::var(name)
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn secret_provider_path(config_path: &Path, config: &Value, provider: &str) -> Option<PathBuf> {
@@ -588,6 +841,46 @@ impl NativeTelegramCursorPlan {
     }
 }
 
+impl NativeTelegramReceiveOnceStatus {
+    #[allow(clippy::too_many_arguments)]
+    fn base(
+        requested: bool,
+        status: &'static str,
+        live_read_gate_enabled: bool,
+        external_network_read: bool,
+        limit: usize,
+        config: NativeTelegramConfigStatus,
+        transport_plan: NativeTelegramTransportPlan,
+        cursor_plan: NativeTelegramCursorPlan,
+        inspection: NativeTelegramIngressInspection,
+        error: Option<String>,
+    ) -> Self {
+        Self {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested,
+            status,
+            live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
+            live_read_gate_enabled,
+            external_network_read,
+            external_send: false,
+            model_turn_started: false,
+            cursor_written: false,
+            raw_update_payload_exposed: false,
+            raw_token_exposed: false,
+            limit,
+            bot_api_ok: None,
+            local_next_update_offset: inspection.latest_allowed_next_update_offset,
+            config,
+            transport_plan,
+            cursor_plan,
+            inspection,
+            error,
+            next_migration_slice: "connect redacted receive candidates to Codex model-turn bridge, then enable gated send",
+        }
+    }
+}
+
 impl NativeTelegramTransportPlan {
     fn disabled() -> Self {
         Self {
@@ -768,5 +1061,20 @@ mod tests {
         assert!(!telegram_update_already_drained(42, Some(42)));
         assert_eq!(telegram_next_update_offset(42), Some(43));
         assert_eq!(telegram_next_update_offset(i64::MAX), None);
+    }
+
+    #[test]
+    fn receive_once_without_live_gate_is_gated_and_side_effect_free() {
+        let report = telegram_receive_once_status_with_gate(true, 999, false);
+        assert_eq!(report.status, "gated");
+        assert_eq!(report.limit, 20);
+        assert!(!report.live_read_gate_enabled);
+        assert!(!report.external_network_read);
+        assert!(!report.external_send);
+        assert!(!report.model_turn_started);
+        assert!(!report.cursor_written);
+        assert!(!report.raw_update_payload_exposed);
+        assert!(!report.raw_token_exposed);
+        assert!(report.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
     }
 }

@@ -159,6 +159,14 @@ fn route_native_gateway_request(
             "application/json; charset=utf-8",
             json_or_error(&telegram_plugin),
         ),
+        "/api/telegram-receive-once" => (
+            "200 OK",
+            "application/json; charset=utf-8",
+            json_or_error(&native_telegram::telegram_receive_once_status(
+                options.with_telegram_plugin,
+                20,
+            )),
+        ),
         _ => (
             "404 Not Found",
             "text/plain; charset=utf-8",
@@ -243,6 +251,7 @@ fn native_gateway_json(
             "Control UI shell",
             "Telegram plugin redacted config contract",
             "Telegram native supervisor readiness surface",
+            "Telegram gated one-shot receive surface",
         ],
         next_migration_slice: "wire native Bot API getUpdates/sendMessage loop behind explicit delivery gates",
     })

@@ -731,6 +731,13 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   the next Telegram update offset, duplicate suppression treats
   `update_id < cursor` as already drained, and the status contract keeps raw
   update payload persistence disabled.
+- A gated one-shot receive endpoint now exists at
+  `/api/telegram-receive-once`. By default it returns a side-effect-free
+  gated report. A live Bot API `getUpdates` read requires
+  `HEPTA_NATIVE_TELEGRAM_LIVE_READ=1`; even then the endpoint only returns
+  redacted parser statistics and keeps `external_send=false`,
+  `model_turn_started=false`, `cursor_written=false`,
+  `raw_update_payload_exposed=false`, and `raw_token_exposed=false`.
 
 ## Keep for compatibility
 
