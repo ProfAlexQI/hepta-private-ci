@@ -642,6 +642,15 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - App-server thread-processing test guards accept both the new Hepta test
   identity and the legacy `codex-app-server-client-test` value.
 
+## Cleaned in exec-server local identity pass
+
+- Remote exec-server defaults now name the local executor `hepta-exec-server`.
+- Remote registration stderr and listen tracing now say `hepta exec-server` /
+  `hepta-exec-server`.
+- Remote executor bearer-token lookup now prefers
+  `HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN` while preserving
+  `CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN` as a legacy fallback.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

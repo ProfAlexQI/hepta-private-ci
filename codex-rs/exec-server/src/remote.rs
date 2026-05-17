@@ -14,6 +14,8 @@ use crate::ExecServerRuntimePaths;
 use crate::relay::run_multiplexed_executor;
 use crate::server::ConnectionProcessor;
 
+pub const HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR: &str =
+    "HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN";
 pub const CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR: &str =
     "CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN";
 
@@ -123,7 +125,7 @@ impl RemoteExecutorConfig {
         Ok(Self {
             base_url,
             executor_id,
-            name: "codex-exec-server".to_string(),
+            name: "hepta-exec-server".to_string(),
             bearer_token,
         })
     }
@@ -143,7 +145,7 @@ pub async fn run_remote_executor(
     loop {
         let response = client.register_executor(&config.executor_id).await?;
         eprintln!(
-            "codex exec-server remote executor registered with executor_id {}",
+            "hepta exec-server remote executor registered with executor_id {}",
             response.executor_id
         );
 
@@ -168,21 +170,50 @@ fn read_remote_bearer_token_from_env() -> Result<String, ExecServerError> {
 
 fn read_remote_bearer_token_from_env_with<F>(get_var: F) -> Result<String, ExecServerError>
 where
-    F: FnOnce(&str) -> Result<String, env::VarError>,
+    F: FnMut(&str) -> Result<String, env::VarError>,
 {
-    let bearer_token = get_var(CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR).map_err(|_| {
-        ExecServerError::ExecutorRegistryAuth(format!(
-            "executor registry bearer token environment variable `{CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR}` is not set"
-        ))
-    })?;
-    normalize_bearer_token(bearer_token)
+    let (bearer_token, env_var_name) =
+        read_remote_bearer_token_and_env_var_name_from_env_with(get_var)?;
+    normalize_bearer_token_from_env(bearer_token, env_var_name)
+}
+
+fn read_remote_bearer_token_and_env_var_name_from_env_with<F>(
+    mut get_var: F,
+) -> Result<(String, &'static str), ExecServerError>
+where
+    F: FnMut(&str) -> Result<String, env::VarError>,
+{
+    match get_var(HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR) {
+        Ok(value) => Ok((value, HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR)),
+        Err(_) => get_var(CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR)
+            .map(|value| (value, CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR))
+            .map_err(|_| {
+                ExecServerError::ExecutorRegistryAuth(format!(
+                    "executor registry bearer token environment variable `{HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR}` is not set; legacy `{CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR}` is also supported"
+                ))
+            }),
+    }
+}
+
+fn normalize_bearer_token_from_env(
+    bearer_token: String,
+    env_var_name: &str,
+) -> Result<String, ExecServerError> {
+    let bearer_token = bearer_token.trim().to_string();
+    if bearer_token.is_empty() {
+        Err(ExecServerError::ExecutorRegistryAuth(format!(
+            "executor registry bearer token environment variable `{env_var_name}` is empty"
+        )))
+    } else {
+        Ok(bearer_token)
+    }
 }
 
 fn normalize_bearer_token(bearer_token: String) -> Result<String, ExecServerError> {
     let bearer_token = bearer_token.trim().to_string();
     if bearer_token.is_empty() {
         return Err(ExecServerError::ExecutorRegistryAuth(format!(
-            "executor registry bearer token environment variable `{CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR}` is empty"
+            "executor registry bearer token must not be empty"
         )));
     }
     Ok(bearer_token)
@@ -332,5 +363,29 @@ mod tests {
 
         assert!(debug.contains("<redacted>"));
         assert!(!debug.contains("secret-token"));
+    }
+
+    #[test]
+    fn read_remote_bearer_token_prefers_hepta_env_var() {
+        let token = read_remote_bearer_token_from_env_with(|name| match name {
+            HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR => Ok(" hepta-token ".to_string()),
+            CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR => Ok("codex-token".to_string()),
+            _ => Err(env::VarError::NotPresent),
+        })
+        .expect("hepta token should load");
+
+        assert_eq!(token, "hepta-token");
+    }
+
+    #[test]
+    fn read_remote_bearer_token_falls_back_to_legacy_codex_env_var() {
+        let token = read_remote_bearer_token_from_env_with(|name| match name {
+            HEPTA_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR => Err(env::VarError::NotPresent),
+            CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN_ENV_VAR => Ok(" codex-token ".to_string()),
+            _ => Err(env::VarError::NotPresent),
+        })
+        .expect("legacy token should load");
+
+        assert_eq!(token, "codex-token");
     }
 }
