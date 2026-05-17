@@ -683,6 +683,13 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - App-server test-client websocket connection failures now suggest
   `hepta app-server --listen <url>` as the primary server startup command.
 
+## Cleaned in sandbox/helper README pass
+
+- UDS adapter examples now invoke `hepta --config` while keeping the
+  `codex-stdio-to-uds` helper binary name as an internal package surface.
+- Linux sandbox and core README docs now name `hepta sandbox linux` as the
+  primary command while documenting `codex debug landlock` as a legacy alias.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
