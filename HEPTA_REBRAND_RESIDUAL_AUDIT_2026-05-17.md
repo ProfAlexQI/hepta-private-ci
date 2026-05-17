@@ -277,6 +277,16 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   MCP server descriptions, IDE context retry hints, and plugin-disabled tests
   now use Hepta wording.
 
+## Cleaned in MCP/OAuth and exec-server surface pass
+
+- MCP startup auth-required errors now tell users to run `hepta mcp login`.
+- ChatGPT connector-auth elicitations now say the connector will be used in
+  Hepta.
+- MCP OAuth dynamic-client registration now presents Hepta as the client name.
+- Exec-server missing-runtime-path errors, environment comments, and sample
+  configured commands now use Hepta wording while preserving legacy
+  compatibility environment names.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

@@ -1,4 +1,4 @@
-//! Aggregates MCP server connections for Codex.
+//! Aggregates MCP server connections for Hepta.
 //!
 //! [`McpConnectionManager`] owns the set of running async RMCP clients keyed by
 //! MCP server name. It coordinates startup status events, keeps server origin
@@ -725,7 +725,7 @@ fn mcp_init_error_display(
         )
     } else if is_mcp_client_auth_required_error(err) {
         format!(
-            "The {server_name} MCP server is not logged in. Run `codex mcp login {server_name}`."
+            "The {server_name} MCP server is not logged in. Run `hepta mcp login {server_name}`."
         )
     } else if is_mcp_client_startup_timeout_error(err) {
         let startup_timeout_secs = match entry {

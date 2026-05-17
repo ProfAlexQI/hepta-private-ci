@@ -38,7 +38,7 @@ fn init_params() -> InitializeRequestParams {
         client_info: Implementation {
             name: "codex-test".into(),
             version: "0.0.0-test".into(),
-            title: Some("Codex rmcp shutdown test".into()),
+            title: Some("Hepta rmcp shutdown test".into()),
             description: None,
             icons: None,
             website_url: None,
