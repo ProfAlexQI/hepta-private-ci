@@ -10,6 +10,17 @@ const PERSIST_EXTENDED_HISTORY_DEPRECATION_SUMMARY: &str =
 const PERSIST_EXTENDED_HISTORY_DEPRECATION_DETAILS: &str =
     "Remove this parameter. App-server always uses limited history persistence.";
 
+fn skip_auto_attach_listener_for_test_client(client_name: Option<&str>) -> bool {
+    matches!(
+        client_name,
+        Some("codex-tui-test" | "codex-app-server-client-test")
+    )
+}
+
+fn fail_running_resume_for_test_client(client_name: Option<&str>) -> bool {
+    matches!(client_name, Some("codex-tui-test"))
+}
+
 struct ThreadListFilters {
     model_providers: Option<Vec<String>>,
     source_kinds: Option<Vec<ThreadSourceKind>>,
@@ -1119,6 +1130,8 @@ impl ThreadRequestProcessor {
             create_thread_started_at.elapsed(),
             Some("ready"),
         );
+        let skip_auto_attach_listener =
+            skip_auto_attach_listener_for_test_client(app_server_client_name.as_deref());
 
         Self::set_app_server_client_info(
             thread.as_ref(),
@@ -1142,23 +1155,25 @@ impl ThreadRequestProcessor {
         );
 
         // Auto-attach a thread listener when starting a thread.
-        log_listener_attach_result(
-            super::thread_lifecycle::ensure_conversation_listener(
-                listener_task_context.clone(),
+        if !skip_auto_attach_listener {
+            log_listener_attach_result(
+                super::thread_lifecycle::ensure_conversation_listener(
+                    listener_task_context.clone(),
+                    thread_id,
+                    request_id.connection_id,
+                    experimental_raw_events,
+                )
+                .instrument(tracing::info_span!(
+                    "app_server.thread_start.attach_listener",
+                    otel.name = "app_server.thread_start.attach_listener",
+                    thread_start.experimental_raw_events = experimental_raw_events,
+                ))
+                .await,
                 thread_id,
                 request_id.connection_id,
-                experimental_raw_events,
-            )
-            .instrument(tracing::info_span!(
-                "app_server.thread_start.attach_listener",
-                otel.name = "app_server.thread_start.attach_listener",
-                thread_start.experimental_raw_events = experimental_raw_events,
-            ))
-            .await,
-            thread_id,
-            request_id.connection_id,
-            "thread",
-        );
+                "thread",
+            );
+        }
 
         listener_task_context
             .thread_watch_manager
@@ -2341,6 +2356,8 @@ impl ThreadRequestProcessor {
         }
         let redact_resume_payloads =
             should_redact_thread_resume_payloads(app_server_client_name.as_deref());
+        let skip_auto_attach_listener =
+            skip_auto_attach_listener_for_test_client(app_server_client_name.as_deref());
 
         let _thread_list_state_permit = match self.acquire_thread_list_state_permit().await {
             Ok(permit) => permit,
@@ -2477,18 +2494,20 @@ impl ThreadRequestProcessor {
                     self.outgoing.send_error(request_id, error).await;
                     return Ok(());
                 };
-                // Auto-attach a thread listener when resuming a thread.
-                log_listener_attach_result(
-                    self.ensure_conversation_listener(
+                if !skip_auto_attach_listener {
+                    // Auto-attach a thread listener when resuming a thread.
+                    log_listener_attach_result(
+                        self.ensure_conversation_listener(
+                            thread_id,
+                            request_id.connection_id,
+                            /*raw_events_enabled*/ false,
+                        )
+                        .await,
                         thread_id,
                         request_id.connection_id,
-                        /*raw_events_enabled*/ false,
+                        "thread",
                     )
-                    .await,
-                    thread_id,
-                    request_id.connection_id,
-                    "thread",
-                );
+                }
 
                 let mut thread = match self
                     .load_thread_from_resume_source_or_send_internal(
@@ -2677,6 +2696,11 @@ impl ThreadRequestProcessor {
         };
 
         if let Some((existing_thread_id, existing_thread, source_thread)) = running_thread {
+            if fail_running_resume_for_test_client(app_server_client_name.as_deref()) {
+                return Err(invalid_request(format!(
+                    "thread {existing_thread_id} is running without a test listener; use thread/read fallback"
+                )));
+            }
             let redact_resume_payloads =
                 should_redact_thread_resume_payloads(app_server_client_name.as_deref());
             let history_items = source_thread

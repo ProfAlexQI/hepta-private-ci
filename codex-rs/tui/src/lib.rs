@@ -303,6 +303,7 @@ async fn start_embedded_app_server(
         log_db,
         state_db,
         environment_manager,
+        "codex-tui",
         InProcessAppServerClient::start,
     )
     .await
@@ -527,13 +528,24 @@ pub(crate) async fn start_embedded_app_server_for_picker(
     config: &Config,
 ) -> color_eyre::Result<AppServerSession> {
     let state_db = init_state_db_for_app_server_target(config, &AppServerTarget::Embedded).await?;
-    start_app_server_for_picker(
-        config,
-        &AppServerTarget::Embedded,
+    let app_server = start_embedded_app_server_with(
+        Arg0DispatchPaths::default(),
+        config.clone(),
+        Vec::new(),
+        LoaderOverrides::default(),
+        /*strict_config*/ false,
+        CloudRequirementsLoader::default(),
+        codex_feedback::CodexFeedback::new(),
+        /*log_db*/ None,
         state_db,
         Arc::new(EnvironmentManager::default_for_tests()),
+        "codex-tui-test",
+        InProcessAppServerClient::start,
     )
-    .await
+    .await?;
+    Ok(AppServerSession::new(AppServerClient::InProcess(
+        app_server,
+    )))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -548,6 +560,7 @@ async fn start_embedded_app_server_with<F, Fut>(
     log_db: Option<log_db::LogDbLayer>,
     state_db: Option<StateDbHandle>,
     environment_manager: Arc<EnvironmentManager>,
+    client_name: &'static str,
     start_client: F,
 ) -> color_eyre::Result<InProcessAppServerClient>
 where
@@ -579,7 +592,7 @@ where
         session_source: serde_json::from_value(serde_json::json!("cli"))
             .unwrap_or_else(|err| panic!("cli session source should deserialize: {err}")),
         enable_codex_api_key_env: false,
-        client_name: "codex-tui".to_string(),
+        client_name: client_name.to_string(),
         client_version: env!("CARGO_PKG_VERSION").to_string(),
         experimental_api: true,
         opt_out_notification_methods: Vec::new(),
@@ -1839,7 +1852,7 @@ mod tests {
     ) -> color_eyre::Result<InProcessAppServerClient> {
         let state_db =
             init_state_db_for_app_server_target(&config, &AppServerTarget::Embedded).await?;
-        start_embedded_app_server(
+        start_embedded_app_server_with(
             Arg0DispatchPaths::default(),
             config,
             Vec::new(),
@@ -1850,6 +1863,8 @@ mod tests {
             /*log_db*/ None,
             state_db,
             Arc::new(EnvironmentManager::default_for_tests()),
+            "codex-tui-test",
+            InProcessAppServerClient::start,
         )
         .await
     }
@@ -2435,6 +2450,7 @@ mod tests {
             /*log_db*/ None,
             /*state_db*/ None,
             Arc::new(EnvironmentManager::default_for_tests()),
+            "codex-tui-test",
             |_args| async { Err(std::io::Error::other("boom")) },
         )
         .await;

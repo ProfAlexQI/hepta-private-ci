@@ -1331,6 +1331,7 @@ fn open_agent_picker_marks_loaded_threads_open() -> Result<()> {
                 is_closed: false,
             })
         );
+        app_server.shutdown().await?;
         Ok(())
     })
 }
@@ -1374,6 +1375,7 @@ fn attach_live_thread_for_selection_rejects_empty_non_ephemeral_fallback_threads
             format!("Agent thread {thread_id} is not yet available for replay or live attach.")
         );
         assert!(!app.thread_event_channels.contains_key(&thread_id));
+        app_server.shutdown().await?;
         Ok(())
     })
 }
@@ -1414,6 +1416,7 @@ fn attach_live_thread_for_selection_rejects_unmaterialized_fallback_threads() ->
             format!("Agent thread {thread_id} is not yet available for replay or live attach.")
         );
         assert!(!app.thread_event_channels.contains_key(&thread_id));
+        app_server.shutdown().await?;
         Ok(())
     })
 }
@@ -3558,6 +3561,7 @@ fn discard_side_thread_removes_agent_navigation_entry() -> Result<()> {
 
         assert_eq!(app.agent_navigation.get(&side_thread_id), None);
         assert!(!app.side_threads.contains_key(&side_thread_id));
+        app_server.shutdown().await?;
         Ok(())
     })
 }
@@ -5255,6 +5259,7 @@ fn interrupt_without_active_turn_is_treated_as_handled() -> Result<()> {
         .expect("interrupt submission should not fail");
 
         assert_eq!(handled, true);
+        app_server.shutdown().await?;
         Ok(())
     })
 }
