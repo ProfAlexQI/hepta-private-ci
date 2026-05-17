@@ -1398,6 +1398,69 @@ fn call_telegram_get_updates(token: &str, limit: usize) -> Result<Value, String>
     }
 }
 
+#[allow(dead_code)]
+fn call_telegram_send_message(
+    token: &str,
+    chat_id: i64,
+    message_text: &str,
+    reply_to_message_id: Option<i64>,
+) -> Result<Value, String> {
+    let endpoint = format!("https://api.telegram.org/bot{token}/sendMessage");
+    let body = telegram_send_message_request_body(message_text, chat_id, reply_to_message_id)?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|error| format!("failed to build Telegram Bot API client: {error}"))?;
+    let response = client.post(endpoint).json(&body).send().map_err(|error| {
+        format!(
+            "Telegram Bot API sendMessage request failed: {}",
+            error.without_url()
+        )
+    })?;
+    let status = response.status();
+    let body = response
+        .json::<Value>()
+        .map_err(|error| format!("failed to parse Telegram Bot API send response JSON: {error}"))?;
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(format!(
+            "Telegram Bot API sendMessage HTTP status {}; description={}",
+            status.as_u16(),
+            body.get("description")
+                .and_then(Value::as_str)
+                .map(redact_token_like_text)
+                .unwrap_or_else(|| "missing".to_string())
+        ))
+    }
+}
+
+fn telegram_send_message_request_body(
+    message_text: &str,
+    chat_id: i64,
+    reply_to_message_id: Option<i64>,
+) -> Result<Value, String> {
+    let text = message_text.trim();
+    if text.is_empty() {
+        return Err("Telegram sendMessage text must be non-empty".to_string());
+    }
+    let mut body = serde_json::json!({
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": true,
+    });
+    if let Some(message_id) = reply_to_message_id {
+        if message_id <= 0 {
+            return Err("Telegram reply message id must be positive".to_string());
+        }
+        body["reply_parameters"] = serde_json::json!({
+            "message_id": message_id,
+            "allow_sending_without_reply": true,
+        });
+    }
+    Ok(body)
+}
+
 fn env_truthy(name: &str) -> bool {
     env::var(name)
         .map(|value| {
@@ -2700,6 +2763,55 @@ mod tests {
         assert!(!allowed.request_body_materialized_by_status);
         assert!(!allowed.delivery_performed_by_status);
         assert!(!allowed.raw_response_text_exposed);
+    }
+
+    #[test]
+    fn send_message_request_body_shapes_plain_reply_without_parse_mode() {
+        let body = telegram_send_message_request_body(
+            "  private model response text  ",
+            6476198178_i64,
+            Some(11),
+        )
+        .expect("request body");
+        assert_eq!(
+            body.get("chat_id").and_then(Value::as_i64),
+            Some(6476198178)
+        );
+        assert_eq!(
+            body.get("text").and_then(Value::as_str),
+            Some("private model response text")
+        );
+        assert_eq!(
+            body.pointer("/reply_parameters/message_id")
+                .and_then(Value::as_i64),
+            Some(11)
+        );
+        assert_eq!(
+            body.pointer("/reply_parameters/allow_sending_without_reply")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            body.get("disable_web_page_preview")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(body.get("parse_mode").is_none());
+    }
+
+    #[test]
+    fn send_message_request_body_rejects_empty_text_and_bad_reply_id() {
+        let empty = telegram_send_message_request_body("   ", 6476198178_i64, Some(11))
+            .expect_err("empty text rejected");
+        assert!(empty.contains("text must be non-empty"));
+
+        let bad_reply = telegram_send_message_request_body(
+            "private model response text",
+            6476198178_i64,
+            Some(0),
+        )
+        .expect_err("bad reply rejected");
+        assert!(bad_reply.contains("reply message id must be positive"));
     }
 
     #[test]

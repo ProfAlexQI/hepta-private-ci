@@ -799,6 +799,11 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   send can be considered allowed, and status probes still do not materialize a
   request body, deliver a message, expose raw response text, or write cursor
   state.
+- Internal `sendMessage` request shaping is now covered: model output is
+  trimmed into a plain-text Telegram request body with optional
+  `reply_parameters`, no parse mode, disabled web previews, and fail-closed
+  validation for empty text or invalid reply ids. The Bot API send helper is
+  present but not called by readiness/status probes.
 
 ## Keep for compatibility
 
