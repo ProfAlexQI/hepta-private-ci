@@ -50,6 +50,29 @@ use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_test::internal::MockWriter;
 
+fn run_large_stack_async_test<F>(name: &'static str, future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+
+    let handle = std::thread::Builder::new()
+        .name(name.to_string())
+        .stack_size(TEST_STACK_SIZE_BYTES)
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_stack_size(TEST_STACK_SIZE_BYTES)
+                .enable_all()
+                .build()
+                .expect("large-stack runtime should build");
+            runtime.block_on(future);
+        })
+        .expect("large-stack test thread should spawn");
+
+    handle.join().expect("large-stack test thread panicked");
+}
+
 fn annotations(
     read_only: Option<bool>,
     destructive: Option<bool>,
@@ -2585,8 +2608,15 @@ async fn permission_request_hook_runs_after_remembered_mcp_approval() {
     );
 }
 
-#[tokio::test]
-async fn guardian_mode_mcp_denial_returns_rationale_message() {
+#[test]
+fn guardian_mode_mcp_denial_returns_rationale_message() {
+    run_large_stack_async_test(
+        "guardian_mode_mcp_denial_returns_rationale_message",
+        guardian_mode_mcp_denial_returns_rationale_message_impl(),
+    );
+}
+
+async fn guardian_mode_mcp_denial_returns_rationale_message_impl() {
     let server = start_mock_server().await;
     let guardian_request_log = mount_sse_once(
         &server,

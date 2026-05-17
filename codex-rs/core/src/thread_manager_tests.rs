@@ -33,6 +33,29 @@ use wiremock::MockServer;
 
 const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
 
+fn run_large_stack_async_test<F>(name: &'static str, future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+
+    let handle = std::thread::Builder::new()
+        .name(name.to_string())
+        .stack_size(TEST_STACK_SIZE_BYTES)
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_stack_size(TEST_STACK_SIZE_BYTES)
+                .enable_all()
+                .build()
+                .expect("large-stack runtime should build");
+            runtime.block_on(future);
+        })
+        .expect("large-stack test thread should spawn");
+
+    handle.join().expect("large-stack test thread panicked");
+}
+
 fn user_msg(text: &str) -> ResponseItem {
     ResponseItem::Message {
         id: None,
@@ -481,8 +504,15 @@ async fn start_thread_keeps_internal_threads_hidden_from_normal_lookups() {
     assert!(manager.list_thread_ids().await.is_empty());
 }
 
-#[tokio::test]
-async fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {
+#[test]
+fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {
+    run_large_stack_async_test(
+        "resume_and_fork_do_not_restore_thread_environments_from_rollout",
+        resume_and_fork_do_not_restore_thread_environments_from_rollout_impl(),
+    );
+}
+
+async fn resume_and_fork_do_not_restore_thread_environments_from_rollout_impl() {
     let temp_dir = tempdir().expect("tempdir");
     let mut config = test_config().await;
     config.codex_home = temp_dir.path().join("codex-home").abs();

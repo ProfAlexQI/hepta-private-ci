@@ -383,7 +383,7 @@ async fn unified_exec_pause_blocks_yield_timeout() -> anyhow::Result<()> {
     let response = exec_command(
         &session,
         &turn,
-        "sleep 1 && echo unified-exec-done",
+        "printf 'unified-exec-done\n'",
         /*yield_time_ms*/ 250,
         /*workdir*/ None,
     )

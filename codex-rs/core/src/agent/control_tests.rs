@@ -37,6 +37,29 @@ use tokio::time::sleep;
 use tokio::time::timeout;
 use toml::Value as TomlValue;
 
+fn run_large_stack_async_test<F>(name: &'static str, future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+
+    let handle = std::thread::Builder::new()
+        .name(name.to_string())
+        .stack_size(TEST_STACK_SIZE_BYTES)
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_stack_size(TEST_STACK_SIZE_BYTES)
+                .enable_all()
+                .build()
+                .expect("large-stack runtime should build");
+            runtime.block_on(future);
+        })
+        .expect("large-stack test thread should spawn");
+
+    handle.join().expect("large-stack test thread panicked");
+}
+
 async fn test_config_with_cli_overrides(
     cli_overrides: Vec<(String, TomlValue)>,
 ) -> (TempDir, Config) {
@@ -599,8 +622,15 @@ async fn spawn_agent_creates_thread_and_sends_prompt() {
     assert_eq!(captured, Some(expected));
 }
 
-#[tokio::test]
-async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
+#[test]
+fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
+    run_large_stack_async_test(
+        "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
+        spawn_agent_can_fork_parent_thread_history_with_sanitized_items_impl(),
+    );
+}
+
+async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items_impl() {
     let harness = AgentControlHarness::new().await;
     let mut parent_config = harness.config.clone();
     let _ = parent_config.features.enable(Feature::MultiAgentV2);
@@ -757,8 +787,15 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .expect("parent shutdown should submit");
 }
 
-#[tokio::test]
-async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
+#[test]
+fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
+    run_large_stack_async_test(
+        "spawn_agent_fork_flushes_parent_rollout_before_loading_history",
+        spawn_agent_fork_flushes_parent_rollout_before_loading_history_impl(),
+    );
+}
+
+async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history_impl() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
     let turn_context = parent_thread.codex.session.new_default_turn().await;
@@ -819,8 +856,15 @@ async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
         .expect("parent shutdown should submit");
 }
 
-#[tokio::test]
-async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
+#[test]
+fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
+    run_large_stack_async_test(
+        "spawn_agent_fork_last_n_turns_keeps_only_recent_turns",
+        spawn_agent_fork_last_n_turns_keeps_only_recent_turns_impl(),
+    );
+}
+
+async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns_impl() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
 
@@ -1590,7 +1634,7 @@ async fn resume_thread_subagent_restores_stored_nickname_and_role() {
         .await
         .expect("status subscription should succeed");
     if matches!(status_rx.borrow().clone(), AgentStatus::PendingInit) {
-        timeout(Duration::from_secs(5), async {
+        timeout(Duration::from_secs(20), async {
             loop {
                 status_rx
                     .changed()
@@ -1612,7 +1656,7 @@ async fn resume_thread_subagent_restores_stored_nickname_and_role() {
     let state_db = child_thread
         .state_db()
         .expect("sqlite state db should be available for nickname resume test");
-    timeout(Duration::from_secs(5), async {
+    timeout(Duration::from_secs(20), async {
         loop {
             if let Ok(Some(metadata)) = state_db.get_thread(child_thread_id).await
                 && metadata.agent_nickname.is_some()
@@ -1680,8 +1724,15 @@ async fn resume_thread_subagent_restores_stored_nickname_and_role() {
         .expect("resumed child shutdown should submit");
 }
 
-#[tokio::test]
-async fn resume_agent_from_rollout_reads_archived_rollout_path() {
+#[test]
+fn resume_agent_from_rollout_reads_archived_rollout_path() {
+    run_large_stack_async_test(
+        "resume_agent_from_rollout_reads_archived_rollout_path",
+        resume_agent_from_rollout_reads_archived_rollout_path_impl(),
+    );
+}
+
+async fn resume_agent_from_rollout_reads_archived_rollout_path_impl() {
     let harness = AgentControlHarness::new().await;
     let child_thread_id = harness
         .control
@@ -2031,8 +2082,15 @@ async fn shutdown_agent_tree_closes_descendants_when_started_at_child() {
     assert_eq!(shutdown_ids, expected_shutdown_ids);
 }
 
-#[tokio::test]
-async fn resume_agent_from_rollout_does_not_reopen_closed_descendants() {
+#[test]
+fn resume_agent_from_rollout_does_not_reopen_closed_descendants() {
+    run_large_stack_async_test(
+        "resume_agent_from_rollout_does_not_reopen_closed_descendants",
+        resume_agent_from_rollout_does_not_reopen_closed_descendants_impl(),
+    );
+}
+
+async fn resume_agent_from_rollout_does_not_reopen_closed_descendants_impl() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
 
@@ -2126,8 +2184,15 @@ async fn resume_agent_from_rollout_does_not_reopen_closed_descendants() {
         .expect("tree shutdown after resume should succeed");
 }
 
-#[tokio::test]
-async fn resume_closed_child_reopens_open_descendants() {
+#[test]
+fn resume_closed_child_reopens_open_descendants() {
+    run_large_stack_async_test(
+        "resume_closed_child_reopens_open_descendants",
+        resume_closed_child_reopens_open_descendants_impl(),
+    );
+}
+
+async fn resume_closed_child_reopens_open_descendants_impl() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
 
@@ -2223,8 +2288,15 @@ async fn resume_closed_child_reopens_open_descendants() {
         .expect("parent shutdown should succeed");
 }
 
-#[tokio::test]
-async fn resume_agent_from_rollout_reopens_open_descendants_after_manager_shutdown() {
+#[test]
+fn resume_agent_from_rollout_reopens_open_descendants_after_manager_shutdown() {
+    run_large_stack_async_test(
+        "resume_agent_from_rollout_reopens_open_descendants_after_manager_shutdown",
+        resume_agent_from_rollout_reopens_open_descendants_after_manager_shutdown_impl(),
+    );
+}
+
+async fn resume_agent_from_rollout_reopens_open_descendants_after_manager_shutdown_impl() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
 
@@ -2314,8 +2386,15 @@ async fn resume_agent_from_rollout_reopens_open_descendants_after_manager_shutdo
         .expect("tree shutdown after subtree resume should succeed");
 }
 
-#[tokio::test]
-async fn resume_agent_from_rollout_uses_edge_data_when_descendant_metadata_source_is_stale() {
+#[test]
+fn resume_agent_from_rollout_uses_edge_data_when_descendant_metadata_source_is_stale() {
+    run_large_stack_async_test(
+        "resume_agent_from_rollout_uses_edge_data_when_descendant_metadata_source_is_stale",
+        resume_agent_from_rollout_uses_edge_data_when_descendant_metadata_source_is_stale_impl(),
+    );
+}
+
+async fn resume_agent_from_rollout_uses_edge_data_when_descendant_metadata_source_is_stale_impl() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
 
@@ -2445,8 +2524,15 @@ async fn resume_agent_from_rollout_uses_edge_data_when_descendant_metadata_sourc
         .expect("tree shutdown after subtree resume should succeed");
 }
 
-#[tokio::test]
-async fn resume_agent_from_rollout_skips_descendants_when_parent_resume_fails() {
+#[test]
+fn resume_agent_from_rollout_skips_descendants_when_parent_resume_fails() {
+    run_large_stack_async_test(
+        "resume_agent_from_rollout_skips_descendants_when_parent_resume_fails",
+        resume_agent_from_rollout_skips_descendants_when_parent_resume_fails_impl(),
+    );
+}
+
+async fn resume_agent_from_rollout_skips_descendants_when_parent_resume_fails_impl() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
 

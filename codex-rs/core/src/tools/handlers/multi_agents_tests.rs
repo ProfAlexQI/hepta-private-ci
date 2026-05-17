@@ -64,6 +64,29 @@ use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
+fn run_large_stack_async_test<F>(name: &'static str, future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+
+    let handle = std::thread::Builder::new()
+        .name(name.to_string())
+        .stack_size(TEST_STACK_SIZE_BYTES)
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_stack_size(TEST_STACK_SIZE_BYTES)
+                .enable_all()
+                .build()
+                .expect("large-stack runtime should build");
+            runtime.block_on(future);
+        })
+        .expect("large-stack test thread should spawn");
+
+    handle.join().expect("large-stack test thread panicked");
+}
+
 fn invocation(
     session: Arc<crate::session::session::Session>,
     turn: Arc<TurnContext>,
@@ -363,8 +386,15 @@ async fn spawn_agent_fork_context_rejects_child_model_overrides() {
     );
 }
 
-#[tokio::test]
-async fn multi_agent_v2_spawn_fork_turns_all_rejects_agent_type_override() {
+#[test]
+fn multi_agent_v2_spawn_fork_turns_all_rejects_agent_type_override() {
+    run_large_stack_async_test(
+        "multi_agent_v2_spawn_fork_turns_all_rejects_agent_type_override",
+        multi_agent_v2_spawn_fork_turns_all_rejects_agent_type_override_impl(),
+    );
+}
+
+async fn multi_agent_v2_spawn_fork_turns_all_rejects_agent_type_override_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let role_name = install_role_with_model_override(&mut turn).await;
     let manager = thread_manager();
@@ -408,8 +438,15 @@ async fn multi_agent_v2_spawn_fork_turns_all_rejects_agent_type_override() {
     );
 }
 
-#[tokio::test]
-async fn multi_agent_v2_spawn_defaults_to_full_fork_and_rejects_child_model_overrides() {
+#[test]
+fn multi_agent_v2_spawn_defaults_to_full_fork_and_rejects_child_model_overrides() {
+    run_large_stack_async_test(
+        "multi_agent_v2_spawn_defaults_to_full_fork_and_rejects_child_model_overrides",
+        multi_agent_v2_spawn_defaults_to_full_fork_and_rejects_child_model_overrides_impl(),
+    );
+}
+
+async fn multi_agent_v2_spawn_defaults_to_full_fork_and_rejects_child_model_overrides_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -449,8 +486,15 @@ async fn multi_agent_v2_spawn_defaults_to_full_fork_and_rejects_child_model_over
     );
 }
 
-#[tokio::test]
-async fn spawn_agent_service_tier_override_validates_the_effective_child_model() {
+#[test]
+fn spawn_agent_service_tier_override_validates_the_effective_child_model() {
+    run_large_stack_async_test(
+        "spawn_agent_service_tier_override_validates_the_effective_child_model",
+        spawn_agent_service_tier_override_validates_the_effective_child_model_impl(),
+    );
+}
+
+async fn spawn_agent_service_tier_override_validates_the_effective_child_model_impl() {
     #[derive(Debug, Deserialize)]
     struct SpawnAgentResult {
         agent_id: String,
@@ -548,8 +592,15 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
     }
 }
 
-#[tokio::test]
-async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_tiers() {
+#[test]
+fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_tiers() {
+    run_large_stack_async_test(
+        "spawn_agent_service_tier_inheritance_preserves_supported_or_configured_tiers",
+        spawn_agent_service_tier_inheritance_preserves_supported_or_configured_tiers_impl(),
+    );
+}
+
+async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_tiers_impl() {
     #[derive(Debug, Deserialize)]
     struct SpawnAgentResult {
         agent_id: String,
@@ -704,8 +755,15 @@ service_tier = "priority"
     }
 }
 
-#[tokio::test]
-async fn spawn_agent_full_history_fork_accepts_explicit_service_tier() {
+#[test]
+fn spawn_agent_full_history_fork_accepts_explicit_service_tier() {
+    run_large_stack_async_test(
+        "spawn_agent_full_history_fork_accepts_explicit_service_tier",
+        spawn_agent_full_history_fork_accepts_explicit_service_tier_impl(),
+    );
+}
+
+async fn spawn_agent_full_history_fork_accepts_explicit_service_tier_impl() {
     #[derive(Debug, Deserialize)]
     struct SpawnAgentResult {
         agent_id: String,
@@ -752,8 +810,15 @@ async fn spawn_agent_full_history_fork_accepts_explicit_service_tier() {
     );
 }
 
-#[tokio::test]
-async fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier() {
+#[test]
+fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier() {
+    run_large_stack_async_test(
+        "multi_agent_v2_full_history_fork_accepts_explicit_service_tier",
+        multi_agent_v2_full_history_fork_accepts_explicit_service_tier_impl(),
+    );
+}
+
+async fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier_impl() {
     #[derive(Debug, Deserialize)]
     struct SpawnAgentResult {
         task_name: String,
@@ -818,8 +883,15 @@ async fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier() {
     );
 }
 
-#[tokio::test]
-async fn multi_agent_v2_spawn_partial_fork_turns_allows_agent_type_override() {
+#[test]
+fn multi_agent_v2_spawn_partial_fork_turns_allows_agent_type_override() {
+    run_large_stack_async_test(
+        "multi_agent_v2_spawn_partial_fork_turns_allows_agent_type_override",
+        multi_agent_v2_spawn_partial_fork_turns_allows_agent_type_override_impl(),
+    );
+}
+
+async fn multi_agent_v2_spawn_partial_fork_turns_allows_agent_type_override_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let role_name = install_role_with_model_override(&mut turn).await;
     let manager = thread_manager();
@@ -1370,8 +1442,15 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
     );
 }
 
-#[tokio::test]
-async fn multi_agent_v2_list_agents_returns_completed_status_and_last_task_message() {
+#[test]
+fn multi_agent_v2_list_agents_returns_completed_status_and_last_task_message() {
+    run_large_stack_async_test(
+        "multi_agent_v2_list_agents_returns_completed_status_and_last_task_message",
+        multi_agent_v2_list_agents_returns_completed_status_and_last_task_message_impl(),
+    );
+}
+
+async fn multi_agent_v2_list_agents_returns_completed_status_and_last_task_message_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -1464,8 +1543,15 @@ async fn multi_agent_v2_list_agents_returns_completed_status_and_last_task_messa
     assert_eq!(success, Some(true));
 }
 
-#[tokio::test]
-async fn multi_agent_v2_list_agents_filters_by_relative_path_prefix() {
+#[test]
+fn multi_agent_v2_list_agents_filters_by_relative_path_prefix() {
+    run_large_stack_async_test(
+        "multi_agent_v2_list_agents_filters_by_relative_path_prefix",
+        multi_agent_v2_list_agents_filters_by_relative_path_prefix_impl(),
+    );
+}
+
+async fn multi_agent_v2_list_agents_filters_by_relative_path_prefix_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -1551,8 +1637,15 @@ async fn multi_agent_v2_list_agents_filters_by_relative_path_prefix() {
     assert_eq!(result.agents[0].last_task_message.as_deref(), Some("build"));
 }
 
-#[tokio::test]
-async fn multi_agent_v2_list_agents_omits_closed_agents() {
+#[test]
+fn multi_agent_v2_list_agents_omits_closed_agents() {
+    run_large_stack_async_test(
+        "multi_agent_v2_list_agents_omits_closed_agents",
+        multi_agent_v2_list_agents_omits_closed_agents_impl(),
+    );
+}
+
+async fn multi_agent_v2_list_agents_omits_closed_agents_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -1744,8 +1837,15 @@ async fn multi_agent_v2_send_message_rejects_interrupt_parameter() {
     )));
 }
 
-#[tokio::test]
-async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn() {
+#[test]
+fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn() {
+    run_large_stack_async_test(
+        "multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn",
+        multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn_impl(),
+    );
+}
+
+async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -1879,8 +1979,15 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
     assert_eq!(notifications.len(), 2);
 }
 
-#[tokio::test]
-async fn multi_agent_v2_followup_task_rejects_legacy_items_field() {
+#[test]
+fn multi_agent_v2_followup_task_rejects_legacy_items_field() {
+    run_large_stack_async_test(
+        "multi_agent_v2_followup_task_rejects_legacy_items_field",
+        multi_agent_v2_followup_task_rejects_legacy_items_field_impl(),
+    );
+}
+
+async fn multi_agent_v2_followup_task_rejects_legacy_items_field_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -1932,8 +2039,15 @@ async fn multi_agent_v2_followup_task_rejects_legacy_items_field() {
     assert!(message.contains("unknown field `items`"));
 }
 
-#[tokio::test]
-async fn multi_agent_v2_interrupted_turn_does_not_notify_parent() {
+#[test]
+fn multi_agent_v2_interrupted_turn_does_not_notify_parent() {
+    run_large_stack_async_test(
+        "multi_agent_v2_interrupted_turn_does_not_notify_parent",
+        multi_agent_v2_interrupted_turn_does_not_notify_parent_impl(),
+    );
+}
+
+async fn multi_agent_v2_interrupted_turn_does_not_notify_parent_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -3701,8 +3815,15 @@ async fn close_agent_submits_shutdown_and_returns_previous_status() {
     assert_eq!(status_after, AgentStatus::NotFound);
 }
 
-#[tokio::test]
-async fn tool_handlers_cascade_close_and_resume_and_keep_explicitly_closed_subtrees_closed() {
+#[test]
+fn tool_handlers_cascade_close_and_resume_and_keep_explicitly_closed_subtrees_closed() {
+    run_large_stack_async_test(
+        "tool_handlers_cascade_close_and_resume_and_keep_explicitly_closed_subtrees_closed",
+        tool_handlers_cascade_close_and_resume_and_keep_explicitly_closed_subtrees_closed_impl(),
+    );
+}
+
+async fn tool_handlers_cascade_close_and_resume_and_keep_explicitly_closed_subtrees_closed_impl() {
     let (_session, turn) = make_session_and_context().await;
     let mut config = turn.config.as_ref().clone();
     config.agent_max_depth = 3;
