@@ -212,6 +212,7 @@ pub(crate) struct NativeTelegramSendPlanStatus {
     pub(crate) config: NativeTelegramConfigStatus,
     pub(crate) transport_plan: NativeTelegramTransportPlan,
     pub(crate) send_plan: NativeTelegramSendPlan,
+    pub(crate) send_request: NativeTelegramSendRequestPlan,
     pub(crate) error: Option<String>,
     pub(crate) next_migration_slice: &'static str,
 }
@@ -230,6 +231,7 @@ pub(crate) struct NativeTelegramDrainOnceStatus {
     pub(crate) model_turn_plan: NativeTelegramModelTurnPlan,
     pub(crate) invocation_request: NativeTelegramModelInvocationRequestPlan,
     pub(crate) send_plan: NativeTelegramSendPlan,
+    pub(crate) send_request: NativeTelegramSendRequestPlan,
     pub(crate) bot_api_ok: Option<bool>,
     pub(crate) local_next_update_offset: Option<i64>,
     pub(crate) live_read_started: bool,
@@ -386,6 +388,24 @@ pub(crate) struct NativeTelegramSendPlan {
     pub(crate) failure_policy: &'static str,
     pub(crate) request_body_materialized_by_status: bool,
     pub(crate) delivery_performed_by_status: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_chat_id_exposed: bool,
+    pub(crate) raw_message_id_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramSendRequestPlan {
+    pub(crate) request_builder_ready: bool,
+    pub(crate) model_output_present: bool,
+    pub(crate) reply_target_available: bool,
+    pub(crate) candidate_next_update_offset: Option<i64>,
+    pub(crate) send_gate_env: &'static str,
+    pub(crate) send_gate_enabled: bool,
+    pub(crate) send_allowed: bool,
+    pub(crate) request_body_materialized_by_status: bool,
+    pub(crate) delivery_performed_by_status: bool,
+    pub(crate) cursor_commit_allowed_after_delivery: bool,
     pub(crate) raw_response_text_exposed: bool,
     pub(crate) raw_chat_id_exposed: bool,
     pub(crate) raw_message_id_exposed: bool,
@@ -759,6 +779,11 @@ fn telegram_drain_once_status_with_gates(
     } else {
         NativeTelegramSendPlan::disabled()
     };
+    let send_request = if requested {
+        build_telegram_send_request_plan(None, false, None, gates.send_gate_enabled)
+    } else {
+        NativeTelegramSendRequestPlan::disabled(gates.send_gate_enabled)
+    };
     let first_missing_gate = first_missing_drain_once_gate(&gates);
     let all_required_gates_enabled = requested && first_missing_gate.is_none();
     let status_probe_executes_pipeline = requested && gates.live_read_gate_enabled;
@@ -860,6 +885,7 @@ fn telegram_drain_once_status_with_gates(
         model_turn_plan,
         invocation_request,
         send_plan,
+        send_request,
         bot_api_ok,
         local_next_update_offset,
         live_read_started,
@@ -905,6 +931,11 @@ fn telegram_send_plan_status_with_gate(
     } else {
         NativeTelegramSendPlan::disabled()
     };
+    let send_request = if requested {
+        build_telegram_send_request_plan(None, false, None, send_gate_enabled)
+    } else {
+        NativeTelegramSendRequestPlan::disabled(send_gate_enabled)
+    };
     let config_ready = requested && config.enabled && config.token_shape_ok && config.binding_ready;
     let status = if !requested {
         "disabled"
@@ -943,6 +974,7 @@ fn telegram_send_plan_status_with_gate(
         config,
         transport_plan,
         send_plan,
+        send_request,
         error,
         next_migration_slice: "wire sendMessage execution after model output, then commit cursor only after delivery success",
     }
@@ -1653,6 +1685,20 @@ fn build_model_invocation_request_plan(
     NativeTelegramModelInvocationRequestPlan::empty(model_turn_gate_enabled)
 }
 
+fn build_telegram_send_request_plan(
+    model_output: Option<&str>,
+    reply_target_available: bool,
+    candidate_next_update_offset: Option<i64>,
+    send_gate_enabled: bool,
+) -> NativeTelegramSendRequestPlan {
+    NativeTelegramSendRequestPlan::from_model_output(
+        model_output,
+        reply_target_available,
+        candidate_next_update_offset,
+        send_gate_enabled,
+    )
+}
+
 fn extract_telegram_candidate_material(update: &Value) -> Option<NativeTelegramCandidateMaterial> {
     let update_id = update.get("update_id").and_then(Value::as_i64);
     if let Some(message) = update.get("message") {
@@ -2036,6 +2082,57 @@ impl NativeTelegramSendPlan {
             failure_policy: "on send failure, keep cursor uncommitted and return redacted diagnostics without exposing model output",
             request_body_materialized_by_status: false,
             delivery_performed_by_status: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+}
+
+impl NativeTelegramSendRequestPlan {
+    fn disabled(send_gate_enabled: bool) -> Self {
+        Self {
+            request_builder_ready: false,
+            model_output_present: false,
+            reply_target_available: false,
+            candidate_next_update_offset: None,
+            send_gate_env: TELEGRAM_SEND_GATE_ENV,
+            send_gate_enabled,
+            send_allowed: false,
+            request_body_materialized_by_status: false,
+            delivery_performed_by_status: false,
+            cursor_commit_allowed_after_delivery: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+
+    fn from_model_output(
+        model_output: Option<&str>,
+        reply_target_available: bool,
+        candidate_next_update_offset: Option<i64>,
+        send_gate_enabled: bool,
+    ) -> Self {
+        let model_output_present = model_output
+            .map(str::trim)
+            .map(|value| !value.is_empty())
+            .unwrap_or(false);
+        let send_allowed = send_gate_enabled && model_output_present && reply_target_available;
+        Self {
+            request_builder_ready: true,
+            model_output_present,
+            reply_target_available,
+            candidate_next_update_offset,
+            send_gate_env: TELEGRAM_SEND_GATE_ENV,
+            send_gate_enabled,
+            send_allowed,
+            request_body_materialized_by_status: false,
+            delivery_performed_by_status: false,
+            cursor_commit_allowed_after_delivery: send_allowed
+                && candidate_next_update_offset.is_some(),
             raw_response_text_exposed: false,
             raw_chat_id_exposed: false,
             raw_message_id_exposed: false,
@@ -2544,7 +2641,65 @@ mod tests {
         assert!(!status.send_plan.raw_chat_id_exposed);
         assert!(!status.send_plan.raw_message_id_exposed);
         assert!(!status.send_plan.raw_token_exposed);
+        assert!(status.send_request.request_builder_ready);
+        assert!(!status.send_request.model_output_present);
+        assert!(!status.send_request.send_allowed);
+        assert!(!status.send_request.delivery_performed_by_status);
         assert!(status.error.unwrap().contains(TELEGRAM_SEND_GATE_ENV));
+    }
+
+    #[test]
+    fn send_request_builder_consumes_model_output_without_serializing_response() {
+        let request = build_telegram_send_request_plan(
+            Some("private model response text"),
+            true,
+            Some(49),
+            false,
+        );
+        assert!(request.request_builder_ready);
+        assert!(request.model_output_present);
+        assert!(request.reply_target_available);
+        assert_eq!(request.candidate_next_update_offset, Some(49));
+        assert_eq!(request.send_gate_env, TELEGRAM_SEND_GATE_ENV);
+        assert!(!request.send_gate_enabled);
+        assert!(!request.send_allowed);
+        assert!(!request.request_body_materialized_by_status);
+        assert!(!request.delivery_performed_by_status);
+        assert!(!request.cursor_commit_allowed_after_delivery);
+        assert!(!request.raw_response_text_exposed);
+        assert!(!request.raw_chat_id_exposed);
+        assert!(!request.raw_message_id_exposed);
+        assert!(!request.raw_token_exposed);
+
+        let serialized = serde_json::to_string(&request).expect("serialize");
+        assert!(!serialized.contains("private model response text"));
+    }
+
+    #[test]
+    fn send_request_builder_requires_gate_and_reply_target_before_delivery() {
+        let without_reply_target = build_telegram_send_request_plan(
+            Some("private model response text"),
+            false,
+            Some(49),
+            true,
+        );
+        assert!(without_reply_target.model_output_present);
+        assert!(without_reply_target.send_gate_enabled);
+        assert!(!without_reply_target.reply_target_available);
+        assert!(!without_reply_target.send_allowed);
+        assert!(!without_reply_target.cursor_commit_allowed_after_delivery);
+
+        let allowed = build_telegram_send_request_plan(
+            Some("private model response text"),
+            true,
+            Some(49),
+            true,
+        );
+        assert!(allowed.send_allowed);
+        assert!(allowed.cursor_commit_allowed_after_delivery);
+        assert!(!allowed.request_body_materialized_by_status);
+        assert!(!allowed.delivery_performed_by_status);
+        assert!(!allowed.raw_response_text_exposed);
     }
 
     #[test]
@@ -2580,6 +2735,9 @@ mod tests {
         assert!(!status.invocation_request.runner_invocation_allowed);
         assert!(status.send_plan.send_plan_ready);
         assert!(!status.send_plan.delivery_performed_by_status);
+        assert!(status.send_request.request_builder_ready);
+        assert!(!status.send_request.model_output_present);
+        assert!(!status.send_request.send_allowed);
         assert!(!status.live_read_started);
         assert!(!status.model_turn_started);
         assert!(!status.send_started);

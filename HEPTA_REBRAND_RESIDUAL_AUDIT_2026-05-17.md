@@ -793,6 +793,12 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `HEPTA_NATIVE_TELEGRAM_LIVE_READ=1` is explicitly enabled: it refreshes the
   ingress/model/invocation subplans from that result while model invocation and
   Telegram send remain separately gated.
+- Send request planning now consumes future model output as in-memory material
+  and exposes only redacted delivery readiness fields. It requires a model
+  output, an opaque reply target, and `HEPTA_NATIVE_TELEGRAM_SEND=1` before a
+  send can be considered allowed, and status probes still do not materialize a
+  request body, deliver a message, expose raw response text, or write cursor
+  state.
 
 ## Keep for compatibility
 
