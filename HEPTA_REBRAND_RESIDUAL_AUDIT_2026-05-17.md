@@ -450,6 +450,8 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   hard-coded `~/.codex/sessions` examples.
 - TUI keymap error messages, theme discovery docs, and pet cache docs now
   point at Hepta/runtime-home paths and Hepta keymap documentation.
+- App-server protocol docs now describe internal raw-event users as hosted
+  runtimes instead of Codex Cloud.
 - Endpoint paths such as `/api/codex/...`, legacy MCP wire fields such as
   `codex_*`, and crate names such as `codex-core` remain compatibility names.
 
