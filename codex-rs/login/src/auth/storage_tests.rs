@@ -11,8 +11,8 @@ use keyring::Error as KeyringError;
 
 #[tokio::test]
 async fn file_storage_load_returns_auth_dot_json() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
-    let storage = FileAuthStorage::new(codex_home.path().to_path_buf());
+    let hepta_home = tempdir()?;
+    let storage = FileAuthStorage::new(hepta_home.path().to_path_buf());
     let auth_dot_json = AuthDotJson {
         auth_mode: Some(AuthMode::ApiKey),
         openai_api_key: Some("test-key".to_string()),
@@ -32,8 +32,8 @@ async fn file_storage_load_returns_auth_dot_json() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn file_storage_save_persists_auth_dot_json() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
-    let storage = FileAuthStorage::new(codex_home.path().to_path_buf());
+    let hepta_home = tempdir()?;
+    let storage = FileAuthStorage::new(hepta_home.path().to_path_buf());
     let auth_dot_json = AuthDotJson {
         auth_mode: Some(AuthMode::ApiKey),
         openai_api_key: Some("test-key".to_string()),
@@ -42,7 +42,7 @@ async fn file_storage_save_persists_auth_dot_json() -> anyhow::Result<()> {
         agent_identity: None,
     };
 
-    let file = get_auth_file(codex_home.path());
+    let file = get_auth_file(hepta_home.path());
     storage
         .save(&auth_dot_json)
         .context("failed to save auth file")?;
@@ -56,8 +56,8 @@ async fn file_storage_save_persists_auth_dot_json() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn file_storage_round_trips_agent_identity_auth() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
-    let storage = FileAuthStorage::new(codex_home.path().to_path_buf());
+    let hepta_home = tempdir()?;
+    let storage = FileAuthStorage::new(hepta_home.path().to_path_buf());
     let agent_identity = jwt_with_payload(json!({
         "agent_runtime_id": "agent-runtime-id",
         "agent_private_key": "private-key",
@@ -84,8 +84,8 @@ async fn file_storage_round_trips_agent_identity_auth() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn file_storage_loads_agent_identity_as_jwt() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
-    let storage = FileAuthStorage::new(codex_home.path().to_path_buf());
+    let hepta_home = tempdir()?;
+    let storage = FileAuthStorage::new(hepta_home.path().to_path_buf());
     let agent_identity_jwt = jwt_with_payload(json!({
         "agent_runtime_id": "agent-runtime-id",
         "agent_private_key": "private-key",
@@ -95,7 +95,7 @@ async fn file_storage_loads_agent_identity_as_jwt() -> anyhow::Result<()> {
         "plan_type": "pro",
         "chatgpt_account_is_fedramp": false,
     }));
-    let auth_file = get_auth_file(codex_home.path());
+    let auth_file = get_auth_file(hepta_home.path());
     std::fs::write(
         &auth_file,
         serde_json::to_string_pretty(&json!({
@@ -162,7 +162,7 @@ fn ephemeral_storage_save_load_delete_is_in_memory_only() -> anyhow::Result<()> 
 
 fn seed_keyring_and_fallback_auth_file_for_delete<F>(
     mock_keyring: &MockKeyringStore,
-    codex_home: &Path,
+    hepta_home: &Path,
     compute_key: F,
 ) -> anyhow::Result<(String, PathBuf)>
 where
@@ -170,7 +170,7 @@ where
 {
     let key = compute_key()?;
     mock_keyring.save(KEYRING_SERVICE, &key, "{}")?;
-    let auth_file = get_auth_file(codex_home);
+    let auth_file = get_auth_file(hepta_home);
     std::fs::write(&auth_file, "stale")?;
     Ok((key, auth_file))
 }
@@ -192,7 +192,7 @@ where
 fn assert_keyring_saved_auth_and_removed_fallback(
     mock_keyring: &MockKeyringStore,
     key: &str,
-    codex_home: &Path,
+    hepta_home: &Path,
     expected: &AuthDotJson,
 ) {
     let saved_value = mock_keyring
@@ -200,7 +200,7 @@ fn assert_keyring_saved_auth_and_removed_fallback(
         .expect("keyring entry should exist");
     let expected_serialized = serde_json::to_string(expected).expect("serialize expected auth");
     assert_eq!(saved_value, expected_serialized);
-    let auth_file = get_auth_file(codex_home);
+    let auth_file = get_auth_file(hepta_home);
     assert!(
         !auth_file.exists(),
         "fallback auth.json should be removed after keyring save"
@@ -258,10 +258,10 @@ fn jwt_with_payload(payload: serde_json::Value) -> String {
 
 #[test]
 fn keyring_auth_storage_load_returns_deserialized_auth() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
     let storage = KeyringAuthStorage::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         Arc::new(mock_keyring.clone()),
     );
     let expected = AuthDotJson {
@@ -273,7 +273,7 @@ fn keyring_auth_storage_load_returns_deserialized_auth() -> anyhow::Result<()> {
     };
     seed_keyring_with_auth(
         &mock_keyring,
-        || compute_store_key(codex_home.path()),
+        || compute_store_key(hepta_home.path()),
         &expected,
     )?;
 
@@ -284,9 +284,9 @@ fn keyring_auth_storage_load_returns_deserialized_auth() -> anyhow::Result<()> {
 
 #[test]
 fn keyring_auth_storage_compute_store_key_for_home_directory() -> anyhow::Result<()> {
-    let codex_home = PathBuf::from("~/.hepta");
+    let hepta_home = PathBuf::from("~/.hepta");
 
-    let key = compute_store_key(codex_home.as_path())?;
+    let key = compute_store_key(hepta_home.as_path())?;
 
     assert_eq!(key, "cli|ebf42f786eed1e7a");
     Ok(())
@@ -294,13 +294,13 @@ fn keyring_auth_storage_compute_store_key_for_home_directory() -> anyhow::Result
 
 #[test]
 fn keyring_auth_storage_save_persists_and_removes_fallback_file() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
     let storage = KeyringAuthStorage::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         Arc::new(mock_keyring.clone()),
     );
-    let auth_file = get_auth_file(codex_home.path());
+    let auth_file = get_auth_file(hepta_home.path());
     std::fs::write(&auth_file, "stale")?;
     let auth = AuthDotJson {
         auth_mode: Some(AuthMode::Chatgpt),
@@ -317,22 +317,22 @@ fn keyring_auth_storage_save_persists_and_removes_fallback_file() -> anyhow::Res
 
     storage.save(&auth)?;
 
-    let key = compute_store_key(codex_home.path())?;
-    assert_keyring_saved_auth_and_removed_fallback(&mock_keyring, &key, codex_home.path(), &auth);
+    let key = compute_store_key(hepta_home.path())?;
+    assert_keyring_saved_auth_and_removed_fallback(&mock_keyring, &key, hepta_home.path(), &auth);
     Ok(())
 }
 
 #[test]
 fn keyring_auth_storage_delete_removes_keyring_and_file() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
     let storage = KeyringAuthStorage::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         Arc::new(mock_keyring.clone()),
     );
     let (key, auth_file) =
-        seed_keyring_and_fallback_auth_file_for_delete(&mock_keyring, codex_home.path(), || {
-            compute_store_key(codex_home.path())
+        seed_keyring_and_fallback_auth_file_for_delete(&mock_keyring, hepta_home.path(), || {
+            compute_store_key(hepta_home.path())
         })?;
 
     let removed = storage.delete()?;
@@ -351,16 +351,16 @@ fn keyring_auth_storage_delete_removes_keyring_and_file() -> anyhow::Result<()> 
 
 #[test]
 fn auto_auth_storage_load_prefers_keyring_value() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
     let storage = AutoAuthStorage::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         Arc::new(mock_keyring.clone()),
     );
     let keyring_auth = auth_with_prefix("keyring");
     seed_keyring_with_auth(
         &mock_keyring,
-        || compute_store_key(codex_home.path()),
+        || compute_store_key(hepta_home.path()),
         &keyring_auth,
     )?;
 
@@ -374,9 +374,9 @@ fn auto_auth_storage_load_prefers_keyring_value() -> anyhow::Result<()> {
 
 #[test]
 fn auto_auth_storage_load_uses_file_when_keyring_empty() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
-    let storage = AutoAuthStorage::new(codex_home.path().to_path_buf(), Arc::new(mock_keyring));
+    let storage = AutoAuthStorage::new(hepta_home.path().to_path_buf(), Arc::new(mock_keyring));
 
     let expected = auth_with_prefix("file-only");
     storage.file_storage.save(&expected)?;
@@ -388,13 +388,13 @@ fn auto_auth_storage_load_uses_file_when_keyring_empty() -> anyhow::Result<()> {
 
 #[test]
 fn auto_auth_storage_load_falls_back_when_keyring_errors() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
     let storage = AutoAuthStorage::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         Arc::new(mock_keyring.clone()),
     );
-    let key = compute_store_key(codex_home.path())?;
+    let key = compute_store_key(hepta_home.path())?;
     mock_keyring.set_error(&key, KeyringError::Invalid("error".into(), "load".into()));
 
     let expected = auth_with_prefix("fallback");
@@ -407,13 +407,13 @@ fn auto_auth_storage_load_falls_back_when_keyring_errors() -> anyhow::Result<()>
 
 #[test]
 fn auto_auth_storage_save_prefers_keyring() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
     let storage = AutoAuthStorage::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         Arc::new(mock_keyring.clone()),
     );
-    let key = compute_store_key(codex_home.path())?;
+    let key = compute_store_key(hepta_home.path())?;
 
     let stale = auth_with_prefix("stale");
     storage.file_storage.save(&stale)?;
@@ -424,7 +424,7 @@ fn auto_auth_storage_save_prefers_keyring() -> anyhow::Result<()> {
     assert_keyring_saved_auth_and_removed_fallback(
         &mock_keyring,
         &key,
-        codex_home.path(),
+        hepta_home.path(),
         &expected,
     );
     Ok(())
@@ -432,19 +432,19 @@ fn auto_auth_storage_save_prefers_keyring() -> anyhow::Result<()> {
 
 #[test]
 fn auto_auth_storage_save_falls_back_when_keyring_errors() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
     let storage = AutoAuthStorage::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         Arc::new(mock_keyring.clone()),
     );
-    let key = compute_store_key(codex_home.path())?;
+    let key = compute_store_key(hepta_home.path())?;
     mock_keyring.set_error(&key, KeyringError::Invalid("error".into(), "save".into()));
 
     let auth = auth_with_prefix("fallback");
     storage.save(&auth)?;
 
-    let auth_file = get_auth_file(codex_home.path());
+    let auth_file = get_auth_file(hepta_home.path());
     assert!(
         auth_file.exists(),
         "fallback auth.json should be created when keyring save fails"
@@ -463,15 +463,15 @@ fn auto_auth_storage_save_falls_back_when_keyring_errors() -> anyhow::Result<()>
 
 #[test]
 fn auto_auth_storage_delete_removes_keyring_and_file() -> anyhow::Result<()> {
-    let codex_home = tempdir()?;
+    let hepta_home = tempdir()?;
     let mock_keyring = MockKeyringStore::default();
     let storage = AutoAuthStorage::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         Arc::new(mock_keyring.clone()),
     );
     let (key, auth_file) =
-        seed_keyring_and_fallback_auth_file_for_delete(&mock_keyring, codex_home.path(), || {
-            compute_store_key(codex_home.path())
+        seed_keyring_and_fallback_auth_file_for_delete(&mock_keyring, hepta_home.path(), || {
+            compute_store_key(hepta_home.path())
         })?;
 
     let removed = storage.delete()?;

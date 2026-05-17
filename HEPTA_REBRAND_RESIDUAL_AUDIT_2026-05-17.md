@@ -172,6 +172,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   names remain unchanged for now; they describe the same resolved Hepta home
   path under the current fork.
 
+## Cleaned in auth storage home naming pass
+
+- Auth storage backends now use `hepta_home` for their private resolved-home
+  fields, constructor parameters, auth-file helpers, keyring key derivation, and
+  ephemeral store keys.
+- Auth storage unit tests now use Hepta home terminology for local variables
+  and helper parameters.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

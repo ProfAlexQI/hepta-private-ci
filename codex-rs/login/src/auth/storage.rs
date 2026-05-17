@@ -84,12 +84,12 @@ impl From<AgentIdentityJwtClaims> for AgentIdentityAuthRecord {
     }
 }
 
-pub(super) fn get_auth_file(codex_home: &Path) -> PathBuf {
-    codex_home.join("auth.json")
+pub(super) fn get_auth_file(hepta_home: &Path) -> PathBuf {
+    hepta_home.join("auth.json")
 }
 
-pub(super) fn delete_file_if_exists(codex_home: &Path) -> std::io::Result<bool> {
-    let auth_file = get_auth_file(codex_home);
+pub(super) fn delete_file_if_exists(hepta_home: &Path) -> std::io::Result<bool> {
+    let auth_file = get_auth_file(hepta_home);
     match std::fs::remove_file(&auth_file) {
         Ok(()) => Ok(true),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -105,12 +105,12 @@ pub(super) trait AuthStorageBackend: Debug + Send + Sync {
 
 #[derive(Clone, Debug)]
 pub(super) struct FileAuthStorage {
-    codex_home: PathBuf,
+    hepta_home: PathBuf,
 }
 
 impl FileAuthStorage {
-    pub(super) fn new(codex_home: PathBuf) -> Self {
-        Self { codex_home }
+    pub(super) fn new(hepta_home: PathBuf) -> Self {
+        Self { hepta_home }
     }
 
     /// Attempt to read and parse the `auth.json` file in the resolved Hepta home directory.
@@ -127,7 +127,7 @@ impl FileAuthStorage {
 
 impl AuthStorageBackend for FileAuthStorage {
     fn load(&self) -> std::io::Result<Option<AuthDotJson>> {
-        let auth_file = get_auth_file(&self.codex_home);
+        let auth_file = get_auth_file(&self.hepta_home);
         let auth_dot_json = match self.try_read_auth_json(&auth_file) {
             Ok(auth) => auth,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -137,7 +137,7 @@ impl AuthStorageBackend for FileAuthStorage {
     }
 
     fn save(&self, auth_dot_json: &AuthDotJson) -> std::io::Result<()> {
-        let auth_file = get_auth_file(&self.codex_home);
+        let auth_file = get_auth_file(&self.hepta_home);
 
         if let Some(parent) = auth_file.parent() {
             std::fs::create_dir_all(parent)?;
@@ -156,17 +156,17 @@ impl AuthStorageBackend for FileAuthStorage {
     }
 
     fn delete(&self) -> std::io::Result<bool> {
-        delete_file_if_exists(&self.codex_home)
+        delete_file_if_exists(&self.hepta_home)
     }
 }
 
 const KEYRING_SERVICE: &str = "Hepta Auth";
 
 // Turns the resolved Hepta runtime home path into a stable, short key string.
-fn compute_store_key(codex_home: &Path) -> std::io::Result<String> {
-    let canonical = codex_home
+fn compute_store_key(hepta_home: &Path) -> std::io::Result<String> {
+    let canonical = hepta_home
         .canonicalize()
-        .unwrap_or_else(|_| codex_home.to_path_buf());
+        .unwrap_or_else(|_| hepta_home.to_path_buf());
     let path_str = canonical.to_string_lossy();
     let mut hasher = Sha256::new();
     hasher.update(path_str.as_bytes());
@@ -178,14 +178,14 @@ fn compute_store_key(codex_home: &Path) -> std::io::Result<String> {
 
 #[derive(Clone, Debug)]
 struct KeyringAuthStorage {
-    codex_home: PathBuf,
+    hepta_home: PathBuf,
     keyring_store: Arc<dyn KeyringStore>,
 }
 
 impl KeyringAuthStorage {
-    fn new(codex_home: PathBuf, keyring_store: Arc<dyn KeyringStore>) -> Self {
+    fn new(hepta_home: PathBuf, keyring_store: Arc<dyn KeyringStore>) -> Self {
         Self {
-            codex_home,
+            hepta_home,
             keyring_store,
         }
     }
@@ -219,30 +219,30 @@ impl KeyringAuthStorage {
 
 impl AuthStorageBackend for KeyringAuthStorage {
     fn load(&self) -> std::io::Result<Option<AuthDotJson>> {
-        let key = compute_store_key(&self.codex_home)?;
+        let key = compute_store_key(&self.hepta_home)?;
         self.load_from_keyring(&key)
     }
 
     fn save(&self, auth: &AuthDotJson) -> std::io::Result<()> {
-        let key = compute_store_key(&self.codex_home)?;
+        let key = compute_store_key(&self.hepta_home)?;
         // Simpler error mapping per style: prefer method reference over closure
         let serialized = serde_json::to_string(auth).map_err(std::io::Error::other)?;
         self.save_to_keyring(&key, &serialized)?;
-        if let Err(err) = delete_file_if_exists(&self.codex_home) {
+        if let Err(err) = delete_file_if_exists(&self.hepta_home) {
             warn!("failed to remove CLI auth fallback file: {err}");
         }
         Ok(())
     }
 
     fn delete(&self) -> std::io::Result<bool> {
-        let key = compute_store_key(&self.codex_home)?;
+        let key = compute_store_key(&self.hepta_home)?;
         let keyring_removed = self
             .keyring_store
             .delete(KEYRING_SERVICE, &key)
             .map_err(|err| {
                 std::io::Error::other(format!("failed to delete auth from keyring: {err}"))
             })?;
-        let file_removed = delete_file_if_exists(&self.codex_home)?;
+        let file_removed = delete_file_if_exists(&self.hepta_home)?;
         Ok(keyring_removed || file_removed)
     }
 }
@@ -254,10 +254,10 @@ struct AutoAuthStorage {
 }
 
 impl AutoAuthStorage {
-    fn new(codex_home: PathBuf, keyring_store: Arc<dyn KeyringStore>) -> Self {
+    fn new(hepta_home: PathBuf, keyring_store: Arc<dyn KeyringStore>) -> Self {
         Self {
-            keyring_storage: Arc::new(KeyringAuthStorage::new(codex_home.clone(), keyring_store)),
-            file_storage: Arc::new(FileAuthStorage::new(codex_home)),
+            keyring_storage: Arc::new(KeyringAuthStorage::new(hepta_home.clone(), keyring_store)),
+            file_storage: Arc::new(FileAuthStorage::new(hepta_home)),
         }
     }
 }
@@ -298,19 +298,19 @@ static EPHEMERAL_AUTH_STORE: Lazy<Mutex<HashMap<String, AuthDotJson>>> =
 
 #[derive(Clone, Debug)]
 struct EphemeralAuthStorage {
-    codex_home: PathBuf,
+    hepta_home: PathBuf,
 }
 
 impl EphemeralAuthStorage {
-    fn new(codex_home: PathBuf) -> Self {
-        Self { codex_home }
+    fn new(hepta_home: PathBuf) -> Self {
+        Self { hepta_home }
     }
 
     fn with_store<F, T>(&self, action: F) -> std::io::Result<T>
     where
         F: FnOnce(&mut HashMap<String, AuthDotJson>, String) -> std::io::Result<T>,
     {
-        let key = compute_store_key(&self.codex_home)?;
+        let key = compute_store_key(&self.hepta_home)?;
         let mut store = EPHEMERAL_AUTH_STORE
             .lock()
             .map_err(|_| std::io::Error::other("failed to lock ephemeral auth storage"))?;
@@ -336,25 +336,25 @@ impl AuthStorageBackend for EphemeralAuthStorage {
 }
 
 pub(super) fn create_auth_storage(
-    codex_home: PathBuf,
+    hepta_home: PathBuf,
     mode: AuthCredentialsStoreMode,
 ) -> Arc<dyn AuthStorageBackend> {
     let keyring_store: Arc<dyn KeyringStore> = Arc::new(DefaultKeyringStore);
-    create_auth_storage_with_keyring_store(codex_home, mode, keyring_store)
+    create_auth_storage_with_keyring_store(hepta_home, mode, keyring_store)
 }
 
 fn create_auth_storage_with_keyring_store(
-    codex_home: PathBuf,
+    hepta_home: PathBuf,
     mode: AuthCredentialsStoreMode,
     keyring_store: Arc<dyn KeyringStore>,
 ) -> Arc<dyn AuthStorageBackend> {
     match mode {
-        AuthCredentialsStoreMode::File => Arc::new(FileAuthStorage::new(codex_home)),
+        AuthCredentialsStoreMode::File => Arc::new(FileAuthStorage::new(hepta_home)),
         AuthCredentialsStoreMode::Keyring => {
-            Arc::new(KeyringAuthStorage::new(codex_home, keyring_store))
+            Arc::new(KeyringAuthStorage::new(hepta_home, keyring_store))
         }
-        AuthCredentialsStoreMode::Auto => Arc::new(AutoAuthStorage::new(codex_home, keyring_store)),
-        AuthCredentialsStoreMode::Ephemeral => Arc::new(EphemeralAuthStorage::new(codex_home)),
+        AuthCredentialsStoreMode::Auto => Arc::new(AutoAuthStorage::new(hepta_home, keyring_store)),
+        AuthCredentialsStoreMode::Ephemeral => Arc::new(EphemeralAuthStorage::new(hepta_home)),
     }
 }
 
