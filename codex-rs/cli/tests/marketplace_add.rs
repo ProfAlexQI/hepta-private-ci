@@ -6,9 +6,9 @@ use pretty_assertions::assert_eq;
 use std::path::Path;
 use tempfile::TempDir;
 
-fn codex_command(codex_home: &Path) -> Result<assert_cmd::Command> {
+fn hepta_command(hepta_home: &Path) -> Result<assert_cmd::Command> {
     let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("hepta")?);
-    cmd.env("HEPTA_HOME", codex_home);
+    cmd.env("HEPTA_HOME", hepta_home);
     Ok(cmd)
 }
 
@@ -40,22 +40,22 @@ fn write_marketplace_source(source: &Path, marker: &str) -> Result<()> {
 
 #[tokio::test]
 async fn marketplace_add_local_directory_source() -> Result<()> {
-    let codex_home = TempDir::new()?;
+    let hepta_home = TempDir::new()?;
     let source = TempDir::new()?;
     write_marketplace_source(source.path(), "local ref")?;
     let source_parent = source.path().parent().unwrap();
     let source_arg = format!("./{}", source.path().file_name().unwrap().to_string_lossy());
 
-    codex_command(codex_home.path())?
+    hepta_command(hepta_home.path())?
         .current_dir(source_parent)
         .args(["plugin", "marketplace", "add", source_arg.as_str()])
         .assert()
         .success();
 
-    let installed_root = marketplace_install_root(codex_home.path()).join("debug");
+    let installed_root = marketplace_install_root(hepta_home.path()).join("debug");
     assert!(!installed_root.exists());
 
-    let config = std::fs::read_to_string(codex_home.path().join(CONFIG_TOML_FILE))?;
+    let config = std::fs::read_to_string(hepta_home.path().join(CONFIG_TOML_FILE))?;
     let config: toml::Value = toml::from_str(&config)?;
     let expected_source = source.path().canonicalize()?.display().to_string();
     assert_eq!(
@@ -72,12 +72,12 @@ async fn marketplace_add_local_directory_source() -> Result<()> {
 
 #[tokio::test]
 async fn marketplace_add_rejects_local_manifest_file_source() -> Result<()> {
-    let codex_home = TempDir::new()?;
+    let hepta_home = TempDir::new()?;
     let source = TempDir::new()?;
     write_marketplace_source(source.path(), "local ref")?;
     let manifest_path = source.path().join(".agents/plugins/marketplace.json");
 
-    codex_command(codex_home.path())?
+    hepta_command(hepta_home.path())?
         .args([
             "plugin",
             "marketplace",
@@ -95,11 +95,11 @@ async fn marketplace_add_rejects_local_manifest_file_source() -> Result<()> {
 
 #[tokio::test]
 async fn marketplace_add_rejects_sparse_for_local_directory_source() -> Result<()> {
-    let codex_home = TempDir::new()?;
+    let hepta_home = TempDir::new()?;
     let source = TempDir::new()?;
     write_marketplace_source(source.path(), "local ref")?;
 
-    codex_command(codex_home.path())?
+    hepta_command(hepta_home.path())?
         .args([
             "plugin",
             "marketplace",

@@ -198,6 +198,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - CLI login integration-test helpers now use hepta_command and hepta_home local
   names while still exercising the HEPTA_HOME runtime environment.
 
+## Cleaned in CLI integration-test home naming pass
+
+- Remaining CLI integration-test helpers now use Hepta command/home local names
+  across app-server, debug, execpolicy, feature, marketplace, MCP, plugin, and
+  update tests.
+- The tests still exercise the same HEPTA_HOME runtime behavior and unchanged
+  config/auth file semantics.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
