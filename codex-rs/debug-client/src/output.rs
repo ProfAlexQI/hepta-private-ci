@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn server_json_line_writes_to_configured_file() {
         let path = std::env::temp_dir().join(format!(
-            "codex-debug-client-output-{}.jsonl",
+            "hepta-debug-client-output-{}.jsonl",
             std::process::id()
         ));
         let file = File::create(&path).expect("create output file");

@@ -30,7 +30,7 @@ use crate::state::ReaderEvent;
 struct Cli {
     /// Path to the `hepta` CLI binary.
     #[arg(long = "hepta-bin", alias = "codex-bin", default_value = "hepta")]
-    codex_bin: String,
+    hepta_bin: String,
 
     /// Forwarded to Hepta as `--config key=value`. Repeatable.
     #[arg(short = 'c', long = "config", value_name = "key=value", action = ArgAction::Append)]
@@ -86,7 +86,7 @@ fn main() -> Result<()> {
     let approval_policy = parse_approval_policy(&cli.approval_policy)?;
 
     let mut client = AppServerClient::spawn(
-        &cli.codex_bin,
+        &cli.hepta_bin,
         &cli.config_overrides,
         output.clone(),
         cli.final_only,

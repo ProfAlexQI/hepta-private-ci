@@ -520,6 +520,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   sensitive to changing that harness, so it stays listed as compatibility
   infrastructure rather than a branding target in this pass.
 
+## Cleaned in debug-client helper pass
+
+- The debug app-server client keeps `--codex-bin` as a CLI compatibility alias,
+  but its primary option, internal variables, and spawn error context now use
+  `hepta_bin` / `--hepta-bin` terminology.
+- Debug-client output-file tests now use a `hepta-debug-client-output-*.jsonl`
+  temp filename instead of a Codex-branded one.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
