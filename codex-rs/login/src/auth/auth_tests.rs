@@ -28,19 +28,19 @@ const WORKSPACE_ID_DISALLOWED: &str = "123e4567-e89b-42d3-a456-426614174002";
 
 #[tokio::test]
 async fn refresh_without_id_token() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let fake_jwt = write_auth_file(
         AuthFileParams {
             openai_api_key: None,
             chatgpt_plan_type: Some("pro".to_string()),
             chatgpt_account_id: None,
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let storage = create_auth_storage(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         AuthCredentialsStoreMode::File,
     );
     let updated = super::persist_tokens(
@@ -194,7 +194,7 @@ async fn missing_auth_json_returns_none() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn pro_account_with_no_api_key_uses_chatgpt_auth() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let fake_jwt = write_auth_file(
         AuthFileParams {
@@ -202,12 +202,12 @@ async fn pro_account_with_no_api_key_uses_chatgpt_auth() {
             chatgpt_plan_type: Some("pro".to_string()),
             chatgpt_account_id: None,
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
@@ -327,7 +327,7 @@ async fn unauthorized_recovery_reports_mode_and_step_names() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn refresh_failure_is_scoped_to_the_matching_auth_snapshot() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     write_auth_file(
         AuthFileParams {
@@ -335,12 +335,12 @@ async fn refresh_failure_is_scoped_to_the_matching_auth_snapshot() {
             chatgpt_plan_type: Some("pro".to_string()),
             chatgpt_account_id: Some(WORKSPACE_ID_ALLOWED.to_string()),
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
@@ -358,7 +358,7 @@ async fn refresh_failure_is_scoped_to_the_matching_auth_snapshot() {
     updated_tokens.access_token = "new-access-token".to_string();
     updated_tokens.refresh_token = "new-refresh-token".to_string();
     let updated_auth = CodexAuth::from_auth_dot_json(
-        codex_home.path(),
+        hepta_home.path(),
         updated_auth_dot_json,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
@@ -602,9 +602,9 @@ struct AuthFileParams {
     chatgpt_account_id: Option<String>,
 }
 
-fn write_auth_file(params: AuthFileParams, codex_home: &Path) -> std::io::Result<String> {
+fn write_auth_file(params: AuthFileParams, hepta_home: &Path) -> std::io::Result<String> {
     let fake_jwt = fake_jwt_for_auth_file_params(&params)?;
-    let auth_file = get_auth_file(codex_home);
+    let auth_file = get_auth_file(hepta_home);
     let auth_json_data = json!({
         "OPENAI_API_KEY": params.openai_api_key,
         "tokens": {
@@ -656,12 +656,12 @@ fn fake_jwt_for_auth_file_params(params: &AuthFileParams) -> std::io::Result<Str
 }
 
 async fn build_config(
-    codex_home: &Path,
+    hepta_home: &Path,
     forced_login_method: Option<ForcedLoginMethod>,
     forced_chatgpt_workspace_id: Option<Vec<String>>,
 ) -> AuthConfig {
     AuthConfig {
-        codex_home: codex_home.to_path_buf(),
+        codex_home: hepta_home.to_path_buf(),
         auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         forced_login_method,
         forced_chatgpt_workspace_id,
@@ -759,7 +759,7 @@ fn legacy_codex_env_auth_readers_remain_fallbacks() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn load_auth_reads_access_token_from_env() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let expected_record = agent_identity_record(WORKSPACE_ID_ALLOWED);
     let agent_identity =
         signed_agent_identity_jwt(&expected_record, json!(expected_record.plan_type))
@@ -786,7 +786,7 @@ async fn load_auth_reads_access_token_from_env() {
     let _authapi_guard =
         EnvVarGuard::set("CODEX_AGENT_IDENTITY_AUTHAPI_BASE_URL", &chatgpt_base_url);
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         Some(&chatgpt_base_url),
@@ -801,7 +801,7 @@ async fn load_auth_reads_access_token_from_env() {
     assert_eq!(agent_identity.record(), &expected_record);
     assert_eq!(agent_identity.process_task_id(), "task-123");
     assert!(
-        !get_auth_file(codex_home.path()).exists(),
+        !get_auth_file(hepta_home.path()).exists(),
         "env auth should not write auth.json"
     );
     server.verify().await;
@@ -810,7 +810,7 @@ async fn load_auth_reads_access_token_from_env() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn load_auth_keeps_codex_api_key_env_precedence() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let record = agent_identity_record(WORKSPACE_ID_ALLOWED);
     let agent_identity = fake_agent_identity_jwt(&record).expect("fake agent identity");
     let _hepta_access_token_guard = remove_hepta_access_token_env_var();
@@ -819,7 +819,7 @@ async fn load_auth_keeps_codex_api_key_env_precedence() {
     let _api_key_guard = EnvVarGuard::set(CODEX_API_KEY_ENV_VAR, "sk-env");
 
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ true,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
@@ -834,13 +834,13 @@ async fn load_auth_keeps_codex_api_key_env_precedence() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn enforce_login_restrictions_logs_out_for_method_mismatch() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
-    login_with_api_key(codex_home.path(), "sk-test", AuthCredentialsStoreMode::File)
+    login_with_api_key(hepta_home.path(), "sk-test", AuthCredentialsStoreMode::File)
         .expect("seed api key");
 
     let config = build_config(
-        codex_home.path(),
+        hepta_home.path(),
         Some(ForcedLoginMethod::Chatgpt),
         /*forced_chatgpt_workspace_id*/ None,
     )
@@ -851,7 +851,7 @@ async fn enforce_login_restrictions_logs_out_for_method_mismatch() {
         .expect_err("expected method mismatch to error");
     assert!(err.to_string().contains("ChatGPT login is required"));
     assert!(
-        !codex_home.path().join("auth.json").exists(),
+        !hepta_home.path().join("auth.json").exists(),
         "auth.json should be removed on mismatch"
     );
 }
@@ -859,7 +859,7 @@ async fn enforce_login_restrictions_logs_out_for_method_mismatch() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn enforce_login_restrictions_logs_out_for_workspace_mismatch() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let _jwt = write_auth_file(
         AuthFileParams {
@@ -867,12 +867,12 @@ async fn enforce_login_restrictions_logs_out_for_workspace_mismatch() {
             chatgpt_plan_type: Some("pro".to_string()),
             chatgpt_account_id: Some(WORKSPACE_ID_DISALLOWED.to_string()),
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let config = build_config(
-        codex_home.path(),
+        hepta_home.path(),
         /*forced_login_method*/ None,
         Some(vec![WORKSPACE_ID_ALLOWED.to_string()]),
     )
@@ -886,7 +886,7 @@ async fn enforce_login_restrictions_logs_out_for_workspace_mismatch() {
             .contains(&format!("workspace(s) {WORKSPACE_ID_ALLOWED}"))
     );
     assert!(
-        !codex_home.path().join("auth.json").exists(),
+        !hepta_home.path().join("auth.json").exists(),
         "auth.json should be removed on mismatch"
     );
 }
@@ -894,7 +894,7 @@ async fn enforce_login_restrictions_logs_out_for_workspace_mismatch() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn enforce_login_restrictions_allows_matching_workspace() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let _jwt = write_auth_file(
         AuthFileParams {
@@ -902,12 +902,12 @@ async fn enforce_login_restrictions_allows_matching_workspace() {
             chatgpt_plan_type: Some("pro".to_string()),
             chatgpt_account_id: Some(WORKSPACE_ID_ALLOWED.to_string()),
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let config = build_config(
-        codex_home.path(),
+        hepta_home.path(),
         /*forced_login_method*/ None,
         Some(vec![WORKSPACE_ID_ALLOWED.to_string()]),
     )
@@ -917,7 +917,7 @@ async fn enforce_login_restrictions_allows_matching_workspace() {
         .await
         .expect("matching workspace should succeed");
     assert!(
-        codex_home.path().join("auth.json").exists(),
+        hepta_home.path().join("auth.json").exists(),
         "auth.json should remain when restrictions pass"
     );
 }
@@ -925,19 +925,19 @@ async fn enforce_login_restrictions_allows_matching_workspace() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn enforce_login_restrictions_allows_any_matching_workspace_in_list() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _jwt = write_auth_file(
         AuthFileParams {
             openai_api_key: None,
             chatgpt_plan_type: Some("pro".to_string()),
             chatgpt_account_id: Some(WORKSPACE_ID_ALLOWED.to_string()),
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let config = build_config(
-        codex_home.path(),
+        hepta_home.path(),
         /*forced_login_method*/ None,
         Some(vec![
             WORKSPACE_ID_SECOND_ALLOWED.to_string(),
@@ -954,7 +954,7 @@ async fn enforce_login_restrictions_allows_any_matching_workspace_in_list() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn enforce_login_restrictions_logs_out_for_agent_identity_workspace_mismatch() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let record = agent_identity_record(WORKSPACE_ID_DISALLOWED);
     let agent_identity =
@@ -978,7 +978,7 @@ async fn enforce_login_restrictions_logs_out_for_agent_identity_workspace_mismat
     let _authapi_guard =
         EnvVarGuard::set("CODEX_AGENT_IDENTITY_AUTHAPI_BASE_URL", &chatgpt_base_url);
     save_auth(
-        codex_home.path(),
+        hepta_home.path(),
         &AuthDotJson {
             auth_mode: Some(ApiAuthMode::AgentIdentity),
             openai_api_key: None,
@@ -991,7 +991,7 @@ async fn enforce_login_restrictions_logs_out_for_agent_identity_workspace_mismat
     .expect("seed agent identity auth");
 
     let config = AuthConfig {
-        codex_home: codex_home.path().to_path_buf(),
+        codex_home: hepta_home.path().to_path_buf(),
         auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         forced_login_method: None,
         forced_chatgpt_workspace_id: Some(vec![WORKSPACE_ID_ALLOWED.to_string()]),
@@ -1005,7 +1005,7 @@ async fn enforce_login_restrictions_logs_out_for_agent_identity_workspace_mismat
         "current credentials belong to {WORKSPACE_ID_DISALLOWED}"
     )));
     assert!(
-        !codex_home.path().join("auth.json").exists(),
+        !hepta_home.path().join("auth.json").exists(),
         "auth.json should be removed on mismatch"
     );
     server.verify().await;
@@ -1014,13 +1014,13 @@ async fn enforce_login_restrictions_logs_out_for_agent_identity_workspace_mismat
 #[tokio::test]
 async fn enforce_login_restrictions_allows_api_key_if_login_method_not_set_but_forced_chatgpt_workspace_id_is_set()
  {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
-    login_with_api_key(codex_home.path(), "sk-test", AuthCredentialsStoreMode::File)
+    login_with_api_key(hepta_home.path(), "sk-test", AuthCredentialsStoreMode::File)
         .expect("seed api key");
 
     let config = build_config(
-        codex_home.path(),
+        hepta_home.path(),
         /*forced_login_method*/ None,
         Some(vec![WORKSPACE_ID_ALLOWED.to_string()]),
     )
@@ -1030,7 +1030,7 @@ async fn enforce_login_restrictions_allows_api_key_if_login_method_not_set_but_f
         .await
         .expect("matching workspace should succeed");
     assert!(
-        codex_home.path().join("auth.json").exists(),
+        hepta_home.path().join("auth.json").exists(),
         "auth.json should remain when restrictions pass"
     );
 }
@@ -1041,10 +1041,10 @@ async fn enforce_login_restrictions_blocks_env_api_key_when_chatgpt_required() {
     let _hepta_api_key_guard = remove_hepta_api_key_env_var();
     let _guard = EnvVarGuard::set(CODEX_API_KEY_ENV_VAR, "sk-env");
     let _access_token_guard = remove_access_token_env_var();
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
 
     let config = build_config(
-        codex_home.path(),
+        hepta_home.path(),
         Some(ForcedLoginMethod::Chatgpt),
         /*forced_chatgpt_workspace_id*/ None,
     )
@@ -1215,7 +1215,7 @@ async fn assert_agent_identity_plan_alias(
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn plan_type_maps_known_plan() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let _jwt = write_auth_file(
         AuthFileParams {
@@ -1223,12 +1223,12 @@ async fn plan_type_maps_known_plan() {
             chatgpt_plan_type: Some("pro".to_string()),
             chatgpt_account_id: None,
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
@@ -1243,7 +1243,7 @@ async fn plan_type_maps_known_plan() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn plan_type_maps_self_serve_business_usage_based_plan() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let _jwt = write_auth_file(
         AuthFileParams {
@@ -1251,12 +1251,12 @@ async fn plan_type_maps_self_serve_business_usage_based_plan() {
             chatgpt_plan_type: Some("self_serve_business_usage_based".to_string()),
             chatgpt_account_id: None,
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
@@ -1274,7 +1274,7 @@ async fn plan_type_maps_self_serve_business_usage_based_plan() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn plan_type_maps_enterprise_cbp_usage_based_plan() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let _jwt = write_auth_file(
         AuthFileParams {
@@ -1282,12 +1282,12 @@ async fn plan_type_maps_enterprise_cbp_usage_based_plan() {
             chatgpt_plan_type: Some("enterprise_cbp_usage_based".to_string()),
             chatgpt_account_id: None,
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
@@ -1305,7 +1305,7 @@ async fn plan_type_maps_enterprise_cbp_usage_based_plan() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn plan_type_maps_unknown_to_unknown() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let _jwt = write_auth_file(
         AuthFileParams {
@@ -1313,12 +1313,12 @@ async fn plan_type_maps_unknown_to_unknown() {
             chatgpt_plan_type: Some("mystery-tier".to_string()),
             chatgpt_account_id: None,
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
@@ -1333,7 +1333,7 @@ async fn plan_type_maps_unknown_to_unknown() {
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn missing_plan_type_maps_to_unknown() {
-    let codex_home = tempdir().unwrap();
+    let hepta_home = tempdir().unwrap();
     let _access_token_guard = remove_access_token_env_var();
     let _jwt = write_auth_file(
         AuthFileParams {
@@ -1341,12 +1341,12 @@ async fn missing_plan_type_maps_to_unknown() {
             chatgpt_plan_type: None,
             chatgpt_account_id: None,
         },
-        codex_home.path(),
+        hepta_home.path(),
     )
     .expect("failed to write auth file");
 
     let auth = super::load_auth(
-        codex_home.path(),
+        hepta_home.path(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,

@@ -206,6 +206,13 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - The tests still exercise the same HEPTA_HOME runtime behavior and unchanged
   config/auth file semantics.
 
+## Cleaned in login test home naming pass
+
+- Login suite temp directories and helper parameters now use Hepta home
+  terminology in device-code, refresh, logout, and auth unit tests.
+- Public ServerOptions/AuthConfig fields named codex_home remain compatibility
+  API keys while their local test inputs now use hepta_home names.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

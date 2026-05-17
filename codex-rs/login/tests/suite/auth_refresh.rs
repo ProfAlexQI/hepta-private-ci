@@ -186,7 +186,7 @@ async fn refresh_token_skips_refresh_when_auth_changed() -> Result<()> {
         agent_identity: None,
     };
     save_auth(
-        ctx.codex_home.path(),
+        ctx.hepta_home.path(),
         &disk_auth,
         AuthCredentialsStoreMode::File,
     )?;
@@ -252,7 +252,7 @@ async fn refresh_token_errors_on_account_mismatch() -> Result<()> {
         agent_identity: None,
     };
     save_auth(
-        ctx.codex_home.path(),
+        ctx.hepta_home.path(),
         &disk_auth,
         AuthCredentialsStoreMode::File,
     )?;
@@ -420,7 +420,7 @@ async fn auth_reloads_disk_auth_when_cached_auth_is_stale() -> Result<()> {
         agent_identity: None,
     };
     save_auth(
-        ctx.codex_home.path(),
+        ctx.hepta_home.path(),
         &disk_auth,
         AuthCredentialsStoreMode::File,
     )?;
@@ -483,7 +483,7 @@ async fn auth_reloads_disk_auth_without_calling_expired_refresh_token() -> Resul
         agent_identity: None,
     };
     save_auth(
-        ctx.codex_home.path(),
+        ctx.hepta_home.path(),
         &disk_auth,
         AuthCredentialsStoreMode::File,
     )?;
@@ -675,7 +675,7 @@ async fn refresh_token_reloads_changed_auth_after_permanent_failure() -> Result<
         agent_identity: None,
     };
     save_auth(
-        ctx.codex_home.path(),
+        ctx.hepta_home.path(),
         &disk_auth,
         AuthCredentialsStoreMode::File,
     )?;
@@ -797,7 +797,7 @@ async fn unauthorized_recovery_reloads_then_refreshes_tokens() -> Result<()> {
         agent_identity: None,
     };
     save_auth(
-        ctx.codex_home.path(),
+        ctx.hepta_home.path(),
         &disk_auth,
         AuthCredentialsStoreMode::File,
     )?;
@@ -892,7 +892,7 @@ async fn unauthorized_recovery_errors_on_account_mismatch() -> Result<()> {
         agent_identity: None,
     };
     save_auth(
-        ctx.codex_home.path(),
+        ctx.hepta_home.path(),
         &disk_auth,
         AuthCredentialsStoreMode::File,
     )?;
@@ -968,20 +968,20 @@ async fn unauthorized_recovery_requires_chatgpt_auth() -> Result<()> {
 }
 
 struct RefreshTokenTestContext {
-    codex_home: TempDir,
+    hepta_home: TempDir,
     auth_manager: Arc<AuthManager>,
     _env_guard: EnvGuard,
 }
 
 impl RefreshTokenTestContext {
     async fn new(server: &MockServer) -> Result<Self> {
-        let codex_home = TempDir::new()?;
+        let hepta_home = TempDir::new()?;
 
         let endpoint = format!("{}/oauth/token", server.uri());
         let env_guard = EnvGuard::set(REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR, endpoint);
 
         let auth_manager = AuthManager::shared(
-            codex_home.path().to_path_buf(),
+            hepta_home.path().to_path_buf(),
             /*enable_codex_api_key_env*/ false,
             AuthCredentialsStoreMode::File,
             /*chatgpt_base_url*/ None,
@@ -989,21 +989,21 @@ impl RefreshTokenTestContext {
         .await;
 
         Ok(Self {
-            codex_home,
+            hepta_home,
             auth_manager,
             _env_guard: env_guard,
         })
     }
 
     fn load_auth(&self) -> Result<AuthDotJson> {
-        load_auth_dot_json(self.codex_home.path(), AuthCredentialsStoreMode::File)
+        load_auth_dot_json(self.hepta_home.path(), AuthCredentialsStoreMode::File)
             .context("load auth.json")?
             .context("auth.json should exist")
     }
 
     async fn write_auth(&self, auth_dot_json: &AuthDotJson) -> Result<()> {
         save_auth(
-            self.codex_home.path(),
+            self.hepta_home.path(),
             auth_dot_json,
             AuthCredentialsStoreMode::File,
         )?;

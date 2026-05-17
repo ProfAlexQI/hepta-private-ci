@@ -45,17 +45,17 @@ async fn logout_with_revoke_revokes_refresh_token_then_removes_auth() -> Result<
         format!("{}/oauth/revoke", server.uri()),
     );
 
-    let codex_home = TempDir::new()?;
+    let hepta_home = TempDir::new()?;
     save_auth(
-        codex_home.path(),
+        hepta_home.path(),
         &chatgpt_auth(),
         AuthCredentialsStoreMode::File,
     )?;
 
-    let removed = logout_with_revoke(codex_home.path(), AuthCredentialsStoreMode::File).await?;
+    let removed = logout_with_revoke(hepta_home.path(), AuthCredentialsStoreMode::File).await?;
 
     assert!(removed);
-    assert!(!codex_home.path().join("auth.json").exists());
+    assert!(!hepta_home.path().join("auth.json").exists());
 
     let requests = server
         .received_requests()
@@ -97,17 +97,17 @@ async fn logout_with_revoke_removes_auth_when_revoke_fails() -> Result<()> {
         format!("{}/oauth/revoke", server.uri()),
     );
 
-    let codex_home = TempDir::new()?;
+    let hepta_home = TempDir::new()?;
     save_auth(
-        codex_home.path(),
+        hepta_home.path(),
         &chatgpt_auth(),
         AuthCredentialsStoreMode::File,
     )?;
 
-    let removed = logout_with_revoke(codex_home.path(), AuthCredentialsStoreMode::File).await?;
+    let removed = logout_with_revoke(hepta_home.path(), AuthCredentialsStoreMode::File).await?;
 
     assert!(removed);
-    assert!(!codex_home.path().join("auth.json").exists());
+    assert!(!hepta_home.path().join("auth.json").exists());
 
     server.verify().await;
     Ok(())
@@ -132,21 +132,21 @@ async fn auth_manager_logout_with_revoke_uses_cached_auth() -> Result<()> {
         format!("{}/oauth/revoke", server.uri()),
     );
 
-    let codex_home = TempDir::new()?;
+    let hepta_home = TempDir::new()?;
     save_auth(
-        codex_home.path(),
+        hepta_home.path(),
         &chatgpt_auth_with_refresh_token(REFRESH_TOKEN),
         AuthCredentialsStoreMode::File,
     )?;
     let manager = AuthManager::new(
-        codex_home.path().to_path_buf(),
+        hepta_home.path().to_path_buf(),
         /*enable_codex_api_key_env*/ false,
         AuthCredentialsStoreMode::File,
         /*chatgpt_base_url*/ None,
     )
     .await;
     save_auth(
-        codex_home.path(),
+        hepta_home.path(),
         &chatgpt_auth_with_refresh_token("newer-disk-refresh-token"),
         AuthCredentialsStoreMode::File,
     )?;
@@ -155,7 +155,7 @@ async fn auth_manager_logout_with_revoke_uses_cached_auth() -> Result<()> {
 
     assert!(removed);
     assert!(manager.auth_cached().is_none());
-    assert!(!codex_home.path().join("auth.json").exists());
+    assert!(!hepta_home.path().join("auth.json").exists());
 
     let requests = server
         .received_requests()
