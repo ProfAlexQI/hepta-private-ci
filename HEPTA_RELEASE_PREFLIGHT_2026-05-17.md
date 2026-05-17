@@ -137,3 +137,22 @@ Before replacing the active service:
    replacement step.
 2. After replacement, verify the running
    service binary path.
+
+## Native Gateway Migration Slice 1
+
+The direct fork path now starts absorbing the old Hepta runtime entrypoint
+inside `hepta-codex` instead of treating it as an external bridge:
+
+- `hepta --serve-ui [bind]` is accepted before normal Clap parsing, matching
+  the active LaunchAgent shape used by the old Hepta gateway.
+- `--with-telegram-plugin`, `--gateway-owned-telegram-plugin`,
+  `--without-telegram-plugin`, and `--telegram-plugin-poll-ms` are parsed
+  with the same loopback-first safety posture.
+- The native gateway exposes `/`, `/health`, `/api/health`,
+  `/api/native-gateway`, `/api/gateway-runtime`, and
+  `/api/telegram-plugin`.
+- Telegram reply-loop ownership is intentionally reported as
+  `pending_migration` until the old Hepta Telegram plugin loop is ported into
+  the fork. This keeps the release honest: the entrypoint is LaunchAgent
+  compatible, but active gateway replacement is still blocked on Telegram and
+  full Control UI route migration.

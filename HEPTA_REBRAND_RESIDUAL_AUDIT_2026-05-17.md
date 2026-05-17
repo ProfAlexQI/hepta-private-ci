@@ -702,6 +702,20 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   ChatGPT Codex service URLs, crate/package names, wire/event schema names,
   and test-only `codex_home` compatibility variable names.
 
+## Native runtime absorption started
+
+- `hepta-codex` now owns a native gateway entrypoint:
+  `hepta --serve-ui [bind]`.
+- The old Hepta LaunchAgent flag shape is accepted by the fork:
+  `--with-telegram-plugin`, `--gateway-owned-telegram-plugin`,
+  `--without-telegram-plugin`, and `--telegram-plugin-poll-ms`.
+- The fork serves a local Hepta Control UI shell plus readiness endpoints at
+  `/health`, `/api/native-gateway`, `/api/gateway-runtime`, and
+  `/api/telegram-plugin`.
+- Telegram plugin execution is not faked. The fork reports
+  `pending_migration` until the old Hepta reply loop is ported into the
+  native gateway process.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

@@ -51,6 +51,7 @@ mod desktop_app;
 mod doctor;
 mod marketplace_cmd;
 mod mcp_cmd;
+mod native_gateway;
 mod plugin_cmd;
 mod state_db_recovery;
 #[cfg(not(windows))]
@@ -828,6 +829,11 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
+    if let Some(options) = native_gateway::parse_serve_ui_args_from_env()? {
+        native_gateway::run_native_gateway(options).await?;
+        return Ok(());
+    }
+
     let MultitoolCli {
         config_overrides: mut root_config_overrides,
         feature_toggles,
