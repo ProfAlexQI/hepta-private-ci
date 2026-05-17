@@ -128,6 +128,7 @@ pub(crate) struct NativeTelegramReceiveOnceStatus {
     pub(crate) raw_update_payload_exposed: bool,
     pub(crate) raw_token_exposed: bool,
     pub(crate) limit: usize,
+    pub(crate) get_updates_offset: Option<i64>,
     pub(crate) bot_api_ok: Option<bool>,
     pub(crate) local_next_update_offset: Option<i64>,
     pub(crate) config: NativeTelegramConfigStatus,
@@ -235,6 +236,7 @@ pub(crate) struct NativeTelegramDrainOnceStatus {
     pub(crate) send_execution: NativeTelegramSendExecutionReport,
     pub(crate) bot_api_ok: Option<bool>,
     pub(crate) local_next_update_offset: Option<i64>,
+    pub(crate) get_updates_offset: Option<i64>,
     pub(crate) live_read_started: bool,
     pub(crate) model_turn_started: bool,
     pub(crate) send_started: bool,
@@ -834,13 +836,22 @@ fn telegram_drain_once_status_with_gates(
     };
     let mut bot_api_ok = None;
     let mut local_next_update_offset = None;
+    let mut get_updates_offset = None;
     let mut live_read_started = false;
     let mut external_network_read = false;
 
     if requested && gates.live_read_gate_enabled {
         let cursor_status =
             telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH));
-        if !(config.enabled && config.token_shape_ok && config.binding_ready) {
+        get_updates_offset = cursor_status.next_update_offset;
+        if cursor_status.cursor_file_present && !cursor_status.cursor_parse_ok {
+            status = "attention";
+            error = Some(
+                cursor_status
+                    .error
+                    .unwrap_or_else(|| "Telegram cursor state is not readable".to_string()),
+            );
+        } else if !(config.enabled && config.token_shape_ok && config.binding_ready) {
             status = "attention";
             error = Some("Telegram config, token shape, or binding is not ready".to_string());
         } else {
@@ -848,7 +859,7 @@ fn telegram_drain_once_status_with_gates(
                 Ok(token) => {
                     live_read_started = true;
                     external_network_read = true;
-                    match call_telegram_get_updates(&token, 20) {
+                    match call_telegram_get_updates(&token, 20, get_updates_offset) {
                         Ok(api) => {
                             bot_api_ok = api.get("ok").and_then(Value::as_bool);
                             let updates = api
@@ -918,6 +929,7 @@ fn telegram_drain_once_status_with_gates(
         send_execution,
         bot_api_ok,
         local_next_update_offset,
+        get_updates_offset,
         live_read_started,
         model_turn_started: false,
         send_started: false,
@@ -1085,7 +1097,26 @@ fn telegram_receive_once_status_with_gate(
         }
     };
 
-    match call_telegram_get_updates(&token, limit) {
+    let cursor_status = telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH));
+    let get_updates_offset = cursor_status.next_update_offset;
+    if cursor_status.cursor_file_present && !cursor_status.cursor_parse_ok {
+        let mut report = NativeTelegramReceiveOnceStatus::base(
+            requested,
+            "attention",
+            true,
+            false,
+            limit,
+            config,
+            transport_plan,
+            cursor_plan,
+            inspect_telegram_updates(&[]),
+            cursor_status.error,
+        );
+        report.get_updates_offset = get_updates_offset;
+        return report;
+    }
+
+    match call_telegram_get_updates(&token, limit, get_updates_offset) {
         Ok(api) => {
             let bot_api_ok = api.get("ok").and_then(Value::as_bool);
             let updates = api
@@ -1115,6 +1146,7 @@ fn telegram_receive_once_status_with_gate(
             );
             report.bot_api_ok = bot_api_ok;
             report.local_next_update_offset = local_next_update_offset;
+            report.get_updates_offset = get_updates_offset;
             if bot_api_ok == Some(false) {
                 report.error = api
                     .get("description")
@@ -1125,18 +1157,22 @@ fn telegram_receive_once_status_with_gate(
             report.model_turn_plan = model_turn_plan;
             report
         }
-        Err(error) => NativeTelegramReceiveOnceStatus::base(
-            requested,
-            "attention",
-            true,
-            true,
-            limit,
-            config,
-            transport_plan,
-            cursor_plan,
-            inspect_telegram_updates(&[]),
-            Some(redact_token_like_text(&error)),
-        ),
+        Err(error) => {
+            let mut report = NativeTelegramReceiveOnceStatus::base(
+                requested,
+                "attention",
+                true,
+                true,
+                limit,
+                config,
+                transport_plan,
+                cursor_plan,
+                inspect_telegram_updates(&[]),
+                Some(redact_token_like_text(&error)),
+            );
+            report.get_updates_offset = get_updates_offset;
+            report
+        }
     }
 }
 
@@ -1389,27 +1425,23 @@ fn resolve_private_hepta_runtime_config_path() -> Option<PathBuf> {
     home_config.filter(|path| path.is_file())
 }
 
-fn call_telegram_get_updates(token: &str, limit: usize) -> Result<Value, String> {
+fn call_telegram_get_updates(
+    token: &str,
+    limit: usize,
+    offset: Option<i64>,
+) -> Result<Value, String> {
     let endpoint = format!("https://api.telegram.org/bot{token}/getUpdates");
-    let limit = limit.clamp(1, 20).to_string();
+    let query = telegram_get_updates_query(limit, offset);
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|error| format!("failed to build Telegram Bot API client: {error}"))?;
-    let response = client
-        .get(endpoint)
-        .query(&[
-            ("timeout", "0"),
-            ("limit", limit.as_str()),
-            ("allowed_updates", TELEGRAM_ALLOWED_UPDATES),
-        ])
-        .send()
-        .map_err(|error| {
-            format!(
-                "Telegram Bot API getUpdates request failed: {}",
-                error.without_url()
-            )
-        })?;
+    let response = client.get(endpoint).query(&query).send().map_err(|error| {
+        format!(
+            "Telegram Bot API getUpdates request failed: {}",
+            error.without_url()
+        )
+    })?;
     let status = response.status();
     let body = response
         .json::<Value>()
@@ -1426,6 +1458,18 @@ fn call_telegram_get_updates(token: &str, limit: usize) -> Result<Value, String>
                 .unwrap_or_else(|| "missing".to_string())
         ))
     }
+}
+
+fn telegram_get_updates_query(limit: usize, offset: Option<i64>) -> Vec<(&'static str, String)> {
+    let mut query = vec![
+        ("timeout", "0".to_string()),
+        ("limit", limit.clamp(1, 20).to_string()),
+        ("allowed_updates", TELEGRAM_ALLOWED_UPDATES.to_string()),
+    ];
+    if let Some(offset) = offset.filter(|offset| *offset >= 0) {
+        query.push(("offset", offset.to_string()));
+    }
+    query
 }
 
 #[allow(dead_code)]
@@ -2460,6 +2504,7 @@ impl NativeTelegramReceiveOnceStatus {
             raw_update_payload_exposed: false,
             raw_token_exposed: false,
             limit,
+            get_updates_offset: None,
             bot_api_ok: None,
             local_next_update_offset: inspection.latest_allowed_next_update_offset,
             config,
@@ -2660,6 +2705,33 @@ mod tests {
         assert!(!telegram_update_already_drained(42, Some(42)));
         assert_eq!(telegram_next_update_offset(42), Some(43));
         assert_eq!(telegram_next_update_offset(i64::MAX), None);
+    }
+
+    #[test]
+    fn get_updates_query_uses_cursor_offset_when_available() {
+        let without_offset = telegram_get_updates_query(999, None);
+        assert_eq!(
+            without_offset,
+            vec![
+                ("timeout", "0".to_string()),
+                ("limit", "20".to_string()),
+                ("allowed_updates", TELEGRAM_ALLOWED_UPDATES.to_string()),
+            ]
+        );
+
+        let with_offset = telegram_get_updates_query(5, Some(43));
+        assert_eq!(
+            with_offset,
+            vec![
+                ("timeout", "0".to_string()),
+                ("limit", "5".to_string()),
+                ("allowed_updates", TELEGRAM_ALLOWED_UPDATES.to_string()),
+                ("offset", "43".to_string()),
+            ]
+        );
+
+        let negative_offset = telegram_get_updates_query(5, Some(-1));
+        assert!(!negative_offset.iter().any(|(name, _)| *name == "offset"));
     }
 
     #[test]

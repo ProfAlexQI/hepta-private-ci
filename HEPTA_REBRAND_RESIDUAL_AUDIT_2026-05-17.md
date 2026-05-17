@@ -809,6 +809,10 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   `HEPTA_NATIVE_TELEGRAM_SEND=1`, non-empty model output, an opaque reply
   target, and a candidate next-update offset, and only writes the ingress
   cursor after a successful Bot API `sendMessage` acknowledgement.
+- Telegram live receive/drain requests now thread the local next-update cursor
+  into Bot API `getUpdates` as the optional `offset` query parameter. Missing
+  cursor state omits the offset, malformed cursor state fails closed before
+  network reads, and negative offsets are never serialized into the request.
 
 ## Keep for compatibility
 
