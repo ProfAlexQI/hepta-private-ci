@@ -452,6 +452,10 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
   point at Hepta/runtime-home paths and Hepta keymap documentation.
 - App-server protocol docs now describe internal raw-event users as hosted
   runtimes instead of Codex Cloud.
+- Final active-product residual sweep is clean: remaining direct `Codex` hits
+  are compatibility type names (`CodexAuth`, `CodexErr`, `CodexErrorInfo`),
+  legacy transcript markers (`## My request for Codex:`), legacy keyring
+  migration constants, and test fixture/snapshot strings.
 - Endpoint paths such as `/api/codex/...`, legacy MCP wire fields such as
   `codex_*`, and crate names such as `codex-core` remain compatibility names.
 
