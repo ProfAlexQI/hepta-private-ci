@@ -123,7 +123,7 @@ impl AnalyticsEventsClient {
     ) -> Self {
         Self {
             // Hepta is a source fork, so event export must be explicit. Keep
-            // unset config distinct from Some(true) to avoid sending Codex-era
+            // unset config distinct from Some(true) to avoid sending upstream-era
             // analytics to upstream endpoints from a default local install.
             queue: analytics_events_enabled(analytics_enabled)
                 .then(|| AnalyticsEventsQueue::new(Arc::clone(&auth_manager), base_url)),

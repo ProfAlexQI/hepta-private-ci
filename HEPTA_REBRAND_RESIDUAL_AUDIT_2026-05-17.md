@@ -420,6 +420,14 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - Built-in pet ids, spritesheet filenames, and CDN compatibility details remain
   unchanged where they are cache or upstream asset identifiers.
 
+## Cleaned in runtime comments / internal helper pass
+
+- OTel, state, responses-proxy, rate-limit parser, rollout/rollout-trace,
+  sandboxing, apply-patch, session, task, MCP-file bridge, marketplace, and
+  model-provider comments now describe Hepta as the active runtime.
+- Internal test-sync helper descriptions now say Hepta integration tests while
+  preserving crate, tool, and compatibility type names.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.

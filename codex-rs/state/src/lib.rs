@@ -66,7 +66,7 @@ pub use telemetry::record_fallback;
 
 /// Primary environment variable for overriding the SQLite state database home directory.
 pub const SQLITE_HOME_ENV: &str = "HEPTA_SQLITE_HOME";
-/// Legacy override accepted while migrating Codex-derived installations.
+/// Legacy override accepted while migrating upstream-derived installations.
 pub const LEGACY_SQLITE_HOME_ENV: &str = "CODEX_SQLITE_HOME";
 
 pub const LOGS_DB_FILENAME: &str = "logs_2.sqlite";

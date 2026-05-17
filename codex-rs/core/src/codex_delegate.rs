@@ -56,7 +56,7 @@ use codex_protocol::protocol::InitialHistory;
 #[cfg(test)]
 use crate::session::completed_session_loop_termination;
 
-/// Start an interactive sub-Codex thread and return IO channels.
+/// Start an interactive delegated Hepta thread and return IO channels.
 ///
 /// The returned `events_rx` yields non-approval events emitted by the sub-agent.
 /// Approval requests are handled via `parent_session` and are not surfaced.
