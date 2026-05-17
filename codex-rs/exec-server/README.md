@@ -1,18 +1,18 @@
-# codex-exec-server
+# hepta exec-server
 
-`codex-exec-server` is the library backing `codex exec-server`, a small
+`codex-exec-server` is the compatibility crate backing `hepta exec-server`, a small
 JSON-RPC server for spawning and controlling subprocesses through
 `codex-utils-pty`.
 
 It provides:
 
-- a CLI entrypoint: `codex exec-server`
+- a CLI entrypoint: `hepta exec-server`
 - a Rust client: `ExecServerClient`
 - a small protocol module with shared request/response types
 
 This crate owns the transport, protocol, and filesystem/process handlers. The
-top-level `codex` binary owns hidden helper dispatch for sandboxed
-filesystem operations and `codex-linux-sandbox`.
+top-level `hepta` binary owns hidden helper dispatch for sandboxed
+filesystem operations and the Linux sandbox helper.
 
 ## Transport
 
@@ -26,7 +26,8 @@ The CLI entrypoint supports:
 
 Remote mode registers the local exec-server with the executor registry,
 then reconnects to the service-provided rendezvous websocket as the executor.
-It requires a bearer token in `CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN`.
+It currently requires a bearer token in the legacy
+`CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN` environment variable.
 
 Wire framing:
 
@@ -375,7 +376,7 @@ The crate exports:
   registration mode
 
 Callers must pass `ExecServerRuntimePaths` to `run_main()`. The top-level
-`codex exec-server` command builds these paths from the `codex` arg0 dispatch
+`hepta exec-server` command builds these paths from the `hepta` arg0 dispatch
 state.
 
 ## Example session

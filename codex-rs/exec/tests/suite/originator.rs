@@ -7,10 +7,9 @@ use core_test_support::responses;
 use core_test_support::test_codex_exec::test_codex_exec;
 use wiremock::matchers::header;
 
-/// Verify that when the server reports an error, `codex-exec` exits with a
-/// non-zero status code so automation can detect failures.
+/// Verify that `hepta exec` sends the Hepta originator header.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn send_codex_exec_originator() -> anyhow::Result<()> {
+async fn sends_hepta_exec_originator() -> anyhow::Result<()> {
     let test = test_codex_exec();
 
     let server = responses::start_mock_server().await;
@@ -19,7 +18,7 @@ async fn send_codex_exec_originator() -> anyhow::Result<()> {
         responses::ev_assistant_message("response_1", "Hello, world!"),
         responses::ev_completed("response_1"),
     ]);
-    responses::mount_sse_once_match(&server, header("Originator", "codex_exec"), body).await;
+    responses::mount_sse_once_match(&server, header("Originator", "hepta_exec"), body).await;
 
     test.cmd_with_server(&server)
         .env_remove(CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR)

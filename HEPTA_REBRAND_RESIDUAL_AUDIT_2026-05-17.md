@@ -245,6 +245,21 @@ This audit tracks Codex-era strings after the direct Hepta fork rebase. It separ
 - TUI source-level comments now describe the Hepta TUI where they are
   human-readable documentation rather than crate names.
 
+## Cleaned in exec surface pass
+
+- Non-interactive exec help and usage now describe `hepta exec`, Hepta config,
+  and `HEPTA_HOME` in visible CLI text.
+- The exec originator, root tracing span, telemetry process name, and
+  in-process client name now use `hepta_exec`.
+- Exec JSONL event comments, stdin-behavior comments, and focused tests now use
+  Hepta wording while keeping the `codex-exec` crate/binary compatibility
+  name.
+- Exec-server README now documents `hepta exec-server` as the command surface
+  while preserving legacy wire/environment names such as
+  `CODEX_EXEC_SERVER_REMOTE_BEARER_TOKEN`.
+- MCP config comments and protocol README now refer to Hepta command surfaces
+  where they describe user-facing behavior.
+
 ## Keep for compatibility
 
 - Crate, module, and package names such as `codex-core`, `codex-tui`, `codex_protocol`, and `codex_app_server_protocol`.
