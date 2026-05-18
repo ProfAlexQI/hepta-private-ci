@@ -1,7 +1,11 @@
+use std::collections::HashSet;
 use std::env;
+use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::net::TcpStream;
+use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -22,6 +26,7 @@ const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status
 const ACTIVE_GATEWAY_LABEL: &str = "ai.hepta.gateway";
 const ACTIVE_GATEWAY_LEGACY_BINARY: &str = "/Users/qianqi/.local/opt/hepta/bin/hepta";
 const HEPTA_CODEX_RELEASE_BINARY: &str = "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex";
+const MAX_NATIVE_SESSION_SUMMARIES: usize = 20;
 
 const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
     ControlUiRouteSpec {
@@ -499,6 +504,20 @@ fn route_native_gateway_request(
                     operator_snapshot_json(options, &telegram_plugin),
                 );
             }
+            "/api/sessions" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_sessions_json("/sessions --json", "native_sessions_inventory"),
+                );
+            }
+            "/api/session-activity" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_sessions_json("/session-activity --json", "native_session_activity"),
+                );
+            }
             "/api/telegram-plugin" => {
                 return (
                     "200 OK",
@@ -783,6 +802,281 @@ fn operator_snapshot_json(
         raw_response_text_exposed: false,
         next_migration_slice: "promote the next high-value Control UI read-only route from parity shell to native status",
     })
+}
+
+fn native_sessions_json(source_command: &'static str, compatibility_mode: &'static str) -> String {
+    json_or_error(&native_sessions_report(
+        session_root_candidates(),
+        source_command,
+        compatibility_mode,
+    ))
+}
+
+fn native_sessions_report(
+    roots: Vec<NativeSessionRootCandidate>,
+    source_command: &'static str,
+    compatibility_mode: &'static str,
+) -> NativeSessionsResponse {
+    let mut root_reports = Vec::with_capacity(roots.len());
+    let mut recent_sessions = Vec::new();
+    let mut session_file_count = 0_u64;
+    let mut total_bytes = 0_u64;
+    let mut scan_error_count = 0_usize;
+
+    for root in roots {
+        let report = scan_session_root(&root);
+        session_file_count = session_file_count.saturating_add(report.file_count);
+        total_bytes = total_bytes.saturating_add(report.total_bytes);
+        scan_error_count += usize::from(report.error.is_some());
+        recent_sessions.extend(report.recent_sessions.clone());
+        root_reports.push(report);
+    }
+
+    recent_sessions.sort_by(|left, right| {
+        right
+            .modified_unix_ms
+            .cmp(&left.modified_unix_ms)
+            .then_with(|| right.bytes.cmp(&left.bytes))
+            .then_with(|| left.filename.cmp(&right.filename))
+    });
+    recent_sessions.truncate(MAX_NATIVE_SESSION_SUMMARIES);
+
+    NativeSessionsResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if scan_error_count == 0 {
+            "ready"
+        } else {
+            "attention"
+        },
+        source_command,
+        native_route: true,
+        compatibility_mode,
+        side_effect_free: true,
+        scanned_root_count: root_reports.len(),
+        existing_root_count: root_reports.iter().filter(|root| root.exists).count(),
+        scan_error_count,
+        session_file_count,
+        total_bytes,
+        recent_session_count: recent_sessions.len(),
+        roots: root_reports,
+        recent_sessions,
+        raw_transcript_exposed: false,
+        transcript_text_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "promote task and transcript preview routes with the same metadata-only redaction boundary",
+    }
+}
+
+fn session_root_candidates() -> Vec<NativeSessionRootCandidate> {
+    let mut roots = Vec::new();
+    let mut seen = HashSet::new();
+    for home in session_home_candidates() {
+        push_session_root_candidate(&mut roots, &mut seen, home.join("sessions"), "active");
+        push_session_root_candidate(
+            &mut roots,
+            &mut seen,
+            home.join("archived_sessions"),
+            "archived",
+        );
+    }
+    roots
+}
+
+fn session_home_candidates() -> Vec<PathBuf> {
+    let mut homes = Vec::new();
+    let mut seen = HashSet::new();
+
+    for env_name in ["HEPTA_OPENAI_CODEX_HOME", "HEPTA_HOME", "CODEX_HOME"] {
+        if let Ok(value) = env::var(env_name) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                push_unique_path(&mut homes, &mut seen, PathBuf::from(trimmed));
+            }
+        }
+    }
+
+    if let Ok(home) = env::var("HOME") {
+        let home = PathBuf::from(home);
+        push_unique_path(
+            &mut homes,
+            &mut seen,
+            home.join(".openclaw/agents/main/agent/codex-home"),
+        );
+        push_unique_path(&mut homes, &mut seen, home.join(".codex"));
+        push_unique_path(&mut homes, &mut seen, home.join(".hepta/workspace"));
+    }
+
+    homes
+}
+
+fn push_session_root_candidate(
+    roots: &mut Vec<NativeSessionRootCandidate>,
+    seen: &mut HashSet<String>,
+    root: PathBuf,
+    kind: &'static str,
+) {
+    let key = root.to_string_lossy().to_string();
+    if seen.insert(key) {
+        roots.push(NativeSessionRootCandidate { root, kind });
+    }
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, seen: &mut HashSet<String>, path: PathBuf) {
+    let key = path.to_string_lossy().to_string();
+    if seen.insert(key) {
+        paths.push(path);
+    }
+}
+
+fn scan_session_root(candidate: &NativeSessionRootCandidate) -> NativeSessionRootReport {
+    if !candidate.root.exists() {
+        return NativeSessionRootReport {
+            root: candidate.root.display().to_string(),
+            kind: candidate.kind,
+            exists: false,
+            file_count: 0,
+            total_bytes: 0,
+            latest_modified_unix_ms: None,
+            error: None,
+            recent_sessions: Vec::new(),
+        };
+    }
+
+    let mut report = NativeSessionRootReport {
+        root: candidate.root.display().to_string(),
+        kind: candidate.kind,
+        exists: true,
+        file_count: 0,
+        total_bytes: 0,
+        latest_modified_unix_ms: None,
+        error: None,
+        recent_sessions: Vec::new(),
+    };
+    scan_session_root_inner(&candidate.root, &candidate.root, &mut report);
+    report.recent_sessions.sort_by(|left, right| {
+        right
+            .modified_unix_ms
+            .cmp(&left.modified_unix_ms)
+            .then_with(|| right.bytes.cmp(&left.bytes))
+            .then_with(|| left.filename.cmp(&right.filename))
+    });
+    report
+        .recent_sessions
+        .truncate(MAX_NATIVE_SESSION_SUMMARIES);
+    report
+}
+
+fn scan_session_root_inner(root: &Path, path: &Path, report: &mut NativeSessionRootReport) {
+    if report.error.is_some() {
+        return;
+    }
+
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(err) => {
+            report.error = Some(err.to_string());
+            return;
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                report.error = Some(err.to_string());
+                return;
+            }
+        };
+        let path = entry.path();
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                report.error = Some(err.to_string());
+                return;
+            }
+        };
+        if metadata.is_dir() {
+            scan_session_root_inner(root, &path, report);
+        } else if metadata.is_file() && is_rollout_file(&path) {
+            let modified_unix_ms = metadata_modified_unix_ms(&metadata);
+            report.file_count = report.file_count.saturating_add(1);
+            report.total_bytes = report.total_bytes.saturating_add(metadata.len());
+            report.latest_modified_unix_ms = report
+                .latest_modified_unix_ms
+                .max(modified_unix_ms)
+                .or(modified_unix_ms);
+            report.recent_sessions.push(session_summary_from_path(
+                root,
+                &path,
+                metadata.len(),
+                modified_unix_ms,
+            ));
+        }
+    }
+}
+
+fn is_rollout_file(path: &Path) -> bool {
+    path.extension() == Some(OsStr::new("jsonl"))
+        && path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .is_some_and(|name| name.starts_with("rollout-"))
+}
+
+fn session_summary_from_path(
+    root: &Path,
+    path: &Path,
+    bytes: u64,
+    modified_unix_ms: Option<u64>,
+) -> NativeSessionSummary {
+    let filename = path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or_default()
+        .to_string();
+    let (started_at_filename, session_id) = rollout_filename_parts(&filename);
+    NativeSessionSummary {
+        session_id,
+        started_at_filename,
+        filename,
+        relative_path: path
+            .strip_prefix(root)
+            .unwrap_or(path)
+            .display()
+            .to_string(),
+        bytes,
+        modified_unix_ms,
+    }
+}
+
+fn rollout_filename_parts(filename: &str) -> (Option<String>, String) {
+    let Some(rest) = filename
+        .strip_prefix("rollout-")
+        .and_then(|value| value.strip_suffix(".jsonl"))
+    else {
+        return (None, filename.to_string());
+    };
+    let started_at = rest.get(..19).map(str::to_string);
+    let session_id = rest
+        .get(20..)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(rest)
+        .to_string();
+    (started_at, session_id)
+}
+
+fn metadata_modified_unix_ms(metadata: &std::fs::Metadata) -> Option<u64> {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
 }
 
 fn gateway_replacement_readiness(
@@ -1150,6 +1444,62 @@ struct NativeOperatorSnapshotResponse<'a> {
     raw_prompt_text_exposed: bool,
     raw_response_text_exposed: bool,
     next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeSessionsResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    scanned_root_count: usize,
+    existing_root_count: usize,
+    scan_error_count: usize,
+    session_file_count: u64,
+    total_bytes: u64,
+    recent_session_count: usize,
+    roots: Vec<NativeSessionRootReport>,
+    recent_sessions: Vec<NativeSessionSummary>,
+    raw_transcript_exposed: bool,
+    transcript_text_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct NativeSessionRootCandidate {
+    root: PathBuf,
+    kind: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct NativeSessionRootReport {
+    root: String,
+    kind: &'static str,
+    exists: bool,
+    file_count: u64,
+    total_bytes: u64,
+    latest_modified_unix_ms: Option<u64>,
+    error: Option<String>,
+    recent_sessions: Vec<NativeSessionSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct NativeSessionSummary {
+    session_id: String,
+    started_at_filename: Option<String>,
+    filename: String,
+    relative_path: String,
+    bytes: u64,
+    modified_unix_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1767,6 +2117,79 @@ mod tests {
             value["compatibility_mode"],
             "native_control_ui_route_parity_shell"
         );
+    }
+
+    #[test]
+    fn native_sessions_inventory_scans_metadata_without_transcript_text() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sessions = temp.path().join("sessions/2026/05/18");
+        std::fs::create_dir_all(&sessions).expect("create sessions dir");
+        std::fs::write(
+            sessions.join("rollout-2026-05-18T10-31-22-019e38e5-4a20-7000-a111-222222222222.jsonl"),
+            r#"{"item":{"type":"message","text":"do-not-expose-transcript"}}"#,
+        )
+        .expect("write rollout");
+        std::fs::write(sessions.join("ignored.jsonl"), "{}").expect("write ignored");
+
+        let report = native_sessions_report(
+            vec![NativeSessionRootCandidate {
+                root: temp.path().join("sessions"),
+                kind: "active",
+            }],
+            "/sessions --json",
+            "native_sessions_inventory",
+        );
+        let body = serde_json::to_string(&report).expect("serialize sessions report");
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.session_file_count, 1);
+        assert_eq!(report.recent_session_count, 1);
+        assert_eq!(report.raw_transcript_exposed, false);
+        assert_eq!(report.transcript_text_exposed, false);
+        assert_eq!(
+            report.recent_sessions[0].session_id,
+            "019e38e5-4a20-7000-a111-222222222222"
+        );
+        assert_eq!(
+            report.recent_sessions[0].started_at_filename.as_deref(),
+            Some("2026-05-18T10-31-22")
+        );
+        assert!(!body.contains("do-not-expose-transcript"));
+    }
+
+    #[test]
+    fn sessions_routes_return_native_inventory_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (path, mode) in [
+            ("/api/sessions", "native_sessions_inventory"),
+            ("/api/session-activity", "native_session_activity"),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request("GET", path, &options);
+            assert_eq!(status, "200 OK", "{path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            let value: serde_json::Value =
+                serde_json::from_str(&body).expect("sessions route json");
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["native_route"], true);
+            assert_eq!(value["compatibility_mode"], mode);
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(value["external_side_effects"], false);
+            assert_eq!(value["gateway_mutation_performed"], false);
+            assert_eq!(value["telegram_read_performed"], false);
+            assert_eq!(value["model_invoked"], false);
+            assert_eq!(value["message_sent"], false);
+            assert_eq!(value["cursor_written"], false);
+            assert_eq!(value["raw_transcript_exposed"], false);
+            assert_eq!(value["transcript_text_exposed"], false);
+            assert_ne!(
+                value["compatibility_mode"],
+                "native_control_ui_route_parity_shell"
+            );
+        }
     }
 
     #[test]
