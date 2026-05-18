@@ -1048,6 +1048,7 @@ fn telegram_cursor_status_from_path(path: &Path) -> NativeTelegramCursorStatus {
             status.status = "ready";
             status.cursor_parse_ok = true;
             status.next_update_offset = Some(next_update_offset);
+            status.next_migration_slice = "cursor is ready; continue active soak and expect writes only after delivery or duplicate suppression";
         }
         Err(error) => {
             status.status = "attention";
@@ -3901,7 +3902,7 @@ impl NativeTelegramReceiveOnceStatus {
                 NativeTelegramModelTurnPlan::disabled()
             },
             error,
-            next_migration_slice: "connect redacted receive candidates to Codex model-turn bridge, then enable gated send",
+            next_migration_slice: "manual receive is a diagnostic read path; use drain-once or the armed poll loop for model, send, and cursor side effects",
         }
     }
 }

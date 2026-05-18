@@ -17,6 +17,8 @@ const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERI
 const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
+const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
+const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
 const ACTIVE_GATEWAY_LABEL: &str = "ai.hepta.gateway";
 const ACTIVE_GATEWAY_LEGACY_BINARY: &str = "/Users/qianqi/.local/opt/hepta/bin/hepta";
 const HEPTA_CODEX_RELEASE_BINARY: &str = "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex";
@@ -553,7 +555,7 @@ fn route_native_gateway_request(
                     )),
                 );
             }
-            "/api/telegram-live-soak" => {
+            TELEGRAM_LIVE_SOAK_ENDPOINT | TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT => {
                 return (
                     "200 OK",
                     "application/json; charset=utf-8",
@@ -679,7 +681,8 @@ fn native_gateway_json(
         telegram_send_plan_endpoint: "/api/telegram-send-plan",
         telegram_drain_once_endpoint: "/api/telegram-drain-once",
         telegram_poll_loop_endpoint: "/api/telegram-poll-loop",
-        telegram_live_soak_endpoint: "/api/telegram-live-soak",
+        telegram_live_soak_endpoint: TELEGRAM_LIVE_SOAK_ENDPOINT,
+        telegram_live_soak_status_endpoint: TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT,
         telegram_cursor_endpoint: "/api/telegram-cursor",
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
         telegram_poll_loop_status: native_telegram::telegram_poll_loop_status(
@@ -826,6 +829,12 @@ fn gateway_replacement_readiness(
     let ready = blockers.is_empty();
     let status = if ready { "ready" } else { "blocked" };
 
+    let next_migration_slice = if ready {
+        "active replacement gates are satisfied; keep /api/telegram-live-soak green before broadening traffic or relaxing guards"
+    } else {
+        "run explicit live Telegram gate smoke only with operator approval, then replace the active gateway"
+    };
+
     NativeGatewayReplacementReadiness {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -871,7 +880,7 @@ fn gateway_replacement_readiness(
             },
         },
         control_ui_route_parity,
-        next_migration_slice: "run explicit live Telegram gate smoke only with operator approval, then replace the active gateway",
+        next_migration_slice,
     }
 }
 
@@ -885,7 +894,9 @@ fn gateway_live_activation_plan(
         options.with_telegram_plugin,
         options.telegram_plugin_poll_ms,
     );
-    let status = if readiness.ready {
+    let status = if readiness.ready && poll_loop_status.loop_invokes_drain_once {
+        "active_live_soak_ready"
+    } else if readiness.ready {
         "ready_for_operator_live_smoke"
     } else if telegram_gate_summary.delivery_approval_gate_enabled {
         "blocked_after_operator_approval"
@@ -898,7 +909,7 @@ fn gateway_live_activation_plan(
         runtime: "hepta-codex",
         status,
         endpoint: GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
-        operator_approval_required: true,
+        operator_approval_required: !telegram_gate_summary.delivery_approval_gate_enabled,
         active_install_allowed: readiness.ready,
         readiness_blocker_count: readiness.blocker_count,
         readiness_blockers: readiness.blockers.clone(),
@@ -983,7 +994,11 @@ fn gateway_live_activation_plan(
             raw_prompt_text_exposed: false,
             raw_response_text_exposed: false,
         },
-        next_migration_slice: "perform an explicit operator-approved live Telegram drain smoke, then replace the active gateway if readiness is green",
+        next_migration_slice: if readiness.ready {
+            "active gateway is live; continue soak, keep rollback anchors, and watch /api/telegram-live-soak"
+        } else {
+            "perform an explicit operator-approved live Telegram drain smoke, then replace the active gateway if readiness is green"
+        },
     }
 }
 
@@ -1030,6 +1045,7 @@ struct NativeGatewayResponse<'a> {
     telegram_drain_once_endpoint: &'static str,
     telegram_poll_loop_endpoint: &'static str,
     telegram_live_soak_endpoint: &'static str,
+    telegram_live_soak_status_endpoint: &'static str,
     telegram_cursor_endpoint: &'static str,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
     telegram_poll_loop_status: native_telegram::NativeTelegramPollLoopStatus,
@@ -1424,6 +1440,11 @@ mod tests {
         assert!(body.contains(r#""telegram_drain_once_endpoint":"/api/telegram-drain-once""#));
         assert!(body.contains(r#""telegram_poll_loop_endpoint":"/api/telegram-poll-loop""#));
         assert!(body.contains(r#""telegram_live_soak_endpoint":"/api/telegram-live-soak""#));
+        assert!(
+            body.contains(
+                r#""telegram_live_soak_status_endpoint":"/api/telegram-live-soak-status""#
+            )
+        );
         assert!(body.contains(r#""side_effect_free":true"#));
         assert!(body.contains(r#""production_guards""#));
         assert!(body.contains(r#""poll_loop_gate_env":"HEPTA_NATIVE_TELEGRAM_POLL_LOOP""#));
@@ -1459,6 +1480,34 @@ mod tests {
         assert_eq!(
             value["production_guards"]["retry_transient_send_errors"],
             true
+        );
+    }
+
+    #[test]
+    fn telegram_live_soak_status_alias_matches_primary_endpoint() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let primary = route_native_gateway_request("GET", TELEGRAM_LIVE_SOAK_ENDPOINT, &options);
+        let alias =
+            route_native_gateway_request("GET", TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT, &options);
+
+        assert_eq!(primary.0, "200 OK");
+        assert_eq!(alias.0, "200 OK");
+        assert_eq!(primary.1, alias.1);
+
+        let primary_json: serde_json::Value =
+            serde_json::from_str(&primary.2).expect("primary live soak json");
+        let alias_json: serde_json::Value =
+            serde_json::from_str(&alias.2).expect("alias live soak json");
+        assert_eq!(alias_json["endpoint"], TELEGRAM_LIVE_SOAK_ENDPOINT);
+        assert_eq!(alias_json["side_effect_free"], true);
+        assert_eq!(alias_json["raw_token_exposed"], false);
+        assert_eq!(
+            primary_json["production_guards"],
+            alias_json["production_guards"]
         );
     }
 
