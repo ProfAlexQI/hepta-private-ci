@@ -585,6 +585,20 @@ fn route_native_gateway_request(
                     native_transcript_json(None),
                 );
             }
+            "/api/approvals" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_approvals_json(),
+                );
+            }
+            "/api/policy" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_policy_json(options, &telegram_plugin),
+                );
+            }
             "/api/events" => {
                 return (
                     "200 OK",
@@ -604,6 +618,20 @@ fn route_native_gateway_request(
                     "200 OK",
                     "application/json; charset=utf-8",
                     native_events_json(NativeEventSurface::Activity, None),
+                );
+            }
+            "/api/config" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_config_json(options),
+                );
+            }
+            "/api/optional-configs" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_optional_configs_json(),
                 );
             }
             "/api/telegram-plugin" => {
@@ -1459,6 +1487,243 @@ fn native_events_report(
         message_sent: false,
         cursor_written: false,
         next_migration_slice: "promote approvals, policy, and config surfaces with redacted local-only inventory",
+    }
+}
+
+fn native_approvals_json() -> String {
+    json_or_error(&native_approvals_report())
+}
+
+fn native_approvals_report() -> NativeApprovalsResponse {
+    let approval_routes = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| route.method == "POST")
+        .map(|route| NativeApprovalRoute {
+            method: route.method,
+            pattern: route.pattern,
+            capability: route.capability,
+            source_command: route.source_command,
+            side_effect_boundary: route.side_effect_boundary,
+            dry_run_only: route.side_effect_boundary.contains("dry-run")
+                || route.side_effect_boundary.contains("plan only"),
+            guarded: post_route_is_guarded(route),
+            confirmation_required_for_real_mutation: !route
+                .side_effect_boundary
+                .contains("read-only"),
+        })
+        .collect::<Vec<_>>();
+    let guarded_route_count = approval_routes.iter().filter(|route| route.guarded).count();
+    let pending_approval_count = 0usize;
+    let ready = guarded_route_count == approval_routes.len();
+
+    NativeApprovalsResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if ready { "ready" } else { "attention" },
+        source_command: "/approvals --json",
+        native_route: true,
+        compatibility_mode: "native_approvals_redacted",
+        side_effect_free: true,
+        pending_approval_count,
+        approval_route_count: approval_routes.len(),
+        guarded_route_count,
+        approval_routes,
+        raw_command_payload_exposed: false,
+        raw_approval_payload_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "promote approvals exec apply as an explicit dry-run plan before enabling mutation",
+    }
+}
+
+fn native_policy_json(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> String {
+    json_or_error(&native_policy_report(options, telegram_plugin))
+}
+
+fn native_policy_report(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> NativePolicyResponse {
+    let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
+    let approvals = native_approvals_report();
+    let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
+    let ready =
+        loopback_bound && gateway_replacement_readiness.ready && approvals.status == "ready";
+
+    NativePolicyResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if ready { "ready" } else { "attention" },
+        source_command: "/policy --json",
+        native_route: true,
+        compatibility_mode: "native_policy_snapshot",
+        side_effect_free: true,
+        loopback_bind_required: true,
+        loopback_bound,
+        non_loopback_override_enabled: allow_non_loopback_ui(),
+        bind_addr: options.bind_addr.clone(),
+        telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
+        gateway_replacement_ready: gateway_replacement_readiness.ready,
+        gateway_replacement_blocker_count: gateway_replacement_readiness.blocker_count,
+        approval_route_count: approvals.approval_route_count,
+        guarded_approval_route_count: approvals.guarded_route_count,
+        raw_token_exposed: false,
+        raw_transcript_exposed: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "thread policy snapshot into operator console once config and optional-configs are native",
+    }
+}
+
+fn native_config_json(options: &NativeGatewayOptions) -> String {
+    json_or_error(&native_config_report(options))
+}
+
+fn native_config_report(options: &NativeGatewayOptions) -> NativeConfigResponse {
+    let config_roots = session_home_candidates()
+        .into_iter()
+        .map(|path| NativeConfigPathStatus {
+            label: "session_home_candidate",
+            path: path.display().to_string(),
+            exists: path.exists(),
+            is_dir: path.is_dir(),
+            bytes: path
+                .metadata()
+                .ok()
+                .filter(|meta| meta.is_file())
+                .map(|meta| meta.len()),
+        })
+        .collect::<Vec<_>>();
+
+    NativeConfigResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "ready",
+        source_command: "/config-surface --json",
+        native_route: true,
+        compatibility_mode: "native_config_surface_redacted",
+        side_effect_free: true,
+        bind_addr: options.bind_addr.clone(),
+        telegram_plugin_requested: options.with_telegram_plugin,
+        telegram_plugin_poll_ms: options.telegram_plugin_poll_ms,
+        default_model_present: env::var("HEPTA_DEFAULT_MODEL")
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty()),
+        telegram_model_present: env::var("HEPTA_TELEGRAM_MODEL")
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty()),
+        openai_codex_home_present: env::var("HEPTA_OPENAI_CODEX_HOME")
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty()),
+        gateway_token_file_present: env::var("HEPTA_GATEWAY_TOKEN_FILE")
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty()),
+        release_build_verified: env_truthy(RELEASE_BUILD_VERIFIED_ENV),
+        control_ui_parity_verified: env_truthy(CONTROL_UI_PARITY_VERIFIED_ENV),
+        telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
+        config_root_count: config_roots.len(),
+        config_roots,
+        raw_env_exposed: false,
+        raw_token_exposed: false,
+        raw_config_value_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "promote optional config catalog and config edit dry-run plans without exposing raw config values",
+    }
+}
+
+fn native_optional_configs_json() -> String {
+    json_or_error(&native_optional_configs_report())
+}
+
+fn native_optional_configs_report() -> NativeOptionalConfigsResponse {
+    let workspace_root = env::var("HOME")
+        .map(|home| PathBuf::from(home).join(".openclaw/workspace"))
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let today = "2026-05-18";
+    let yesterday = "2026-05-17";
+    let candidates = [
+        ("agents", workspace_root.join("AGENTS.md"), true),
+        ("soul", workspace_root.join("SOUL.md"), true),
+        ("user", workspace_root.join("USER.md"), true),
+        ("tools", workspace_root.join("TOOLS.md"), false),
+        ("heartbeat", workspace_root.join("HEARTBEAT.md"), false),
+        ("long_term_memory", workspace_root.join("MEMORY.md"), true),
+        (
+            "today_memory",
+            workspace_root.join(format!("memory/{today}.md")),
+            true,
+        ),
+        (
+            "yesterday_memory",
+            workspace_root.join(format!("memory/{yesterday}.md")),
+            false,
+        ),
+    ];
+    let configs = candidates
+        .into_iter()
+        .map(|(label, path, expected)| {
+            let metadata = path.metadata().ok();
+            NativeOptionalConfigStatus {
+                label,
+                path: path.display().to_string(),
+                expected,
+                exists: metadata.is_some(),
+                is_file: metadata.as_ref().is_some_and(std::fs::Metadata::is_file),
+                bytes: metadata
+                    .as_ref()
+                    .filter(|meta| meta.is_file())
+                    .map(|meta| meta.len()),
+                content_exposed: false,
+            }
+        })
+        .collect::<Vec<_>>();
+    let missing_expected_count = configs
+        .iter()
+        .filter(|config| config.expected && !config.exists)
+        .count();
+    NativeOptionalConfigsResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if missing_expected_count == 0 {
+            "ready"
+        } else {
+            "attention"
+        },
+        source_command: "/optional-configs --json",
+        native_route: true,
+        compatibility_mode: "native_optional_configs_redacted",
+        side_effect_free: true,
+        config_count: configs.len(),
+        missing_expected_count,
+        configs,
+        raw_config_value_exposed: false,
+        config_content_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "promote config edit and approval apply endpoints as explicit dry-run/confirm-required plans",
     }
 }
 
@@ -2424,6 +2689,150 @@ struct NativeEventPreview {
     role: Option<String>,
     has_text_fields: bool,
     redacted: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeApprovalsResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    pending_approval_count: usize,
+    approval_route_count: usize,
+    guarded_route_count: usize,
+    approval_routes: Vec<NativeApprovalRoute>,
+    raw_command_payload_exposed: bool,
+    raw_approval_payload_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeApprovalRoute {
+    method: &'static str,
+    pattern: &'static str,
+    capability: &'static str,
+    source_command: &'static str,
+    side_effect_boundary: &'static str,
+    dry_run_only: bool,
+    guarded: bool,
+    confirmation_required_for_real_mutation: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePolicyResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    loopback_bind_required: bool,
+    loopback_bound: bool,
+    non_loopback_override_enabled: bool,
+    bind_addr: String,
+    telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
+    gateway_replacement_ready: bool,
+    gateway_replacement_blocker_count: usize,
+    approval_route_count: usize,
+    guarded_approval_route_count: usize,
+    raw_token_exposed: bool,
+    raw_transcript_exposed: bool,
+    raw_update_payload_exposed: bool,
+    raw_prompt_text_exposed: bool,
+    raw_response_text_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeConfigResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    bind_addr: String,
+    telegram_plugin_requested: bool,
+    telegram_plugin_poll_ms: u64,
+    default_model_present: bool,
+    telegram_model_present: bool,
+    openai_codex_home_present: bool,
+    gateway_token_file_present: bool,
+    release_build_verified: bool,
+    control_ui_parity_verified: bool,
+    telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
+    config_root_count: usize,
+    config_roots: Vec<NativeConfigPathStatus>,
+    raw_env_exposed: bool,
+    raw_token_exposed: bool,
+    raw_config_value_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeConfigPathStatus {
+    label: &'static str,
+    path: String,
+    exists: bool,
+    is_dir: bool,
+    bytes: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeOptionalConfigsResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    config_count: usize,
+    missing_expected_count: usize,
+    configs: Vec<NativeOptionalConfigStatus>,
+    raw_config_value_exposed: bool,
+    config_content_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeOptionalConfigStatus {
+    label: &'static str,
+    path: String,
+    expected: bool,
+    exists: bool,
+    is_file: bool,
+    bytes: Option<u64>,
+    content_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -3524,6 +3933,82 @@ mod tests {
                 assert!(value["activity_sessions"].is_null());
             }
         }
+    }
+
+    #[test]
+    fn approvals_policy_and_config_routes_are_native_redacted_views() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (path, mode) in [
+            ("/api/approvals", "native_approvals_redacted"),
+            ("/api/policy", "native_policy_snapshot"),
+            ("/api/config", "native_config_surface_redacted"),
+            ("/api/optional-configs", "native_optional_configs_redacted"),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request("GET", path, &options);
+            assert_eq!(status, "200 OK", "{path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            let value: serde_json::Value =
+                serde_json::from_str(&body).expect("redacted config route json");
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["native_route"], true);
+            assert_eq!(value["compatibility_mode"], mode);
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(value["external_side_effects"], false);
+            assert_eq!(value["gateway_mutation_performed"], false);
+            assert_eq!(value["telegram_read_performed"], false);
+            assert_eq!(value["model_invoked"], false);
+            assert_eq!(value["message_sent"], false);
+            assert_eq!(value["cursor_written"], false);
+            assert_ne!(
+                value["compatibility_mode"],
+                "native_control_ui_route_parity_shell"
+            );
+        }
+    }
+
+    #[test]
+    fn approvals_report_keeps_mutating_routes_guarded_without_payloads() {
+        let report = native_approvals_report();
+        let body = serde_json::to_string(&report).expect("serialize approvals report");
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.native_route, true);
+        assert_eq!(report.pending_approval_count, 0);
+        assert_eq!(report.approval_route_count, report.guarded_route_count);
+        assert_eq!(report.raw_command_payload_exposed, false);
+        assert_eq!(report.raw_approval_payload_exposed, false);
+        assert!(report.approval_routes.iter().any(|route| {
+            route.pattern == "/api/approvals/exec/apply"
+                && route.guarded
+                && route.confirmation_required_for_real_mutation
+        }));
+        assert!(!body.contains("secret-approval-payload"));
+    }
+
+    #[test]
+    fn optional_configs_report_exposes_metadata_not_contents() {
+        let report = native_optional_configs_report();
+        let body = serde_json::to_string(&report).expect("serialize optional configs report");
+
+        assert_eq!(report.native_route, true);
+        assert_eq!(
+            report.compatibility_mode,
+            "native_optional_configs_redacted"
+        );
+        assert_eq!(report.config_content_exposed, false);
+        assert_eq!(report.raw_config_value_exposed, false);
+        assert!(
+            report
+                .configs
+                .iter()
+                .any(|config| { config.label == "agents" && config.content_exposed == false })
+        );
+        assert!(!body.contains("Be genuinely helpful"));
+        assert!(!body.contains("What to call them"));
     }
 
     #[test]
