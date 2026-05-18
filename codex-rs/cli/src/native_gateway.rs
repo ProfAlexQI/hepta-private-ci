@@ -1,7 +1,8 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
@@ -27,6 +28,10 @@ const ACTIVE_GATEWAY_LABEL: &str = "ai.hepta.gateway";
 const ACTIVE_GATEWAY_LEGACY_BINARY: &str = "/Users/qianqi/.local/opt/hepta/bin/hepta";
 const HEPTA_CODEX_RELEASE_BINARY: &str = "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex";
 const MAX_NATIVE_SESSION_SUMMARIES: usize = 20;
+const MAX_NATIVE_TRANSCRIPT_FILES: usize = 5;
+const MAX_NATIVE_TRANSCRIPT_QUERY_FILES: usize = 20;
+const MAX_NATIVE_TRANSCRIPT_LINES_PER_FILE: usize = 2_000;
+const MAX_NATIVE_TRANSCRIPT_EVENT_PREVIEWS_PER_FILE: usize = 40;
 
 const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
     ControlUiRouteSpec {
@@ -532,6 +537,13 @@ fn route_native_gateway_request(
                     native_sessions_json("/session-activity --json", "native_session_activity"),
                 );
             }
+            "/api/transcript" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_transcript_json(None),
+                );
+            }
             "/api/telegram-plugin" => {
                 return (
                     "200 OK",
@@ -615,6 +627,17 @@ fn route_native_gateway_request(
                 );
             }
             _ => {}
+        }
+
+        if let Some(query) = path
+            .strip_prefix("/api/query-transcript/")
+            .filter(|query| !query.is_empty())
+        {
+            return (
+                "200 OK",
+                "application/json; charset=utf-8",
+                native_transcript_json(Some(query)),
+            );
         }
     }
 
@@ -1091,6 +1114,288 @@ fn metadata_modified_unix_ms(metadata: &std::fs::Metadata) -> Option<u64> {
         .ok()
         .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
         .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+}
+
+fn native_transcript_json(query: Option<&str>) -> String {
+    json_or_error(&native_transcript_report(
+        session_root_candidates(),
+        query,
+        if query.is_some() {
+            MAX_NATIVE_TRANSCRIPT_QUERY_FILES
+        } else {
+            MAX_NATIVE_TRANSCRIPT_FILES
+        },
+    ))
+}
+
+fn native_transcript_report(
+    roots: Vec<NativeSessionRootCandidate>,
+    query: Option<&str>,
+    max_files: usize,
+) -> NativeTranscriptResponse {
+    let mut candidates = collect_session_file_candidates(&roots);
+    candidates.sort_by(|left, right| {
+        right
+            .summary
+            .modified_unix_ms
+            .cmp(&left.summary.modified_unix_ms)
+            .then_with(|| right.summary.bytes.cmp(&left.summary.bytes))
+            .then_with(|| left.summary.filename.cmp(&right.summary.filename))
+    });
+    let session_file_count = candidates.len();
+    candidates.truncate(max_files);
+
+    let query_lower = query.map(|value| value.to_ascii_lowercase());
+    let mut previews = Vec::new();
+    let mut parse_error_count = 0_usize;
+    let mut matched_session_count = 0_usize;
+    let mut matched_line_count = 0_u64;
+
+    for candidate in candidates {
+        let preview = transcript_preview_from_file(&candidate, query_lower.as_deref());
+        parse_error_count += preview.parse_error_count;
+        if preview.query_match.matched_line_count > 0 {
+            matched_session_count += 1;
+            matched_line_count =
+                matched_line_count.saturating_add(preview.query_match.matched_line_count);
+        }
+        previews.push(preview);
+    }
+
+    let scan_error_count = previews
+        .iter()
+        .filter(|preview| preview.read_error.is_some())
+        .count();
+
+    NativeTranscriptResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if scan_error_count == 0 {
+            "ready"
+        } else {
+            "attention"
+        },
+        source_command: if query.is_some() {
+            "/query-transcript <query> --json"
+        } else {
+            "/transcript --json"
+        },
+        native_route: true,
+        compatibility_mode: if query.is_some() {
+            "native_query_transcript_redacted"
+        } else {
+            "native_transcript_redacted_preview"
+        },
+        side_effect_free: true,
+        query_present: query.is_some(),
+        query_redacted: query.is_some(),
+        query_length: query.map(str::len),
+        scanned_session_file_count: previews.len(),
+        available_session_file_count: session_file_count,
+        max_files,
+        max_lines_per_file: MAX_NATIVE_TRANSCRIPT_LINES_PER_FILE,
+        matched_session_count,
+        matched_line_count,
+        parse_error_count,
+        scan_error_count,
+        sessions: previews,
+        raw_transcript_exposed: false,
+        transcript_text_exposed: false,
+        query_text_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "promote task drilldown routes with artifact metadata and redacted evidence previews",
+    }
+}
+
+fn collect_session_file_candidates(
+    roots: &[NativeSessionRootCandidate],
+) -> Vec<NativeSessionFileCandidate> {
+    let mut files = Vec::new();
+    for root in roots {
+        if root.root.exists() {
+            collect_session_file_candidates_inner(&root.root, &root.root, root.kind, &mut files);
+        }
+    }
+    files
+}
+
+fn collect_session_file_candidates_inner(
+    root: &Path,
+    path: &Path,
+    root_kind: &'static str,
+    files: &mut Vec<NativeSessionFileCandidate>,
+) {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_session_file_candidates_inner(root, &path, root_kind, files);
+        } else if metadata.is_file() && is_rollout_file(&path) {
+            files.push(NativeSessionFileCandidate {
+                path: path.clone(),
+                root_kind,
+                summary: session_summary_from_path(
+                    root,
+                    &path,
+                    metadata.len(),
+                    metadata_modified_unix_ms(&metadata),
+                ),
+            });
+        }
+    }
+}
+
+fn transcript_preview_from_file(
+    candidate: &NativeSessionFileCandidate,
+    query_lower: Option<&str>,
+) -> NativeTranscriptSessionPreview {
+    let mut preview = NativeTranscriptSessionPreview {
+        root_kind: candidate.root_kind,
+        session_id: candidate.summary.session_id.clone(),
+        started_at_filename: candidate.summary.started_at_filename.clone(),
+        filename: candidate.summary.filename.clone(),
+        relative_path: candidate.summary.relative_path.clone(),
+        bytes: candidate.summary.bytes,
+        modified_unix_ms: candidate.summary.modified_unix_ms,
+        line_count: 0,
+        parsed_json_line_count: 0,
+        parse_error_count: 0,
+        truncated: false,
+        event_type_counts: Vec::new(),
+        redacted_events: Vec::new(),
+        query_match: NativeTranscriptQueryMatch {
+            matched_line_count: 0,
+            first_match_line: None,
+            matched_event_type_counts: Vec::new(),
+        },
+        read_error: None,
+    };
+
+    let file = match std::fs::File::open(&candidate.path) {
+        Ok(file) => file,
+        Err(err) => {
+            preview.read_error = Some(err.to_string());
+            return preview;
+        }
+    };
+
+    let mut event_type_counts = BTreeMap::<String, u64>::new();
+    let mut matched_event_type_counts = BTreeMap::<String, u64>::new();
+
+    for (index, line) in BufReader::new(file).lines().enumerate() {
+        if index >= MAX_NATIVE_TRANSCRIPT_LINES_PER_FILE {
+            preview.truncated = true;
+            break;
+        }
+
+        let line_number = index + 1;
+        let line = match line {
+            Ok(line) => line,
+            Err(err) => {
+                preview.read_error = Some(err.to_string());
+                break;
+            }
+        };
+        preview.line_count += 1;
+
+        let value = match serde_json::from_str::<serde_json::Value>(&line) {
+            Ok(value) => {
+                preview.parsed_json_line_count += 1;
+                value
+            }
+            Err(_) => {
+                preview.parse_error_count += 1;
+                continue;
+            }
+        };
+
+        let event_type = transcript_event_type(&value);
+        *event_type_counts.entry(event_type.clone()).or_default() += 1;
+
+        let query_matched = query_lower
+            .map(|query| line.to_ascii_lowercase().contains(query))
+            .unwrap_or(false);
+        if query_matched {
+            preview.query_match.matched_line_count += 1;
+            if preview.query_match.first_match_line.is_none() {
+                preview.query_match.first_match_line = Some(line_number);
+            }
+            *matched_event_type_counts
+                .entry(event_type.clone())
+                .or_default() += 1;
+        }
+
+        if preview.redacted_events.len() < MAX_NATIVE_TRANSCRIPT_EVENT_PREVIEWS_PER_FILE {
+            preview.redacted_events.push(redacted_transcript_event(
+                line_number,
+                &event_type,
+                &value,
+            ));
+        }
+    }
+
+    preview.event_type_counts = event_type_counts
+        .into_iter()
+        .map(|(event_type, count)| NativeTranscriptEventCount { event_type, count })
+        .collect();
+    preview.query_match.matched_event_type_counts = matched_event_type_counts
+        .into_iter()
+        .map(|(event_type, count)| NativeTranscriptEventCount { event_type, count })
+        .collect();
+    preview
+}
+
+fn transcript_event_type(value: &serde_json::Value) -> String {
+    let top_level = value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown");
+    let payload_type = value
+        .get("payload")
+        .and_then(|payload| payload.get("type"))
+        .and_then(serde_json::Value::as_str);
+    match payload_type {
+        Some(payload_type) => format!("{top_level}:{payload_type}"),
+        None => top_level.to_string(),
+    }
+}
+
+fn redacted_transcript_event(
+    line_number: usize,
+    event_type: &str,
+    value: &serde_json::Value,
+) -> NativeTranscriptEventPreview {
+    let payload = value.get("payload");
+    NativeTranscriptEventPreview {
+        line_number,
+        event_type: event_type.to_string(),
+        role: payload
+            .and_then(|payload| payload.get("role"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        has_text_fields: json_contains_text_field(value),
+        redacted: true,
+    }
+}
+
+fn json_contains_text_field(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Object(map) => map.iter().any(|(key, value)| {
+            key == "text" || key == "message" || key == "content" || json_contains_text_field(value)
+        }),
+        serde_json::Value::Array(values) => values.iter().any(json_contains_text_field),
+        _ => false,
+    }
 }
 
 fn operator_console_json(
@@ -1657,6 +1962,87 @@ struct NativeSessionSummary {
     relative_path: String,
     bytes: u64,
     modified_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct NativeSessionFileCandidate {
+    path: PathBuf,
+    root_kind: &'static str,
+    summary: NativeSessionSummary,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeTranscriptResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    query_present: bool,
+    query_redacted: bool,
+    query_length: Option<usize>,
+    scanned_session_file_count: usize,
+    available_session_file_count: usize,
+    max_files: usize,
+    max_lines_per_file: usize,
+    matched_session_count: usize,
+    matched_line_count: u64,
+    parse_error_count: usize,
+    scan_error_count: usize,
+    sessions: Vec<NativeTranscriptSessionPreview>,
+    raw_transcript_exposed: bool,
+    transcript_text_exposed: bool,
+    query_text_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeTranscriptSessionPreview {
+    root_kind: &'static str,
+    session_id: String,
+    started_at_filename: Option<String>,
+    filename: String,
+    relative_path: String,
+    bytes: u64,
+    modified_unix_ms: Option<u64>,
+    line_count: u64,
+    parsed_json_line_count: u64,
+    parse_error_count: usize,
+    truncated: bool,
+    event_type_counts: Vec<NativeTranscriptEventCount>,
+    redacted_events: Vec<NativeTranscriptEventPreview>,
+    query_match: NativeTranscriptQueryMatch,
+    read_error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeTranscriptEventCount {
+    event_type: String,
+    count: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeTranscriptEventPreview {
+    line_number: usize,
+    event_type: String,
+    role: Option<String>,
+    has_text_fields: bool,
+    redacted: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeTranscriptQueryMatch {
+    matched_line_count: u64,
+    first_match_line: Option<usize>,
+    matched_event_type_counts: Vec<NativeTranscriptEventCount>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2421,6 +2807,96 @@ mod tests {
             assert_eq!(value["cursor_written"], false);
             assert_eq!(value["raw_transcript_exposed"], false);
             assert_eq!(value["transcript_text_exposed"], false);
+            assert_ne!(
+                value["compatibility_mode"],
+                "native_control_ui_route_parity_shell"
+            );
+        }
+    }
+
+    #[test]
+    fn transcript_preview_redacts_text_and_query() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sessions = temp.path().join("sessions/2026/05/18");
+        std::fs::create_dir_all(&sessions).expect("create sessions dir");
+        std::fs::write(
+            sessions.join(
+                "rollout-2026-05-18T11-12-03-019e38f3-1111-7000-a111-333333333333.jsonl",
+            ),
+            concat!(
+                r#"{"timestamp":"2026-05-18T03:12:03Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"super-secret-query-marker"}]}}"#,
+                "\n",
+                r#"{"timestamp":"2026-05-18T03:12:04Z","type":"event_msg","payload":{"type":"token_count","info":null}}"#,
+                "\n",
+            ),
+        )
+        .expect("write rollout");
+
+        let report = native_transcript_report(
+            vec![NativeSessionRootCandidate {
+                root: temp.path().join("sessions"),
+                kind: "active",
+            }],
+            Some("super-secret-query-marker"),
+            5,
+        );
+        let body = serde_json::to_string(&report).expect("serialize transcript report");
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.query_present, true);
+        assert_eq!(report.query_redacted, true);
+        assert_eq!(report.query_length, Some("super-secret-query-marker".len()));
+        assert_eq!(report.matched_session_count, 1);
+        assert_eq!(report.matched_line_count, 1);
+        assert_eq!(report.raw_transcript_exposed, false);
+        assert_eq!(report.transcript_text_exposed, false);
+        assert_eq!(report.query_text_exposed, false);
+        assert_eq!(report.sessions[0].line_count, 2);
+        assert_eq!(report.sessions[0].redacted_events[0].redacted, true);
+        assert_eq!(report.sessions[0].redacted_events[0].has_text_fields, true);
+        assert!(!body.contains("super-secret-query-marker"));
+        assert!(!body.contains("input_text"));
+    }
+
+    #[test]
+    fn transcript_routes_return_native_redacted_preview_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (path, mode, query_present) in [
+            (
+                "/api/transcript",
+                "native_transcript_redacted_preview",
+                false,
+            ),
+            (
+                "/api/query-transcript/sample-secret-query",
+                "native_query_transcript_redacted",
+                true,
+            ),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request("GET", path, &options);
+            assert_eq!(status, "200 OK", "{path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            assert!(!body.contains("sample-secret-query"));
+            let value: serde_json::Value =
+                serde_json::from_str(&body).expect("transcript route json");
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["native_route"], true);
+            assert_eq!(value["compatibility_mode"], mode);
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(value["query_present"], query_present);
+            assert_eq!(value["raw_transcript_exposed"], false);
+            assert_eq!(value["transcript_text_exposed"], false);
+            assert_eq!(value["query_text_exposed"], false);
+            assert_eq!(value["external_side_effects"], false);
+            assert_eq!(value["gateway_mutation_performed"], false);
+            assert_eq!(value["telegram_read_performed"], false);
+            assert_eq!(value["model_invoked"], false);
+            assert_eq!(value["message_sent"], false);
+            assert_eq!(value["cursor_written"], false);
             assert_ne!(
                 value["compatibility_mode"],
                 "native_control_ui_route_parity_shell"
