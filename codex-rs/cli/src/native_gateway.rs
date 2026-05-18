@@ -74,6 +74,130 @@ const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     },
 ];
 
+const NATIVE_POST_PLAN_ROUTE_SPECS: &[NativePostPlanRouteSpec] = &[
+    NativePostPlanRouteSpec {
+        pattern: "/api/actions/<action>",
+        prefix: Some("/api/actions/"),
+        exact_path: None,
+        source_command: "/ui-action-plan <action> --dry-run --json",
+        capability: "guarded-action-post",
+        plan_kind: "ui_action",
+        compatibility_mode: "native_action_post_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/commands/<id>",
+        prefix: Some("/api/commands/"),
+        exact_path: None,
+        source_command: "/<allowlisted read-only command> --json",
+        capability: "readonly-command-runner",
+        plan_kind: "readonly_command",
+        compatibility_mode: "native_readonly_command_plan",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/approvals/exec/apply",
+        prefix: None,
+        exact_path: Some("/api/approvals/exec/apply"),
+        source_command: "/approvals exec apply --dry-run --json",
+        capability: "exec-approvals-apply-bridge",
+        plan_kind: "approval_apply",
+        compatibility_mode: "native_approvals_exec_apply_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: true,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/tasks/plan",
+        prefix: None,
+        exact_path: Some("/api/tasks/plan"),
+        source_command: "/tasks plan --dry-run --json",
+        capability: "task-publisher-plan",
+        plan_kind: "task_plan",
+        compatibility_mode: "native_task_plan_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/tasks/publish",
+        prefix: None,
+        exact_path: Some("/api/tasks/publish"),
+        source_command: "/tasks publish --confirm --json",
+        capability: "task-publisher-publish",
+        plan_kind: "task_publish",
+        compatibility_mode: "native_task_publish_confirm_required",
+        dry_run_only: false,
+        confirmation_required_for_real_mutation: true,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/chat/register",
+        prefix: None,
+        exact_path: Some("/api/chat/register"),
+        source_command: "/chat register --json",
+        capability: "agent-chat-register",
+        plan_kind: "chat_register",
+        compatibility_mode: "native_chat_register_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/chat/archive",
+        prefix: None,
+        exact_path: Some("/api/chat/archive"),
+        source_command: "/chat archive --json",
+        capability: "agent-chat-archive",
+        plan_kind: "chat_archive",
+        compatibility_mode: "native_chat_archive_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/chat/unarchive",
+        prefix: None,
+        exact_path: Some("/api/chat/unarchive"),
+        source_command: "/chat unarchive --json",
+        capability: "agent-chat-unarchive",
+        plan_kind: "chat_unarchive",
+        compatibility_mode: "native_chat_unarchive_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/chat/delete",
+        prefix: None,
+        exact_path: Some("/api/chat/delete"),
+        source_command: "/chat delete --json",
+        capability: "agent-chat-delete",
+        plan_kind: "chat_delete",
+        compatibility_mode: "native_chat_delete_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/chat/plan",
+        prefix: None,
+        exact_path: Some("/api/chat/plan"),
+        source_command: "/chat plan --json",
+        capability: "agent-chat-plan",
+        plan_kind: "chat_plan",
+        compatibility_mode: "native_chat_plan_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    NativePostPlanRouteSpec {
+        pattern: "/api/chat",
+        prefix: None,
+        exact_path: Some("/api/chat"),
+        source_command: "/chat send --json",
+        capability: "agent-chat-send",
+        plan_kind: "chat_send",
+        compatibility_mode: "native_chat_send_confirm_required",
+        dry_run_only: false,
+        confirmation_required_for_real_mutation: true,
+    },
+];
+
 const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
     ControlUiRouteSpec {
         method: "GET",
@@ -838,6 +962,18 @@ fn route_native_gateway_request(
         }
     }
 
+    if method == "POST" {
+        for spec in NATIVE_POST_PLAN_ROUTE_SPECS {
+            if let Some(parameter) = native_post_plan_parameter(spec, path) {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_post_plan_json(spec, parameter),
+                );
+            }
+        }
+    }
+
     if let Some(body) = control_ui_route_response(method, path) {
         return ("200 OK", "application/json; charset=utf-8", body);
     }
@@ -1457,6 +1593,71 @@ fn native_task_artifact_report(
         message_sent: false,
         cursor_written: false,
         next_migration_slice: "replace redacted task evidence search with structured task registry storage when available",
+    }
+}
+
+fn native_post_plan_parameter<'a>(
+    spec: &NativePostPlanRouteSpec,
+    path: &'a str,
+) -> Option<Option<&'a str>> {
+    if let Some(prefix) = spec.prefix {
+        return path
+            .strip_prefix(prefix)
+            .filter(|parameter| !parameter.is_empty())
+            .map(Some);
+    }
+    spec.exact_path
+        .filter(|exact_path| *exact_path == path)
+        .map(|_| None)
+}
+
+fn native_post_plan_json(spec: &NativePostPlanRouteSpec, parameter: Option<&str>) -> String {
+    json_or_error(&native_post_plan_report(spec, parameter))
+}
+
+fn native_post_plan_report(
+    spec: &NativePostPlanRouteSpec,
+    parameter: Option<&str>,
+) -> NativePostPlanResponse {
+    NativePostPlanResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if spec.confirmation_required_for_real_mutation {
+            "confirm_required"
+        } else {
+            "dry_run_ready"
+        },
+        method: "POST",
+        pattern: spec.pattern,
+        source_command: spec.source_command,
+        capability: spec.capability,
+        native_route: true,
+        compatibility_mode: spec.compatibility_mode,
+        side_effect_free: true,
+        plan_kind: spec.plan_kind,
+        dry_run_only: spec.dry_run_only,
+        confirmation_required_for_real_mutation: spec.confirmation_required_for_real_mutation,
+        parameter_present: parameter.is_some(),
+        parameter_redacted: parameter.is_some(),
+        parameter_length: parameter.map(str::len),
+        request_body_read: false,
+        request_body_redacted: true,
+        action_dispatched: false,
+        command_executed: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        raw_request_body_exposed: false,
+        raw_parameter_exposed: false,
+        raw_token_exposed: false,
+        raw_transcript_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "wire selected POST planners to real handlers only after body schema, confirmation, and rollback contracts are explicit",
     }
 }
 
@@ -2868,6 +3069,19 @@ struct NativeTaskArtifactRouteSpec {
     compatibility_mode: &'static str,
 }
 
+#[derive(Debug)]
+struct NativePostPlanRouteSpec {
+    pattern: &'static str,
+    prefix: Option<&'static str>,
+    exact_path: Option<&'static str>,
+    source_command: &'static str,
+    capability: &'static str,
+    plan_kind: &'static str,
+    compatibility_mode: &'static str,
+    dry_run_only: bool,
+    confirmation_required_for_real_mutation: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NativeEventSurface {
     Events,
@@ -3050,6 +3264,44 @@ struct NativeTaskArtifactResponse {
     raw_task_id_exposed: bool,
     raw_transcript_exposed: bool,
     transcript_text_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostPlanResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    method: &'static str,
+    pattern: &'static str,
+    source_command: &'static str,
+    capability: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    plan_kind: &'static str,
+    dry_run_only: bool,
+    confirmation_required_for_real_mutation: bool,
+    parameter_present: bool,
+    parameter_redacted: bool,
+    parameter_length: Option<usize>,
+    request_body_read: bool,
+    request_body_redacted: bool,
+    action_dispatched: bool,
+    command_executed: bool,
+    approval_applied: bool,
+    task_published: bool,
+    chat_mutated: bool,
+    raw_request_body_exposed: bool,
+    raw_parameter_exposed: bool,
+    raw_token_exposed: bool,
+    raw_transcript_exposed: bool,
     model_invoked: bool,
     external_side_effects: bool,
     gateway_mutation_performed: bool,
@@ -4796,6 +5048,154 @@ mod tests {
                     .map(serde_json::Value::from)
                     .unwrap_or(serde_json::Value::Null)
             );
+            assert_ne!(
+                value["compatibility_mode"],
+                "native_control_ui_route_parity_shell"
+            );
+        }
+    }
+
+    #[test]
+    fn post_plan_report_redacts_route_parameters_and_never_reads_body() {
+        let spec = &NATIVE_POST_PLAN_ROUTE_SPECS[0];
+        let report = native_post_plan_report(spec, Some("secret-action-payload"));
+        let body = serde_json::to_string(&report).expect("serialize post plan report");
+
+        assert_eq!(report.status, "dry_run_ready");
+        assert_eq!(report.native_route, true);
+        assert_eq!(report.compatibility_mode, "native_action_post_dry_run");
+        assert_eq!(report.parameter_present, true);
+        assert_eq!(report.parameter_redacted, true);
+        assert_eq!(report.parameter_length, Some("secret-action-payload".len()));
+        assert_eq!(report.request_body_read, false);
+        assert_eq!(report.raw_request_body_exposed, false);
+        assert_eq!(report.raw_parameter_exposed, false);
+        assert_eq!(report.action_dispatched, false);
+        assert_eq!(report.gateway_mutation_performed, false);
+        assert_eq!(report.message_sent, false);
+        assert!(!body.contains("secret-action-payload"));
+    }
+
+    #[test]
+    fn post_routes_return_native_plans_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (path, mode, plan_kind, confirm_required, parameter_present) in [
+            (
+                "/api/actions/secret-action",
+                "native_action_post_dry_run",
+                "ui_action",
+                false,
+                true,
+            ),
+            (
+                "/api/commands/secret-command",
+                "native_readonly_command_plan",
+                "readonly_command",
+                false,
+                true,
+            ),
+            (
+                "/api/approvals/exec/apply",
+                "native_approvals_exec_apply_dry_run",
+                "approval_apply",
+                true,
+                false,
+            ),
+            (
+                "/api/tasks/plan",
+                "native_task_plan_dry_run",
+                "task_plan",
+                false,
+                false,
+            ),
+            (
+                "/api/tasks/publish",
+                "native_task_publish_confirm_required",
+                "task_publish",
+                true,
+                false,
+            ),
+            (
+                "/api/chat/register",
+                "native_chat_register_dry_run",
+                "chat_register",
+                false,
+                false,
+            ),
+            (
+                "/api/chat/archive",
+                "native_chat_archive_dry_run",
+                "chat_archive",
+                false,
+                false,
+            ),
+            (
+                "/api/chat/unarchive",
+                "native_chat_unarchive_dry_run",
+                "chat_unarchive",
+                false,
+                false,
+            ),
+            (
+                "/api/chat/delete",
+                "native_chat_delete_dry_run",
+                "chat_delete",
+                false,
+                false,
+            ),
+            (
+                "/api/chat/plan",
+                "native_chat_plan_dry_run",
+                "chat_plan",
+                false,
+                false,
+            ),
+            (
+                "/api/chat",
+                "native_chat_send_confirm_required",
+                "chat_send",
+                true,
+                false,
+            ),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request("POST", path, &options);
+            assert_eq!(status, "200 OK", "{path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            assert!(!body.contains("secret-action"));
+            assert!(!body.contains("secret-command"));
+            let value: serde_json::Value = serde_json::from_str(&body).expect("post plan json");
+
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["method"], "POST");
+            assert_eq!(value["native_route"], true);
+            assert_eq!(value["compatibility_mode"], mode);
+            assert_eq!(value["plan_kind"], plan_kind);
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(
+                value["confirmation_required_for_real_mutation"],
+                confirm_required
+            );
+            assert_eq!(value["parameter_present"], parameter_present);
+            assert_eq!(value["parameter_redacted"], parameter_present);
+            assert_eq!(value["request_body_read"], false);
+            assert_eq!(value["request_body_redacted"], true);
+            assert_eq!(value["action_dispatched"], false);
+            assert_eq!(value["command_executed"], false);
+            assert_eq!(value["approval_applied"], false);
+            assert_eq!(value["task_published"], false);
+            assert_eq!(value["chat_mutated"], false);
+            assert_eq!(value["raw_request_body_exposed"], false);
+            assert_eq!(value["raw_parameter_exposed"], false);
+            assert_eq!(value["external_side_effects"], false);
+            assert_eq!(value["gateway_mutation_performed"], false);
+            assert_eq!(value["telegram_read_performed"], false);
+            assert_eq!(value["model_invoked"], false);
+            assert_eq!(value["message_sent"], false);
+            assert_eq!(value["cursor_written"], false);
             assert_ne!(
                 value["compatibility_mode"],
                 "native_control_ui_route_parity_shell"
