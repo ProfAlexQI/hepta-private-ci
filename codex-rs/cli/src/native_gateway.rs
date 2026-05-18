@@ -30,6 +30,7 @@ const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activatio
 const NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str = "/api/native-post-execution-readiness";
 const NATIVE_POST_EXECUTION_STORES_ENDPOINT: &str = "/api/native-post-execution-stores";
 const NATIVE_POST_ACTIVATION_PLAN_ENDPOINT: &str = "/api/native-post-activation-plan";
+const NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT: &str = "/api/native-post-rollout-evidence";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
 const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
 const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str = "/api/telegram-production-readiness";
@@ -270,6 +271,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/native-post-activation-plan --json",
         capability: "native-post-activation-plan",
         side_effect_boundary: "read-only POST handler activation and rollback plan",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/native-post-rollout-evidence",
+        source_command: "/native-post-rollout-evidence --json",
+        capability: "native-post-rollout-evidence",
+        side_effect_boundary: "read-only POST rollout evidence summary; no writes",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -825,6 +833,13 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     native_post_activation_plan_json(),
+                );
+            }
+            NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_post_rollout_evidence_json(),
                 );
             }
             "/api/sessions" => {
@@ -2456,6 +2471,87 @@ fn native_post_activation_plan_json() -> String {
     json_or_error(&native_post_activation_plan_report())
 }
 
+fn native_post_rollout_evidence_json() -> String {
+    json_or_error(&native_post_rollout_evidence_report())
+}
+
+fn native_post_rollout_evidence_report() -> NativePostRolloutEvidenceResponse {
+    native_post_rollout_evidence_report_for_root(&native_post_execution_store_root())
+}
+
+fn native_post_rollout_evidence_report_for_root(root: &Path) -> NativePostRolloutEvidenceResponse {
+    let max_store_bytes = native_post_store_max_bytes();
+    let max_store_lines = native_post_store_max_lines();
+    let store_files =
+        native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
+    let store_jsonl_valid = store_files
+        .iter()
+        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
+    let store_capacity_ok = store_files
+        .iter()
+        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
+    let rollback_path = root.join("rollback.jsonl");
+    let scan = native_post_rollout_evidence_scan(&rollback_path);
+    let rollout_evidence_ready = store_jsonl_valid
+        && store_capacity_ok
+        && scan.jsonl_readable
+        && scan.invalid_json_line_count == 0;
+    let activation_plan = native_post_activation_plan_report();
+
+    NativePostRolloutEvidenceResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if rollout_evidence_ready {
+            "ready"
+        } else {
+            "attention"
+        },
+        endpoint: NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
+        source_command: "/native-post-rollout-evidence --json",
+        native_route: true,
+        compatibility_mode: "native_post_rollout_evidence",
+        side_effect_free: true,
+        store_root_env: NATIVE_POST_EXECUTION_STORE_DIR_ENV,
+        store_root: root.display().to_string(),
+        rollback_store_file: "rollback.jsonl",
+        store_jsonl_valid,
+        store_capacity_ok,
+        rollout_evidence_ready,
+        activation_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        activation_scope: activation_plan.handler_scope,
+        single_handler_scope_ready: activation_plan.single_handler_scope_ready,
+        selected_handler_count: activation_plan.selected_handler_count,
+        selected_handler_kinds: activation_plan.selected_handler_kinds,
+        rollback_anchor_present: scan.rollback_anchor_count > 0,
+        dry_run_record_present: scan.dry_run_record_count > 0,
+        record_count: scan.record_count,
+        dry_run_record_count: scan.dry_run_record_count,
+        rollback_anchor_count: scan.rollback_anchor_count,
+        line_count: scan.line_count,
+        valid_json_line_count: scan.valid_json_line_count,
+        invalid_json_line_count: scan.invalid_json_line_count,
+        jsonl_readable: scan.jsonl_readable,
+        read_error: scan.read_error,
+        plan_kind_counts: scan.plan_kind_counts,
+        latest_record: scan.latest_record,
+        raw_request_body_exposed: scan.raw_request_body_exposed,
+        raw_field_values_exposed: scan.raw_field_values_exposed,
+        raw_idempotency_key_exposed: scan.raw_idempotency_key_exposed,
+        raw_audit_payload_exposed: scan.raw_audit_payload_exposed,
+        real_mutation_performed: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "run one scoped dry-run canary until rollback evidence is present, then decide whether to wire a real handler behind the same scope gate",
+    }
+}
+
 fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
     let readiness = native_post_execution_readiness_report();
     let stores = native_post_execution_stores_report();
@@ -2909,6 +3005,173 @@ fn native_post_execution_store_specs() -> &'static [NativePostExecutionStoreFile
             filename: "rate-limit.jsonl",
         },
     ]
+}
+
+fn native_post_rollout_evidence_scan(path: &Path) -> NativePostRolloutEvidenceScan {
+    let mut line_count = 0_u64;
+    let mut valid_json_line_count = 0_u64;
+    let mut invalid_json_line_count = 0_u64;
+    let mut record_count = 0_u64;
+    let mut dry_run_record_count = 0_u64;
+    let mut rollback_anchor_count = 0_u64;
+    let mut plan_kind_counts = BTreeMap::<String, u64>::new();
+    let mut latest_record: Option<NativePostRolloutEvidenceRecordSummary> = None;
+    let mut latest_recorded_at = 0_u64;
+    let mut raw_request_body_exposed = false;
+    let mut raw_field_values_exposed = false;
+    let mut raw_idempotency_key_exposed = false;
+    let mut raw_audit_payload_exposed = false;
+
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return NativePostRolloutEvidenceScan {
+                jsonl_readable: true,
+                read_error: None,
+                line_count,
+                valid_json_line_count,
+                invalid_json_line_count,
+                record_count,
+                dry_run_record_count,
+                rollback_anchor_count,
+                plan_kind_counts: Vec::new(),
+                latest_record,
+                raw_request_body_exposed,
+                raw_field_values_exposed,
+                raw_idempotency_key_exposed,
+                raw_audit_payload_exposed,
+            };
+        }
+        Err(_) => {
+            return NativePostRolloutEvidenceScan {
+                jsonl_readable: false,
+                read_error: Some("rollback_store_read_failed"),
+                line_count,
+                valid_json_line_count,
+                invalid_json_line_count,
+                record_count,
+                dry_run_record_count,
+                rollback_anchor_count,
+                plan_kind_counts: Vec::new(),
+                latest_record,
+                raw_request_body_exposed,
+                raw_field_values_exposed,
+                raw_idempotency_key_exposed,
+                raw_audit_payload_exposed,
+            };
+        }
+    };
+
+    for line in content.lines() {
+        line_count = line_count.saturating_add(1);
+        let value = match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(value) => value,
+            Err(_) => {
+                invalid_json_line_count = invalid_json_line_count.saturating_add(1);
+                continue;
+            }
+        };
+        valid_json_line_count = valid_json_line_count.saturating_add(1);
+        record_count = record_count.saturating_add(1);
+        let plan_kind = value
+            .get("plan_kind")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        *plan_kind_counts.entry(plan_kind.clone()).or_insert(0) += 1;
+        let current_plan_executes_real_handler = value
+            .get("current_plan_executes_real_handler")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        if current_plan_executes_real_handler {
+            dry_run_record_count = dry_run_record_count.saturating_add(1);
+        }
+        if value
+            .get("rollback_strategy")
+            .and_then(serde_json::Value::as_str)
+            == Some("pending_real_handler_rollback_anchor")
+        {
+            rollback_anchor_count = rollback_anchor_count.saturating_add(1);
+        }
+        raw_request_body_exposed |= json_bool_field(&value, "raw_request_body_exposed");
+        raw_field_values_exposed |= json_bool_field(&value, "raw_field_values_exposed");
+        raw_idempotency_key_exposed |= json_bool_field(&value, "raw_idempotency_key_exposed");
+        raw_audit_payload_exposed |= json_bool_field(&value, "raw_audit_payload_exposed");
+
+        let recorded_at = value
+            .get("recorded_at_unix_ms")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        if latest_record.is_none() || recorded_at >= latest_recorded_at {
+            latest_recorded_at = recorded_at;
+            latest_record = Some(native_post_rollout_evidence_record_summary(&value));
+        }
+    }
+
+    NativePostRolloutEvidenceScan {
+        jsonl_readable: true,
+        read_error: None,
+        line_count,
+        valid_json_line_count,
+        invalid_json_line_count,
+        record_count,
+        dry_run_record_count,
+        rollback_anchor_count,
+        plan_kind_counts: plan_kind_counts
+            .into_iter()
+            .map(|(plan_kind, count)| NativePostRolloutEvidencePlanKindCount { plan_kind, count })
+            .collect(),
+        latest_record,
+        raw_request_body_exposed,
+        raw_field_values_exposed,
+        raw_idempotency_key_exposed,
+        raw_audit_payload_exposed,
+    }
+}
+
+fn native_post_rollout_evidence_record_summary(
+    value: &serde_json::Value,
+) -> NativePostRolloutEvidenceRecordSummary {
+    NativePostRolloutEvidenceRecordSummary {
+        recorded_at_unix_ms: value
+            .get("recorded_at_unix_ms")
+            .and_then(serde_json::Value::as_u64),
+        route_pattern: json_string_field(value, "route_pattern"),
+        capability: json_string_field(value, "capability"),
+        plan_kind: json_string_field(value, "plan_kind"),
+        body_schema_id: json_string_field(value, "body_schema_id"),
+        body_admission_status: json_string_field(value, "body_admission_status"),
+        rollback_strategy: json_string_field(value, "rollback_strategy"),
+        rate_limit_bucket: json_string_field(value, "rate_limit_bucket"),
+        current_plan_executes_real_handler: json_bool_field(
+            value,
+            "current_plan_executes_real_handler",
+        ),
+        idempotency_key_redacted: json_bool_field(value, "idempotency_key_redacted"),
+        idempotency_key_fingerprint_present: value
+            .get("idempotency_key_fingerprint")
+            .and_then(serde_json::Value::as_str)
+            .map(|fingerprint| !fingerprint.trim().is_empty())
+            .unwrap_or(false),
+        raw_request_body_exposed: json_bool_field(value, "raw_request_body_exposed"),
+        raw_field_values_exposed: json_bool_field(value, "raw_field_values_exposed"),
+        raw_idempotency_key_exposed: json_bool_field(value, "raw_idempotency_key_exposed"),
+        raw_audit_payload_exposed: json_bool_field(value, "raw_audit_payload_exposed"),
+    }
+}
+
+fn json_string_field(value: &serde_json::Value, field: &str) -> Option<String> {
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+fn json_bool_field(value: &serde_json::Value, field: &str) -> bool {
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
 }
 
 #[allow(dead_code)]
@@ -5036,6 +5299,98 @@ struct NativePostActivationGate {
     enabled: bool,
     required_for_activation: bool,
     purpose: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostRolloutEvidenceResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    endpoint: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    store_root_env: &'static str,
+    store_root: String,
+    rollback_store_file: &'static str,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    rollout_evidence_ready: bool,
+    activation_scope_env: &'static str,
+    activation_scope: Option<String>,
+    single_handler_scope_ready: bool,
+    selected_handler_count: usize,
+    selected_handler_kinds: Vec<&'static str>,
+    rollback_anchor_present: bool,
+    dry_run_record_present: bool,
+    record_count: u64,
+    dry_run_record_count: u64,
+    rollback_anchor_count: u64,
+    line_count: u64,
+    valid_json_line_count: u64,
+    invalid_json_line_count: u64,
+    jsonl_readable: bool,
+    read_error: Option<&'static str>,
+    plan_kind_counts: Vec<NativePostRolloutEvidencePlanKindCount>,
+    latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
+    real_mutation_performed: bool,
+    approval_applied: bool,
+    task_published: bool,
+    chat_mutated: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+struct NativePostRolloutEvidenceScan {
+    jsonl_readable: bool,
+    read_error: Option<&'static str>,
+    line_count: u64,
+    valid_json_line_count: u64,
+    invalid_json_line_count: u64,
+    record_count: u64,
+    dry_run_record_count: u64,
+    rollback_anchor_count: u64,
+    plan_kind_counts: Vec<NativePostRolloutEvidencePlanKindCount>,
+    latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostRolloutEvidencePlanKindCount {
+    plan_kind: String,
+    count: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostRolloutEvidenceRecordSummary {
+    recorded_at_unix_ms: Option<u64>,
+    route_pattern: Option<String>,
+    capability: Option<String>,
+    plan_kind: Option<String>,
+    body_schema_id: Option<String>,
+    body_admission_status: Option<String>,
+    rollback_strategy: Option<String>,
+    rate_limit_bucket: Option<String>,
+    current_plan_executes_real_handler: bool,
+    idempotency_key_redacted: bool,
+    idempotency_key_fingerprint_present: bool,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -7785,6 +8140,45 @@ mod tests {
     }
 
     #[test]
+    fn native_post_rollout_evidence_route_reports_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value = serde_json::from_str(&body).expect("rollout evidence json");
+
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(value["native_route"], true);
+        assert_eq!(value["compatibility_mode"], "native_post_rollout_evidence");
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["endpoint"], NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT);
+        assert_eq!(value["store_root_env"], NATIVE_POST_EXECUTION_STORE_DIR_ENV);
+        assert_eq!(
+            value["activation_scope_env"],
+            NATIVE_POST_REAL_HANDLER_SCOPE_ENV
+        );
+        assert_eq!(value["jsonl_readable"], true);
+        assert_eq!(value["read_error"], serde_json::Value::Null);
+        assert_eq!(value["real_mutation_performed"], false);
+        assert_eq!(value["approval_applied"], false);
+        assert_eq!(value["task_published"], false);
+        assert_eq!(value["chat_mutated"], false);
+        assert_eq!(value["telegram_read_performed"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["message_sent"], false);
+        assert_eq!(value["cursor_written"], false);
+        assert_eq!(value["raw_request_body_exposed"], false);
+        assert_eq!(value["raw_idempotency_key_exposed"], false);
+        assert_eq!(value["raw_audit_payload_exposed"], false);
+    }
+
+    #[test]
     fn native_post_execution_store_status_counts_jsonl_health() {
         let temp = tempfile::tempdir().expect("tempdir");
         let spec = &native_post_execution_store_specs()[0];
@@ -8406,6 +8800,70 @@ mod tests {
             assert!(!content.contains("secret task text"));
             assert!(!content.contains("secret-idem"));
         }
+    }
+
+    #[test]
+    fn native_post_rollout_evidence_summarizes_redacted_rollback_anchor() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let body = r#"{"task":"secret rollout task","confirm":true,"dry_run":true,"idempotency_key":"secret-rollout-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+        let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+        let audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+        );
+        let record = native_post_execution_store_record(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            true,
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        let empty = native_post_rollout_evidence_report_for_root(temp.path());
+        assert_eq!(empty.status, "ready");
+        assert_eq!(empty.record_count, 0);
+        assert_eq!(empty.rollback_anchor_present, false);
+        assert_eq!(empty.dry_run_record_present, false);
+        assert!(empty.latest_record.is_none());
+
+        persist_native_post_execution_store_record(temp.path(), &record).expect("write stores");
+        let report = native_post_rollout_evidence_report_for_root(temp.path());
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.rollout_evidence_ready, true);
+        assert_eq!(report.record_count, 1);
+        assert_eq!(report.dry_run_record_count, 1);
+        assert_eq!(report.rollback_anchor_count, 1);
+        assert_eq!(report.rollback_anchor_present, true);
+        assert_eq!(report.dry_run_record_present, true);
+        assert_eq!(report.invalid_json_line_count, 0);
+        assert_eq!(report.plan_kind_counts.len(), 1);
+        assert_eq!(report.plan_kind_counts[0].plan_kind, "task_publish");
+        assert_eq!(report.plan_kind_counts[0].count, 1);
+        assert_eq!(report.raw_request_body_exposed, false);
+        assert_eq!(report.raw_idempotency_key_exposed, false);
+        assert_eq!(report.task_published, false);
+        assert_eq!(report.external_side_effects, false);
+        let latest = report.latest_record.expect("latest record");
+        assert_eq!(latest.plan_kind.as_deref(), Some("task_publish"));
+        assert_eq!(latest.current_plan_executes_real_handler, true);
+        assert_eq!(latest.idempotency_key_redacted, true);
+        assert_eq!(latest.idempotency_key_fingerprint_present, true);
+        assert_eq!(latest.raw_request_body_exposed, false);
+        assert_eq!(latest.raw_idempotency_key_exposed, false);
+        let rollback_content =
+            std::fs::read_to_string(temp.path().join("rollback.jsonl")).expect("rollback store");
+        assert!(!rollback_content.contains("secret rollout task"));
+        assert!(!rollback_content.contains("secret-rollout-idem"));
     }
 
     #[test]
