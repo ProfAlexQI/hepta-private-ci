@@ -1703,8 +1703,8 @@ fn native_post_plan_report(
     let body_admission = native_post_body_admission(spec, &body_schema, request_body);
     let confirmation_contract = native_post_confirmation_contract(spec);
     let rollback_contract = native_post_rollback_contract();
-    let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
-    let audit_event_contract = native_post_audit_event_contract(
+    let mut idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+    let mut audit_event_contract = native_post_audit_event_contract(
         spec,
         &body_schema,
         &body_admission,
@@ -1716,6 +1716,20 @@ fn native_post_plan_report(
         &idempotency_evidence,
         &audit_event_contract,
     );
+    let real_handler_harness = native_post_real_handler_harness(
+        spec,
+        &body_schema,
+        &body_admission,
+        &idempotency_evidence,
+        &audit_event_contract,
+        &execution_admission,
+        &native_post_execution_store_root(),
+    );
+    if real_handler_harness.store_write_succeeded {
+        idempotency_evidence.current_plan_store_written = true;
+        audit_event_contract.current_plan_emits_audit_event = true;
+        audit_event_contract.current_plan_persists_audit_event = true;
+    }
     NativePostPlanResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -1730,7 +1744,7 @@ fn native_post_plan_report(
         capability: spec.capability,
         native_route: true,
         compatibility_mode: spec.compatibility_mode,
-        side_effect_free: true,
+        side_effect_free: !real_handler_harness.store_write_attempted,
         plan_kind: spec.plan_kind,
         dry_run_only: spec.dry_run_only,
         confirmation_required_for_real_mutation: spec.confirmation_required_for_real_mutation,
@@ -1753,6 +1767,8 @@ fn native_post_plan_report(
         idempotency_evidence,
         audit_event_contract,
         execution_admission,
+        real_handler_harness_ready: true,
+        real_handler_harness,
         action_dispatched: false,
         command_executed: false,
         approval_applied: false,
@@ -2078,22 +2094,50 @@ fn native_post_execution_admission(
     idempotency_evidence: &NativePostIdempotencyEvidence,
     audit_event_contract: &NativePostAuditEventContract,
 ) -> NativePostExecutionAdmission {
+    native_post_execution_admission_with_gates(
+        spec,
+        body_admission,
+        idempotency_evidence,
+        audit_event_contract,
+        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
+        env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
+    )
+}
+
+fn native_post_execution_admission_with_gates(
+    spec: &NativePostPlanRouteSpec,
+    body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+    audit_event_contract: &NativePostAuditEventContract,
+    enablement_gate_enabled: bool,
+    operator_approval_enabled: bool,
+) -> NativePostExecutionAdmission {
     let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
-    let enablement_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
-    let operator_approval_enabled = env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV);
     let real_handler_implemented = native_post_real_handler_implemented(spec);
     let request_body_ready_for_real_handler =
         !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
     let execution_evidence_ready = !allowlisted_for_real_handler
         || (idempotency_evidence.key_shape_valid && audit_event_contract.ready_for_real_handler);
+    let current_plan_executes_real_handler = allowlisted_for_real_handler
+        && request_body_ready_for_real_handler
+        && execution_evidence_ready
+        && real_handler_implemented
+        && enablement_gate_enabled
+        && operator_approval_enabled;
     NativePostExecutionAdmission {
-        admission_status: "blocked",
-        current_plan_executes_real_handler: false,
+        admission_status: if current_plan_executes_real_handler {
+            "harness_ready"
+        } else {
+            "blocked"
+        },
+        current_plan_executes_real_handler,
         real_handler_currently_enabled: enablement_gate_enabled,
         real_handler_implemented,
         allowlisted_for_real_handler,
         enablement_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
         enablement_gate_enabled,
+        operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+        operator_approval_enabled,
         request_body_admission_status: body_admission.admission_status,
         request_body_ready_for_real_handler,
         requires_body_schema: allowlisted_for_real_handler,
@@ -2126,6 +2170,76 @@ fn native_post_execution_admission(
 
 fn native_post_real_handler_implemented(spec: &NativePostPlanRouteSpec) -> bool {
     spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND
+}
+
+fn native_post_real_handler_harness(
+    spec: &NativePostPlanRouteSpec,
+    body_schema: &NativePostBodySchema,
+    body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+    audit_event_contract: &NativePostAuditEventContract,
+    execution_admission: &NativePostExecutionAdmission,
+    store_root: &Path,
+) -> NativePostRealHandlerHarness {
+    let dual_gate_satisfied = execution_admission.enablement_gate_enabled
+        && execution_admission.operator_approval_enabled;
+    let store_write_attempted = execution_admission.current_plan_executes_real_handler;
+    let (store_write_succeeded, store_write_report, store_write_error) = if store_write_attempted {
+        let record = native_post_execution_store_record(
+            spec,
+            body_schema,
+            body_admission,
+            idempotency_evidence,
+            audit_event_contract,
+            true,
+        );
+        match persist_native_post_execution_store_record(store_root, &record) {
+            Ok(report) => (true, Some(report), None),
+            Err(_error) => (
+                false,
+                None,
+                Some("native_post_execution_store_write_failed"),
+            ),
+        }
+    } else {
+        (false, None, None)
+    };
+    NativePostRealHandlerHarness {
+        status: if !execution_admission.allowlisted_for_real_handler {
+            "plan_only_route"
+        } else if !execution_admission.real_handler_implemented {
+            "not_implemented"
+        } else if !store_write_attempted {
+            "blocked"
+        } else if store_write_succeeded {
+            "dry_run_recorded"
+        } else {
+            "store_write_failed"
+        },
+        handler_kind: spec.plan_kind,
+        dry_run_only: true,
+        handler_implemented: execution_admission.real_handler_implemented,
+        dual_gate_satisfied,
+        enablement_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
+        enablement_gate_enabled: execution_admission.enablement_gate_enabled,
+        operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+        operator_approval_enabled: execution_admission.operator_approval_enabled,
+        store_write_attempted,
+        store_write_succeeded,
+        store_write_report,
+        store_write_error,
+        task_published: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+    }
 }
 
 fn native_post_execution_readiness_json() -> String {
@@ -2367,6 +2481,7 @@ fn native_post_execution_store_record(
     body_admission: &NativePostBodyAdmission,
     idempotency_evidence: &NativePostIdempotencyEvidence,
     audit_event_contract: &NativePostAuditEventContract,
+    current_plan_executes_real_handler: bool,
 ) -> NativePostExecutionStoreRecord {
     NativePostExecutionStoreRecord {
         schema_id: "hepta.post.execution_store_record.v1",
@@ -2383,7 +2498,7 @@ fn native_post_execution_store_record(
         audit_event_ready_for_real_handler: audit_event_contract.ready_for_real_handler,
         rollback_strategy: "pending_real_handler_rollback_anchor",
         rate_limit_bucket: spec.plan_kind,
-        current_plan_executes_real_handler: false,
+        current_plan_executes_real_handler,
         raw_request_body_exposed: false,
         raw_field_values_exposed: false,
         raw_idempotency_key_exposed: false,
@@ -4110,6 +4225,8 @@ struct NativePostPlanResponse {
     idempotency_evidence: NativePostIdempotencyEvidence,
     audit_event_contract: NativePostAuditEventContract,
     execution_admission: NativePostExecutionAdmission,
+    real_handler_harness_ready: bool,
+    real_handler_harness: NativePostRealHandlerHarness,
     action_dispatched: bool,
     command_executed: bool,
     approval_applied: bool,
@@ -4230,6 +4347,8 @@ struct NativePostExecutionAdmission {
     allowlisted_for_real_handler: bool,
     enablement_gate_env: &'static str,
     enablement_gate_enabled: bool,
+    operator_approval_env: &'static str,
+    operator_approval_enabled: bool,
     request_body_admission_status: &'static str,
     request_body_ready_for_real_handler: bool,
     requires_body_schema: bool,
@@ -4243,6 +4362,34 @@ struct NativePostExecutionAdmission {
     requires_dry_run_first: bool,
     external_side_effects_possible: bool,
     blocked_reason: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostRealHandlerHarness {
+    status: &'static str,
+    handler_kind: &'static str,
+    dry_run_only: bool,
+    handler_implemented: bool,
+    dual_gate_satisfied: bool,
+    enablement_gate_env: &'static str,
+    enablement_gate_enabled: bool,
+    operator_approval_env: &'static str,
+    operator_approval_enabled: bool,
+    store_write_attempted: bool,
+    store_write_succeeded: bool,
+    store_write_report: Option<NativePostExecutionStoreWriteReport>,
+    store_write_error: Option<&'static str>,
+    task_published: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -6501,6 +6648,14 @@ mod tests {
                 false
             );
             assert_eq!(
+                value["execution_admission"]["operator_approval_env"],
+                "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED"
+            );
+            assert_eq!(
+                value["execution_admission"]["operator_approval_enabled"],
+                false
+            );
+            assert_eq!(
                 value["execution_admission"]["request_body_admission_status"],
                 value["body_admission"]["admission_status"]
             );
@@ -6549,6 +6704,40 @@ mod tests {
             assert_eq!(
                 value["execution_admission"]["blocked_reason"],
                 expected_blocked_reason
+            );
+            assert_eq!(value["real_handler_harness_ready"], true);
+            let expected_harness_status = if !confirm_required {
+                "plan_only_route"
+            } else if plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND {
+                "blocked"
+            } else {
+                "not_implemented"
+            };
+            assert_eq!(
+                value["real_handler_harness"]["status"],
+                expected_harness_status
+            );
+            assert_eq!(
+                value["real_handler_harness"]["handler_implemented"],
+                plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND
+            );
+            assert_eq!(value["real_handler_harness"]["dual_gate_satisfied"], false);
+            assert_eq!(
+                value["real_handler_harness"]["store_write_attempted"],
+                false
+            );
+            assert_eq!(
+                value["real_handler_harness"]["store_write_succeeded"],
+                false
+            );
+            assert_eq!(value["real_handler_harness"]["task_published"], false);
+            assert_eq!(
+                value["real_handler_harness"]["external_side_effects"],
+                false
+            );
+            assert_eq!(
+                value["real_handler_harness"]["raw_idempotency_key_exposed"],
+                false
             );
             assert_eq!(value["action_dispatched"], false);
             assert_eq!(value["command_executed"], false);
@@ -6680,8 +6869,28 @@ mod tests {
             true
         );
         assert_eq!(
+            value["execution_admission"]["current_plan_executes_real_handler"],
+            false
+        );
+        assert_eq!(
+            value["execution_admission"]["operator_approval_enabled"],
+            false
+        );
+        assert_eq!(
             value["execution_admission"]["blocked_reason"],
             "real_handler_gate_disabled"
+        );
+        assert_eq!(value["real_handler_harness_ready"], true);
+        assert_eq!(value["real_handler_harness"]["status"], "blocked");
+        assert_eq!(value["real_handler_harness"]["handler_implemented"], true);
+        assert_eq!(
+            value["real_handler_harness"]["store_write_attempted"],
+            false
+        );
+        assert_eq!(value["real_handler_harness"]["task_published"], false);
+        assert_eq!(
+            value["real_handler_harness"]["raw_idempotency_key_exposed"],
+            false
         );
         assert_eq!(value["task_published"], false);
         assert_eq!(value["external_side_effects"], false);
@@ -6791,6 +7000,131 @@ mod tests {
     }
 
     #[test]
+    fn native_post_real_handler_harness_records_redacted_dry_run_under_dual_gate() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND)
+            .expect("task publish spec");
+        let body = r#"{"task":"secret task text","confirm":true,"dry_run":true,"idempotency_key":"secret-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+        let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+        let audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+        );
+        let execution_admission = native_post_execution_admission_with_gates(
+            spec,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            true,
+            true,
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        let harness = native_post_real_handler_harness(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            &execution_admission,
+            temp.path(),
+        );
+
+        assert_eq!(execution_admission.admission_status, "harness_ready");
+        assert_eq!(execution_admission.current_plan_executes_real_handler, true);
+        assert_eq!(execution_admission.operator_approval_enabled, true);
+        assert_eq!(
+            execution_admission.blocked_reason,
+            "real_handler_harness_dry_run_only"
+        );
+        assert_eq!(harness.status, "dry_run_recorded");
+        assert_eq!(harness.handler_kind, "task_publish");
+        assert_eq!(harness.dry_run_only, true);
+        assert_eq!(harness.handler_implemented, true);
+        assert_eq!(harness.dual_gate_satisfied, true);
+        assert_eq!(harness.store_write_attempted, true);
+        assert_eq!(harness.store_write_succeeded, true);
+        assert_eq!(harness.task_published, false);
+        assert_eq!(harness.external_side_effects, false);
+        assert_eq!(harness.raw_request_body_exposed, false);
+        assert_eq!(harness.raw_idempotency_key_exposed, false);
+        let report = harness
+            .store_write_report
+            .as_ref()
+            .expect("store write report");
+        assert_eq!(report.status, "written");
+        assert_eq!(report.written_file_count, 4);
+        for file in &report.written_files {
+            let content = std::fs::read_to_string(file).expect("read store file");
+            assert!(content.contains("hepta.post.execution_store_record.v1"));
+            assert!(content.contains("task_publish"));
+            assert!(content.contains("\"current_plan_executes_real_handler\":true"));
+            assert!(!content.contains("secret task text"));
+            assert!(!content.contains("secret-idem"));
+        }
+    }
+
+    #[test]
+    fn native_post_real_handler_harness_requires_operator_approval_gate() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND)
+            .expect("task publish spec");
+        let body = r#"{"task":"secret task text","confirm":true,"dry_run":true,"idempotency_key":"secret-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+        let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+        let audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+        );
+        let execution_admission = native_post_execution_admission_with_gates(
+            spec,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            true,
+            false,
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        let harness = native_post_real_handler_harness(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            &execution_admission,
+            temp.path(),
+        );
+
+        assert_eq!(execution_admission.admission_status, "blocked");
+        assert_eq!(
+            execution_admission.current_plan_executes_real_handler,
+            false
+        );
+        assert_eq!(execution_admission.enablement_gate_enabled, true);
+        assert_eq!(execution_admission.operator_approval_enabled, false);
+        assert_eq!(
+            execution_admission.blocked_reason,
+            "operator_approval_required"
+        );
+        assert_eq!(harness.status, "blocked");
+        assert_eq!(harness.dual_gate_satisfied, false);
+        assert_eq!(harness.store_write_attempted, false);
+        assert_eq!(harness.store_write_succeeded, false);
+        assert!(harness.store_write_report.is_none());
+        assert_eq!(temp.path().join("idempotency.jsonl").exists(), false);
+    }
+
+    #[test]
     fn native_post_execution_store_writer_persists_redacted_records() {
         let spec = NATIVE_POST_PLAN_ROUTE_SPECS
             .iter()
@@ -6812,6 +7146,7 @@ mod tests {
             &body_admission,
             &idempotency_evidence,
             &audit_event_contract,
+            true,
         );
         let temp = tempfile::tempdir().expect("tempdir");
 
