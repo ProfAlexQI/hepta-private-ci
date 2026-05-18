@@ -40,6 +40,12 @@ const TELEGRAM_TYPING_KEEPALIVE_INTERVAL_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS";
 const DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS: u64 = 4_000;
 const MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS: u64 = 30_000;
+const TELEGRAM_READ_MAX_ATTEMPTS_ENV: &str = "HEPTA_NATIVE_TELEGRAM_READ_MAX_ATTEMPTS";
+const DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS: u64 = 1;
+const MAX_TELEGRAM_READ_MAX_ATTEMPTS: u64 = 5;
+const TELEGRAM_READ_RETRY_BACKOFF_ENV: &str = "HEPTA_NATIVE_TELEGRAM_READ_RETRY_BACKOFF_MS";
+const DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS: u64 = 500;
+const MAX_TELEGRAM_READ_RETRY_BACKOFF_MS: u64 = 30_000;
 const TELEGRAM_SEND_MIN_INTERVAL_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND_MIN_INTERVAL_MS";
 const MAX_TELEGRAM_SEND_MIN_INTERVAL_MS: u64 = 60_000;
 const TELEGRAM_SEND_MAX_ATTEMPTS_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND_MAX_ATTEMPTS";
@@ -341,6 +347,11 @@ pub(crate) struct NativeTelegramLiveSoakStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramProductionGuardStatus {
+    pub(crate) read_max_attempts_env: &'static str,
+    pub(crate) read_max_attempts: u64,
+    pub(crate) read_retry_backoff_env: &'static str,
+    pub(crate) read_retry_backoff_ms: u64,
+    pub(crate) retry_transient_read_errors: bool,
     pub(crate) typing_keepalive_env: &'static str,
     pub(crate) typing_keepalive_enabled: bool,
     pub(crate) typing_keepalive_interval_ms: u64,
@@ -1396,6 +1407,11 @@ impl NativeTelegramLiveSoakObservationState {
 
 fn telegram_production_guard_status() -> NativeTelegramProductionGuardStatus {
     NativeTelegramProductionGuardStatus {
+        read_max_attempts_env: TELEGRAM_READ_MAX_ATTEMPTS_ENV,
+        read_max_attempts: telegram_read_max_attempts(),
+        read_retry_backoff_env: TELEGRAM_READ_RETRY_BACKOFF_ENV,
+        read_retry_backoff_ms: duration_millis_u64(telegram_read_retry_backoff()),
+        retry_transient_read_errors: true,
         typing_keepalive_env: TELEGRAM_TYPING_KEEPALIVE_ENV,
         typing_keepalive_enabled: telegram_typing_keepalive_enabled(),
         typing_keepalive_interval_ms: duration_millis_u64(telegram_typing_keepalive_interval()),
@@ -1914,6 +1930,32 @@ fn resolve_private_hepta_runtime_config_path() -> Option<PathBuf> {
 }
 
 fn call_telegram_get_updates(
+    token: &str,
+    limit: usize,
+    offset: Option<i64>,
+) -> Result<Value, String> {
+    let max_attempts = telegram_read_max_attempts();
+    let retry_backoff = telegram_read_retry_backoff();
+    for attempt in 1..=max_attempts {
+        match call_telegram_get_updates_once(token, limit, offset) {
+            Ok(api) => return Ok(api),
+            Err(error) => {
+                let error = redact_token_like_text(&error);
+                if attempt < max_attempts
+                    && is_telegram_get_updates_transient_error(&error)
+                    && !is_telegram_get_updates_conflict_error(&error)
+                {
+                    thread::sleep(retry_backoff);
+                    continue;
+                }
+                return Err(error);
+            }
+        }
+    }
+    Err("Telegram Bot API getUpdates retry loop exited unexpectedly".to_string())
+}
+
+fn call_telegram_get_updates_once(
     token: &str,
     limit: usize,
     offset: Option<i64>,
@@ -3127,6 +3169,23 @@ fn telegram_send_min_interval() -> Duration {
     Duration::from_millis(millis)
 }
 
+fn telegram_read_max_attempts() -> u64 {
+    env::var(TELEGRAM_READ_MAX_ATTEMPTS_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|attempts| attempts.clamp(1, MAX_TELEGRAM_READ_MAX_ATTEMPTS))
+        .unwrap_or(DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS)
+}
+
+fn telegram_read_retry_backoff() -> Duration {
+    let millis = env::var(TELEGRAM_READ_RETRY_BACKOFF_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|ms| ms.min(MAX_TELEGRAM_READ_RETRY_BACKOFF_MS))
+        .unwrap_or(DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS);
+    Duration::from_millis(millis)
+}
+
 fn telegram_send_max_attempts() -> u64 {
     env::var(TELEGRAM_SEND_MAX_ATTEMPTS_ENV)
         .ok()
@@ -3145,6 +3204,16 @@ fn telegram_send_retry_backoff() -> Duration {
 }
 
 fn is_telegram_send_transient_error(error: &str) -> bool {
+    error.contains("request failed")
+        || error.contains("HTTP status 429")
+        || error.contains("HTTP status 500")
+        || error.contains("HTTP status 502")
+        || error.contains("HTTP status 503")
+        || error.contains("HTTP status 504")
+        || error.contains("Too Many Requests")
+}
+
+fn is_telegram_get_updates_transient_error(error: &str) -> bool {
     error.contains("request failed")
         || error.contains("HTTP status 429")
         || error.contains("HTTP status 500")
@@ -5172,6 +5241,22 @@ mod tests {
         ));
         assert!(!is_telegram_send_transient_error(
             "Telegram Bot API sendMessage HTTP status 401; description=Unauthorized"
+        ));
+    }
+
+    #[test]
+    fn get_updates_transient_error_classifier_keeps_conflicts_busy() {
+        assert!(is_telegram_get_updates_transient_error(
+            "Telegram Bot API getUpdates request failed: error sending request"
+        ));
+        assert!(is_telegram_get_updates_transient_error(
+            "Telegram Bot API getUpdates HTTP status 503; description=temporary outage"
+        ));
+        assert!(!is_telegram_get_updates_transient_error(
+            "Telegram Bot API getUpdates HTTP status 401; description=Unauthorized"
+        ));
+        assert!(is_telegram_get_updates_conflict_error(
+            "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request"
         ));
     }
 }
