@@ -522,6 +522,61 @@ fn route_native_gateway_request(
                     native_gateway_json(options, &telegram_plugin),
                 );
             }
+            "/api/control-ui" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_control_ui_audit_json(
+                        NativeControlUiAuditSurface::ControlUi,
+                        options,
+                        &telegram_plugin,
+                    ),
+                );
+            }
+            "/api/ui-contract-audit" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_control_ui_audit_json(
+                        NativeControlUiAuditSurface::UiContractAudit,
+                        options,
+                        &telegram_plugin,
+                    ),
+                );
+            }
+            "/api/gateway-dispatch" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_control_ui_audit_json(
+                        NativeControlUiAuditSurface::GatewayDispatch,
+                        options,
+                        &telegram_plugin,
+                    ),
+                );
+            }
+            "/api/ui-action-plan/gateway-dispatch" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_control_ui_audit_json(
+                        NativeControlUiAuditSurface::UiActionPlanGatewayDispatch,
+                        options,
+                        &telegram_plugin,
+                    ),
+                );
+            }
+            "/api/external-agent-benchmark" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_control_ui_audit_json(
+                        NativeControlUiAuditSurface::ExternalAgentBenchmark,
+                        options,
+                        &telegram_plugin,
+                    ),
+                );
+            }
             GATEWAY_REPLACEMENT_READINESS_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1630,6 +1685,109 @@ fn runtime_event_type_is_multi_agent(event_type: &str) -> bool {
         || event_type.contains("multi-agent")
         || event_type.contains("subagent")
         || event_type.contains("agent_message")
+}
+
+fn native_control_ui_audit_json(
+    surface: NativeControlUiAuditSurface,
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> String {
+    json_or_error(&native_control_ui_audit_report(
+        surface,
+        options,
+        telegram_plugin,
+    ))
+}
+
+fn native_control_ui_audit_report(
+    surface: NativeControlUiAuditSurface,
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> NativeControlUiAuditResponse {
+    let route_matrix = control_ui_route_parity_report();
+    let approvals = native_approvals_report();
+    let gateway_replacement = gateway_replacement_readiness(options, telegram_plugin);
+    let get_route_count = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| route.method == "GET")
+        .count();
+    let post_route_count = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| route.method == "POST")
+        .count();
+    let guarded_post_route_count = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| route.method == "POST")
+        .filter(|route| post_route_is_guarded(route))
+        .count();
+    let dry_run_route_count = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| {
+            route.side_effect_boundary.contains("dry-run")
+                || route.side_effect_boundary.contains("plan only")
+        })
+        .count();
+    let read_only_route_count = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| route.side_effect_boundary.contains("read-only"))
+        .count();
+    let ready = route_matrix.ready
+        && approvals.status == "ready"
+        && guarded_post_route_count == post_route_count;
+
+    NativeControlUiAuditResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if ready { "ready" } else { "attention" },
+        source_command: surface.source_command(),
+        native_route: true,
+        compatibility_mode: surface.compatibility_mode(),
+        side_effect_free: true,
+        control_surface: surface.control_surface(),
+        plan_target: surface.plan_target(),
+        dry_run_only: surface.dry_run_only(),
+        read_only: surface.read_only(),
+        confirmation_required_for_real_mutation: false,
+        route_matrix_ready: route_matrix.ready,
+        route_count: route_matrix.route_count,
+        implemented_route_count: route_matrix.implemented_route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        get_route_count,
+        post_route_count,
+        dry_run_route_count,
+        read_only_route_count,
+        guarded_post_route_count,
+        approval_route_count: approvals.approval_route_count,
+        guarded_approval_route_count: approvals.guarded_route_count,
+        gateway_replacement_ready: gateway_replacement.ready,
+        gateway_replacement_blocker_count: gateway_replacement.blocker_count,
+        external_agent_benchmark_executed: false,
+        external_agent_spawned: false,
+        action_dispatched: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        route_matrix,
+        redaction: NativeControlUiAuditRedaction {
+            raw_transcript_exposed: false,
+            transcript_text_exposed: false,
+            raw_token_exposed: false,
+            raw_action_payload_exposed: false,
+            raw_agent_payload_exposed: false,
+        },
+        side_effects: NativeControlUiAuditSideEffects {
+            model_invoked: false,
+            external_side_effects: false,
+            gateway_mutation_performed: false,
+            telegram_read_performed: false,
+            message_sent: false,
+            cursor_written: false,
+        },
+        next_migration_slice: "turn guarded POST action routes into explicit native dry-run planners before enabling any mutation",
+    }
 }
 
 fn native_approvals_json() -> String {
@@ -2809,6 +2967,70 @@ impl NativeRuntimeAuditSurface {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeControlUiAuditSurface {
+    ControlUi,
+    UiContractAudit,
+    GatewayDispatch,
+    UiActionPlanGatewayDispatch,
+    ExternalAgentBenchmark,
+}
+
+impl NativeControlUiAuditSurface {
+    fn source_command(self) -> &'static str {
+        match self {
+            Self::ControlUi => "/control-ui --json",
+            Self::UiContractAudit => "/ui-contract-audit --json",
+            Self::GatewayDispatch => "/gateway-dispatch --dry-run --json",
+            Self::UiActionPlanGatewayDispatch => {
+                "/ui-action-plan gateway-dispatch --dry-run --json"
+            }
+            Self::ExternalAgentBenchmark => "/external-agent-benchmark --json",
+        }
+    }
+
+    fn compatibility_mode(self) -> &'static str {
+        match self {
+            Self::ControlUi => "native_control_ui_shell_snapshot",
+            Self::UiContractAudit => "native_ui_contract_audit",
+            Self::GatewayDispatch => "native_gateway_dispatch_dry_run",
+            Self::UiActionPlanGatewayDispatch => "native_ui_action_plan_gateway_dispatch",
+            Self::ExternalAgentBenchmark => "native_external_agent_benchmark_redacted",
+        }
+    }
+
+    fn control_surface(self) -> &'static str {
+        match self {
+            Self::ControlUi => "control_ui",
+            Self::UiContractAudit => "ui_contract_audit",
+            Self::GatewayDispatch => "gateway_dispatch",
+            Self::UiActionPlanGatewayDispatch => "ui_action_plan_gateway_dispatch",
+            Self::ExternalAgentBenchmark => "external_agent_benchmark",
+        }
+    }
+
+    fn plan_target(self) -> Option<&'static str> {
+        match self {
+            Self::GatewayDispatch | Self::UiActionPlanGatewayDispatch => Some("gateway-dispatch"),
+            Self::ExternalAgentBenchmark => Some("external-agent-benchmark"),
+            Self::ControlUi | Self::UiContractAudit => None,
+        }
+    }
+
+    fn dry_run_only(self) -> bool {
+        matches!(
+            self,
+            Self::GatewayDispatch
+                | Self::UiActionPlanGatewayDispatch
+                | Self::ExternalAgentBenchmark
+        )
+    }
+
+    fn read_only(self) -> bool {
+        !self.dry_run_only()
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct NativeTaskArtifactResponse {
     product: &'static str,
@@ -2936,6 +3158,67 @@ struct NativeRuntimeAuditRedaction {
 
 #[derive(Debug, Serialize)]
 struct NativeRuntimeAuditSideEffects {
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeControlUiAuditResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    control_surface: &'static str,
+    plan_target: Option<&'static str>,
+    dry_run_only: bool,
+    read_only: bool,
+    confirmation_required_for_real_mutation: bool,
+    route_matrix_ready: bool,
+    route_count: usize,
+    implemented_route_count: usize,
+    missing_route_count: usize,
+    get_route_count: usize,
+    post_route_count: usize,
+    dry_run_route_count: usize,
+    read_only_route_count: usize,
+    guarded_post_route_count: usize,
+    approval_route_count: usize,
+    guarded_approval_route_count: usize,
+    gateway_replacement_ready: bool,
+    gateway_replacement_blocker_count: usize,
+    external_agent_benchmark_executed: bool,
+    external_agent_spawned: bool,
+    action_dispatched: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    route_matrix: ControlUiRouteParityReport,
+    redaction: NativeControlUiAuditRedaction,
+    side_effects: NativeControlUiAuditSideEffects,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeControlUiAuditRedaction {
+    raw_transcript_exposed: bool,
+    transcript_text_exposed: bool,
+    raw_token_exposed: bool,
+    raw_action_payload_exposed: bool,
+    raw_agent_payload_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeControlUiAuditSideEffects {
     model_invoked: bool,
     external_side_effects: bool,
     gateway_mutation_performed: bool,
@@ -4393,6 +4676,131 @@ mod tests {
         );
         assert!(!body.contains("Be genuinely helpful"));
         assert!(!body.contains("What to call them"));
+    }
+
+    #[test]
+    fn control_ui_audit_report_keeps_routes_guarded_without_dispatch() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let telegram_plugin = native_telegram::telegram_plugin_status(true, 1500);
+        let report = native_control_ui_audit_report(
+            NativeControlUiAuditSurface::UiContractAudit,
+            &options,
+            &telegram_plugin,
+        );
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.native_route, true);
+        assert_eq!(report.compatibility_mode, "native_ui_contract_audit");
+        assert_eq!(report.route_count, CONTROL_UI_ROUTE_SPECS.len());
+        assert_eq!(
+            report.get_route_count + report.post_route_count,
+            CONTROL_UI_ROUTE_SPECS.len()
+        );
+        assert_eq!(report.post_route_count, report.guarded_post_route_count);
+        assert_eq!(report.action_dispatched, false);
+        assert_eq!(report.external_agent_spawned, false);
+        assert_eq!(report.external_agent_benchmark_executed, false);
+        assert_eq!(report.redaction.raw_action_payload_exposed, false);
+        assert_eq!(report.redaction.raw_agent_payload_exposed, false);
+        assert_eq!(report.side_effects.gateway_mutation_performed, false);
+        assert_eq!(report.side_effects.telegram_read_performed, false);
+        assert_eq!(report.side_effects.model_invoked, false);
+        assert_eq!(report.side_effects.message_sent, false);
+        assert_eq!(report.side_effects.cursor_written, false);
+    }
+
+    #[test]
+    fn control_ui_shell_routes_return_native_plans_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (path, mode, surface, dry_run_only, read_only, plan_target) in [
+            (
+                "/api/control-ui",
+                "native_control_ui_shell_snapshot",
+                "control_ui",
+                false,
+                true,
+                None,
+            ),
+            (
+                "/api/ui-contract-audit",
+                "native_ui_contract_audit",
+                "ui_contract_audit",
+                false,
+                true,
+                None,
+            ),
+            (
+                "/api/gateway-dispatch",
+                "native_gateway_dispatch_dry_run",
+                "gateway_dispatch",
+                true,
+                false,
+                Some("gateway-dispatch"),
+            ),
+            (
+                "/api/ui-action-plan/gateway-dispatch",
+                "native_ui_action_plan_gateway_dispatch",
+                "ui_action_plan_gateway_dispatch",
+                true,
+                false,
+                Some("gateway-dispatch"),
+            ),
+            (
+                "/api/external-agent-benchmark",
+                "native_external_agent_benchmark_redacted",
+                "external_agent_benchmark",
+                true,
+                false,
+                Some("external-agent-benchmark"),
+            ),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request("GET", path, &options);
+            assert_eq!(status, "200 OK", "{path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            let value: serde_json::Value =
+                serde_json::from_str(&body).expect("control ui audit route json");
+
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["native_route"], true);
+            assert_eq!(value["compatibility_mode"], mode);
+            assert_eq!(value["control_surface"], surface);
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(value["dry_run_only"], dry_run_only);
+            assert_eq!(value["read_only"], read_only);
+            assert_eq!(value["confirmation_required_for_real_mutation"], false);
+            assert_eq!(value["action_dispatched"], false);
+            assert_eq!(value["external_agent_spawned"], false);
+            assert_eq!(value["external_agent_benchmark_executed"], false);
+            assert_eq!(value["redaction"]["raw_transcript_exposed"], false);
+            assert_eq!(value["redaction"]["transcript_text_exposed"], false);
+            assert_eq!(value["redaction"]["raw_token_exposed"], false);
+            assert_eq!(value["redaction"]["raw_action_payload_exposed"], false);
+            assert_eq!(value["redaction"]["raw_agent_payload_exposed"], false);
+            assert_eq!(value["side_effects"]["external_side_effects"], false);
+            assert_eq!(value["side_effects"]["gateway_mutation_performed"], false);
+            assert_eq!(value["side_effects"]["telegram_read_performed"], false);
+            assert_eq!(value["side_effects"]["model_invoked"], false);
+            assert_eq!(value["side_effects"]["message_sent"], false);
+            assert_eq!(value["side_effects"]["cursor_written"], false);
+            assert_eq!(
+                value["plan_target"],
+                plan_target
+                    .map(serde_json::Value::from)
+                    .unwrap_or(serde_json::Value::Null)
+            );
+            assert_ne!(
+                value["compatibility_mode"],
+                "native_control_ui_route_parity_shell"
+            );
+        }
     }
 
     #[test]
