@@ -2677,9 +2677,16 @@ fn operator_security_json(
         .filter(|route| route.method == "POST")
         .filter(|route| post_route_is_guarded(route))
         .count();
+    let telegram_production_readiness_status =
+        native_telegram::telegram_production_readiness_status(
+            options.with_telegram_plugin,
+            options.telegram_plugin_poll_ms,
+        );
+    let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
     let ready = control_ui_route_parity.ready
         && gateway_replacement_readiness.ready
+        && production_soak_ready
         && loopback_bound
         && guarded_post_route_count == post_route_count;
 
@@ -2700,7 +2707,9 @@ fn operator_security_json(
         post_route_count,
         dry_run_post_route_count,
         guarded_post_route_count,
+        production_soak_ready,
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
+        telegram_production_readiness_status,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
         redaction: NativeOperatorSecurityRedaction {
@@ -3914,7 +3923,9 @@ struct NativeOperatorSecurityResponse {
     post_route_count: usize,
     dry_run_post_route_count: usize,
     guarded_post_route_count: usize,
+    production_soak_ready: bool,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
+    telegram_production_readiness_status: native_telegram::NativeTelegramProductionReadinessStatus,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
     redaction: NativeOperatorSecurityRedaction,
@@ -5679,6 +5690,15 @@ mod tests {
         assert_eq!(value["side_effects"]["cursor_written"], false);
         assert_eq!(value["redaction"]["raw_transcript_exposed"], false);
         assert_eq!(value["redaction"]["raw_token_exposed"], false);
+        assert!(value["telegram_production_readiness_status"].is_object());
+        assert_eq!(
+            value["telegram_production_readiness_status"]["side_effect_free"],
+            true
+        );
+        assert_eq!(
+            value["telegram_production_readiness_status"]["raw_token_exposed"],
+            false
+        );
         assert_eq!(value["post_route_count"], value["guarded_post_route_count"]);
         assert!(
             value["dry_run_post_route_count"]
