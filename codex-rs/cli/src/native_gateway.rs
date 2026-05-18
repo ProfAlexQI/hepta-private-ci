@@ -620,6 +620,34 @@ fn route_native_gateway_request(
                     native_events_json(NativeEventSurface::Activity, None),
                 );
             }
+            "/api/subagent-observatory" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_runtime_audit_json(NativeRuntimeAuditSurface::SubagentObservatory),
+                );
+            }
+            "/api/gateway-ledger" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_runtime_audit_json(NativeRuntimeAuditSurface::GatewayLedger),
+                );
+            }
+            "/api/gateway-retry-dead-letter" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_runtime_audit_json(NativeRuntimeAuditSurface::GatewayRetryDeadLetter),
+                );
+            }
+            "/api/multi-agent-runtime" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_runtime_audit_json(NativeRuntimeAuditSurface::MultiAgentRuntime),
+                );
+            }
             "/api/config" => {
                 return (
                     "200 OK",
@@ -1488,6 +1516,120 @@ fn native_events_report(
         cursor_written: false,
         next_migration_slice: "promote approvals, policy, and config surfaces with redacted local-only inventory",
     }
+}
+
+fn native_runtime_audit_json(surface: NativeRuntimeAuditSurface) -> String {
+    json_or_error(&native_runtime_audit_report(
+        session_root_candidates(),
+        surface,
+    ))
+}
+
+fn native_runtime_audit_report(
+    roots: Vec<NativeSessionRootCandidate>,
+    surface: NativeRuntimeAuditSurface,
+) -> NativeRuntimeAuditResponse {
+    let sessions = native_sessions_report(
+        roots.clone(),
+        surface.source_command(),
+        "native_runtime_audit_session_inventory",
+    );
+    let events = native_events_report(roots, NativeEventSurface::EventsReport, None);
+    let control_ui_route_parity = control_ui_route_parity_report();
+    let approvals = native_approvals_report();
+    let subagent_event_count =
+        count_event_types_matching(&events.event_type_counts, runtime_event_type_is_subagent);
+    let retry_or_error_event_count = count_event_types_matching(
+        &events.event_type_counts,
+        runtime_event_type_is_retry_or_error,
+    );
+    let multi_agent_event_count =
+        count_event_types_matching(&events.event_type_counts, runtime_event_type_is_multi_agent);
+    let ready = sessions.scan_error_count == 0
+        && events.scan_error_count == 0
+        && control_ui_route_parity.ready
+        && approvals.status == "ready";
+
+    NativeRuntimeAuditResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if ready { "ready" } else { "attention" },
+        source_command: surface.source_command(),
+        native_route: true,
+        compatibility_mode: surface.compatibility_mode(),
+        side_effect_free: true,
+        audit_surface: surface.audit_surface(),
+        event_focus: surface.event_focus(),
+        agent_limit: surface.agent_limit(),
+        message_limit: surface.message_limit(),
+        route_matrix_ready: control_ui_route_parity.ready,
+        route_count: control_ui_route_parity.route_count,
+        missing_route_count: control_ui_route_parity.missing_route_count,
+        approval_route_count: approvals.approval_route_count,
+        guarded_approval_route_count: approvals.guarded_route_count,
+        session_file_count: sessions.session_file_count,
+        recent_session_count: sessions.recent_session_count,
+        session_scan_error_count: sessions.scan_error_count,
+        event_type_count: events.event_type_count,
+        recent_event_count: events.recent_event_count,
+        event_scan_error_count: events.scan_error_count,
+        subagent_event_count,
+        retry_or_error_event_count,
+        multi_agent_event_count,
+        sessions,
+        events,
+        redaction: NativeRuntimeAuditRedaction {
+            raw_transcript_exposed: false,
+            transcript_text_exposed: false,
+            raw_agent_payload_exposed: false,
+            raw_error_payload_exposed: false,
+            raw_gateway_ledger_payload_exposed: false,
+        },
+        side_effects: NativeRuntimeAuditSideEffects {
+            model_invoked: false,
+            external_side_effects: false,
+            gateway_mutation_performed: false,
+            telegram_read_performed: false,
+            message_sent: false,
+            cursor_written: false,
+        },
+        next_migration_slice: "promote remaining runtime automation routes with the same local-only redacted audit boundary",
+    }
+}
+
+fn count_event_types_matching(
+    event_type_counts: &[NativeTranscriptEventCount],
+    matches_event_type: fn(&str) -> bool,
+) -> u64 {
+    event_type_counts
+        .iter()
+        .filter(|count| matches_event_type(&count.event_type))
+        .map(|count| count.count)
+        .sum()
+}
+
+fn runtime_event_type_is_subagent(event_type: &str) -> bool {
+    let event_type = event_type.to_ascii_lowercase();
+    event_type.contains("subagent")
+        || event_type.contains("sub_agent")
+        || event_type.contains("agent_message")
+}
+
+fn runtime_event_type_is_retry_or_error(event_type: &str) -> bool {
+    let event_type = event_type.to_ascii_lowercase();
+    event_type.contains("retry")
+        || event_type.contains("dead")
+        || event_type.contains("error")
+        || event_type.contains("failed")
+        || event_type.contains("failure")
+}
+
+fn runtime_event_type_is_multi_agent(event_type: &str) -> bool {
+    let event_type = event_type.to_ascii_lowercase();
+    event_type.contains("multi_agent")
+        || event_type.contains("multi-agent")
+        || event_type.contains("subagent")
+        || event_type.contains("agent_message")
 }
 
 fn native_approvals_json() -> String {
@@ -2609,6 +2751,64 @@ impl NativeEventSurface {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeRuntimeAuditSurface {
+    SubagentObservatory,
+    GatewayLedger,
+    GatewayRetryDeadLetter,
+    MultiAgentRuntime,
+}
+
+impl NativeRuntimeAuditSurface {
+    fn source_command(self) -> &'static str {
+        match self {
+            Self::SubagentObservatory => "/subagent-observatory --json",
+            Self::GatewayLedger => "/gateway-ledger --json",
+            Self::GatewayRetryDeadLetter => "/gateway-retry-dead-letter --json",
+            Self::MultiAgentRuntime => "/multi-agent-runtime --agents 4 --messages 8 --json",
+        }
+    }
+
+    fn compatibility_mode(self) -> &'static str {
+        match self {
+            Self::SubagentObservatory => "native_subagent_observatory_redacted",
+            Self::GatewayLedger => "native_gateway_ledger_redacted",
+            Self::GatewayRetryDeadLetter => "native_gateway_retry_dead_letter_redacted",
+            Self::MultiAgentRuntime => "native_multi_agent_runtime_redacted",
+        }
+    }
+
+    fn audit_surface(self) -> &'static str {
+        match self {
+            Self::SubagentObservatory => "subagent_observatory",
+            Self::GatewayLedger => "gateway_ledger",
+            Self::GatewayRetryDeadLetter => "gateway_retry_dead_letter",
+            Self::MultiAgentRuntime => "multi_agent_runtime",
+        }
+    }
+
+    fn event_focus(self) -> &'static str {
+        match self {
+            Self::SubagentObservatory => "subagent event type counters and redacted previews",
+            Self::GatewayLedger => {
+                "gateway route matrix, approvals, session inventory, and event counters"
+            }
+            Self::GatewayRetryDeadLetter => {
+                "retry, dead-letter, failure, and error event type counters"
+            }
+            Self::MultiAgentRuntime => "bounded multi-agent session and event inventory",
+        }
+    }
+
+    fn agent_limit(self) -> Option<usize> {
+        (self == Self::MultiAgentRuntime).then_some(4)
+    }
+
+    fn message_limit(self) -> Option<usize> {
+        (self == Self::MultiAgentRuntime).then_some(8)
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct NativeTaskArtifactResponse {
     product: &'static str,
@@ -2689,6 +2889,59 @@ struct NativeEventPreview {
     role: Option<String>,
     has_text_fields: bool,
     redacted: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeRuntimeAuditResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_surface: &'static str,
+    event_focus: &'static str,
+    agent_limit: Option<usize>,
+    message_limit: Option<usize>,
+    route_matrix_ready: bool,
+    route_count: usize,
+    missing_route_count: usize,
+    approval_route_count: usize,
+    guarded_approval_route_count: usize,
+    session_file_count: u64,
+    recent_session_count: usize,
+    session_scan_error_count: usize,
+    event_type_count: usize,
+    recent_event_count: usize,
+    event_scan_error_count: usize,
+    subagent_event_count: u64,
+    retry_or_error_event_count: u64,
+    multi_agent_event_count: u64,
+    sessions: NativeSessionsResponse,
+    events: NativeEventsResponse,
+    redaction: NativeRuntimeAuditRedaction,
+    side_effects: NativeRuntimeAuditSideEffects,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeRuntimeAuditRedaction {
+    raw_transcript_exposed: bool,
+    transcript_text_exposed: bool,
+    raw_agent_payload_exposed: bool,
+    raw_error_payload_exposed: bool,
+    raw_gateway_ledger_payload_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeRuntimeAuditSideEffects {
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -3932,6 +4185,137 @@ mod tests {
             } else {
                 assert!(value["activity_sessions"].is_null());
             }
+        }
+    }
+
+    #[test]
+    fn runtime_audit_report_counts_error_like_events_without_payloads() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sessions = temp.path().join("sessions/2026/05/18");
+        std::fs::create_dir_all(&sessions).expect("create sessions dir");
+        std::fs::write(
+            sessions.join(
+                "rollout-2026-05-18T13-40-00-019e3900-3333-7000-a111-666666666666.jsonl",
+            ),
+            concat!(
+                r#"{"timestamp":"2026-05-18T05:40:00Z","type":"event_msg","payload":{"type":"runtime_error","message":"super-secret-error-payload"}}"#,
+                "\n",
+                r#"{"timestamp":"2026-05-18T05:40:01Z","type":"event_msg","payload":{"type":"agent_message","role":"assistant","message":"subagent-secret-text"}}"#,
+                "\n",
+            ),
+        )
+        .expect("write rollout");
+
+        let report = native_runtime_audit_report(
+            vec![NativeSessionRootCandidate {
+                root: temp.path().join("sessions"),
+                kind: "active",
+            }],
+            NativeRuntimeAuditSurface::GatewayRetryDeadLetter,
+        );
+        let body = serde_json::to_string(&report).expect("serialize runtime audit report");
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.native_route, true);
+        assert_eq!(
+            report.compatibility_mode,
+            "native_gateway_retry_dead_letter_redacted"
+        );
+        assert_eq!(report.audit_surface, "gateway_retry_dead_letter");
+        assert_eq!(report.retry_or_error_event_count, 1);
+        assert_eq!(report.subagent_event_count, 1);
+        assert_eq!(report.redaction.raw_error_payload_exposed, false);
+        assert_eq!(report.redaction.raw_agent_payload_exposed, false);
+        assert_eq!(report.redaction.transcript_text_exposed, false);
+        assert_eq!(report.side_effects.gateway_mutation_performed, false);
+        assert_eq!(report.side_effects.telegram_read_performed, false);
+        assert_eq!(report.side_effects.model_invoked, false);
+        assert_eq!(report.side_effects.message_sent, false);
+        assert_eq!(report.side_effects.cursor_written, false);
+        assert!(!body.contains("super-secret-error-payload"));
+        assert!(!body.contains("subagent-secret-text"));
+    }
+
+    #[test]
+    fn runtime_audit_routes_return_native_redacted_views_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (path, mode, audit_surface, agent_limit, message_limit) in [
+            (
+                "/api/subagent-observatory",
+                "native_subagent_observatory_redacted",
+                "subagent_observatory",
+                None,
+                None,
+            ),
+            (
+                "/api/gateway-ledger",
+                "native_gateway_ledger_redacted",
+                "gateway_ledger",
+                None,
+                None,
+            ),
+            (
+                "/api/gateway-retry-dead-letter",
+                "native_gateway_retry_dead_letter_redacted",
+                "gateway_retry_dead_letter",
+                None,
+                None,
+            ),
+            (
+                "/api/multi-agent-runtime",
+                "native_multi_agent_runtime_redacted",
+                "multi_agent_runtime",
+                Some(4),
+                Some(8),
+            ),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request("GET", path, &options);
+            assert_eq!(status, "200 OK", "{path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            let value: serde_json::Value =
+                serde_json::from_str(&body).expect("runtime audit route json");
+
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["native_route"], true);
+            assert_eq!(value["compatibility_mode"], mode);
+            assert_eq!(value["audit_surface"], audit_surface);
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(value["sessions"]["native_route"], true);
+            assert_eq!(value["events"]["native_route"], true);
+            assert_eq!(value["redaction"]["raw_transcript_exposed"], false);
+            assert_eq!(value["redaction"]["transcript_text_exposed"], false);
+            assert_eq!(value["redaction"]["raw_agent_payload_exposed"], false);
+            assert_eq!(value["redaction"]["raw_error_payload_exposed"], false);
+            assert_eq!(
+                value["redaction"]["raw_gateway_ledger_payload_exposed"],
+                false
+            );
+            assert_eq!(value["side_effects"]["external_side_effects"], false);
+            assert_eq!(value["side_effects"]["gateway_mutation_performed"], false);
+            assert_eq!(value["side_effects"]["telegram_read_performed"], false);
+            assert_eq!(value["side_effects"]["model_invoked"], false);
+            assert_eq!(value["side_effects"]["message_sent"], false);
+            assert_eq!(value["side_effects"]["cursor_written"], false);
+            assert_eq!(
+                value["agent_limit"],
+                agent_limit
+                    .map(serde_json::Value::from)
+                    .unwrap_or(serde_json::Value::Null)
+            );
+            assert_eq!(
+                value["message_limit"],
+                message_limit
+                    .map(serde_json::Value::from)
+                    .unwrap_or(serde_json::Value::Null)
+            );
+            assert_ne!(
+                value["compatibility_mode"],
+                "native_control_ui_route_parity_shell"
+            );
         }
     }
 
