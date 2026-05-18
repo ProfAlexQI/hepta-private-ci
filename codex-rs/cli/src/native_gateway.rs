@@ -1136,7 +1136,8 @@ fn operator_snapshot_json(
     let telegram_cursor_status =
         native_telegram::telegram_cursor_status(options.with_telegram_plugin);
 
-    let production_soak_ready = telegram_live_soak_status.health_ready
+    let production_soak_ready = telegram_live_soak_status.production_readiness.ready
+        && telegram_live_soak_status.health_ready
         && telegram_poll_loop_status.loop_invokes_drain_once
         && telegram_cursor_status.status == "ready";
 

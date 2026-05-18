@@ -57,6 +57,12 @@ const MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 30_000;
 const TELEGRAM_MODEL_FAILURE_FALLBACK_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK";
 const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
 const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
+const TELEGRAM_SOAK_MIN_POLLS_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SOAK_MIN_POLLS";
+const DEFAULT_TELEGRAM_SOAK_MIN_POLLS: u64 = 3;
+const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
+const TELEGRAM_SOAK_MAX_ATTENTION_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION";
+const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 0;
+const MAX_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 1_000;
 const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
     "receive_getUpdates",
     "duplicate_suppression",
@@ -336,6 +342,7 @@ pub(crate) struct NativeTelegramLiveSoakStatus {
     pub(crate) poll_loop_status: NativeTelegramPollLoopStatus,
     pub(crate) cursor_status: NativeTelegramCursorStatus,
     pub(crate) production_guards: NativeTelegramProductionGuardStatus,
+    pub(crate) production_readiness: NativeTelegramProductionReadinessStatus,
     pub(crate) observation: NativeTelegramLiveSoakObservationReport,
     pub(crate) health_ready: bool,
     pub(crate) raw_update_payload_exposed: bool,
@@ -367,6 +374,33 @@ pub(crate) struct NativeTelegramProductionGuardStatus {
     pub(crate) send_retry_backoff_ms: u64,
     pub(crate) retry_transient_send_errors: bool,
     pub(crate) rate_limit_scope: &'static str,
+    pub(crate) raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramProductionReadinessStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) ready: bool,
+    pub(crate) side_effect_free: bool,
+    pub(crate) min_poll_iterations_env: &'static str,
+    pub(crate) min_poll_iterations: u64,
+    pub(crate) max_attention_count_env: &'static str,
+    pub(crate) max_attention_count: u64,
+    pub(crate) poll_loop_armed: bool,
+    pub(crate) cursor_ready: bool,
+    pub(crate) production_guards_ready: bool,
+    pub(crate) observation_ready: bool,
+    pub(crate) attention_budget_ok: bool,
+    pub(crate) recent_bot_api_ok: bool,
+    pub(crate) redaction_guards_ok: bool,
+    pub(crate) readiness_blockers: Vec<&'static str>,
+    pub(crate) readiness_warnings: Vec<&'static str>,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
+    pub(crate) raw_response_text_exposed: bool,
     pub(crate) raw_token_exposed: bool,
 }
 
@@ -954,19 +988,32 @@ pub(crate) fn telegram_live_soak_status(
     let poll_loop_status = telegram_poll_loop_status(requested, poll_ms);
     let cursor_status = telegram_cursor_status(requested);
     let observation = telegram_live_soak_observation_report();
+    let production_guards = telegram_production_guard_status();
+    let production_readiness = telegram_production_readiness_status(
+        requested,
+        &poll_loop_status,
+        &cursor_status,
+        &production_guards,
+        &observation,
+    );
     let last_status = observation.last_status.as_deref();
     let status = if !requested {
         "disabled"
     } else if !poll_loop_status.loop_invokes_drain_once {
         "gated"
-    } else if cursor_status.status == "attention" || last_status == Some("attention") {
+    } else if cursor_status.status == "attention"
+        || last_status == Some("attention")
+        || !production_readiness.attention_budget_ok
+    {
         "attention"
     } else if observation.poll_iterations == 0 {
         "warming"
+    } else if !production_readiness.production_guards_ready {
+        "attention"
     } else {
         "soaking"
     };
-    let health_ready = matches!(status, "warming" | "soaking");
+    let health_ready = production_readiness.ready;
 
     NativeTelegramLiveSoakStatus {
         product: "Hepta",
@@ -977,7 +1024,8 @@ pub(crate) fn telegram_live_soak_status(
         endpoint: "/api/telegram-live-soak",
         poll_loop_status,
         cursor_status,
-        production_guards: telegram_production_guard_status(),
+        production_guards,
+        production_readiness,
         observation,
         health_ready,
         raw_update_payload_exposed: false,
@@ -985,6 +1033,122 @@ pub(crate) fn telegram_live_soak_status(
         raw_response_text_exposed: false,
         raw_token_exposed: false,
         next_migration_slice: "keep the active gateway soaking; use this endpoint plus logs before broadening traffic or reducing guards",
+    }
+}
+
+fn telegram_production_readiness_status(
+    requested: bool,
+    poll_loop_status: &NativeTelegramPollLoopStatus,
+    cursor_status: &NativeTelegramCursorStatus,
+    production_guards: &NativeTelegramProductionGuardStatus,
+    observation: &NativeTelegramLiveSoakObservationReport,
+) -> NativeTelegramProductionReadinessStatus {
+    let min_poll_iterations = telegram_soak_min_poll_iterations();
+    let max_attention_count = telegram_soak_max_attention_count();
+    let poll_loop_armed =
+        requested && poll_loop_status.status == "armed" && poll_loop_status.loop_invokes_drain_once;
+    let cursor_ready = cursor_status.status == "ready"
+        && cursor_status.cursor_parse_ok
+        && cursor_status.duplicate_suppression_rule_valid;
+    let production_guards_ready = production_guards.typing_keepalive_enabled
+        && production_guards.model_failure_fallback_enabled
+        && production_guards.model_timeout_ms >= 1_000
+        && production_guards.read_max_attempts >= 1
+        && production_guards.send_max_attempts >= 1
+        && production_guards.send_min_interval_ms > 0
+        && production_guards.retry_transient_read_errors
+        && production_guards.retry_transient_send_errors
+        && !production_guards.raw_token_exposed;
+    let observation_ready = observation.poll_iterations >= min_poll_iterations
+        && observation.last_observed_at_unix_ms.is_some();
+    let attention_budget_ok = observation.attention_count <= max_attention_count
+        && observation.last_status.as_deref() != Some("attention");
+    let recent_bot_api_ok = observation.last_bot_api_ok != Some(false);
+    let redaction_guards_ok = !observation.raw_update_payload_exposed
+        && !observation.raw_prompt_text_exposed
+        && !observation.raw_response_text_exposed
+        && !observation.raw_token_exposed
+        && !poll_loop_status.raw_update_payload_exposed
+        && !poll_loop_status.raw_prompt_text_exposed
+        && !poll_loop_status.raw_response_text_exposed
+        && !poll_loop_status.raw_token_exposed;
+
+    let mut readiness_blockers = Vec::new();
+    if !requested {
+        readiness_blockers.push("telegram_plugin_not_requested");
+    }
+    if !poll_loop_armed {
+        readiness_blockers.push("poll_loop_not_armed");
+    }
+    if !cursor_ready {
+        readiness_blockers.push("cursor_not_ready");
+    }
+    if !production_guards_ready {
+        readiness_blockers.push("production_guards_not_ready");
+    }
+    if !observation_ready {
+        readiness_blockers.push("observation_min_poll_iterations");
+    }
+    if !attention_budget_ok {
+        readiness_blockers.push("attention_budget_exceeded");
+    }
+    if !recent_bot_api_ok {
+        readiness_blockers.push("bot_api_recent_failure");
+    }
+    if !redaction_guards_ok {
+        readiness_blockers.push("redaction_guard_failed");
+    }
+
+    let mut readiness_warnings = Vec::new();
+    if observation.busy_count > 0 {
+        readiness_warnings.push("getupdates_busy_conflicts_observed");
+    }
+    if observation.drained_count == 0 {
+        readiness_warnings.push("no_messages_drained_since_gateway_start");
+    }
+    if observation.external_send_count > observation.cursor_written_count {
+        readiness_warnings.push("send_count_exceeds_cursor_write_count");
+    }
+
+    let ready = readiness_blockers.is_empty();
+    let status = if !requested {
+        "disabled"
+    } else if !poll_loop_armed || !cursor_ready {
+        "gated"
+    } else if !attention_budget_ok || !recent_bot_api_ok || !redaction_guards_ok {
+        "attention"
+    } else if !observation_ready {
+        "warming"
+    } else if ready {
+        "ready"
+    } else {
+        "attention"
+    };
+
+    NativeTelegramProductionReadinessStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested,
+        status,
+        ready,
+        side_effect_free: true,
+        min_poll_iterations_env: TELEGRAM_SOAK_MIN_POLLS_ENV,
+        min_poll_iterations,
+        max_attention_count_env: TELEGRAM_SOAK_MAX_ATTENTION_ENV,
+        max_attention_count,
+        poll_loop_armed,
+        cursor_ready,
+        production_guards_ready,
+        observation_ready,
+        attention_budget_ok,
+        recent_bot_api_ok,
+        redaction_guards_ok,
+        readiness_blockers,
+        readiness_warnings,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        raw_token_exposed: false,
     }
 }
 
@@ -1485,6 +1649,22 @@ fn telegram_production_guard_status() -> NativeTelegramProductionGuardStatus {
         rate_limit_scope: "in-process per chat id; reset on gateway restart",
         raw_token_exposed: false,
     }
+}
+
+fn telegram_soak_min_poll_iterations() -> u64 {
+    env::var(TELEGRAM_SOAK_MIN_POLLS_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|polls| polls.clamp(1, MAX_TELEGRAM_SOAK_MIN_POLLS))
+        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MIN_POLLS)
+}
+
+fn telegram_soak_max_attention_count() -> u64 {
+    env::var(TELEGRAM_SOAK_MAX_ATTENTION_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|count| count.min(MAX_TELEGRAM_SOAK_MAX_ATTENTION))
+        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION)
 }
 
 fn duration_millis_u64(duration: Duration) -> u64 {
@@ -5314,5 +5494,197 @@ mod tests {
         assert!(is_telegram_get_updates_conflict_error(
             "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request"
         ));
+    }
+
+    #[test]
+    fn production_readiness_requires_minimum_soak_observations() {
+        let poll_loop = ready_poll_loop_status();
+        let cursor = ready_cursor_status();
+        let guards = ready_production_guards();
+        let observation = live_soak_observation(2, 0, Some("planned"), Some(true));
+
+        let readiness =
+            telegram_production_readiness_status(true, &poll_loop, &cursor, &guards, &observation);
+
+        assert!(!readiness.ready);
+        assert_eq!(readiness.status, "warming");
+        assert_eq!(
+            readiness.min_poll_iterations,
+            DEFAULT_TELEGRAM_SOAK_MIN_POLLS
+        );
+        assert!(readiness.observation_ready == false);
+        assert!(
+            readiness
+                .readiness_blockers
+                .contains(&"observation_min_poll_iterations")
+        );
+        assert!(!readiness.raw_update_payload_exposed);
+        assert!(!readiness.raw_prompt_text_exposed);
+        assert!(!readiness.raw_response_text_exposed);
+        assert!(!readiness.raw_token_exposed);
+    }
+
+    #[test]
+    fn production_readiness_is_ready_after_clean_guarded_soak() {
+        let poll_loop = ready_poll_loop_status();
+        let cursor = ready_cursor_status();
+        let guards = ready_production_guards();
+        let observation = live_soak_observation(3, 0, Some("planned"), Some(true));
+
+        let readiness =
+            telegram_production_readiness_status(true, &poll_loop, &cursor, &guards, &observation);
+
+        assert!(readiness.ready);
+        assert_eq!(readiness.status, "ready");
+        assert!(readiness.poll_loop_armed);
+        assert!(readiness.cursor_ready);
+        assert!(readiness.production_guards_ready);
+        assert!(readiness.observation_ready);
+        assert!(readiness.attention_budget_ok);
+        assert!(readiness.recent_bot_api_ok);
+        assert!(readiness.redaction_guards_ok);
+        assert!(readiness.readiness_blockers.is_empty());
+        assert!(
+            readiness
+                .readiness_warnings
+                .contains(&"no_messages_drained_since_gateway_start")
+        );
+    }
+
+    #[test]
+    fn production_readiness_flags_attention_budget_failures() {
+        let poll_loop = ready_poll_loop_status();
+        let cursor = ready_cursor_status();
+        let guards = ready_production_guards();
+        let observation = live_soak_observation(3, 1, Some("attention"), Some(false));
+
+        let readiness =
+            telegram_production_readiness_status(true, &poll_loop, &cursor, &guards, &observation);
+
+        assert!(!readiness.ready);
+        assert_eq!(readiness.status, "attention");
+        assert!(!readiness.attention_budget_ok);
+        assert!(!readiness.recent_bot_api_ok);
+        assert!(
+            readiness
+                .readiness_blockers
+                .contains(&"attention_budget_exceeded")
+        );
+        assert!(
+            readiness
+                .readiness_blockers
+                .contains(&"bot_api_recent_failure")
+        );
+    }
+
+    fn ready_poll_loop_status() -> NativeTelegramPollLoopStatus {
+        NativeTelegramPollLoopStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: true,
+            status: "armed",
+            poll_loop_gate_env: TELEGRAM_POLL_LOOP_ENV,
+            poll_loop_gate_enabled: true,
+            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
+            delivery_approval_gate_enabled: true,
+            poll_ms: 1500,
+            drain_once_endpoint: "/api/telegram-drain-once",
+            worker_spawned_by_status: false,
+            loop_invokes_drain_once: true,
+            requires_live_read_gate: TELEGRAM_LIVE_READ_ENV,
+            requires_model_turn_gate: TELEGRAM_MODEL_TURN_GATE_ENV,
+            requires_send_gate: TELEGRAM_SEND_GATE_ENV,
+            requires_delivery_approval_gate: TELEGRAM_DELIVERY_APPROVED_ENV,
+            external_network_read_by_status: false,
+            external_send_by_status: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_token_exposed: false,
+            next_migration_slice: "test",
+        }
+    }
+
+    fn ready_cursor_status() -> NativeTelegramCursorStatus {
+        NativeTelegramCursorStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: true,
+            status: "ready",
+            cursor_path: TELEGRAM_INGRESS_CURSOR_PATH,
+            cursor_file_present: true,
+            cursor_parse_ok: true,
+            next_update_offset: Some(917025970),
+            cursor_represents_next_update_offset: true,
+            duplicate_suppression_rule_valid: true,
+            cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
+            cursor_written: false,
+            raw_update_payload_persisted: false,
+            error: None,
+            next_migration_slice: "test",
+        }
+    }
+
+    fn ready_production_guards() -> NativeTelegramProductionGuardStatus {
+        NativeTelegramProductionGuardStatus {
+            read_max_attempts_env: TELEGRAM_READ_MAX_ATTEMPTS_ENV,
+            read_max_attempts: 3,
+            read_retry_backoff_env: TELEGRAM_READ_RETRY_BACKOFF_ENV,
+            read_retry_backoff_ms: 700,
+            retry_transient_read_errors: true,
+            typing_keepalive_env: TELEGRAM_TYPING_KEEPALIVE_ENV,
+            typing_keepalive_enabled: true,
+            typing_keepalive_interval_ms: 4000,
+            model_timeout_env: TELEGRAM_MODEL_TIMEOUT_ENV,
+            model_timeout_ms: 120000,
+            model_failure_fallback_env: TELEGRAM_MODEL_FAILURE_FALLBACK_ENV,
+            model_failure_fallback_enabled: true,
+            send_min_interval_env: TELEGRAM_SEND_MIN_INTERVAL_ENV,
+            send_min_interval_ms: 1200,
+            send_max_attempts_env: TELEGRAM_SEND_MAX_ATTEMPTS_ENV,
+            send_max_attempts: 3,
+            send_retry_backoff_env: TELEGRAM_SEND_RETRY_BACKOFF_ENV,
+            send_retry_backoff_ms: 700,
+            retry_transient_send_errors: true,
+            rate_limit_scope: "in-process per chat id; reset on gateway restart",
+            raw_token_exposed: false,
+        }
+    }
+
+    fn live_soak_observation(
+        poll_iterations: u64,
+        attention_count: u64,
+        last_status: Option<&str>,
+        last_bot_api_ok: Option<bool>,
+    ) -> NativeTelegramLiveSoakObservationReport {
+        NativeTelegramLiveSoakObservationReport {
+            poll_iterations,
+            drained_count: 0,
+            busy_count: 0,
+            attention_count,
+            empty_read_count: poll_iterations.saturating_sub(attention_count),
+            model_turn_started_count: 0,
+            send_started_count: 0,
+            cursor_written_count: 0,
+            external_send_count: 0,
+            last_drained_at_unix_ms: None,
+            last_drained_next_update_offset: None,
+            last_observed_at_unix_ms: Some(1),
+            last_status: last_status.map(str::to_string),
+            last_error: None,
+            last_bot_api_ok,
+            last_get_updates_offset: Some(917025970),
+            last_local_next_update_offset: None,
+            last_update_count: 0,
+            last_allowed_update_count: 0,
+            last_model_turn_started: false,
+            last_send_started: false,
+            last_cursor_written: false,
+            last_external_send: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_token_exposed: false,
+        }
     }
 }
