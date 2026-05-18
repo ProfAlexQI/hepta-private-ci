@@ -989,7 +989,7 @@ pub(crate) fn telegram_live_soak_status(
     let cursor_status = telegram_cursor_status(requested);
     let observation = telegram_live_soak_observation_report();
     let production_guards = telegram_production_guard_status();
-    let production_readiness = telegram_production_readiness_status(
+    let production_readiness = telegram_production_readiness_status_from_parts(
         requested,
         &poll_loop_status,
         &cursor_status,
@@ -1036,7 +1036,24 @@ pub(crate) fn telegram_live_soak_status(
     }
 }
 
-fn telegram_production_readiness_status(
+pub(crate) fn telegram_production_readiness_status(
+    requested: bool,
+    poll_ms: u64,
+) -> NativeTelegramProductionReadinessStatus {
+    let poll_loop_status = telegram_poll_loop_status(requested, poll_ms);
+    let cursor_status = telegram_cursor_status(requested);
+    let production_guards = telegram_production_guard_status();
+    let observation = telegram_live_soak_observation_report();
+    telegram_production_readiness_status_from_parts(
+        requested,
+        &poll_loop_status,
+        &cursor_status,
+        &production_guards,
+        &observation,
+    )
+}
+
+fn telegram_production_readiness_status_from_parts(
     requested: bool,
     poll_loop_status: &NativeTelegramPollLoopStatus,
     cursor_status: &NativeTelegramCursorStatus,
@@ -5503,8 +5520,13 @@ mod tests {
         let guards = ready_production_guards();
         let observation = live_soak_observation(2, 0, Some("planned"), Some(true));
 
-        let readiness =
-            telegram_production_readiness_status(true, &poll_loop, &cursor, &guards, &observation);
+        let readiness = telegram_production_readiness_status_from_parts(
+            true,
+            &poll_loop,
+            &cursor,
+            &guards,
+            &observation,
+        );
 
         assert!(!readiness.ready);
         assert_eq!(readiness.status, "warming");
@@ -5531,8 +5553,13 @@ mod tests {
         let guards = ready_production_guards();
         let observation = live_soak_observation(3, 0, Some("planned"), Some(true));
 
-        let readiness =
-            telegram_production_readiness_status(true, &poll_loop, &cursor, &guards, &observation);
+        let readiness = telegram_production_readiness_status_from_parts(
+            true,
+            &poll_loop,
+            &cursor,
+            &guards,
+            &observation,
+        );
 
         assert!(readiness.ready);
         assert_eq!(readiness.status, "ready");
@@ -5558,8 +5585,13 @@ mod tests {
         let guards = ready_production_guards();
         let observation = live_soak_observation(3, 1, Some("attention"), Some(false));
 
-        let readiness =
-            telegram_production_readiness_status(true, &poll_loop, &cursor, &guards, &observation);
+        let readiness = telegram_production_readiness_status_from_parts(
+            true,
+            &poll_loop,
+            &cursor,
+            &guards,
+            &observation,
+        );
 
         assert!(!readiness.ready);
         assert_eq!(readiness.status, "attention");

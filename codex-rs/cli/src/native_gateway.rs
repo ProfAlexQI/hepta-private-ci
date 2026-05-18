@@ -24,6 +24,7 @@ const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-r
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
 const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
+const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str = "/api/telegram-production-readiness";
 const ACTIVE_GATEWAY_LABEL: &str = "ai.hepta.gateway";
 const ACTIVE_GATEWAY_LEGACY_BINARY: &str = "/Users/qianqi/.local/opt/hepta/bin/hepta";
 const HEPTA_CODEX_RELEASE_BINARY: &str = "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex";
@@ -394,6 +395,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/gateway-dispatch --dry-run --json",
         capability: "gateway-dispatch",
         side_effect_boundary: "dry-run dispatch report",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/telegram-production-readiness",
+        source_command: "/telegram-production-readiness --json",
+        capability: "telegram-production-readiness",
+        side_effect_boundary: "read-only production readiness contract; no Telegram read/send",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -914,6 +922,16 @@ fn route_native_gateway_request(
                     )),
                 );
             }
+            TELEGRAM_PRODUCTION_READINESS_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&native_telegram::telegram_production_readiness_status(
+                        options.with_telegram_plugin,
+                        options.telegram_plugin_poll_ms,
+                    )),
+                );
+            }
             "/api/telegram-cursor" => {
                 return (
                     "200 OK",
@@ -1079,6 +1097,11 @@ fn native_gateway_json(
         telegram_poll_loop_endpoint: "/api/telegram-poll-loop",
         telegram_live_soak_endpoint: TELEGRAM_LIVE_SOAK_ENDPOINT,
         telegram_live_soak_status_endpoint: TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT,
+        telegram_production_readiness_endpoint: TELEGRAM_PRODUCTION_READINESS_ENDPOINT,
+        telegram_production_readiness_status: native_telegram::telegram_production_readiness_status(
+            options.with_telegram_plugin,
+            options.telegram_plugin_poll_ms,
+        ),
         telegram_cursor_endpoint: "/api/telegram-cursor",
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
         telegram_poll_loop_status: native_telegram::telegram_poll_loop_status(
@@ -1106,6 +1129,7 @@ fn native_gateway_json(
             "Telegram gated drain-once pipeline surface",
             "Telegram gated poll-loop supervisor surface",
             "Telegram live soak guard and observation surface",
+            "Telegram production readiness guard surface",
             "Telegram cursor state surface",
             "Control UI route parity report",
             "Control UI side-effect-free compatibility endpoints",
@@ -3037,6 +3061,8 @@ struct NativeGatewayResponse<'a> {
     telegram_poll_loop_endpoint: &'static str,
     telegram_live_soak_endpoint: &'static str,
     telegram_live_soak_status_endpoint: &'static str,
+    telegram_production_readiness_endpoint: &'static str,
+    telegram_production_readiness_status: native_telegram::NativeTelegramProductionReadinessStatus,
     telegram_cursor_endpoint: &'static str,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
     telegram_poll_loop_status: native_telegram::NativeTelegramPollLoopStatus,
@@ -4304,6 +4330,9 @@ mod tests {
                 r#""telegram_live_soak_status_endpoint":"/api/telegram-live-soak-status""#
             )
         );
+        assert!(body.contains(
+            r#""telegram_production_readiness_endpoint":"/api/telegram-production-readiness""#
+        ));
         assert!(body.contains(r#""side_effect_free":true"#));
         assert!(body.contains(r#""production_guards""#));
         assert!(body.contains(r#""poll_loop_gate_env":"HEPTA_NATIVE_TELEGRAM_POLL_LOOP""#));
@@ -4367,6 +4396,36 @@ mod tests {
         assert_eq!(
             primary_json["production_guards"],
             alias_json["production_guards"]
+        );
+    }
+
+    #[test]
+    fn telegram_production_readiness_endpoint_is_side_effect_free() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", TELEGRAM_PRODUCTION_READINESS_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("production readiness json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["raw_update_payload_exposed"], false);
+        assert_eq!(value["raw_prompt_text_exposed"], false);
+        assert_eq!(value["raw_response_text_exposed"], false);
+        assert_eq!(value["raw_token_exposed"], false);
+        assert_eq!(
+            value["min_poll_iterations_env"],
+            "HEPTA_NATIVE_TELEGRAM_SOAK_MIN_POLLS"
+        );
+        assert_eq!(
+            value["max_attention_count_env"],
+            "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION"
         );
     }
 
@@ -4466,6 +4525,7 @@ mod tests {
         assert!(routes.contains(&"POST /api/actions/<action>".to_string()));
         assert!(routes.contains(&"POST /api/chat".to_string()));
         assert!(routes.contains(&"GET /api/external-agent-benchmark".to_string()));
+        assert!(routes.contains(&"GET /api/telegram-production-readiness".to_string()));
     }
 
     #[test]
