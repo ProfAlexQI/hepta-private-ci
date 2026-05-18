@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
+use std::fs;
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::net::TcpStream;
@@ -23,6 +25,7 @@ const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str = "/api/native-post-execution-readiness";
+const NATIVE_POST_EXECUTION_STORES_ENDPOINT: &str = "/api/native-post-execution-stores";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
 const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
 const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str = "/api/telegram-production-readiness";
@@ -38,6 +41,8 @@ const MAX_NATIVE_EVENT_FILES: usize = 20;
 const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
 const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
+const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
+const DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR: &str = ".hepta/native-post-execution";
 
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
@@ -237,6 +242,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/native-post-execution-readiness --json",
         capability: "native-post-execution-readiness",
         side_effect_boundary: "read-only POST execution readiness matrix",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/native-post-execution-stores",
+        source_command: "/native-post-execution-stores --json",
+        capability: "native-post-execution-stores",
+        side_effect_boundary: "read-only POST execution store contract; no writes",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -778,6 +790,13 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     native_post_execution_readiness_json(),
+                );
+            }
+            NATIVE_POST_EXECUTION_STORES_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_post_execution_stores_json(),
                 );
             }
             "/api/sessions" => {
@@ -2202,6 +2221,203 @@ fn native_post_execution_readiness_route(
             "plan_only_route"
         },
     }
+}
+
+fn native_post_execution_stores_json() -> String {
+    json_or_error(&native_post_execution_stores_report())
+}
+
+fn native_post_execution_stores_report() -> NativePostExecutionStoresResponse {
+    let root = native_post_execution_store_root();
+    let store_files = native_post_execution_store_file_statuses(&root);
+    let root_exists = root.exists();
+    let root_is_dir = root.is_dir();
+    let existing_file_count = store_files.iter().filter(|file| file.exists).count();
+    NativePostExecutionStoresResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "ready",
+        endpoint: NATIVE_POST_EXECUTION_STORES_ENDPOINT,
+        source_command: "/native-post-execution-stores --json",
+        native_route: true,
+        compatibility_mode: "native_post_execution_stores",
+        side_effect_free: true,
+        store_root_env: NATIVE_POST_EXECUTION_STORE_DIR_ENV,
+        store_root: root.display().to_string(),
+        root_exists,
+        root_is_dir,
+        store_file_count: store_files.len(),
+        existing_file_count,
+        stores: store_files,
+        persistence_implementation_ready: true,
+        idempotency_store_ready: true,
+        audit_store_ready: true,
+        rollback_store_ready: true,
+        rate_limit_store_ready: true,
+        status_probe_creates_directory: false,
+        status_probe_writes_files: false,
+        current_plan_executes_real_handler: false,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+        action_dispatched: false,
+        command_executed: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "wire a first low-risk real handler only after these stores are called under HEPTA_NATIVE_POST_REAL_HANDLERS with operator approval",
+    }
+}
+
+fn native_post_execution_store_root() -> PathBuf {
+    if let Ok(value) = env::var(NATIVE_POST_EXECUTION_STORE_DIR_ENV) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR)
+}
+
+fn native_post_execution_store_file_statuses(
+    root: &Path,
+) -> Vec<NativePostExecutionStoreFileStatus> {
+    native_post_execution_store_specs()
+        .iter()
+        .map(|spec| native_post_execution_store_file_status(root, spec))
+        .collect()
+}
+
+fn native_post_execution_store_file_status(
+    root: &Path,
+    spec: &NativePostExecutionStoreFileSpec,
+) -> NativePostExecutionStoreFileStatus {
+    let path = root.join(spec.filename);
+    let metadata = path.metadata().ok();
+    NativePostExecutionStoreFileStatus {
+        store_kind: spec.store_kind,
+        schema_id: spec.schema_id,
+        filename: spec.filename,
+        path: path.display().to_string(),
+        exists: metadata.as_ref().is_some_and(|metadata| metadata.is_file()),
+        bytes: metadata.as_ref().map(std::fs::Metadata::len).unwrap_or(0),
+        append_only: true,
+        jsonl: true,
+        raw_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+    }
+}
+
+fn native_post_execution_store_specs() -> &'static [NativePostExecutionStoreFileSpec] {
+    &[
+        NativePostExecutionStoreFileSpec {
+            store_kind: "idempotency",
+            schema_id: "hepta.post.idempotency_entry.v1",
+            filename: "idempotency.jsonl",
+        },
+        NativePostExecutionStoreFileSpec {
+            store_kind: "audit",
+            schema_id: "hepta.post.execution_audit.v1",
+            filename: "audit.jsonl",
+        },
+        NativePostExecutionStoreFileSpec {
+            store_kind: "rollback",
+            schema_id: "hepta.post.rollback_anchor.v1",
+            filename: "rollback.jsonl",
+        },
+        NativePostExecutionStoreFileSpec {
+            store_kind: "rate_limit",
+            schema_id: "hepta.post.rate_limit_entry.v1",
+            filename: "rate-limit.jsonl",
+        },
+    ]
+}
+
+#[allow(dead_code)]
+fn native_post_execution_store_record(
+    spec: &NativePostPlanRouteSpec,
+    body_schema: &NativePostBodySchema,
+    body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+    audit_event_contract: &NativePostAuditEventContract,
+) -> NativePostExecutionStoreRecord {
+    NativePostExecutionStoreRecord {
+        schema_id: "hepta.post.execution_store_record.v1",
+        route_pattern: spec.pattern,
+        capability: spec.capability,
+        plan_kind: spec.plan_kind,
+        body_schema_id: body_schema.schema_id,
+        body_admission_status: body_admission.admission_status,
+        idempotency_key_required: body_admission.idempotency_key_required,
+        idempotency_key_present: idempotency_evidence.key_present,
+        idempotency_key_redacted: idempotency_evidence.key_redacted,
+        duplicate_suppression_required: idempotency_evidence.duplicate_suppression_required,
+        audit_event_schema_id: audit_event_contract.schema_id,
+        audit_event_ready_for_real_handler: audit_event_contract.ready_for_real_handler,
+        rollback_strategy: "pending_real_handler_rollback_anchor",
+        rate_limit_bucket: spec.plan_kind,
+        current_plan_executes_real_handler: false,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+    }
+}
+
+#[allow(dead_code)]
+fn persist_native_post_execution_store_record(
+    root: &Path,
+    record: &NativePostExecutionStoreRecord,
+) -> Result<NativePostExecutionStoreWriteReport, String> {
+    fs::create_dir_all(root).map_err(|error| {
+        format!(
+            "failed to create native POST execution store root {}: {error}",
+            root.display()
+        )
+    })?;
+    let line = serde_json::to_string(record)
+        .map_err(|error| format!("failed to serialize native POST execution record: {error}"))?;
+    let mut written_files = Vec::new();
+    for spec in native_post_execution_store_specs() {
+        let path = root.join(spec.filename);
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|error| {
+                format!(
+                    "failed to open native POST execution store {}: {error}",
+                    path.display()
+                )
+            })?;
+        writeln!(file, "{line}").map_err(|error| {
+            format!(
+                "failed to append native POST execution store {}: {error}",
+                path.display()
+            )
+        })?;
+        written_files.push(path.display().to_string());
+    }
+    Ok(NativePostExecutionStoreWriteReport {
+        status: "written",
+        root: root.display().to_string(),
+        written_file_count: written_files.len(),
+        written_files,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+    })
 }
 
 fn native_events_json(surface: NativeEventSurface, cursor: Option<&str>) -> String {
@@ -4056,6 +4272,105 @@ struct NativePostExecutionReadinessRoute {
     current_plan_executes_real_handler: bool,
     real_handler_implemented: bool,
     blocked_reason: &'static str,
+}
+
+struct NativePostExecutionStoreFileSpec {
+    store_kind: &'static str,
+    schema_id: &'static str,
+    filename: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostExecutionStoresResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    endpoint: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    store_root_env: &'static str,
+    store_root: String,
+    root_exists: bool,
+    root_is_dir: bool,
+    store_file_count: usize,
+    existing_file_count: usize,
+    stores: Vec<NativePostExecutionStoreFileStatus>,
+    persistence_implementation_ready: bool,
+    idempotency_store_ready: bool,
+    audit_store_ready: bool,
+    rollback_store_ready: bool,
+    rate_limit_store_ready: bool,
+    status_probe_creates_directory: bool,
+    status_probe_writes_files: bool,
+    current_plan_executes_real_handler: bool,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
+    action_dispatched: bool,
+    command_executed: bool,
+    approval_applied: bool,
+    task_published: bool,
+    chat_mutated: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostExecutionStoreFileStatus {
+    store_kind: &'static str,
+    schema_id: &'static str,
+    filename: &'static str,
+    path: String,
+    exists: bool,
+    bytes: u64,
+    append_only: bool,
+    jsonl: bool,
+    raw_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostExecutionStoreRecord {
+    schema_id: &'static str,
+    route_pattern: &'static str,
+    capability: &'static str,
+    plan_kind: &'static str,
+    body_schema_id: &'static str,
+    body_admission_status: &'static str,
+    idempotency_key_required: bool,
+    idempotency_key_present: bool,
+    idempotency_key_redacted: bool,
+    duplicate_suppression_required: bool,
+    audit_event_schema_id: &'static str,
+    audit_event_ready_for_real_handler: bool,
+    rollback_strategy: &'static str,
+    rate_limit_bucket: &'static str,
+    current_plan_executes_real_handler: bool,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostExecutionStoreWriteReport {
+    status: &'static str,
+    root: String,
+    written_file_count: usize,
+    written_files: Vec<String>,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -6382,6 +6697,94 @@ mod tests {
                     && route["allowlisted_for_real_handler"] == true
                     && route["blocked_reason"] == "real_handler_not_wired")
         );
+    }
+
+    #[test]
+    fn native_post_execution_stores_endpoint_is_read_only() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", NATIVE_POST_EXECUTION_STORES_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value = serde_json::from_str(&body).expect("post stores json");
+
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(value["native_route"], true);
+        assert_eq!(value["compatibility_mode"], "native_post_execution_stores");
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["store_root_env"], NATIVE_POST_EXECUTION_STORE_DIR_ENV);
+        assert_eq!(value["store_file_count"], 4);
+        assert_eq!(value["persistence_implementation_ready"], true);
+        assert_eq!(value["idempotency_store_ready"], true);
+        assert_eq!(value["audit_store_ready"], true);
+        assert_eq!(value["rollback_store_ready"], true);
+        assert_eq!(value["rate_limit_store_ready"], true);
+        assert_eq!(value["status_probe_creates_directory"], false);
+        assert_eq!(value["status_probe_writes_files"], false);
+        assert_eq!(value["current_plan_executes_real_handler"], false);
+        assert_eq!(value["raw_request_body_exposed"], false);
+        assert_eq!(value["raw_idempotency_key_exposed"], false);
+        assert_eq!(value["raw_audit_payload_exposed"], false);
+        assert_eq!(value["task_published"], false);
+        assert_eq!(value["chat_mutated"], false);
+        assert_eq!(value["message_sent"], false);
+        assert_eq!(value["cursor_written"], false);
+        assert!(
+            value["stores"]
+                .as_array()
+                .expect("stores array")
+                .iter()
+                .any(|store| store["filename"] == "idempotency.jsonl"
+                    && store["append_only"] == true
+                    && store["raw_idempotency_key_exposed"] == false)
+        );
+    }
+
+    #[test]
+    fn native_post_execution_store_writer_persists_redacted_records() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let body = r#"{"task":"secret task text","confirm":true,"dry_run":true,"idempotency_key":"secret-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+        let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+        let audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+        );
+        let record = native_post_execution_store_record(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        let report =
+            persist_native_post_execution_store_record(temp.path(), &record).expect("write stores");
+
+        assert_eq!(report.status, "written");
+        assert_eq!(report.written_file_count, 4);
+        assert_eq!(report.raw_request_body_exposed, false);
+        assert_eq!(report.raw_idempotency_key_exposed, false);
+        for file in report.written_files {
+            let content = std::fs::read_to_string(&file).expect("read store file");
+            assert!(content.contains("hepta.post.execution_store_record.v1"));
+            assert!(content.contains("task_publish"));
+            assert!(content.contains("idempotency_key_redacted"));
+            assert!(!content.contains("secret task text"));
+            assert!(!content.contains("secret-idem"));
+        }
     }
 
     #[test]
