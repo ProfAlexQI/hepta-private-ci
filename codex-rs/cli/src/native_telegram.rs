@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use codex_arg0::Arg0DispatchPaths;
 use serde::Serialize;
@@ -59,6 +59,8 @@ const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
     "cursor_commit",
 ];
 static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
+static TELEGRAM_LIVE_SOAK_OBSERVATION: OnceLock<Mutex<NativeTelegramLiveSoakObservationState>> =
+    OnceLock::new();
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramPluginStatus {
@@ -315,6 +317,92 @@ pub(crate) struct NativeTelegramPollLoopStatus {
     pub(crate) raw_response_text_exposed: bool,
     pub(crate) raw_token_exposed: bool,
     pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramLiveSoakStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) side_effect_free: bool,
+    pub(crate) endpoint: &'static str,
+    pub(crate) poll_loop_status: NativeTelegramPollLoopStatus,
+    pub(crate) cursor_status: NativeTelegramCursorStatus,
+    pub(crate) production_guards: NativeTelegramProductionGuardStatus,
+    pub(crate) observation: NativeTelegramLiveSoakObservationReport,
+    pub(crate) health_ready: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
+    pub(crate) next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramProductionGuardStatus {
+    pub(crate) typing_keepalive_env: &'static str,
+    pub(crate) typing_keepalive_enabled: bool,
+    pub(crate) typing_keepalive_interval_ms: u64,
+    pub(crate) model_timeout_env: &'static str,
+    pub(crate) model_timeout_ms: u64,
+    pub(crate) model_failure_fallback_env: &'static str,
+    pub(crate) model_failure_fallback_enabled: bool,
+    pub(crate) send_min_interval_env: &'static str,
+    pub(crate) send_min_interval_ms: u64,
+    pub(crate) send_max_attempts_env: &'static str,
+    pub(crate) send_max_attempts: u64,
+    pub(crate) send_retry_backoff_env: &'static str,
+    pub(crate) send_retry_backoff_ms: u64,
+    pub(crate) retry_transient_send_errors: bool,
+    pub(crate) rate_limit_scope: &'static str,
+    pub(crate) raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramLiveSoakObservationReport {
+    pub(crate) poll_iterations: u64,
+    pub(crate) drained_count: u64,
+    pub(crate) busy_count: u64,
+    pub(crate) attention_count: u64,
+    pub(crate) empty_read_count: u64,
+    pub(crate) last_observed_at_unix_ms: Option<u64>,
+    pub(crate) last_status: Option<String>,
+    pub(crate) last_error: Option<String>,
+    pub(crate) last_bot_api_ok: Option<bool>,
+    pub(crate) last_get_updates_offset: Option<i64>,
+    pub(crate) last_local_next_update_offset: Option<i64>,
+    pub(crate) last_update_count: usize,
+    pub(crate) last_allowed_update_count: usize,
+    pub(crate) last_model_turn_started: bool,
+    pub(crate) last_send_started: bool,
+    pub(crate) last_cursor_written: bool,
+    pub(crate) last_external_send: bool,
+    pub(crate) raw_update_payload_exposed: bool,
+    pub(crate) raw_prompt_text_exposed: bool,
+    pub(crate) raw_response_text_exposed: bool,
+    pub(crate) raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct NativeTelegramLiveSoakObservationState {
+    poll_iterations: u64,
+    drained_count: u64,
+    busy_count: u64,
+    attention_count: u64,
+    empty_read_count: u64,
+    last_observed_at_unix_ms: Option<u64>,
+    last_status: Option<String>,
+    last_error: Option<String>,
+    last_bot_api_ok: Option<bool>,
+    last_get_updates_offset: Option<i64>,
+    last_local_next_update_offset: Option<i64>,
+    last_update_count: usize,
+    last_allowed_update_count: usize,
+    last_model_turn_started: bool,
+    last_send_started: bool,
+    last_cursor_written: bool,
+    last_external_send: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -812,7 +900,48 @@ pub(crate) fn telegram_poll_loop_status(
         raw_prompt_text_exposed: false,
         raw_response_text_exposed: false,
         raw_token_exposed: false,
-        next_migration_slice: "spawn the gated Telegram poll loop from --serve-ui and keep drain gates independent",
+        next_migration_slice: "continue live soak and inspect /api/telegram-live-soak for production guard health",
+    }
+}
+
+pub(crate) fn telegram_live_soak_status(
+    requested: bool,
+    poll_ms: u64,
+) -> NativeTelegramLiveSoakStatus {
+    let poll_loop_status = telegram_poll_loop_status(requested, poll_ms);
+    let cursor_status = telegram_cursor_status(requested);
+    let observation = telegram_live_soak_observation_report();
+    let last_status = observation.last_status.as_deref();
+    let status = if !requested {
+        "disabled"
+    } else if !poll_loop_status.loop_invokes_drain_once {
+        "gated"
+    } else if cursor_status.status == "attention" || last_status == Some("attention") {
+        "attention"
+    } else if observation.poll_iterations == 0 {
+        "warming"
+    } else {
+        "soaking"
+    };
+    let health_ready = matches!(status, "warming" | "soaking");
+
+    NativeTelegramLiveSoakStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested,
+        status,
+        side_effect_free: true,
+        endpoint: "/api/telegram-live-soak",
+        poll_loop_status,
+        cursor_status,
+        production_guards: telegram_production_guard_status(),
+        observation,
+        health_ready,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        raw_token_exposed: false,
+        next_migration_slice: "keep the active gateway soaking; use this endpoint plus logs before broadening traffic or reducing guards",
     }
 }
 
@@ -836,6 +965,7 @@ fn run_telegram_poll_loop(requested: bool, poll_ms: u64) {
     let poll_ms = poll_ms.clamp(500, 60_000);
     loop {
         let status = telegram_drain_once_status(requested);
+        observe_telegram_live_soak(&status);
         if matches!(status.status, "attention") {
             eprintln!(
                 "hepta-codex Telegram poll loop attention: {}",
@@ -1185,8 +1315,115 @@ fn telegram_drain_once_status_with_gates(
         raw_response_text_exposed: false,
         raw_token_exposed: false,
         error,
-        next_migration_slice: "replace the gated Hepta exec child runner with an in-process session runner, then enable the supervised poll loop",
+        next_migration_slice: "continue live production soak with bounded retries, typing keepalive, fallback, and send throttling",
     }
+}
+
+fn observe_telegram_live_soak(status: &NativeTelegramDrainOnceStatus) {
+    let map = TELEGRAM_LIVE_SOAK_OBSERVATION
+        .get_or_init(|| Mutex::new(NativeTelegramLiveSoakObservationState::default()));
+    let mut guard = match map.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.observe(status);
+}
+
+fn telegram_live_soak_observation_report() -> NativeTelegramLiveSoakObservationReport {
+    let map = TELEGRAM_LIVE_SOAK_OBSERVATION
+        .get_or_init(|| Mutex::new(NativeTelegramLiveSoakObservationState::default()));
+    match map.lock() {
+        Ok(guard) => guard.report(),
+        Err(poisoned) => poisoned.into_inner().report(),
+    }
+}
+
+impl NativeTelegramLiveSoakObservationState {
+    fn observe(&mut self, status: &NativeTelegramDrainOnceStatus) {
+        self.poll_iterations = self.poll_iterations.saturating_add(1);
+        match status.status {
+            "drained" => self.drained_count = self.drained_count.saturating_add(1),
+            "busy" => self.busy_count = self.busy_count.saturating_add(1),
+            "attention" => self.attention_count = self.attention_count.saturating_add(1),
+            _ if status.external_network_read && status.inspection.update_count == 0 => {
+                self.empty_read_count = self.empty_read_count.saturating_add(1)
+            }
+            _ => {}
+        }
+        self.last_observed_at_unix_ms = Some(now_unix_ms());
+        self.last_status = Some(status.status.to_string());
+        self.last_error = status
+            .error
+            .clone()
+            .map(|error| redact_token_like_text(&error));
+        self.last_bot_api_ok = status.bot_api_ok;
+        self.last_get_updates_offset = status.get_updates_offset;
+        self.last_local_next_update_offset = status.local_next_update_offset;
+        self.last_update_count = status.inspection.update_count;
+        self.last_allowed_update_count = status.inspection.allowed_update_count;
+        self.last_model_turn_started = status.model_turn_started;
+        self.last_send_started = status.send_started;
+        self.last_cursor_written = status.cursor_written;
+        self.last_external_send = status.external_send;
+    }
+
+    fn report(&self) -> NativeTelegramLiveSoakObservationReport {
+        NativeTelegramLiveSoakObservationReport {
+            poll_iterations: self.poll_iterations,
+            drained_count: self.drained_count,
+            busy_count: self.busy_count,
+            attention_count: self.attention_count,
+            empty_read_count: self.empty_read_count,
+            last_observed_at_unix_ms: self.last_observed_at_unix_ms,
+            last_status: self.last_status.clone(),
+            last_error: self.last_error.clone(),
+            last_bot_api_ok: self.last_bot_api_ok,
+            last_get_updates_offset: self.last_get_updates_offset,
+            last_local_next_update_offset: self.last_local_next_update_offset,
+            last_update_count: self.last_update_count,
+            last_allowed_update_count: self.last_allowed_update_count,
+            last_model_turn_started: self.last_model_turn_started,
+            last_send_started: self.last_send_started,
+            last_cursor_written: self.last_cursor_written,
+            last_external_send: self.last_external_send,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+}
+
+fn telegram_production_guard_status() -> NativeTelegramProductionGuardStatus {
+    NativeTelegramProductionGuardStatus {
+        typing_keepalive_env: TELEGRAM_TYPING_KEEPALIVE_ENV,
+        typing_keepalive_enabled: telegram_typing_keepalive_enabled(),
+        typing_keepalive_interval_ms: duration_millis_u64(telegram_typing_keepalive_interval()),
+        model_timeout_env: TELEGRAM_MODEL_TIMEOUT_ENV,
+        model_timeout_ms: duration_millis_u64(telegram_model_timeout()),
+        model_failure_fallback_env: TELEGRAM_MODEL_FAILURE_FALLBACK_ENV,
+        model_failure_fallback_enabled: telegram_model_failure_fallback_enabled(),
+        send_min_interval_env: TELEGRAM_SEND_MIN_INTERVAL_ENV,
+        send_min_interval_ms: duration_millis_u64(telegram_send_min_interval()),
+        send_max_attempts_env: TELEGRAM_SEND_MAX_ATTEMPTS_ENV,
+        send_max_attempts: telegram_send_max_attempts(),
+        send_retry_backoff_env: TELEGRAM_SEND_RETRY_BACKOFF_ENV,
+        send_retry_backoff_ms: duration_millis_u64(telegram_send_retry_backoff()),
+        retry_transient_send_errors: true,
+        rate_limit_scope: "in-process per chat id; reset on gateway restart",
+        raw_token_exposed: false,
+    }
+}
+
+fn duration_millis_u64(duration: Duration) -> u64 {
+    duration.as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration_millis_u64(duration))
+        .unwrap_or(0)
 }
 
 fn first_missing_drain_once_gate(gates: &NativeTelegramGatewayGateSummary) -> Option<&'static str> {
