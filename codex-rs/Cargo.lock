@@ -2268,6 +2268,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "supports-color 3.0.2",
  "tempfile",

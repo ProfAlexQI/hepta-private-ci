@@ -13,6 +13,8 @@ use std::time::UNIX_EPOCH;
 use anyhow::Context;
 use anyhow::Result;
 use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
 
 use crate::native_telegram;
 use crate::native_telegram::NativeTelegramPluginStatus;
@@ -1725,6 +1727,9 @@ fn native_post_plan_report(
         &execution_admission,
         &native_post_execution_store_root(),
     );
+    if real_handler_harness.duplicate_check_performed {
+        idempotency_evidence.current_plan_lookup_performed = true;
+    }
     if real_handler_harness.store_write_succeeded {
         idempotency_evidence.current_plan_store_written = true;
         audit_event_contract.current_plan_emits_audit_event = true;
@@ -1937,12 +1942,13 @@ fn native_post_body_admission(
     let dry_run_first_satisfied =
         !spec.confirmation_required_for_real_mutation || json_field_truthy(dry_run_field);
     let idempotency_key_required = spec.confirmation_required_for_real_mutation;
-    let idempotency_key_present = object
+    let idempotency_key_value = object
         .and_then(|object| object.get("idempotency_key"))
         .and_then(serde_json::Value::as_str)
         .map(str::trim)
-        .map(|value| !value.is_empty())
-        .unwrap_or(false);
+        .filter(|value| !value.is_empty());
+    let idempotency_key_present = idempotency_key_value.is_some();
+    let idempotency_key_fingerprint = idempotency_key_value.map(native_post_redacted_fingerprint);
 
     let admission_status = if !body_received && schema.body_required_for_real_handler {
         "missing_body"
@@ -1989,10 +1995,25 @@ fn native_post_body_admission(
         dry_run_first_satisfied,
         idempotency_key_required,
         idempotency_key_present,
+        idempotency_key_fingerprint,
         ready_for_real_handler_input,
         raw_body_exposed: false,
         raw_field_values_exposed: false,
     }
+}
+
+fn native_post_redacted_fingerprint(value: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"hepta-native-post-idempotency-v1:");
+    hasher.update(value.as_bytes());
+    let digest = hasher.finalize();
+    let mut encoded = String::with_capacity("sha256:".len() + digest.len() * 2);
+    encoded.push_str("sha256:");
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
 }
 
 fn json_field_truthy(value: Option<&serde_json::Value>) -> bool {
@@ -2048,6 +2069,7 @@ fn native_post_idempotency_evidence(
         required,
         key_present: body_admission.idempotency_key_present,
         key_redacted: body_admission.idempotency_key_present,
+        key_fingerprint: body_admission.idempotency_key_fingerprint.clone(),
         key_shape_valid: !required || body_admission.idempotency_key_present,
         lookup_required_before_real_handler: required,
         duplicate_suppression_required: required,
@@ -2183,7 +2205,23 @@ fn native_post_real_handler_harness(
 ) -> NativePostRealHandlerHarness {
     let dual_gate_satisfied = execution_admission.enablement_gate_enabled
         && execution_admission.operator_approval_enabled;
-    let store_write_attempted = execution_admission.current_plan_executes_real_handler;
+    let duplicate_check_performed = execution_admission.current_plan_executes_real_handler
+        && idempotency_evidence.key_fingerprint.is_some();
+    let (duplicate_found, duplicate_check_error) = if duplicate_check_performed {
+        match native_post_idempotency_duplicate_present(
+            store_root,
+            idempotency_evidence.key_fingerprint.as_deref(),
+        ) {
+            Ok(found) => (found, None),
+            Err(_error) => (false, Some("native_post_idempotency_check_failed")),
+        }
+    } else {
+        (false, None)
+    };
+    let duplicate_suppressed = duplicate_check_performed && duplicate_found;
+    let store_write_attempted = execution_admission.current_plan_executes_real_handler
+        && !duplicate_suppressed
+        && duplicate_check_error.is_none();
     let (store_write_succeeded, store_write_report, store_write_error) = if store_write_attempted {
         let record = native_post_execution_store_record(
             spec,
@@ -2210,7 +2248,13 @@ fn native_post_real_handler_harness(
         } else if !execution_admission.real_handler_implemented {
             "not_implemented"
         } else if !store_write_attempted {
-            "blocked"
+            if duplicate_suppressed {
+                "duplicate_suppressed"
+            } else if duplicate_check_error.is_some() {
+                "idempotency_check_failed"
+            } else {
+                "blocked"
+            }
         } else if store_write_succeeded {
             "dry_run_recorded"
         } else {
@@ -2224,6 +2268,10 @@ fn native_post_real_handler_harness(
         enablement_gate_enabled: execution_admission.enablement_gate_enabled,
         operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
         operator_approval_enabled: execution_admission.operator_approval_enabled,
+        duplicate_check_performed,
+        duplicate_found,
+        duplicate_suppressed,
+        duplicate_check_error,
         store_write_attempted,
         store_write_succeeded,
         store_write_report,
@@ -2493,6 +2541,7 @@ fn native_post_execution_store_record(
         idempotency_key_required: body_admission.idempotency_key_required,
         idempotency_key_present: idempotency_evidence.key_present,
         idempotency_key_redacted: idempotency_evidence.key_redacted,
+        idempotency_key_fingerprint: idempotency_evidence.key_fingerprint.clone(),
         duplicate_suppression_required: idempotency_evidence.duplicate_suppression_required,
         audit_event_schema_id: audit_event_contract.schema_id,
         audit_event_ready_for_real_handler: audit_event_contract.ready_for_real_handler,
@@ -2550,6 +2599,24 @@ fn persist_native_post_execution_store_record(
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
     })
+}
+
+fn native_post_idempotency_duplicate_present(
+    root: &Path,
+    key_fingerprint: Option<&str>,
+) -> Result<bool, String> {
+    let Some(key_fingerprint) = key_fingerprint else {
+        return Ok(false);
+    };
+    let path = root.join("idempotency.jsonl");
+    match fs::read_to_string(&path) {
+        Ok(content) => Ok(content.lines().any(|line| line.contains(key_fingerprint))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!(
+            "failed to read native POST idempotency store {}: {error}",
+            path.display()
+        )),
+    }
 }
 
 fn native_events_json(surface: NativeEventSurface, cursor: Option<&str>) -> String {
@@ -4278,6 +4345,7 @@ struct NativePostBodyAdmission {
     dry_run_first_satisfied: bool,
     idempotency_key_required: bool,
     idempotency_key_present: bool,
+    idempotency_key_fingerprint: Option<String>,
     ready_for_real_handler_input: bool,
     raw_body_exposed: bool,
     raw_field_values_exposed: bool,
@@ -4308,6 +4376,7 @@ struct NativePostIdempotencyEvidence {
     required: bool,
     key_present: bool,
     key_redacted: bool,
+    key_fingerprint: Option<String>,
     key_shape_valid: bool,
     lookup_required_before_real_handler: bool,
     duplicate_suppression_required: bool,
@@ -4375,6 +4444,10 @@ struct NativePostRealHandlerHarness {
     enablement_gate_enabled: bool,
     operator_approval_env: &'static str,
     operator_approval_enabled: bool,
+    duplicate_check_performed: bool,
+    duplicate_found: bool,
+    duplicate_suppressed: bool,
+    duplicate_check_error: Option<&'static str>,
     store_write_attempted: bool,
     store_write_succeeded: bool,
     store_write_report: Option<NativePostExecutionStoreWriteReport>,
@@ -4529,6 +4602,7 @@ struct NativePostExecutionStoreRecord {
     idempotency_key_required: bool,
     idempotency_key_present: bool,
     idempotency_key_redacted: bool,
+    idempotency_key_fingerprint: Option<String>,
     duplicate_suppression_required: bool,
     audit_event_schema_id: &'static str,
     audit_event_ready_for_real_handler: bool,
@@ -7024,6 +7098,12 @@ mod tests {
             true,
         );
         let temp = tempfile::tempdir().expect("tempdir");
+        let fingerprint = idempotency_evidence
+            .key_fingerprint
+            .as_deref()
+            .expect("idempotency fingerprint");
+        assert!(fingerprint.starts_with("sha256:"));
+        assert!(!fingerprint.contains("secret-idem"));
 
         let harness = native_post_real_handler_harness(
             spec,
@@ -7063,10 +7143,80 @@ mod tests {
             let content = std::fs::read_to_string(file).expect("read store file");
             assert!(content.contains("hepta.post.execution_store_record.v1"));
             assert!(content.contains("task_publish"));
+            assert!(content.contains(fingerprint));
             assert!(content.contains("\"current_plan_executes_real_handler\":true"));
             assert!(!content.contains("secret task text"));
             assert!(!content.contains("secret-idem"));
         }
+    }
+
+    #[test]
+    fn native_post_real_handler_harness_suppresses_duplicate_idempotency_key() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND)
+            .expect("task publish spec");
+        let body = r#"{"task":"secret duplicate task","confirm":true,"dry_run":true,"idempotency_key":"secret-duplicate-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+        let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+        let audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+        );
+        let execution_admission = native_post_execution_admission_with_gates(
+            spec,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            true,
+            true,
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        let first = native_post_real_handler_harness(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            &execution_admission,
+            temp.path(),
+        );
+        let second = native_post_real_handler_harness(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            &execution_admission,
+            temp.path(),
+        );
+
+        assert_eq!(first.status, "dry_run_recorded");
+        assert_eq!(first.store_write_succeeded, true);
+        assert_eq!(second.status, "duplicate_suppressed");
+        assert_eq!(second.duplicate_check_performed, true);
+        assert_eq!(second.duplicate_found, true);
+        assert_eq!(second.duplicate_suppressed, true);
+        assert_eq!(second.store_write_attempted, false);
+        assert_eq!(second.store_write_succeeded, false);
+        assert!(second.store_write_report.is_none());
+        let idempotency_content = std::fs::read_to_string(temp.path().join("idempotency.jsonl"))
+            .expect("idempotency store");
+        assert_eq!(idempotency_content.lines().count(), 1);
+        assert!(
+            idempotency_content.contains(
+                idempotency_evidence
+                    .key_fingerprint
+                    .as_deref()
+                    .expect("fingerprint")
+            )
+        );
+        assert!(!idempotency_content.contains("secret duplicate task"));
+        assert!(!idempotency_content.contains("secret-duplicate-idem"));
     }
 
     #[test]
