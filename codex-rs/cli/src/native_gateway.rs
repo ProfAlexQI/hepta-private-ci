@@ -46,8 +46,12 @@ const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
 const NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
 const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
+const NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
+const NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
 const NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV: &str = "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS";
 const DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS: u64 = 1_000;
+const DEFAULT_NATIVE_POST_STORE_MAX_BYTES: u64 = 10 * 1024 * 1024;
+const DEFAULT_NATIVE_POST_STORE_MAX_LINES: u64 = 100_000;
 const DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR: &str = ".hepta/native-post-execution";
 const NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
     &["approval_apply", "task_publish", "chat_send"];
@@ -2443,10 +2447,14 @@ fn native_post_execution_stores_json() -> String {
 
 fn native_post_execution_stores_report() -> NativePostExecutionStoresResponse {
     let root = native_post_execution_store_root();
-    let store_files = native_post_execution_store_file_statuses(&root);
+    let max_store_bytes = native_post_store_max_bytes();
+    let max_store_lines = native_post_store_max_lines();
+    let store_files =
+        native_post_execution_store_file_statuses(&root, max_store_bytes, max_store_lines);
     let root_exists = root.exists();
     let root_is_dir = root.is_dir();
     let existing_file_count = store_files.iter().filter(|file| file.exists).count();
+    let total_bytes = store_files.iter().map(|file| file.bytes).sum::<u64>();
     let total_line_count = store_files.iter().map(|file| file.line_count).sum::<u64>();
     let valid_json_line_count = store_files
         .iter()
@@ -2459,10 +2467,13 @@ fn native_post_execution_stores_report() -> NativePostExecutionStoresResponse {
     let store_jsonl_valid = store_files
         .iter()
         .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
+    let store_capacity_ok = store_files
+        .iter()
+        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
     NativePostExecutionStoresResponse {
         product: "Hepta",
         runtime: "hepta-codex",
-        status: if store_jsonl_valid {
+        status: if store_jsonl_valid && store_capacity_ok {
             "ready"
         } else {
             "attention"
@@ -2478,7 +2489,13 @@ fn native_post_execution_stores_report() -> NativePostExecutionStoresResponse {
         root_is_dir,
         store_file_count: store_files.len(),
         existing_file_count,
+        max_store_bytes_env: NATIVE_POST_STORE_MAX_BYTES_ENV,
+        max_store_bytes,
+        max_store_lines_env: NATIVE_POST_STORE_MAX_LINES_ENV,
+        max_store_lines,
+        total_bytes,
         store_jsonl_valid,
+        store_capacity_ok,
         total_line_count,
         valid_json_line_count,
         invalid_json_line_count,
@@ -2522,36 +2539,59 @@ fn native_post_execution_store_root() -> PathBuf {
         .join(DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR)
 }
 
+fn native_post_store_max_bytes() -> u64 {
+    env_u64(NATIVE_POST_STORE_MAX_BYTES_ENV)
+        .map(|bytes| bytes.clamp(1_024, 1024 * 1024 * 1024))
+        .unwrap_or(DEFAULT_NATIVE_POST_STORE_MAX_BYTES)
+}
+
+fn native_post_store_max_lines() -> u64 {
+    env_u64(NATIVE_POST_STORE_MAX_LINES_ENV)
+        .map(|lines| lines.clamp(1, 10_000_000))
+        .unwrap_or(DEFAULT_NATIVE_POST_STORE_MAX_LINES)
+}
+
 fn native_post_execution_store_file_statuses(
     root: &Path,
+    max_store_bytes: u64,
+    max_store_lines: u64,
 ) -> Vec<NativePostExecutionStoreFileStatus> {
     native_post_execution_store_specs()
         .iter()
-        .map(|spec| native_post_execution_store_file_status(root, spec))
+        .map(|spec| {
+            native_post_execution_store_file_status(root, spec, max_store_bytes, max_store_lines)
+        })
         .collect()
 }
 
 fn native_post_execution_store_file_status(
     root: &Path,
     spec: &NativePostExecutionStoreFileSpec,
+    max_store_bytes: u64,
+    max_store_lines: u64,
 ) -> NativePostExecutionStoreFileStatus {
     let path = root.join(spec.filename);
     let metadata = path.metadata().ok();
     let exists = metadata.as_ref().is_some_and(std::fs::Metadata::is_file);
     let (jsonl_readable, line_count, valid_json_line_count, invalid_json_line_count) =
         native_post_execution_store_jsonl_health(&path, exists);
+    let bytes = metadata.as_ref().map(std::fs::Metadata::len).unwrap_or(0);
     NativePostExecutionStoreFileStatus {
         store_kind: spec.store_kind,
         schema_id: spec.schema_id,
         filename: spec.filename,
         path: path.display().to_string(),
         exists,
-        bytes: metadata.as_ref().map(std::fs::Metadata::len).unwrap_or(0),
+        bytes,
+        max_bytes: max_store_bytes,
+        bytes_within_limit: bytes <= max_store_bytes,
         append_only: true,
         jsonl: true,
         jsonl_readable,
         jsonl_valid: jsonl_readable && invalid_json_line_count == 0,
         line_count,
+        max_lines: max_store_lines,
+        line_count_within_limit: line_count <= max_store_lines,
         valid_json_line_count,
         invalid_json_line_count,
         raw_body_exposed: false,
@@ -3620,7 +3660,8 @@ fn operator_security_json(
         && post_execution_stores.audit_store_ready
         && post_execution_stores.rollback_store_ready
         && post_execution_stores.rate_limit_store_ready
-        && post_execution_stores.store_jsonl_valid;
+        && post_execution_stores.store_jsonl_valid
+        && post_execution_stores.store_capacity_ok;
     let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
     let ready = control_ui_route_parity.ready
@@ -4705,7 +4746,13 @@ struct NativePostExecutionStoresResponse {
     root_is_dir: bool,
     store_file_count: usize,
     existing_file_count: usize,
+    max_store_bytes_env: &'static str,
+    max_store_bytes: u64,
+    max_store_lines_env: &'static str,
+    max_store_lines: u64,
+    total_bytes: u64,
     store_jsonl_valid: bool,
+    store_capacity_ok: bool,
     total_line_count: u64,
     valid_json_line_count: u64,
     invalid_json_line_count: u64,
@@ -4744,11 +4791,15 @@ struct NativePostExecutionStoreFileStatus {
     path: String,
     exists: bool,
     bytes: u64,
+    max_bytes: u64,
+    bytes_within_limit: bool,
     append_only: bool,
     jsonl: bool,
     jsonl_readable: bool,
     jsonl_valid: bool,
     line_count: u64,
+    max_lines: u64,
+    line_count_within_limit: bool,
     valid_json_line_count: u64,
     invalid_json_line_count: u64,
     raw_body_exposed: bool,
@@ -7213,7 +7264,17 @@ mod tests {
         assert_eq!(value["side_effect_free"], true);
         assert_eq!(value["store_root_env"], NATIVE_POST_EXECUTION_STORE_DIR_ENV);
         assert_eq!(value["store_file_count"], 4);
+        assert_eq!(
+            value["max_store_bytes_env"],
+            NATIVE_POST_STORE_MAX_BYTES_ENV
+        );
+        assert_eq!(
+            value["max_store_lines_env"],
+            NATIVE_POST_STORE_MAX_LINES_ENV
+        );
+        assert_eq!(value["total_bytes"], 0);
         assert_eq!(value["store_jsonl_valid"], true);
+        assert_eq!(value["store_capacity_ok"], true);
         assert_eq!(value["total_line_count"], 0);
         assert_eq!(value["valid_json_line_count"], 0);
         assert_eq!(value["invalid_json_line_count"], 0);
@@ -7262,15 +7323,43 @@ mod tests {
         )
         .expect("write store");
 
-        let status = native_post_execution_store_file_status(temp.path(), spec);
+        let status = native_post_execution_store_file_status(temp.path(), spec, 1024, 10);
 
         assert_eq!(status.exists, true);
+        assert_eq!(status.bytes_within_limit, true);
         assert_eq!(status.jsonl_readable, true);
         assert_eq!(status.jsonl_valid, false);
         assert_eq!(status.line_count, 2);
+        assert_eq!(status.line_count_within_limit, true);
         assert_eq!(status.valid_json_line_count, 1);
         assert_eq!(status.invalid_json_line_count, 1);
         assert_eq!(status.raw_idempotency_key_exposed, false);
+    }
+
+    #[test]
+    fn native_post_execution_store_status_blocks_oversized_jsonl() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let spec = &native_post_execution_store_specs()[0];
+        let store_file = temp.path().join(spec.filename);
+        std::fs::write(
+            &store_file,
+            concat!(
+                r#"{"schema_id":"hepta.post.execution_store_record.v1","plan_kind":"task_publish"}"#,
+                "\n",
+                r#"{"schema_id":"hepta.post.execution_store_record.v1","plan_kind":"chat_send"}"#,
+                "\n",
+            ),
+        )
+        .expect("write store");
+
+        let status = native_post_execution_store_file_status(temp.path(), spec, 8, 1);
+
+        assert_eq!(status.exists, true);
+        assert_eq!(status.jsonl_valid, true);
+        assert_eq!(status.bytes_within_limit, false);
+        assert_eq!(status.line_count, 2);
+        assert_eq!(status.line_count_within_limit, false);
+        assert_eq!(status.invalid_json_line_count, 0);
     }
 
     #[test]
