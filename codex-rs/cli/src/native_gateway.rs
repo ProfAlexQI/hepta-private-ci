@@ -49,7 +49,8 @@ const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_S
 const NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV: &str = "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS";
 const DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS: u64 = 1_000;
 const DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR: &str = ".hepta/native-post-execution";
-const NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND: &str = "task_publish";
+const NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
+    &["approval_apply", "task_publish", "chat_send"];
 
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
@@ -2194,7 +2195,11 @@ fn native_post_execution_admission_with_gates(
 }
 
 fn native_post_real_handler_implemented(spec: &NativePostPlanRouteSpec) -> bool {
-    spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND
+    native_post_plan_kind_has_real_handler(spec.plan_kind)
+}
+
+fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
+    NATIVE_POST_REAL_HANDLER_PLAN_KINDS.contains(&plan_kind)
 }
 
 fn native_post_real_handler_harness(
@@ -6803,7 +6808,7 @@ mod tests {
             );
             assert_eq!(
                 value["execution_admission"]["real_handler_implemented"],
-                plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND
+                native_post_plan_kind_has_real_handler(plan_kind)
             );
             assert_eq!(
                 value["execution_admission"]["allowlisted_for_real_handler"],
@@ -6878,7 +6883,7 @@ mod tests {
             assert_eq!(value["real_handler_harness_ready"], true);
             let expected_harness_status = if !confirm_required {
                 "plan_only_route"
-            } else if plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND {
+            } else if native_post_plan_kind_has_real_handler(plan_kind) {
                 "blocked"
             } else {
                 "not_implemented"
@@ -6889,7 +6894,7 @@ mod tests {
             );
             assert_eq!(
                 value["real_handler_harness"]["handler_implemented"],
-                plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND
+                native_post_plan_kind_has_real_handler(plan_kind)
             );
             assert_eq!(value["real_handler_harness"]["dual_gate_satisfied"], false);
             assert_eq!(
@@ -7100,7 +7105,7 @@ mod tests {
             value["post_route_count"]
         );
         assert_eq!(value["all_evidence_contracts_ready"], true);
-        assert_eq!(value["real_handler_implemented_count"], 1);
+        assert_eq!(value["real_handler_implemented_count"], 3);
         assert_eq!(value["real_handler_ready_count"], 3);
         assert_eq!(value["all_real_handlers_blocked"], true);
         assert_eq!(value["raw_request_body_exposed"], false);
@@ -7173,7 +7178,7 @@ mod tests {
     fn native_post_real_handler_harness_records_redacted_dry_run_under_dual_gate() {
         let spec = NATIVE_POST_PLAN_ROUTE_SPECS
             .iter()
-            .find(|spec| spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND)
+            .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
         let body = r#"{"task":"secret task text","confirm":true,"dry_run":true,"idempotency_key":"secret-idem"}"#;
         let body_schema = native_post_body_schema(spec.plan_kind, true);
@@ -7250,7 +7255,7 @@ mod tests {
     fn native_post_real_handler_harness_suppresses_duplicate_idempotency_key() {
         let spec = NATIVE_POST_PLAN_ROUTE_SPECS
             .iter()
-            .find(|spec| spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND)
+            .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
         let body = r#"{"task":"secret duplicate task","confirm":true,"dry_run":true,"idempotency_key":"secret-duplicate-idem"}"#;
         let body_schema = native_post_body_schema(spec.plan_kind, true);
@@ -7319,7 +7324,7 @@ mod tests {
     fn native_post_real_handler_harness_rate_limits_recent_bucket() {
         let spec = NATIVE_POST_PLAN_ROUTE_SPECS
             .iter()
-            .find(|spec| spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND)
+            .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
         let first_body = r#"{"task":"secret first task","confirm":true,"dry_run":true,"idempotency_key":"secret-first-idem"}"#;
         let second_body = r#"{"task":"secret second task","confirm":true,"dry_run":true,"idempotency_key":"secret-second-idem"}"#;
@@ -7402,10 +7407,101 @@ mod tests {
     }
 
     #[test]
+    fn native_post_real_handler_harness_covers_confirm_required_candidates() {
+        let candidates = [
+            (
+                "approval_apply",
+                r#"{"approval_id":"secret approval id","confirm":true,"dry_run":true,"idempotency_key":"secret-approval-idem"}"#,
+                "secret approval id",
+                "secret-approval-idem",
+            ),
+            (
+                "task_publish",
+                r#"{"task":"secret task body","confirm":true,"dry_run":true,"idempotency_key":"secret-task-idem"}"#,
+                "secret task body",
+                "secret-task-idem",
+            ),
+            (
+                "chat_send",
+                r#"{"chat_id":"secret chat id","message":"secret chat message","confirm":true,"dry_run":true,"idempotency_key":"secret-chat-idem"}"#,
+                "secret chat message",
+                "secret-chat-idem",
+            ),
+        ];
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        for (plan_kind, body, raw_secret, raw_idempotency_key) in candidates {
+            let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+                .iter()
+                .find(|spec| spec.plan_kind == plan_kind)
+                .expect("candidate spec");
+            let body_schema = native_post_body_schema(spec.plan_kind, true);
+            let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+            let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+            let audit_event_contract = native_post_audit_event_contract(
+                spec,
+                &body_schema,
+                &body_admission,
+                &idempotency_evidence,
+            );
+            let execution_admission = native_post_execution_admission_with_gates(
+                spec,
+                &body_admission,
+                &idempotency_evidence,
+                &audit_event_contract,
+                true,
+                true,
+            );
+
+            let harness = native_post_real_handler_harness(
+                spec,
+                &body_schema,
+                &body_admission,
+                &idempotency_evidence,
+                &audit_event_contract,
+                &execution_admission,
+                temp.path(),
+            );
+
+            assert_eq!(body_admission.admission_status, "ready_for_real_handler");
+            assert_eq!(native_post_plan_kind_has_real_handler(plan_kind), true);
+            assert_eq!(execution_admission.admission_status, "harness_ready");
+            assert_eq!(execution_admission.current_plan_executes_real_handler, true);
+            assert_eq!(harness.status, "dry_run_recorded");
+            assert_eq!(harness.handler_kind, plan_kind);
+            assert_eq!(harness.handler_implemented, true);
+            assert_eq!(harness.dry_run_only, true);
+            assert_eq!(harness.store_write_attempted, true);
+            assert_eq!(harness.store_write_succeeded, true);
+            assert_eq!(harness.task_published, false);
+            assert_eq!(harness.message_sent, false);
+            assert_eq!(harness.external_side_effects, false);
+            assert_eq!(harness.raw_request_body_exposed, false);
+            assert_eq!(harness.raw_idempotency_key_exposed, false);
+
+            let report = harness
+                .store_write_report
+                .as_ref()
+                .expect("store write report");
+            assert_eq!(report.written_file_count, 4);
+            for file in &report.written_files {
+                let content = std::fs::read_to_string(file).expect("read store file");
+                assert!(content.contains(plan_kind));
+                assert!(!content.contains(raw_secret));
+                assert!(!content.contains(raw_idempotency_key));
+            }
+        }
+
+        let idempotency_content = std::fs::read_to_string(temp.path().join("idempotency.jsonl"))
+            .expect("idempotency store");
+        assert_eq!(idempotency_content.lines().count(), candidates.len());
+    }
+
+    #[test]
     fn native_post_real_handler_harness_requires_operator_approval_gate() {
         let spec = NATIVE_POST_PLAN_ROUTE_SPECS
             .iter()
-            .find(|spec| spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND)
+            .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
         let body = r#"{"task":"secret task text","confirm":true,"dry_run":true,"idempotency_key":"secret-idem"}"#;
         let body_schema = native_post_body_schema(spec.plan_kind, true);
