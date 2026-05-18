@@ -377,6 +377,12 @@ pub(crate) struct NativeTelegramLiveSoakObservationReport {
     pub(crate) busy_count: u64,
     pub(crate) attention_count: u64,
     pub(crate) empty_read_count: u64,
+    pub(crate) model_turn_started_count: u64,
+    pub(crate) send_started_count: u64,
+    pub(crate) cursor_written_count: u64,
+    pub(crate) external_send_count: u64,
+    pub(crate) last_drained_at_unix_ms: Option<u64>,
+    pub(crate) last_drained_next_update_offset: Option<i64>,
     pub(crate) last_observed_at_unix_ms: Option<u64>,
     pub(crate) last_status: Option<String>,
     pub(crate) last_error: Option<String>,
@@ -402,6 +408,12 @@ struct NativeTelegramLiveSoakObservationState {
     busy_count: u64,
     attention_count: u64,
     empty_read_count: u64,
+    model_turn_started_count: u64,
+    send_started_count: u64,
+    cursor_written_count: u64,
+    external_send_count: u64,
+    last_drained_at_unix_ms: Option<u64>,
+    last_drained_next_update_offset: Option<i64>,
     last_observed_at_unix_ms: Option<u64>,
     last_status: Option<String>,
     last_error: Option<String>,
@@ -661,6 +673,28 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
     let config = load_telegram_config_status();
     let supervisor_ready = config.error.is_none();
     let config_ready = config.enabled && config.token_shape_ok && config.binding_ready;
+    let gate_summary = telegram_gateway_gate_summary();
+    let bot_api_poll_ready = config_ready && gate_summary.live_read_gate_enabled;
+    let model_turn_bridge_ready = config_ready && gate_summary.model_turn_gate_enabled;
+    let bot_api_send_ready = config_ready && gate_summary.send_gate_enabled;
+    let in_process_reply_loop_ready = bot_api_poll_ready
+        && model_turn_bridge_ready
+        && bot_api_send_ready
+        && gate_summary.delivery_approval_gate_enabled
+        && env_truthy(TELEGRAM_POLL_LOOP_ENV);
+    let migration_blocker = if in_process_reply_loop_ready {
+        None
+    } else {
+        Some(
+            "enable live read, model, send, poll loop, and delivery approval gates before active reply-loop delivery",
+        )
+    };
+    let next_migration_slice = if in_process_reply_loop_ready {
+        "keep active Telegram live soak green and inspect /api/telegram-live-soak-status for cumulative delivery evidence"
+    } else {
+        "wire native Bot API getUpdates/sendMessage loop behind explicit delivery gates"
+    };
+
     let status = if supervisor_ready && config_ready {
         "native_supervisor_ready"
     } else {
@@ -673,10 +707,10 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
         requested,
         status,
         in_process_supervisor_ready: supervisor_ready,
-        in_process_reply_loop_ready: false,
-        model_turn_bridge_ready: false,
-        bot_api_poll_ready: false,
-        bot_api_send_ready: false,
+        in_process_reply_loop_ready,
+        model_turn_bridge_ready,
+        bot_api_poll_ready,
+        bot_api_send_ready,
         openclaw_gateway_runtime_dependency: false,
         external_network_read: false,
         external_send: false,
@@ -687,10 +721,8 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
         ingress_parser: inspect_telegram_updates(&[]),
         cursor_plan: NativeTelegramCursorPlan::ready(),
         model_turn_plan: plan_model_turn_for_updates(&[]),
-        migration_blocker: Some(
-            "Bot API polling/send and Codex model-turn bridge are not enabled in hepta-codex yet",
-        ),
-        next_migration_slice: "wire native Bot API getUpdates/sendMessage loop behind explicit delivery gates",
+        migration_blocker,
+        next_migration_slice,
     }
 }
 
@@ -1353,8 +1385,13 @@ fn telegram_live_soak_observation_report() -> NativeTelegramLiveSoakObservationR
 impl NativeTelegramLiveSoakObservationState {
     fn observe(&mut self, status: &NativeTelegramDrainOnceStatus) {
         self.poll_iterations = self.poll_iterations.saturating_add(1);
+        let now = now_unix_ms();
         match status.status {
-            "drained" => self.drained_count = self.drained_count.saturating_add(1),
+            "drained" => {
+                self.drained_count = self.drained_count.saturating_add(1);
+                self.last_drained_at_unix_ms = Some(now);
+                self.last_drained_next_update_offset = status.local_next_update_offset;
+            }
             "busy" => self.busy_count = self.busy_count.saturating_add(1),
             "attention" => self.attention_count = self.attention_count.saturating_add(1),
             _ if status.external_network_read && status.inspection.update_count == 0 => {
@@ -1362,7 +1399,19 @@ impl NativeTelegramLiveSoakObservationState {
             }
             _ => {}
         }
-        self.last_observed_at_unix_ms = Some(now_unix_ms());
+        if status.model_turn_started {
+            self.model_turn_started_count = self.model_turn_started_count.saturating_add(1);
+        }
+        if status.send_started {
+            self.send_started_count = self.send_started_count.saturating_add(1);
+        }
+        if status.cursor_written {
+            self.cursor_written_count = self.cursor_written_count.saturating_add(1);
+        }
+        if status.external_send {
+            self.external_send_count = self.external_send_count.saturating_add(1);
+        }
+        self.last_observed_at_unix_ms = Some(now);
         self.last_status = Some(status.status.to_string());
         self.last_error = status
             .error
@@ -1386,6 +1435,12 @@ impl NativeTelegramLiveSoakObservationState {
             busy_count: self.busy_count,
             attention_count: self.attention_count,
             empty_read_count: self.empty_read_count,
+            model_turn_started_count: self.model_turn_started_count,
+            send_started_count: self.send_started_count,
+            cursor_written_count: self.cursor_written_count,
+            external_send_count: self.external_send_count,
+            last_drained_at_unix_ms: self.last_drained_at_unix_ms,
+            last_drained_next_update_offset: self.last_drained_next_update_offset,
             last_observed_at_unix_ms: self.last_observed_at_unix_ms,
             last_status: self.last_status.clone(),
             last_error: self.last_error.clone(),
