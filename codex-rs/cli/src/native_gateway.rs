@@ -3264,11 +3264,20 @@ fn operator_security_json(
             options.with_telegram_plugin,
             options.telegram_plugin_poll_ms,
         );
+    let post_execution_readiness = native_post_execution_readiness_report();
+    let post_execution_stores = native_post_execution_stores_report();
+    let post_execution_stores_ready = post_execution_stores.persistence_implementation_ready
+        && post_execution_stores.idempotency_store_ready
+        && post_execution_stores.audit_store_ready
+        && post_execution_stores.rollback_store_ready
+        && post_execution_stores.rate_limit_store_ready;
     let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
     let ready = control_ui_route_parity.ready
         && gateway_replacement_readiness.ready
         && production_soak_ready
+        && post_execution_readiness.all_evidence_contracts_ready
+        && post_execution_stores_ready
         && loopback_bound
         && guarded_post_route_count == post_route_count;
 
@@ -3289,6 +3298,11 @@ fn operator_security_json(
         post_route_count,
         dry_run_post_route_count,
         guarded_post_route_count,
+        post_execution_readiness_endpoint: NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
+        post_execution_stores_endpoint: NATIVE_POST_EXECUTION_STORES_ENDPOINT,
+        post_execution_readiness,
+        post_execution_stores_ready,
+        post_execution_stores,
         production_soak_ready,
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
         telegram_production_readiness_status,
@@ -3300,6 +3314,8 @@ fn operator_security_json(
             raw_update_payload_exposed: false,
             raw_prompt_text_exposed: false,
             raw_response_text_exposed: false,
+            raw_idempotency_key_exposed: false,
+            raw_audit_payload_exposed: false,
         },
         side_effects: NativeOperatorSecuritySideEffects {
             external_side_effects: false,
@@ -3309,7 +3325,7 @@ fn operator_security_json(
             message_sent: false,
             cursor_written: false,
         },
-        next_migration_slice: "keep POST routes dry-run until each action has an explicit confirmation and rollback contract",
+        next_migration_slice: "keep POST routes dry-run until one selected handler is wired through the native execution stores with operator approval",
     })
 }
 
@@ -4737,6 +4753,11 @@ struct NativeOperatorSecurityResponse {
     post_route_count: usize,
     dry_run_post_route_count: usize,
     guarded_post_route_count: usize,
+    post_execution_readiness_endpoint: &'static str,
+    post_execution_stores_endpoint: &'static str,
+    post_execution_readiness: NativePostExecutionReadinessResponse,
+    post_execution_stores_ready: bool,
+    post_execution_stores: NativePostExecutionStoresResponse,
     production_soak_ready: bool,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
     telegram_production_readiness_status: native_telegram::NativeTelegramProductionReadinessStatus,
@@ -4754,6 +4775,8 @@ struct NativeOperatorSecurityRedaction {
     raw_update_payload_exposed: bool,
     raw_prompt_text_exposed: bool,
     raw_response_text_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -6849,6 +6872,31 @@ mod tests {
         assert_eq!(value["side_effects"]["cursor_written"], false);
         assert_eq!(value["redaction"]["raw_transcript_exposed"], false);
         assert_eq!(value["redaction"]["raw_token_exposed"], false);
+        assert_eq!(value["redaction"]["raw_idempotency_key_exposed"], false);
+        assert_eq!(value["redaction"]["raw_audit_payload_exposed"], false);
+        assert_eq!(
+            value["post_execution_readiness_endpoint"],
+            NATIVE_POST_EXECUTION_READINESS_ENDPOINT
+        );
+        assert_eq!(
+            value["post_execution_stores_endpoint"],
+            NATIVE_POST_EXECUTION_STORES_ENDPOINT
+        );
+        assert_eq!(value["post_execution_readiness"]["status"], "ready");
+        assert_eq!(
+            value["post_execution_readiness"]["all_real_handlers_blocked"],
+            true
+        );
+        assert_eq!(value["post_execution_stores_ready"], true);
+        assert_eq!(value["post_execution_stores"]["status"], "ready");
+        assert_eq!(
+            value["post_execution_stores"]["status_probe_writes_files"],
+            false
+        );
+        assert_eq!(
+            value["post_execution_stores"]["raw_idempotency_key_exposed"],
+            false
+        );
         assert!(value["telegram_production_readiness_status"].is_object());
         assert_eq!(
             value["telegram_production_readiness_status"]["side_effect_free"],
