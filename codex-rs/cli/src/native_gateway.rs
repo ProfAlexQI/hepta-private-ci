@@ -2447,10 +2447,26 @@ fn native_post_execution_stores_report() -> NativePostExecutionStoresResponse {
     let root_exists = root.exists();
     let root_is_dir = root.is_dir();
     let existing_file_count = store_files.iter().filter(|file| file.exists).count();
+    let total_line_count = store_files.iter().map(|file| file.line_count).sum::<u64>();
+    let valid_json_line_count = store_files
+        .iter()
+        .map(|file| file.valid_json_line_count)
+        .sum::<u64>();
+    let invalid_json_line_count = store_files
+        .iter()
+        .map(|file| file.invalid_json_line_count)
+        .sum::<u64>();
+    let store_jsonl_valid = store_files
+        .iter()
+        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
     NativePostExecutionStoresResponse {
         product: "Hepta",
         runtime: "hepta-codex",
-        status: "ready",
+        status: if store_jsonl_valid {
+            "ready"
+        } else {
+            "attention"
+        },
         endpoint: NATIVE_POST_EXECUTION_STORES_ENDPOINT,
         source_command: "/native-post-execution-stores --json",
         native_route: true,
@@ -2462,6 +2478,10 @@ fn native_post_execution_stores_report() -> NativePostExecutionStoresResponse {
         root_is_dir,
         store_file_count: store_files.len(),
         existing_file_count,
+        store_jsonl_valid,
+        total_line_count,
+        valid_json_line_count,
+        invalid_json_line_count,
         stores: store_files,
         persistence_implementation_ready: true,
         idempotency_store_ready: true,
@@ -2517,19 +2537,54 @@ fn native_post_execution_store_file_status(
 ) -> NativePostExecutionStoreFileStatus {
     let path = root.join(spec.filename);
     let metadata = path.metadata().ok();
+    let exists = metadata.as_ref().is_some_and(std::fs::Metadata::is_file);
+    let (jsonl_readable, line_count, valid_json_line_count, invalid_json_line_count) =
+        native_post_execution_store_jsonl_health(&path, exists);
     NativePostExecutionStoreFileStatus {
         store_kind: spec.store_kind,
         schema_id: spec.schema_id,
         filename: spec.filename,
         path: path.display().to_string(),
-        exists: metadata.as_ref().is_some_and(|metadata| metadata.is_file()),
+        exists,
         bytes: metadata.as_ref().map(std::fs::Metadata::len).unwrap_or(0),
         append_only: true,
         jsonl: true,
+        jsonl_readable,
+        jsonl_valid: jsonl_readable && invalid_json_line_count == 0,
+        line_count,
+        valid_json_line_count,
+        invalid_json_line_count,
         raw_body_exposed: false,
         raw_field_values_exposed: false,
         raw_idempotency_key_exposed: false,
     }
+}
+
+fn native_post_execution_store_jsonl_health(path: &Path, exists: bool) -> (bool, u64, u64, u64) {
+    if !exists {
+        return (true, 0, 0, 0);
+    }
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(_) => return (false, 0, 0, 0),
+    };
+    let mut line_count = 0_u64;
+    let mut valid_json_line_count = 0_u64;
+    let mut invalid_json_line_count = 0_u64;
+    for line in content.lines() {
+        line_count = line_count.saturating_add(1);
+        if serde_json::from_str::<serde_json::Value>(line).is_ok() {
+            valid_json_line_count = valid_json_line_count.saturating_add(1);
+        } else {
+            invalid_json_line_count = invalid_json_line_count.saturating_add(1);
+        }
+    }
+    (
+        true,
+        line_count,
+        valid_json_line_count,
+        invalid_json_line_count,
+    )
 }
 
 fn native_post_execution_store_specs() -> &'static [NativePostExecutionStoreFileSpec] {
@@ -3564,7 +3619,8 @@ fn operator_security_json(
         && post_execution_stores.idempotency_store_ready
         && post_execution_stores.audit_store_ready
         && post_execution_stores.rollback_store_ready
-        && post_execution_stores.rate_limit_store_ready;
+        && post_execution_stores.rate_limit_store_ready
+        && post_execution_stores.store_jsonl_valid;
     let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
     let ready = control_ui_route_parity.ready
@@ -4649,6 +4705,10 @@ struct NativePostExecutionStoresResponse {
     root_is_dir: bool,
     store_file_count: usize,
     existing_file_count: usize,
+    store_jsonl_valid: bool,
+    total_line_count: u64,
+    valid_json_line_count: u64,
+    invalid_json_line_count: u64,
     stores: Vec<NativePostExecutionStoreFileStatus>,
     persistence_implementation_ready: bool,
     idempotency_store_ready: bool,
@@ -4686,6 +4746,11 @@ struct NativePostExecutionStoreFileStatus {
     bytes: u64,
     append_only: bool,
     jsonl: bool,
+    jsonl_readable: bool,
+    jsonl_valid: bool,
+    line_count: u64,
+    valid_json_line_count: u64,
+    invalid_json_line_count: u64,
     raw_body_exposed: bool,
     raw_field_values_exposed: bool,
     raw_idempotency_key_exposed: bool,
@@ -7148,6 +7213,10 @@ mod tests {
         assert_eq!(value["side_effect_free"], true);
         assert_eq!(value["store_root_env"], NATIVE_POST_EXECUTION_STORE_DIR_ENV);
         assert_eq!(value["store_file_count"], 4);
+        assert_eq!(value["store_jsonl_valid"], true);
+        assert_eq!(value["total_line_count"], 0);
+        assert_eq!(value["valid_json_line_count"], 0);
+        assert_eq!(value["invalid_json_line_count"], 0);
         assert_eq!(value["persistence_implementation_ready"], true);
         assert_eq!(value["idempotency_store_ready"], true);
         assert_eq!(value["audit_store_ready"], true);
@@ -7170,8 +7239,38 @@ mod tests {
                 .iter()
                 .any(|store| store["filename"] == "idempotency.jsonl"
                     && store["append_only"] == true
+                    && store["jsonl_readable"] == true
+                    && store["jsonl_valid"] == true
+                    && store["line_count"] == 0
                     && store["raw_idempotency_key_exposed"] == false)
         );
+    }
+
+    #[test]
+    fn native_post_execution_store_status_counts_jsonl_health() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let spec = &native_post_execution_store_specs()[0];
+        let store_file = temp.path().join(spec.filename);
+        std::fs::write(
+            &store_file,
+            concat!(
+                r#"{"schema_id":"hepta.post.execution_store_record.v1","plan_kind":"task_publish"}"#,
+                "\n",
+                "not-json",
+                "\n",
+            ),
+        )
+        .expect("write store");
+
+        let status = native_post_execution_store_file_status(temp.path(), spec);
+
+        assert_eq!(status.exists, true);
+        assert_eq!(status.jsonl_readable, true);
+        assert_eq!(status.jsonl_valid, false);
+        assert_eq!(status.line_count, 2);
+        assert_eq!(status.valid_json_line_count, 1);
+        assert_eq!(status.invalid_json_line_count, 1);
+        assert_eq!(status.raw_idempotency_key_exposed, false);
     }
 
     #[test]
