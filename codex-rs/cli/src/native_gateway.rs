@@ -1666,7 +1666,19 @@ fn native_post_plan_report(
     let body_admission = native_post_body_admission(spec, &body_schema, request_body);
     let confirmation_contract = native_post_confirmation_contract(spec);
     let rollback_contract = native_post_rollback_contract();
-    let execution_admission = native_post_execution_admission(spec, &body_admission);
+    let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+    let audit_event_contract = native_post_audit_event_contract(
+        spec,
+        &body_schema,
+        &body_admission,
+        &idempotency_evidence,
+    );
+    let execution_admission = native_post_execution_admission(
+        spec,
+        &body_admission,
+        &idempotency_evidence,
+        &audit_event_contract,
+    );
     NativePostPlanResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -1694,11 +1706,15 @@ fn native_post_plan_report(
         body_admission_ready: true,
         confirmation_contract_ready: true,
         rollback_contract_ready: true,
+        idempotency_evidence_ready: true,
+        audit_event_contract_ready: true,
         execution_admission_ready: true,
         body_schema,
         body_admission,
         confirmation_contract,
         rollback_contract,
+        idempotency_evidence,
+        audit_event_contract,
         execution_admission,
         action_dispatched: false,
         command_executed: false,
@@ -1970,14 +1986,67 @@ fn native_post_rollback_contract() -> NativePostRollbackContract {
     }
 }
 
+fn native_post_idempotency_evidence(
+    spec: &NativePostPlanRouteSpec,
+    body_admission: &NativePostBodyAdmission,
+) -> NativePostIdempotencyEvidence {
+    let required = spec.confirmation_required_for_real_mutation;
+    NativePostIdempotencyEvidence {
+        required,
+        key_present: body_admission.idempotency_key_present,
+        key_redacted: body_admission.idempotency_key_present,
+        key_shape_valid: !required || body_admission.idempotency_key_present,
+        lookup_required_before_real_handler: required,
+        duplicate_suppression_required: required,
+        durable_store_required: required,
+        current_plan_lookup_performed: false,
+        current_plan_store_written: false,
+        raw_key_exposed: false,
+    }
+}
+
+fn native_post_audit_event_contract(
+    spec: &NativePostPlanRouteSpec,
+    body_schema: &NativePostBodySchema,
+    body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+) -> NativePostAuditEventContract {
+    let required = spec.confirmation_required_for_real_mutation;
+    NativePostAuditEventContract {
+        required,
+        schema_id: "hepta.post.execution_audit.v1",
+        event_kind: spec.plan_kind,
+        body_schema_id: body_schema.schema_id,
+        route_pattern_recorded: true,
+        capability_recorded: true,
+        body_admission_status_recorded: true,
+        idempotency_evidence_recorded: required,
+        rollback_contract_recorded: required,
+        operator_approval_recorded: required,
+        ready_for_real_handler: !required
+            || (body_admission.ready_for_real_handler_input
+                && idempotency_evidence.key_shape_valid),
+        current_plan_emits_audit_event: false,
+        current_plan_persists_audit_event: false,
+        raw_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_parameter_exposed: false,
+        raw_idempotency_key_exposed: false,
+    }
+}
+
 fn native_post_execution_admission(
     spec: &NativePostPlanRouteSpec,
     body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+    audit_event_contract: &NativePostAuditEventContract,
 ) -> NativePostExecutionAdmission {
     let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
     let enablement_gate_enabled = env_truthy("HEPTA_NATIVE_POST_REAL_HANDLERS");
     let request_body_ready_for_real_handler =
         !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
+    let execution_evidence_ready = !allowlisted_for_real_handler
+        || (idempotency_evidence.key_shape_valid && audit_event_contract.ready_for_real_handler);
     NativePostExecutionAdmission {
         admission_status: "blocked",
         current_plan_executes_real_handler: false,
@@ -1992,12 +2061,16 @@ fn native_post_execution_admission(
         requires_confirmation_contract: allowlisted_for_real_handler,
         requires_rollback_contract: allowlisted_for_real_handler,
         requires_idempotency_key: allowlisted_for_real_handler,
+        idempotency_evidence_ready: execution_evidence_ready,
         requires_audit_event: allowlisted_for_real_handler,
+        audit_event_contract_ready: execution_evidence_ready,
         requires_rate_limit: allowlisted_for_real_handler,
         requires_dry_run_first: true,
         external_side_effects_possible: allowlisted_for_real_handler,
         blocked_reason: if allowlisted_for_real_handler && !request_body_ready_for_real_handler {
             "body_admission_not_ready"
+        } else if allowlisted_for_real_handler && !execution_evidence_ready {
+            "execution_evidence_not_ready"
         } else if allowlisted_for_real_handler {
             "real_handler_not_wired"
         } else {
@@ -3653,11 +3726,15 @@ struct NativePostPlanResponse {
     body_admission_ready: bool,
     confirmation_contract_ready: bool,
     rollback_contract_ready: bool,
+    idempotency_evidence_ready: bool,
+    audit_event_contract_ready: bool,
     execution_admission_ready: bool,
     body_schema: NativePostBodySchema,
     body_admission: NativePostBodyAdmission,
     confirmation_contract: NativePostConfirmationContract,
     rollback_contract: NativePostRollbackContract,
+    idempotency_evidence: NativePostIdempotencyEvidence,
+    audit_event_contract: NativePostAuditEventContract,
     execution_admission: NativePostExecutionAdmission,
     action_dispatched: bool,
     command_executed: bool,
@@ -3736,6 +3813,41 @@ struct NativePostRollbackContract {
 }
 
 #[derive(Debug, Serialize)]
+struct NativePostIdempotencyEvidence {
+    required: bool,
+    key_present: bool,
+    key_redacted: bool,
+    key_shape_valid: bool,
+    lookup_required_before_real_handler: bool,
+    duplicate_suppression_required: bool,
+    durable_store_required: bool,
+    current_plan_lookup_performed: bool,
+    current_plan_store_written: bool,
+    raw_key_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostAuditEventContract {
+    required: bool,
+    schema_id: &'static str,
+    event_kind: &'static str,
+    body_schema_id: &'static str,
+    route_pattern_recorded: bool,
+    capability_recorded: bool,
+    body_admission_status_recorded: bool,
+    idempotency_evidence_recorded: bool,
+    rollback_contract_recorded: bool,
+    operator_approval_recorded: bool,
+    ready_for_real_handler: bool,
+    current_plan_emits_audit_event: bool,
+    current_plan_persists_audit_event: bool,
+    raw_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_parameter_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct NativePostExecutionAdmission {
     admission_status: &'static str,
     current_plan_executes_real_handler: bool,
@@ -3750,7 +3862,9 @@ struct NativePostExecutionAdmission {
     requires_confirmation_contract: bool,
     requires_rollback_contract: bool,
     requires_idempotency_key: bool,
+    idempotency_evidence_ready: bool,
     requires_audit_event: bool,
+    audit_event_contract_ready: bool,
     requires_rate_limit: bool,
     requires_dry_run_first: bool,
     external_side_effects_possible: bool,
@@ -5560,6 +5674,8 @@ mod tests {
         assert_eq!(report.body_schema_ready, true);
         assert_eq!(report.confirmation_contract_ready, true);
         assert_eq!(report.rollback_contract_ready, true);
+        assert_eq!(report.idempotency_evidence_ready, true);
+        assert_eq!(report.audit_event_contract_ready, true);
         assert_eq!(report.execution_admission_ready, true);
         assert_eq!(report.body_schema.schema_id, "hepta.post.ui_action.v1");
         assert_eq!(report.body_schema.body_read_during_plan, false);
@@ -5588,6 +5704,30 @@ mod tests {
             "noop_no_state_written"
         );
         assert_eq!(report.rollback_contract.state_written_by_plan, false);
+        assert_eq!(report.idempotency_evidence.required, false);
+        assert_eq!(report.idempotency_evidence.key_present, false);
+        assert_eq!(
+            report.idempotency_evidence.current_plan_store_written,
+            false
+        );
+        assert_eq!(report.idempotency_evidence.raw_key_exposed, false);
+        assert_eq!(report.audit_event_contract.required, false);
+        assert_eq!(
+            report.audit_event_contract.schema_id,
+            "hepta.post.execution_audit.v1"
+        );
+        assert_eq!(report.audit_event_contract.event_kind, "ui_action");
+        assert_eq!(report.audit_event_contract.ready_for_real_handler, true);
+        assert_eq!(
+            report.audit_event_contract.current_plan_emits_audit_event,
+            false
+        );
+        assert_eq!(
+            report
+                .audit_event_contract
+                .current_plan_persists_audit_event,
+            false
+        );
         assert_eq!(report.execution_admission.admission_status, "blocked");
         assert_eq!(
             report
@@ -5726,6 +5866,8 @@ mod tests {
             assert_eq!(value["body_admission_ready"], true);
             assert_eq!(value["confirmation_contract_ready"], true);
             assert_eq!(value["rollback_contract_ready"], true);
+            assert_eq!(value["idempotency_evidence_ready"], true);
+            assert_eq!(value["audit_event_contract_ready"], true);
             assert_eq!(value["execution_admission_ready"], true);
             assert_eq!(value["body_schema"]["content_type"], "application/json");
             assert_eq!(value["body_schema"]["body_read_during_plan"], false);
@@ -5759,6 +5901,36 @@ mod tests {
             );
             assert_eq!(
                 value["rollback_contract"]["destructive_without_rollback"],
+                false
+            );
+            assert_eq!(value["idempotency_evidence"]["required"], confirm_required);
+            assert_eq!(value["idempotency_evidence"]["key_present"], false);
+            assert_eq!(value["idempotency_evidence"]["key_redacted"], false);
+            assert_eq!(
+                value["idempotency_evidence"]["current_plan_lookup_performed"],
+                false
+            );
+            assert_eq!(
+                value["idempotency_evidence"]["current_plan_store_written"],
+                false
+            );
+            assert_eq!(value["idempotency_evidence"]["raw_key_exposed"], false);
+            assert_eq!(value["audit_event_contract"]["required"], confirm_required);
+            assert_eq!(
+                value["audit_event_contract"]["schema_id"],
+                "hepta.post.execution_audit.v1"
+            );
+            assert_eq!(value["audit_event_contract"]["event_kind"], plan_kind);
+            assert_eq!(
+                value["audit_event_contract"]["current_plan_emits_audit_event"],
+                false
+            );
+            assert_eq!(
+                value["audit_event_contract"]["current_plan_persists_audit_event"],
+                false
+            );
+            assert_eq!(
+                value["audit_event_contract"]["raw_idempotency_key_exposed"],
                 false
             );
             assert_eq!(value["execution_admission"]["admission_status"], "blocked");
@@ -5807,8 +5979,16 @@ mod tests {
                 confirm_required
             );
             assert_eq!(
+                value["execution_admission"]["idempotency_evidence_ready"],
+                !confirm_required
+            );
+            assert_eq!(
                 value["execution_admission"]["requires_audit_event"],
                 confirm_required
+            );
+            assert_eq!(
+                value["execution_admission"]["audit_event_contract_ready"],
+                !confirm_required
             );
             assert_eq!(
                 value["execution_admission"]["requires_rate_limit"],
@@ -5899,12 +6079,58 @@ mod tests {
         );
         assert_eq!(value["body_admission"]["raw_body_exposed"], false);
         assert_eq!(value["body_admission"]["raw_field_values_exposed"], false);
+        assert_eq!(value["idempotency_evidence"]["required"], true);
+        assert_eq!(value["idempotency_evidence"]["key_present"], true);
+        assert_eq!(value["idempotency_evidence"]["key_redacted"], true);
+        assert_eq!(value["idempotency_evidence"]["key_shape_valid"], true);
+        assert_eq!(
+            value["idempotency_evidence"]["duplicate_suppression_required"],
+            true
+        );
+        assert_eq!(
+            value["idempotency_evidence"]["current_plan_store_written"],
+            false
+        );
+        assert_eq!(value["idempotency_evidence"]["raw_key_exposed"], false);
+        assert_eq!(value["audit_event_contract"]["required"], true);
+        assert_eq!(
+            value["audit_event_contract"]["body_schema_id"],
+            "hepta.post.task_publish.v1"
+        );
+        assert_eq!(
+            value["audit_event_contract"]["body_admission_status_recorded"],
+            true
+        );
+        assert_eq!(
+            value["audit_event_contract"]["idempotency_evidence_recorded"],
+            true
+        );
+        assert_eq!(
+            value["audit_event_contract"]["ready_for_real_handler"],
+            true
+        );
+        assert_eq!(
+            value["audit_event_contract"]["current_plan_emits_audit_event"],
+            false
+        );
+        assert_eq!(
+            value["audit_event_contract"]["raw_idempotency_key_exposed"],
+            false
+        );
         assert_eq!(
             value["execution_admission"]["request_body_admission_status"],
             "ready_for_real_handler"
         );
         assert_eq!(
             value["execution_admission"]["request_body_ready_for_real_handler"],
+            true
+        );
+        assert_eq!(
+            value["execution_admission"]["idempotency_evidence_ready"],
+            true
+        );
+        assert_eq!(
+            value["execution_admission"]["audit_event_contract_ready"],
             true
         );
         assert_eq!(
