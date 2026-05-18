@@ -1619,6 +1619,9 @@ fn native_post_plan_report(
     spec: &NativePostPlanRouteSpec,
     parameter: Option<&str>,
 ) -> NativePostPlanResponse {
+    let body_schema = native_post_body_schema(spec.plan_kind);
+    let confirmation_contract = native_post_confirmation_contract(spec);
+    let rollback_contract = native_post_rollback_contract();
     NativePostPlanResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -1642,6 +1645,12 @@ fn native_post_plan_report(
         parameter_length: parameter.map(str::len),
         request_body_read: false,
         request_body_redacted: true,
+        body_schema_ready: true,
+        confirmation_contract_ready: true,
+        rollback_contract_ready: true,
+        body_schema,
+        confirmation_contract,
+        rollback_contract,
         action_dispatched: false,
         command_executed: false,
         approval_applied: false,
@@ -1658,6 +1667,120 @@ fn native_post_plan_report(
         message_sent: false,
         cursor_written: false,
         next_migration_slice: "wire selected POST planners to real handlers only after body schema, confirmation, and rollback contracts are explicit",
+    }
+}
+
+fn native_post_body_schema(plan_kind: &str) -> NativePostBodySchema {
+    let (schema_id, body_required_for_real_handler, required_fields, optional_fields) =
+        match plan_kind {
+            "ui_action" => (
+                "hepta.post.ui_action.v1",
+                false,
+                vec![],
+                vec!["action_payload", "dry_run", "confirm", "reason"],
+            ),
+            "readonly_command" => (
+                "hepta.post.readonly_command.v1",
+                false,
+                vec![],
+                vec!["command_args", "dry_run"],
+            ),
+            "approval_apply" => (
+                "hepta.post.approval_apply.v1",
+                true,
+                vec!["approval_id", "confirm"],
+                vec!["dry_run", "reason"],
+            ),
+            "task_plan" => (
+                "hepta.post.task_plan.v1",
+                false,
+                vec![],
+                vec!["task", "channel", "delivery", "dry_run"],
+            ),
+            "task_publish" => (
+                "hepta.post.task_publish.v1",
+                true,
+                vec!["task", "confirm"],
+                vec!["delivery", "timeout_seconds", "rollback_hint"],
+            ),
+            "chat_register" => (
+                "hepta.post.chat_register.v1",
+                true,
+                vec!["chat_id"],
+                vec!["label", "metadata"],
+            ),
+            "chat_archive" => (
+                "hepta.post.chat_archive.v1",
+                true,
+                vec!["chat_id"],
+                vec!["reason"],
+            ),
+            "chat_unarchive" => (
+                "hepta.post.chat_unarchive.v1",
+                true,
+                vec!["chat_id"],
+                vec!["reason"],
+            ),
+            "chat_delete" => (
+                "hepta.post.chat_delete.v1",
+                true,
+                vec!["chat_id"],
+                vec!["reason", "confirm"],
+            ),
+            "chat_plan" => (
+                "hepta.post.chat_plan.v1",
+                false,
+                vec![],
+                vec!["chat_id", "message", "dry_run"],
+            ),
+            "chat_send" => (
+                "hepta.post.chat_send.v1",
+                true,
+                vec!["chat_id", "message", "confirm"],
+                vec!["thread_id", "delivery", "rollback_hint"],
+            ),
+            _ => ("hepta.post.unknown.v1", false, vec![], vec!["dry_run"]),
+        };
+
+    NativePostBodySchema {
+        schema_id,
+        content_type: "application/json",
+        body_required_for_real_handler,
+        required_fields,
+        optional_fields,
+        body_read_during_plan: false,
+        raw_body_exposed: false,
+        raw_field_values_exposed: false,
+    }
+}
+
+fn native_post_confirmation_contract(
+    spec: &NativePostPlanRouteSpec,
+) -> NativePostConfirmationContract {
+    NativePostConfirmationContract {
+        current_plan_requires_confirmation: false,
+        real_mutation_requires_confirmation: spec.confirmation_required_for_real_mutation,
+        accepted_confirmation_field: spec
+            .confirmation_required_for_real_mutation
+            .then_some("confirm"),
+        operator_approval_required: spec.confirmation_required_for_real_mutation,
+        confirmation_mechanism: if spec.confirmation_required_for_real_mutation {
+            "explicit_confirm_field_plus_operator_approval"
+        } else {
+            "not_required_for_plan_only_route"
+        },
+        raw_confirmation_payload_exposed: false,
+    }
+}
+
+fn native_post_rollback_contract() -> NativePostRollbackContract {
+    NativePostRollbackContract {
+        current_plan_noop: true,
+        state_written_by_plan: false,
+        current_plan_rollback_strategy: "noop_no_state_written",
+        real_handler_requires_rollback_contract: true,
+        destructive_without_rollback: false,
+        rollback_payload_exposed: false,
     }
 }
 
@@ -3293,6 +3416,12 @@ struct NativePostPlanResponse {
     parameter_length: Option<usize>,
     request_body_read: bool,
     request_body_redacted: bool,
+    body_schema_ready: bool,
+    confirmation_contract_ready: bool,
+    rollback_contract_ready: bool,
+    body_schema: NativePostBodySchema,
+    confirmation_contract: NativePostConfirmationContract,
+    rollback_contract: NativePostRollbackContract,
     action_dispatched: bool,
     command_executed: bool,
     approval_applied: bool,
@@ -3309,6 +3438,38 @@ struct NativePostPlanResponse {
     message_sent: bool,
     cursor_written: bool,
     next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostBodySchema {
+    schema_id: &'static str,
+    content_type: &'static str,
+    body_required_for_real_handler: bool,
+    required_fields: Vec<&'static str>,
+    optional_fields: Vec<&'static str>,
+    body_read_during_plan: bool,
+    raw_body_exposed: bool,
+    raw_field_values_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostConfirmationContract {
+    current_plan_requires_confirmation: bool,
+    real_mutation_requires_confirmation: bool,
+    accepted_confirmation_field: Option<&'static str>,
+    operator_approval_required: bool,
+    confirmation_mechanism: &'static str,
+    raw_confirmation_payload_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostRollbackContract {
+    current_plan_noop: bool,
+    state_written_by_plan: bool,
+    current_plan_rollback_strategy: &'static str,
+    real_handler_requires_rollback_contract: bool,
+    destructive_without_rollback: bool,
+    rollback_payload_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -5068,6 +5229,30 @@ mod tests {
         assert_eq!(report.parameter_redacted, true);
         assert_eq!(report.parameter_length, Some("secret-action-payload".len()));
         assert_eq!(report.request_body_read, false);
+        assert_eq!(report.body_schema_ready, true);
+        assert_eq!(report.confirmation_contract_ready, true);
+        assert_eq!(report.rollback_contract_ready, true);
+        assert_eq!(report.body_schema.schema_id, "hepta.post.ui_action.v1");
+        assert_eq!(report.body_schema.body_read_during_plan, false);
+        assert_eq!(report.body_schema.raw_body_exposed, false);
+        assert_eq!(
+            report
+                .body_schema
+                .optional_fields
+                .contains(&"action_payload"),
+            true
+        );
+        assert_eq!(
+            report
+                .confirmation_contract
+                .current_plan_requires_confirmation,
+            false
+        );
+        assert_eq!(
+            report.rollback_contract.current_plan_rollback_strategy,
+            "noop_no_state_written"
+        );
+        assert_eq!(report.rollback_contract.state_written_by_plan, false);
         assert_eq!(report.raw_request_body_exposed, false);
         assert_eq!(report.raw_parameter_exposed, false);
         assert_eq!(report.action_dispatched, false);
@@ -5183,6 +5368,39 @@ mod tests {
             assert_eq!(value["parameter_redacted"], parameter_present);
             assert_eq!(value["request_body_read"], false);
             assert_eq!(value["request_body_redacted"], true);
+            assert_eq!(value["body_schema_ready"], true);
+            assert_eq!(value["confirmation_contract_ready"], true);
+            assert_eq!(value["rollback_contract_ready"], true);
+            assert_eq!(value["body_schema"]["content_type"], "application/json");
+            assert_eq!(value["body_schema"]["body_read_during_plan"], false);
+            assert_eq!(value["body_schema"]["raw_body_exposed"], false);
+            assert_eq!(value["body_schema"]["raw_field_values_exposed"], false);
+            assert_eq!(
+                value["confirmation_contract"]["current_plan_requires_confirmation"],
+                false
+            );
+            assert_eq!(
+                value["confirmation_contract"]["real_mutation_requires_confirmation"],
+                confirm_required
+            );
+            assert_eq!(
+                value["confirmation_contract"]["operator_approval_required"],
+                confirm_required
+            );
+            assert_eq!(
+                value["confirmation_contract"]["raw_confirmation_payload_exposed"],
+                false
+            );
+            assert_eq!(value["rollback_contract"]["current_plan_noop"], true);
+            assert_eq!(value["rollback_contract"]["state_written_by_plan"], false);
+            assert_eq!(
+                value["rollback_contract"]["real_handler_requires_rollback_contract"],
+                true
+            );
+            assert_eq!(
+                value["rollback_contract"]["destructive_without_rollback"],
+                false
+            );
             assert_eq!(value["action_dispatched"], false);
             assert_eq!(value["command_executed"], false);
             assert_eq!(value["approval_applied"], false);
