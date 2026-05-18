@@ -32,6 +32,8 @@ const MAX_NATIVE_TRANSCRIPT_FILES: usize = 5;
 const MAX_NATIVE_TRANSCRIPT_QUERY_FILES: usize = 20;
 const MAX_NATIVE_TRANSCRIPT_LINES_PER_FILE: usize = 2_000;
 const MAX_NATIVE_TRANSCRIPT_EVENT_PREVIEWS_PER_FILE: usize = 40;
+const MAX_NATIVE_EVENT_FILES: usize = 20;
+const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
 
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
@@ -583,6 +585,27 @@ fn route_native_gateway_request(
                     native_transcript_json(None),
                 );
             }
+            "/api/events" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_events_json(NativeEventSurface::Events, None),
+                );
+            }
+            "/api/events-report" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_events_json(NativeEventSurface::EventsReport, None),
+                );
+            }
+            "/api/activity" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_events_json(NativeEventSurface::Activity, None),
+                );
+            }
             "/api/telegram-plugin" => {
                 return (
                     "200 OK",
@@ -676,6 +699,17 @@ fn route_native_gateway_request(
                 "200 OK",
                 "application/json; charset=utf-8",
                 native_transcript_json(Some(query)),
+            );
+        }
+
+        if let Some(cursor) = path
+            .strip_prefix("/api/live-events/")
+            .filter(|cursor| !cursor.is_empty())
+        {
+            return (
+                "200 OK",
+                "application/json; charset=utf-8",
+                native_events_json(NativeEventSurface::LiveEvents, Some(cursor)),
             );
         }
 
@@ -829,8 +863,12 @@ fn native_gateway_json(
             "Control UI route parity report",
             "Control UI side-effect-free compatibility endpoints",
             "Gateway live activation side-effect-free plan",
+            "Native redacted session inventory",
+            "Native redacted transcript preview/search",
+            "Native redacted task artifact surfaces",
+            "Native redacted events/activity surfaces",
         ],
-        next_migration_slice: "continue active Telegram soak and inspect /api/telegram-live-soak before broadening traffic",
+        next_migration_slice: "promote approvals, policy, and config surfaces with redacted local-only inventory",
     })
 }
 
@@ -1308,6 +1346,119 @@ fn native_task_artifact_report(
         message_sent: false,
         cursor_written: false,
         next_migration_slice: "replace redacted task evidence search with structured task registry storage when available",
+    }
+}
+
+fn native_events_json(surface: NativeEventSurface, cursor: Option<&str>) -> String {
+    json_or_error(&native_events_report(
+        session_root_candidates(),
+        surface,
+        cursor,
+    ))
+}
+
+fn native_events_report(
+    roots: Vec<NativeSessionRootCandidate>,
+    surface: NativeEventSurface,
+    cursor: Option<&str>,
+) -> NativeEventsResponse {
+    let transcript = native_transcript_report(roots.clone(), None, MAX_NATIVE_EVENT_FILES);
+    let activity_sessions = if surface.includes_activity_sessions() {
+        Some(native_sessions_report(
+            roots,
+            "/activity sessions --json",
+            "native_activity_session_inventory",
+        ))
+    } else {
+        None
+    };
+
+    let mut event_type_counts = BTreeMap::<String, u64>::new();
+    let mut recent_events = Vec::<NativeEventPreview>::new();
+    let mut total_line_count = 0_u64;
+    let mut parsed_json_line_count = 0_u64;
+    let mut truncated_session_count = 0_usize;
+
+    for session in &transcript.sessions {
+        total_line_count = total_line_count.saturating_add(session.line_count);
+        parsed_json_line_count =
+            parsed_json_line_count.saturating_add(session.parsed_json_line_count);
+        truncated_session_count += usize::from(session.truncated);
+        for count in &session.event_type_counts {
+            *event_type_counts
+                .entry(count.event_type.clone())
+                .or_default() += count.count;
+        }
+        for event in &session.redacted_events {
+            if recent_events.len() >= MAX_NATIVE_EVENT_PREVIEWS {
+                break;
+            }
+            recent_events.push(NativeEventPreview {
+                root_kind: session.root_kind,
+                session_id: session.session_id.clone(),
+                started_at_filename: session.started_at_filename.clone(),
+                relative_path: session.relative_path.clone(),
+                line_number: event.line_number,
+                event_type: event.event_type.clone(),
+                role: event.role.clone(),
+                has_text_fields: event.has_text_fields,
+                redacted: true,
+            });
+        }
+    }
+
+    let activity_scan_errors = activity_sessions
+        .as_ref()
+        .map(|sessions| sessions.scan_error_count)
+        .unwrap_or_default();
+    let scan_error_count = transcript.scan_error_count + activity_scan_errors;
+    let status = if scan_error_count == 0 {
+        "ready"
+    } else {
+        "attention"
+    };
+
+    NativeEventsResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status,
+        source_command: surface.source_command(),
+        native_route: true,
+        compatibility_mode: surface.compatibility_mode(),
+        side_effect_free: true,
+        event_surface: surface.event_surface(),
+        cursor_present: cursor.is_some(),
+        cursor_redacted: cursor.is_some(),
+        cursor_length: cursor.map(str::len),
+        cursor_parseable_as_u64: cursor.and_then(|value| value.parse::<u64>().ok()).is_some(),
+        scanned_session_file_count: transcript.scanned_session_file_count,
+        available_session_file_count: transcript.available_session_file_count,
+        max_files: transcript.max_files,
+        max_lines_per_file: transcript.max_lines_per_file,
+        total_line_count,
+        parsed_json_line_count,
+        parse_error_count: transcript.parse_error_count,
+        scan_error_count,
+        truncated_session_count,
+        event_type_count: event_type_counts.len(),
+        event_type_counts: event_type_counts
+            .into_iter()
+            .map(|(event_type, count)| NativeTranscriptEventCount { event_type, count })
+            .collect(),
+        recent_event_count: recent_events.len(),
+        recent_events,
+        activity_sessions,
+        raw_transcript_exposed: false,
+        transcript_text_exposed: false,
+        raw_cursor_exposed: false,
+        cursor_text_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "promote approvals, policy, and config surfaces with redacted local-only inventory",
     }
 }
 
@@ -2152,6 +2303,47 @@ struct NativeTaskArtifactRouteSpec {
     compatibility_mode: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeEventSurface {
+    Events,
+    LiveEvents,
+    EventsReport,
+    Activity,
+}
+
+impl NativeEventSurface {
+    fn source_command(self) -> &'static str {
+        match self {
+            Self::Events => "/events --json",
+            Self::LiveEvents => "/live-events <cursor> --json",
+            Self::EventsReport => "/events-report --json",
+            Self::Activity => "/activity --json",
+        }
+    }
+
+    fn compatibility_mode(self) -> &'static str {
+        match self {
+            Self::Events => "native_events_redacted",
+            Self::LiveEvents => "native_live_events_redacted",
+            Self::EventsReport => "native_events_report_redacted",
+            Self::Activity => "native_activity_redacted",
+        }
+    }
+
+    fn event_surface(self) -> &'static str {
+        match self {
+            Self::Events => "events",
+            Self::LiveEvents => "live_events",
+            Self::EventsReport => "events_report",
+            Self::Activity => "activity",
+        }
+    }
+
+    fn includes_activity_sessions(self) -> bool {
+        self == Self::Activity
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct NativeTaskArtifactResponse {
     product: &'static str,
@@ -2178,6 +2370,60 @@ struct NativeTaskArtifactResponse {
     message_sent: bool,
     cursor_written: bool,
     next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeEventsResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    event_surface: &'static str,
+    cursor_present: bool,
+    cursor_redacted: bool,
+    cursor_length: Option<usize>,
+    cursor_parseable_as_u64: bool,
+    scanned_session_file_count: usize,
+    available_session_file_count: usize,
+    max_files: usize,
+    max_lines_per_file: usize,
+    total_line_count: u64,
+    parsed_json_line_count: u64,
+    parse_error_count: usize,
+    scan_error_count: usize,
+    truncated_session_count: usize,
+    event_type_count: usize,
+    event_type_counts: Vec<NativeTranscriptEventCount>,
+    recent_event_count: usize,
+    recent_events: Vec<NativeEventPreview>,
+    activity_sessions: Option<NativeSessionsResponse>,
+    raw_transcript_exposed: bool,
+    transcript_text_exposed: bool,
+    raw_cursor_exposed: bool,
+    cursor_text_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeEventPreview {
+    root_kind: &'static str,
+    session_id: String,
+    started_at_filename: Option<String>,
+    relative_path: String,
+    line_number: usize,
+    event_type: String,
+    role: Option<String>,
+    has_text_fields: bool,
+    redacted: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -3165,6 +3411,118 @@ mod tests {
                 value["compatibility_mode"],
                 "native_control_ui_route_parity_shell"
             );
+        }
+    }
+
+    #[test]
+    fn event_report_redacts_cursor_and_transcript_text() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sessions = temp.path().join("sessions/2026/05/18");
+        std::fs::create_dir_all(&sessions).expect("create sessions dir");
+        std::fs::write(
+            sessions.join(
+                "rollout-2026-05-18T12-10-00-019e3900-3333-7000-a111-555555555555.jsonl",
+            ),
+            concat!(
+                r#"{"timestamp":"2026-05-18T04:10:00Z","type":"event_msg","payload":{"type":"agent_message","role":"assistant","message":"confidential event text"}}"#,
+                "\n",
+                r#"{"timestamp":"2026-05-18T04:10:01Z","type":"response_item","payload":{"type":"token_count","count":7}}"#,
+                "\n",
+            ),
+        )
+        .expect("write rollout");
+
+        let report = native_events_report(
+            vec![NativeSessionRootCandidate {
+                root: temp.path().join("sessions"),
+                kind: "active",
+            }],
+            NativeEventSurface::LiveEvents,
+            Some("secret-live-cursor"),
+        );
+        let body = serde_json::to_string(&report).expect("serialize events report");
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.native_route, true);
+        assert_eq!(report.compatibility_mode, "native_live_events_redacted");
+        assert_eq!(report.cursor_present, true);
+        assert_eq!(report.cursor_redacted, true);
+        assert_eq!(report.cursor_length, Some("secret-live-cursor".len()));
+        assert_eq!(report.raw_cursor_exposed, false);
+        assert_eq!(report.cursor_text_exposed, false);
+        assert_eq!(report.raw_transcript_exposed, false);
+        assert_eq!(report.transcript_text_exposed, false);
+        assert_eq!(report.total_line_count, 2);
+        assert_eq!(report.parsed_json_line_count, 2);
+        assert_eq!(report.recent_event_count, 2);
+        assert!(
+            report
+                .event_type_counts
+                .iter()
+                .any(|count| count.event_type == "event_msg:agent_message" && count.count == 1)
+        );
+        assert!(!body.contains("secret-live-cursor"));
+        assert!(!body.contains("confidential event text"));
+    }
+
+    #[test]
+    fn event_and_activity_routes_return_native_redacted_views_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (path, mode, surface, cursor_present) in [
+            ("/api/events", "native_events_redacted", "events", false),
+            (
+                "/api/live-events/sample-secret-cursor",
+                "native_live_events_redacted",
+                "live_events",
+                true,
+            ),
+            (
+                "/api/events-report",
+                "native_events_report_redacted",
+                "events_report",
+                false,
+            ),
+            (
+                "/api/activity",
+                "native_activity_redacted",
+                "activity",
+                false,
+            ),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request("GET", path, &options);
+            assert_eq!(status, "200 OK", "{path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            assert!(!body.contains("sample-secret-cursor"));
+            let value: serde_json::Value = serde_json::from_str(&body).expect("events route json");
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["native_route"], true);
+            assert_eq!(value["compatibility_mode"], mode);
+            assert_eq!(value["event_surface"], surface);
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(value["cursor_present"], cursor_present);
+            assert_eq!(value["raw_cursor_exposed"], false);
+            assert_eq!(value["cursor_text_exposed"], false);
+            assert_eq!(value["raw_transcript_exposed"], false);
+            assert_eq!(value["transcript_text_exposed"], false);
+            assert_eq!(value["external_side_effects"], false);
+            assert_eq!(value["gateway_mutation_performed"], false);
+            assert_eq!(value["telegram_read_performed"], false);
+            assert_eq!(value["model_invoked"], false);
+            assert_eq!(value["message_sent"], false);
+            assert_eq!(value["cursor_written"], false);
+            assert_ne!(
+                value["compatibility_mode"],
+                "native_control_ui_route_parity_shell"
+            );
+            if path == "/api/activity" {
+                assert!(value["activity_sessions"].is_object());
+            } else {
+                assert!(value["activity_sessions"].is_null());
+            }
         }
     }
 
