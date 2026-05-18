@@ -8,6 +8,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
@@ -45,6 +46,8 @@ const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
 const NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
 const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
+const NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV: &str = "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS";
+const DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS: u64 = 1_000;
 const DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR: &str = ".hepta/native-post-execution";
 const NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND: &str = "task_publish";
 
@@ -2219,9 +2222,27 @@ fn native_post_real_handler_harness(
         (false, None)
     };
     let duplicate_suppressed = duplicate_check_performed && duplicate_found;
-    let store_write_attempted = execution_admission.current_plan_executes_real_handler
+    let rate_limit_window_ms = native_post_rate_limit_window_ms();
+    let rate_limit_check_performed = execution_admission.current_plan_executes_real_handler
         && !duplicate_suppressed
         && duplicate_check_error.is_none();
+    let (rate_limited, rate_limit_check_error) = if rate_limit_check_performed {
+        match native_post_rate_limit_recent_present(
+            store_root,
+            spec.plan_kind,
+            rate_limit_window_ms,
+        ) {
+            Ok(limited) => (limited, None),
+            Err(_error) => (false, Some("native_post_rate_limit_check_failed")),
+        }
+    } else {
+        (false, None)
+    };
+    let store_write_attempted = execution_admission.current_plan_executes_real_handler
+        && !duplicate_suppressed
+        && duplicate_check_error.is_none()
+        && !rate_limited
+        && rate_limit_check_error.is_none();
     let (store_write_succeeded, store_write_report, store_write_error) = if store_write_attempted {
         let record = native_post_execution_store_record(
             spec,
@@ -2252,6 +2273,10 @@ fn native_post_real_handler_harness(
                 "duplicate_suppressed"
             } else if duplicate_check_error.is_some() {
                 "idempotency_check_failed"
+            } else if rate_limited {
+                "rate_limited"
+            } else if rate_limit_check_error.is_some() {
+                "rate_limit_check_failed"
             } else {
                 "blocked"
             }
@@ -2272,6 +2297,11 @@ fn native_post_real_handler_harness(
         duplicate_found,
         duplicate_suppressed,
         duplicate_check_error,
+        rate_limit_check_performed,
+        rate_limited,
+        rate_limit_suppressed: rate_limit_check_performed && rate_limited,
+        rate_limit_window_ms,
+        rate_limit_check_error,
         store_write_attempted,
         store_write_succeeded,
         store_write_report,
@@ -2533,6 +2563,7 @@ fn native_post_execution_store_record(
 ) -> NativePostExecutionStoreRecord {
     NativePostExecutionStoreRecord {
         schema_id: "hepta.post.execution_store_record.v1",
+        recorded_at_unix_ms: native_post_now_unix_ms(),
         route_pattern: spec.pattern,
         capability: spec.capability,
         plan_kind: spec.plan_kind,
@@ -2617,6 +2648,65 @@ fn native_post_idempotency_duplicate_present(
             path.display()
         )),
     }
+}
+
+fn native_post_rate_limit_window_ms() -> u64 {
+    env::var(NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS)
+}
+
+fn native_post_now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
+fn native_post_rate_limit_recent_present(
+    root: &Path,
+    bucket: &str,
+    window_ms: u64,
+) -> Result<bool, String> {
+    let path = root.join("rate-limit.jsonl");
+    let content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!(
+                "failed to read native POST rate-limit store {}: {error}",
+                path.display()
+            ));
+        }
+    };
+    let now_ms = native_post_now_unix_ms();
+    for line in content.lines() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let Some(record_bucket) = value
+            .get("rate_limit_bucket")
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        if record_bucket != bucket {
+            continue;
+        }
+        let Some(recorded_at_ms) = value
+            .get("recorded_at_unix_ms")
+            .and_then(serde_json::Value::as_u64)
+        else {
+            continue;
+        };
+        if now_ms.saturating_sub(recorded_at_ms) <= window_ms {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn native_events_json(surface: NativeEventSurface, cursor: Option<&str>) -> String {
@@ -4448,6 +4538,11 @@ struct NativePostRealHandlerHarness {
     duplicate_found: bool,
     duplicate_suppressed: bool,
     duplicate_check_error: Option<&'static str>,
+    rate_limit_check_performed: bool,
+    rate_limited: bool,
+    rate_limit_suppressed: bool,
+    rate_limit_window_ms: u64,
+    rate_limit_check_error: Option<&'static str>,
     store_write_attempted: bool,
     store_write_succeeded: bool,
     store_write_report: Option<NativePostExecutionStoreWriteReport>,
@@ -4594,6 +4689,7 @@ struct NativePostExecutionStoreFileStatus {
 #[derive(Debug, Serialize)]
 struct NativePostExecutionStoreRecord {
     schema_id: &'static str,
+    recorded_at_unix_ms: u64,
     route_pattern: &'static str,
     capability: &'static str,
     plan_kind: &'static str,
@@ -7217,6 +7313,92 @@ mod tests {
         );
         assert!(!idempotency_content.contains("secret duplicate task"));
         assert!(!idempotency_content.contains("secret-duplicate-idem"));
+    }
+
+    #[test]
+    fn native_post_real_handler_harness_rate_limits_recent_bucket() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND)
+            .expect("task publish spec");
+        let first_body = r#"{"task":"secret first task","confirm":true,"dry_run":true,"idempotency_key":"secret-first-idem"}"#;
+        let second_body = r#"{"task":"secret second task","confirm":true,"dry_run":true,"idempotency_key":"secret-second-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let first_body_admission = native_post_body_admission(spec, &body_schema, Some(first_body));
+        let first_idempotency_evidence =
+            native_post_idempotency_evidence(spec, &first_body_admission);
+        let first_audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &first_body_admission,
+            &first_idempotency_evidence,
+        );
+        let first_execution_admission = native_post_execution_admission_with_gates(
+            spec,
+            &first_body_admission,
+            &first_idempotency_evidence,
+            &first_audit_event_contract,
+            true,
+            true,
+        );
+        let second_body_admission =
+            native_post_body_admission(spec, &body_schema, Some(second_body));
+        let second_idempotency_evidence =
+            native_post_idempotency_evidence(spec, &second_body_admission);
+        let second_audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &second_body_admission,
+            &second_idempotency_evidence,
+        );
+        let second_execution_admission = native_post_execution_admission_with_gates(
+            spec,
+            &second_body_admission,
+            &second_idempotency_evidence,
+            &second_audit_event_contract,
+            true,
+            true,
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        let first = native_post_real_handler_harness(
+            spec,
+            &body_schema,
+            &first_body_admission,
+            &first_idempotency_evidence,
+            &first_audit_event_contract,
+            &first_execution_admission,
+            temp.path(),
+        );
+        let second = native_post_real_handler_harness(
+            spec,
+            &body_schema,
+            &second_body_admission,
+            &second_idempotency_evidence,
+            &second_audit_event_contract,
+            &second_execution_admission,
+            temp.path(),
+        );
+
+        assert_eq!(first.status, "dry_run_recorded");
+        assert_eq!(first.rate_limit_check_performed, true);
+        assert_eq!(first.rate_limited, false);
+        assert_eq!(second.status, "rate_limited");
+        assert_eq!(second.duplicate_check_performed, true);
+        assert_eq!(second.duplicate_found, false);
+        assert_eq!(second.rate_limit_check_performed, true);
+        assert_eq!(second.rate_limited, true);
+        assert_eq!(second.rate_limit_suppressed, true);
+        assert_eq!(second.store_write_attempted, false);
+        assert_eq!(second.store_write_succeeded, false);
+        assert!(second.store_write_report.is_none());
+        let rate_limit_content = std::fs::read_to_string(temp.path().join("rate-limit.jsonl"))
+            .expect("rate-limit store");
+        assert_eq!(rate_limit_content.lines().count(), 1);
+        assert!(!rate_limit_content.contains("secret first task"));
+        assert!(!rate_limit_content.contains("secret second task"));
+        assert!(!rate_limit_content.contains("secret-first-idem"));
+        assert!(!rate_limit_content.contains("secret-second-idem"));
     }
 
     #[test]
