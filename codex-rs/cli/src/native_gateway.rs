@@ -2247,21 +2247,40 @@ fn native_post_real_handler_harness(
     } else {
         (false, None)
     };
-    let store_write_attempted = execution_admission.current_plan_executes_real_handler
+    let capacity_check_performed = execution_admission.current_plan_executes_real_handler
         && !duplicate_suppressed
         && duplicate_check_error.is_none()
         && !rate_limited
         && rate_limit_check_error.is_none();
-    let (store_write_succeeded, store_write_report, store_write_error) = if store_write_attempted {
-        let record = native_post_execution_store_record(
+    let pending_record = if capacity_check_performed {
+        Some(native_post_execution_store_record(
             spec,
             body_schema,
             body_admission,
             idempotency_evidence,
             audit_event_contract,
             true,
-        );
-        match persist_native_post_execution_store_record(store_root, &record) {
+        ))
+    } else {
+        None
+    };
+    let (store_capacity_ok, store_capacity_check_error) = if let Some(record) = &pending_record {
+        match native_post_execution_store_capacity_allows_append(store_root, record) {
+            Ok(ok) => (ok, None),
+            Err(_error) => (false, Some("native_post_store_capacity_check_failed")),
+        }
+    } else {
+        (true, None)
+    };
+    let store_write_attempted =
+        capacity_check_performed && store_capacity_ok && store_capacity_check_error.is_none();
+    let (store_write_succeeded, store_write_report, store_write_error) = if store_write_attempted {
+        match persist_native_post_execution_store_record(
+            store_root,
+            pending_record
+                .as_ref()
+                .expect("pending record exists before store write"),
+        ) {
             Ok(report) => (true, Some(report), None),
             Err(_error) => (
                 false,
@@ -2286,6 +2305,10 @@ fn native_post_real_handler_harness(
                 "rate_limited"
             } else if rate_limit_check_error.is_some() {
                 "rate_limit_check_failed"
+            } else if !store_capacity_ok {
+                "store_capacity_blocked"
+            } else if store_capacity_check_error.is_some() {
+                "store_capacity_check_failed"
             } else {
                 "blocked"
             }
@@ -2311,6 +2334,9 @@ fn native_post_real_handler_harness(
         rate_limit_suppressed: rate_limit_check_performed && rate_limited,
         rate_limit_window_ms,
         rate_limit_check_error,
+        capacity_check_performed,
+        store_capacity_ok,
+        store_capacity_check_error,
         store_write_attempted,
         store_write_succeeded,
         store_write_report,
@@ -2684,6 +2710,43 @@ fn native_post_execution_store_record(
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
     }
+}
+
+fn native_post_execution_store_capacity_allows_append(
+    root: &Path,
+    record: &NativePostExecutionStoreRecord,
+) -> Result<bool, String> {
+    native_post_execution_store_capacity_allows_append_with_limits(
+        root,
+        record,
+        native_post_store_max_bytes(),
+        native_post_store_max_lines(),
+    )
+}
+
+fn native_post_execution_store_capacity_allows_append_with_limits(
+    root: &Path,
+    record: &NativePostExecutionStoreRecord,
+    max_store_bytes: u64,
+    max_store_lines: u64,
+) -> Result<bool, String> {
+    let line = serde_json::to_string(record)
+        .map_err(|error| format!("failed to serialize native POST execution record: {error}"))?;
+    let projected_line_bytes = line.len() as u64 + 1;
+    for spec in native_post_execution_store_specs() {
+        let status =
+            native_post_execution_store_file_status(root, spec, max_store_bytes, max_store_lines);
+        if !status.jsonl_readable || !status.jsonl_valid {
+            return Ok(false);
+        }
+        if status.bytes.saturating_add(projected_line_bytes) > max_store_bytes {
+            return Ok(false);
+        }
+        if status.line_count.saturating_add(1) > max_store_lines {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 #[allow(dead_code)]
@@ -4645,6 +4708,9 @@ struct NativePostRealHandlerHarness {
     rate_limit_suppressed: bool,
     rate_limit_window_ms: u64,
     rate_limit_check_error: Option<&'static str>,
+    capacity_check_performed: bool,
+    store_capacity_ok: bool,
+    store_capacity_check_error: Option<&'static str>,
     store_write_attempted: bool,
     store_write_succeeded: bool,
     store_write_report: Option<NativePostExecutionStoreWriteReport>,
@@ -7416,6 +7482,8 @@ mod tests {
         assert_eq!(harness.dry_run_only, true);
         assert_eq!(harness.handler_implemented, true);
         assert_eq!(harness.dual_gate_satisfied, true);
+        assert_eq!(harness.capacity_check_performed, true);
+        assert_eq!(harness.store_capacity_ok, true);
         assert_eq!(harness.store_write_attempted, true);
         assert_eq!(harness.store_write_succeeded, true);
         assert_eq!(harness.task_published, false);
@@ -7437,6 +7505,65 @@ mod tests {
             assert!(!content.contains("secret task text"));
             assert!(!content.contains("secret-idem"));
         }
+    }
+
+    #[test]
+    fn native_post_execution_store_capacity_blocks_projected_append_over_limits() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let body = r#"{"task":"secret capacity task","confirm":true,"dry_run":true,"idempotency_key":"secret-capacity-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+        let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+        let audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+        );
+        let record = native_post_execution_store_record(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            true,
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+        persist_native_post_execution_store_record(temp.path(), &record).expect("seed stores");
+
+        assert_eq!(
+            native_post_execution_store_capacity_allows_append_with_limits(
+                temp.path(),
+                &record,
+                1024 * 1024,
+                2,
+            )
+            .expect("capacity check"),
+            true
+        );
+        assert_eq!(
+            native_post_execution_store_capacity_allows_append_with_limits(
+                temp.path(),
+                &record,
+                1024 * 1024,
+                1,
+            )
+            .expect("line capacity check"),
+            false
+        );
+        assert_eq!(
+            native_post_execution_store_capacity_allows_append_with_limits(
+                temp.path(),
+                &record,
+                8,
+                10,
+            )
+            .expect("byte capacity check"),
+            false
+        );
     }
 
     #[test]
