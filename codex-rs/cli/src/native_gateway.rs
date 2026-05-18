@@ -29,6 +29,7 @@ const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-r
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str = "/api/native-post-execution-readiness";
 const NATIVE_POST_EXECUTION_STORES_ENDPOINT: &str = "/api/native-post-execution-stores";
+const NATIVE_POST_ACTIVATION_PLAN_ENDPOINT: &str = "/api/native-post-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
 const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
 const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str = "/api/telegram-production-readiness";
@@ -261,6 +262,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/native-post-execution-stores --json",
         capability: "native-post-execution-stores",
         side_effect_boundary: "read-only POST execution store contract; no writes",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/native-post-activation-plan",
+        source_command: "/native-post-activation-plan --json",
+        capability: "native-post-activation-plan",
+        side_effect_boundary: "read-only POST handler activation and rollback plan",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -809,6 +817,13 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     native_post_execution_stores_json(),
+                );
+            }
+            NATIVE_POST_ACTIVATION_PLAN_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_post_activation_plan_json(),
                 );
             }
             "/api/sessions" => {
@@ -2357,6 +2372,110 @@ fn native_post_real_handler_harness(
 
 fn native_post_execution_readiness_json() -> String {
     json_or_error(&native_post_execution_readiness_report())
+}
+
+fn native_post_activation_plan_json() -> String {
+    json_or_error(&native_post_activation_plan_report())
+}
+
+fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
+    let readiness = native_post_execution_readiness_report();
+    let stores = native_post_execution_stores_report();
+    let real_handler_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
+    let operator_approval_enabled = env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV);
+    let all_handlers_implemented =
+        readiness.real_handler_implemented_count == readiness.real_handler_candidate_count;
+    let store_contracts_ready = stores.persistence_implementation_ready
+        && stores.idempotency_store_ready
+        && stores.audit_store_ready
+        && stores.rollback_store_ready
+        && stores.rate_limit_store_ready
+        && stores.store_jsonl_valid
+        && stores.store_capacity_ok;
+    let activation_preflight_ready =
+        readiness.all_evidence_contracts_ready && all_handlers_implemented && store_contracts_ready;
+    let activation_currently_enabled =
+        activation_preflight_ready && real_handler_gate_enabled && operator_approval_enabled;
+    let activation_blocked_reason = if !readiness.all_evidence_contracts_ready {
+        "execution_evidence_not_ready"
+    } else if !all_handlers_implemented {
+        "real_handler_not_implemented"
+    } else if !store_contracts_ready {
+        "store_contract_not_ready"
+    } else if !real_handler_gate_enabled {
+        "real_handler_gate_disabled"
+    } else if !operator_approval_enabled {
+        "operator_approval_required"
+    } else {
+        "dual_gate_satisfied_dry_run_harness_only"
+    };
+    let rollback_ready = activation_preflight_ready && stores.rollback_store_ready;
+
+    NativePostActivationPlanResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if activation_preflight_ready {
+            "ready"
+        } else {
+            "attention"
+        },
+        endpoint: NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
+        source_command: "/native-post-activation-plan --json",
+        native_route: true,
+        compatibility_mode: "native_post_activation_plan",
+        side_effect_free: true,
+        activation_preflight_ready,
+        activation_currently_enabled,
+        activation_blocked_reason,
+        handler_candidate_count: readiness.real_handler_candidate_count,
+        handler_implemented_count: readiness.real_handler_implemented_count,
+        all_handlers_implemented,
+        execution_evidence_ready: readiness.all_evidence_contracts_ready,
+        store_contracts_ready,
+        store_jsonl_valid: stores.store_jsonl_valid,
+        store_capacity_ok: stores.store_capacity_ok,
+        required_gates: vec![
+            NativePostActivationGate {
+                env: NATIVE_POST_REAL_HANDLERS_ENV,
+                enabled: real_handler_gate_enabled,
+                required_for_activation: true,
+                purpose: "allow native POST real-handler harness execution",
+            },
+            NativePostActivationGate {
+                env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+                enabled: operator_approval_enabled,
+                required_for_activation: true,
+                purpose: "operator approval for confirm-required native POST mutations",
+            },
+        ],
+        rollback_ready,
+        rollback_anchor_required: true,
+        rollback_store_kind: "rollback",
+        rollback_store_file: "rollback.jsonl",
+        rollback_schema_id: "hepta.post.rollback_anchor.v1",
+        rollback_actions: vec![
+            "unset HEPTA_NATIVE_POST_REAL_HANDLERS and HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED",
+            "restart ai.hepta.gateway through launchctl kickstart",
+            "inspect /api/native-post-execution-stores for valid rollback anchors",
+            "restore the latest hepta-codex binary/plist backup if gateway health regresses",
+        ],
+        dry_run_only: true,
+        real_mutation_performed: false,
+        store_write_attempted: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        raw_request_body_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+        next_migration_slice: "activate one handler only under dual gate after this plan remains ready and rollback anchors are observed",
+    }
 }
 
 fn native_post_execution_readiness_report() -> NativePostExecutionReadinessResponse {
@@ -4726,6 +4845,59 @@ struct NativePostRealHandlerHarness {
     raw_field_values_exposed: bool,
     raw_idempotency_key_exposed: bool,
     raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostActivationPlanResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    endpoint: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    activation_preflight_ready: bool,
+    activation_currently_enabled: bool,
+    activation_blocked_reason: &'static str,
+    handler_candidate_count: usize,
+    handler_implemented_count: usize,
+    all_handlers_implemented: bool,
+    execution_evidence_ready: bool,
+    store_contracts_ready: bool,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    required_gates: Vec<NativePostActivationGate>,
+    rollback_ready: bool,
+    rollback_anchor_required: bool,
+    rollback_store_kind: &'static str,
+    rollback_store_file: &'static str,
+    rollback_schema_id: &'static str,
+    rollback_actions: Vec<&'static str>,
+    dry_run_only: bool,
+    real_mutation_performed: bool,
+    store_write_attempted: bool,
+    approval_applied: bool,
+    task_published: bool,
+    chat_mutated: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    raw_request_body_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostActivationGate {
+    env: &'static str,
+    enabled: bool,
+    required_for_activation: bool,
+    purpose: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -7370,6 +7542,78 @@ mod tests {
                     && store["jsonl_valid"] == true
                     && store["line_count"] == 0
                     && store["raw_idempotency_key_exposed"] == false)
+        );
+    }
+
+    #[test]
+    fn native_post_activation_plan_reports_dual_gate_and_rollback_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", NATIVE_POST_ACTIVATION_PLAN_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value = serde_json::from_str(&body).expect("activation plan json");
+
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(value["native_route"], true);
+        assert_eq!(value["compatibility_mode"], "native_post_activation_plan");
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["activation_preflight_ready"], true);
+        assert_eq!(value["activation_currently_enabled"], false);
+        assert_eq!(
+            value["activation_blocked_reason"],
+            "real_handler_gate_disabled"
+        );
+        assert_eq!(value["handler_candidate_count"], 3);
+        assert_eq!(value["handler_implemented_count"], 3);
+        assert_eq!(value["all_handlers_implemented"], true);
+        assert_eq!(value["execution_evidence_ready"], true);
+        assert_eq!(value["store_contracts_ready"], true);
+        assert_eq!(value["store_jsonl_valid"], true);
+        assert_eq!(value["store_capacity_ok"], true);
+        assert_eq!(value["rollback_ready"], true);
+        assert_eq!(value["rollback_anchor_required"], true);
+        assert_eq!(value["rollback_store_file"], "rollback.jsonl");
+        assert_eq!(value["rollback_schema_id"], "hepta.post.rollback_anchor.v1");
+        assert_eq!(value["dry_run_only"], true);
+        assert_eq!(value["real_mutation_performed"], false);
+        assert_eq!(value["store_write_attempted"], false);
+        assert_eq!(value["approval_applied"], false);
+        assert_eq!(value["task_published"], false);
+        assert_eq!(value["chat_mutated"], false);
+        assert_eq!(value["external_side_effects"], false);
+        assert_eq!(value["telegram_read_performed"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["message_sent"], false);
+        assert_eq!(value["cursor_written"], false);
+        assert_eq!(value["raw_idempotency_key_exposed"], false);
+        assert_eq!(value["raw_audit_payload_exposed"], false);
+        let gates = value["required_gates"].as_array().expect("gates array");
+        assert_eq!(gates.len(), 2);
+        assert!(gates.iter().any(|gate| {
+            gate["env"] == NATIVE_POST_REAL_HANDLERS_ENV
+                && gate["enabled"] == false
+                && gate["required_for_activation"] == true
+        }));
+        assert!(gates.iter().any(|gate| {
+            gate["env"] == NATIVE_POST_REAL_HANDLER_APPROVAL_ENV
+                && gate["enabled"] == false
+                && gate["required_for_activation"] == true
+        }));
+        assert!(
+            value["rollback_actions"]
+                .as_array()
+                .expect("rollback actions")
+                .iter()
+                .any(|action| action
+                    .as_str()
+                    .expect("rollback action")
+                    .contains("launchctl kickstart"))
         );
     }
 
