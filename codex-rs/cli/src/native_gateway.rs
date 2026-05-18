@@ -22,6 +22,7 @@ const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERI
 const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
+const NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str = "/api/native-post-execution-readiness";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
 const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
 const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str = "/api/telegram-production-readiness";
@@ -36,6 +37,7 @@ const MAX_NATIVE_TRANSCRIPT_EVENT_PREVIEWS_PER_FILE: usize = 40;
 const MAX_NATIVE_EVENT_FILES: usize = 20;
 const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
 const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
+const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
 
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
@@ -228,6 +230,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/operator-security --json",
         capability: "operator-security",
         side_effect_boundary: "read-only security guard matrix",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/native-post-execution-readiness",
+        source_command: "/native-post-execution-readiness --json",
+        capability: "native-post-execution-readiness",
+        side_effect_boundary: "read-only POST execution readiness matrix",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -762,6 +771,13 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     operator_security_json(options, &telegram_plugin),
+                );
+            }
+            NATIVE_POST_EXECUTION_READINESS_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_post_execution_readiness_json(),
                 );
             }
             "/api/sessions" => {
@@ -2042,7 +2058,7 @@ fn native_post_execution_admission(
     audit_event_contract: &NativePostAuditEventContract,
 ) -> NativePostExecutionAdmission {
     let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
-    let enablement_gate_enabled = env_truthy("HEPTA_NATIVE_POST_REAL_HANDLERS");
+    let enablement_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
     let request_body_ready_for_real_handler =
         !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
     let execution_evidence_ready = !allowlisted_for_real_handler
@@ -2053,7 +2069,7 @@ fn native_post_execution_admission(
         real_handler_currently_enabled: enablement_gate_enabled,
         real_handler_implemented: false,
         allowlisted_for_real_handler,
-        enablement_gate_env: "HEPTA_NATIVE_POST_REAL_HANDLERS",
+        enablement_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
         enablement_gate_enabled,
         request_body_admission_status: body_admission.admission_status,
         request_body_ready_for_real_handler,
@@ -2072,6 +2088,115 @@ fn native_post_execution_admission(
         } else if allowlisted_for_real_handler && !execution_evidence_ready {
             "execution_evidence_not_ready"
         } else if allowlisted_for_real_handler {
+            "real_handler_not_wired"
+        } else {
+            "plan_only_route"
+        },
+    }
+}
+
+fn native_post_execution_readiness_json() -> String {
+    json_or_error(&native_post_execution_readiness_report())
+}
+
+fn native_post_execution_readiness_report() -> NativePostExecutionReadinessResponse {
+    let real_handler_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
+    let routes = NATIVE_POST_PLAN_ROUTE_SPECS
+        .iter()
+        .map(native_post_execution_readiness_route)
+        .collect::<Vec<_>>();
+    let real_handler_candidate_count = routes
+        .iter()
+        .filter(|route| route.allowlisted_for_real_handler)
+        .count();
+    let plan_only_route_count = routes.len().saturating_sub(real_handler_candidate_count);
+    let evidence_contract_route_count = routes
+        .iter()
+        .filter(|route| route.execution_evidence_contract_ready)
+        .count();
+    let real_handler_implemented_count = routes
+        .iter()
+        .filter(|route| route.real_handler_implemented)
+        .count();
+    let real_handler_ready_count = routes
+        .iter()
+        .filter(|route| route.ready_for_real_handler_wiring)
+        .count();
+    let all_evidence_contracts_ready = evidence_contract_route_count == routes.len();
+    let all_real_handlers_blocked = routes
+        .iter()
+        .all(|route| !route.current_plan_executes_real_handler);
+
+    NativePostExecutionReadinessResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if all_evidence_contracts_ready {
+            "ready"
+        } else {
+            "attention"
+        },
+        endpoint: NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
+        source_command: "/native-post-execution-readiness --json",
+        native_route: true,
+        compatibility_mode: "native_post_execution_readiness",
+        side_effect_free: true,
+        post_route_count: routes.len(),
+        real_handler_candidate_count,
+        plan_only_route_count,
+        evidence_contract_route_count,
+        all_evidence_contracts_ready,
+        real_handler_implemented_count,
+        real_handler_ready_count,
+        real_handler_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
+        real_handler_gate_enabled,
+        all_real_handlers_blocked,
+        routes,
+        action_dispatched: false,
+        command_executed: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        raw_request_body_exposed: false,
+        raw_parameter_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "wire one selected POST real handler only after durable idempotency store, audit persistence, rollback, and rate limit implementations exist",
+    }
+}
+
+fn native_post_execution_readiness_route(
+    spec: &NativePostPlanRouteSpec,
+) -> NativePostExecutionReadinessRoute {
+    let body_schema = native_post_body_schema(spec.plan_kind, false);
+    let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
+    let execution_evidence_contract_ready = true;
+    NativePostExecutionReadinessRoute {
+        pattern: spec.pattern,
+        capability: spec.capability,
+        plan_kind: spec.plan_kind,
+        compatibility_mode: spec.compatibility_mode,
+        dry_run_only: spec.dry_run_only,
+        allowlisted_for_real_handler,
+        body_schema_id: body_schema.schema_id,
+        body_required_for_real_handler: body_schema.body_required_for_real_handler,
+        body_schema_ready: true,
+        confirmation_contract_ready: true,
+        rollback_contract_ready: true,
+        idempotency_evidence_contract_ready: true,
+        audit_event_contract_ready: true,
+        rate_limit_contract_ready: true,
+        execution_evidence_contract_ready,
+        ready_for_real_handler_wiring: allowlisted_for_real_handler
+            && execution_evidence_contract_ready,
+        current_plan_executes_real_handler: false,
+        real_handler_implemented: false,
+        blocked_reason: if allowlisted_for_real_handler {
             "real_handler_not_wired"
         } else {
             "plan_only_route"
@@ -3868,6 +3993,68 @@ struct NativePostExecutionAdmission {
     requires_rate_limit: bool,
     requires_dry_run_first: bool,
     external_side_effects_possible: bool,
+    blocked_reason: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostExecutionReadinessResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    endpoint: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    post_route_count: usize,
+    real_handler_candidate_count: usize,
+    plan_only_route_count: usize,
+    evidence_contract_route_count: usize,
+    all_evidence_contracts_ready: bool,
+    real_handler_implemented_count: usize,
+    real_handler_ready_count: usize,
+    real_handler_gate_env: &'static str,
+    real_handler_gate_enabled: bool,
+    all_real_handlers_blocked: bool,
+    routes: Vec<NativePostExecutionReadinessRoute>,
+    action_dispatched: bool,
+    command_executed: bool,
+    approval_applied: bool,
+    task_published: bool,
+    chat_mutated: bool,
+    raw_request_body_exposed: bool,
+    raw_parameter_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostExecutionReadinessRoute {
+    pattern: &'static str,
+    capability: &'static str,
+    plan_kind: &'static str,
+    compatibility_mode: &'static str,
+    dry_run_only: bool,
+    allowlisted_for_real_handler: bool,
+    body_schema_id: &'static str,
+    body_required_for_real_handler: bool,
+    body_schema_ready: bool,
+    confirmation_contract_ready: bool,
+    rollback_contract_ready: bool,
+    idempotency_evidence_contract_ready: bool,
+    audit_event_contract_ready: bool,
+    rate_limit_contract_ready: bool,
+    execution_evidence_contract_ready: bool,
+    ready_for_real_handler_wiring: bool,
+    current_plan_executes_real_handler: bool,
+    real_handler_implemented: bool,
     blocked_reason: &'static str,
 }
 
@@ -6141,6 +6328,60 @@ mod tests {
         assert_eq!(value["external_side_effects"], false);
         assert_eq!(value["gateway_mutation_performed"], false);
         assert_eq!(value["message_sent"], false);
+    }
+
+    #[test]
+    fn native_post_execution_readiness_endpoint_is_side_effect_free() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", NATIVE_POST_EXECUTION_READINESS_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("post execution readiness json");
+
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(value["native_route"], true);
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_post_execution_readiness"
+        );
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(
+            value["post_route_count"],
+            serde_json::json!(NATIVE_POST_PLAN_ROUTE_SPECS.len())
+        );
+        assert_eq!(value["real_handler_candidate_count"], 3);
+        assert_eq!(
+            value["evidence_contract_route_count"],
+            value["post_route_count"]
+        );
+        assert_eq!(value["all_evidence_contracts_ready"], true);
+        assert_eq!(value["real_handler_implemented_count"], 0);
+        assert_eq!(value["real_handler_ready_count"], 3);
+        assert_eq!(value["all_real_handlers_blocked"], true);
+        assert_eq!(value["raw_request_body_exposed"], false);
+        assert_eq!(value["raw_idempotency_key_exposed"], false);
+        assert_eq!(value["raw_audit_payload_exposed"], false);
+        assert_eq!(value["action_dispatched"], false);
+        assert_eq!(value["task_published"], false);
+        assert_eq!(value["chat_mutated"], false);
+        assert_eq!(value["message_sent"], false);
+        assert_eq!(value["cursor_written"], false);
+        assert!(
+            value["routes"]
+                .as_array()
+                .expect("routes array")
+                .iter()
+                .any(|route| route["pattern"] == "/api/tasks/publish"
+                    && route["allowlisted_for_real_handler"] == true
+                    && route["blocked_reason"] == "real_handler_not_wired")
+        );
     }
 
     #[test]
