@@ -41,8 +41,10 @@ const MAX_NATIVE_EVENT_FILES: usize = 20;
 const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
 const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
+const NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
 const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
 const DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR: &str = ".hepta/native-post-execution";
+const NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND: &str = "task_publish";
 
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
@@ -2078,6 +2080,8 @@ fn native_post_execution_admission(
 ) -> NativePostExecutionAdmission {
     let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
     let enablement_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
+    let operator_approval_enabled = env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV);
+    let real_handler_implemented = native_post_real_handler_implemented(spec);
     let request_body_ready_for_real_handler =
         !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
     let execution_evidence_ready = !allowlisted_for_real_handler
@@ -2086,7 +2090,7 @@ fn native_post_execution_admission(
         admission_status: "blocked",
         current_plan_executes_real_handler: false,
         real_handler_currently_enabled: enablement_gate_enabled,
-        real_handler_implemented: false,
+        real_handler_implemented,
         allowlisted_for_real_handler,
         enablement_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
         enablement_gate_enabled,
@@ -2106,12 +2110,22 @@ fn native_post_execution_admission(
             "body_admission_not_ready"
         } else if allowlisted_for_real_handler && !execution_evidence_ready {
             "execution_evidence_not_ready"
-        } else if allowlisted_for_real_handler {
+        } else if allowlisted_for_real_handler && !real_handler_implemented {
             "real_handler_not_wired"
+        } else if allowlisted_for_real_handler && !enablement_gate_enabled {
+            "real_handler_gate_disabled"
+        } else if allowlisted_for_real_handler && !operator_approval_enabled {
+            "operator_approval_required"
+        } else if allowlisted_for_real_handler {
+            "real_handler_harness_dry_run_only"
         } else {
             "plan_only_route"
         },
     }
+}
+
+fn native_post_real_handler_implemented(spec: &NativePostPlanRouteSpec) -> bool {
+    spec.plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND
 }
 
 fn native_post_execution_readiness_json() -> String {
@@ -2185,7 +2199,7 @@ fn native_post_execution_readiness_report() -> NativePostExecutionReadinessRespo
         model_invoked: false,
         message_sent: false,
         cursor_written: false,
-        next_migration_slice: "wire one selected POST real handler only after durable idempotency store, audit persistence, rollback, and rate limit implementations exist",
+        next_migration_slice: "activate the task-publish real-handler harness only under dual gate plus operator approval, then keep expanding one handler at a time",
     }
 }
 
@@ -2195,6 +2209,7 @@ fn native_post_execution_readiness_route(
     let body_schema = native_post_body_schema(spec.plan_kind, false);
     let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
     let execution_evidence_contract_ready = true;
+    let real_handler_implemented = native_post_real_handler_implemented(spec);
     NativePostExecutionReadinessRoute {
         pattern: spec.pattern,
         capability: spec.capability,
@@ -2214,8 +2229,10 @@ fn native_post_execution_readiness_route(
         ready_for_real_handler_wiring: allowlisted_for_real_handler
             && execution_evidence_contract_ready,
         current_plan_executes_real_handler: false,
-        real_handler_implemented: false,
-        blocked_reason: if allowlisted_for_real_handler {
+        real_handler_implemented,
+        blocked_reason: if allowlisted_for_real_handler && real_handler_implemented {
+            "real_handler_gate_disabled"
+        } else if allowlisted_for_real_handler {
             "real_handler_not_wired"
         } else {
             "plan_only_route"
@@ -6469,7 +6486,7 @@ mod tests {
             );
             assert_eq!(
                 value["execution_admission"]["real_handler_implemented"],
-                false
+                plan_kind == NATIVE_POST_FIRST_REAL_HANDLER_PLAN_KIND
             );
             assert_eq!(
                 value["execution_admission"]["allowlisted_for_real_handler"],
@@ -6659,8 +6676,12 @@ mod tests {
             true
         );
         assert_eq!(
+            value["execution_admission"]["real_handler_implemented"],
+            true
+        );
+        assert_eq!(
             value["execution_admission"]["blocked_reason"],
-            "real_handler_not_wired"
+            "real_handler_gate_disabled"
         );
         assert_eq!(value["task_published"], false);
         assert_eq!(value["external_side_effects"], false);
@@ -6700,7 +6721,7 @@ mod tests {
             value["post_route_count"]
         );
         assert_eq!(value["all_evidence_contracts_ready"], true);
-        assert_eq!(value["real_handler_implemented_count"], 0);
+        assert_eq!(value["real_handler_implemented_count"], 1);
         assert_eq!(value["real_handler_ready_count"], 3);
         assert_eq!(value["all_real_handlers_blocked"], true);
         assert_eq!(value["raw_request_body_exposed"], false);
@@ -6718,7 +6739,8 @@ mod tests {
                 .iter()
                 .any(|route| route["pattern"] == "/api/tasks/publish"
                     && route["allowlisted_for_real_handler"] == true
-                    && route["blocked_reason"] == "real_handler_not_wired")
+                    && route["real_handler_implemented"] == true
+                    && route["blocked_reason"] == "real_handler_gate_disabled")
         );
     }
 
