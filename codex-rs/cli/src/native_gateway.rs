@@ -46,6 +46,7 @@ const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
 const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
 const NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
+const NATIVE_POST_REAL_HANDLER_SCOPE_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE";
 const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
 const NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
 const NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
@@ -2139,16 +2140,19 @@ fn native_post_execution_admission(
     idempotency_evidence: &NativePostIdempotencyEvidence,
     audit_event_contract: &NativePostAuditEventContract,
 ) -> NativePostExecutionAdmission {
-    native_post_execution_admission_with_gates(
+    let handler_scope = native_post_real_handler_scope_from_env();
+    native_post_execution_admission_with_scope(
         spec,
         body_admission,
         idempotency_evidence,
         audit_event_contract,
         env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
         env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
+        handler_scope.as_deref(),
     )
 }
 
+#[cfg(test)]
 fn native_post_execution_admission_with_gates(
     spec: &NativePostPlanRouteSpec,
     body_admission: &NativePostBodyAdmission,
@@ -2157,8 +2161,35 @@ fn native_post_execution_admission_with_gates(
     enablement_gate_enabled: bool,
     operator_approval_enabled: bool,
 ) -> NativePostExecutionAdmission {
+    native_post_execution_admission_with_scope(
+        spec,
+        body_admission,
+        idempotency_evidence,
+        audit_event_contract,
+        enablement_gate_enabled,
+        operator_approval_enabled,
+        Some(spec.plan_kind),
+    )
+}
+
+fn native_post_execution_admission_with_scope(
+    spec: &NativePostPlanRouteSpec,
+    body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+    audit_event_contract: &NativePostAuditEventContract,
+    enablement_gate_enabled: bool,
+    operator_approval_enabled: bool,
+    handler_scope: Option<&str>,
+) -> NativePostExecutionAdmission {
     let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
     let real_handler_implemented = native_post_real_handler_implemented(spec);
+    let handler_scope_configured = handler_scope
+        .map(str::trim)
+        .map(|scope| !scope.is_empty())
+        .unwrap_or(false);
+    let handler_scope_matches = !allowlisted_for_real_handler
+        || native_post_real_handler_scope_matches(spec.plan_kind, handler_scope);
+    let handler_scope_required = allowlisted_for_real_handler && real_handler_implemented;
     let request_body_ready_for_real_handler =
         !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
     let execution_evidence_ready = !allowlisted_for_real_handler
@@ -2168,7 +2199,8 @@ fn native_post_execution_admission_with_gates(
         && execution_evidence_ready
         && real_handler_implemented
         && enablement_gate_enabled
-        && operator_approval_enabled;
+        && operator_approval_enabled
+        && (!handler_scope_required || handler_scope_matches);
     NativePostExecutionAdmission {
         admission_status: if current_plan_executes_real_handler {
             "harness_ready"
@@ -2183,6 +2215,14 @@ fn native_post_execution_admission_with_gates(
         enablement_gate_enabled,
         operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
         operator_approval_enabled,
+        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        handler_scope: handler_scope
+            .map(str::trim)
+            .filter(|scope| !scope.is_empty())
+            .map(str::to_string),
+        handler_scope_configured,
+        handler_scope_required,
+        handler_scope_matches,
         request_body_admission_status: body_admission.admission_status,
         request_body_ready_for_real_handler,
         requires_body_schema: allowlisted_for_real_handler,
@@ -2205,6 +2245,8 @@ fn native_post_execution_admission_with_gates(
             "real_handler_gate_disabled"
         } else if allowlisted_for_real_handler && !operator_approval_enabled {
             "operator_approval_required"
+        } else if allowlisted_for_real_handler && handler_scope_required && !handler_scope_matches {
+            "handler_scope_not_selected"
         } else if allowlisted_for_real_handler {
             "real_handler_harness_dry_run_only"
         } else {
@@ -2219,6 +2261,37 @@ fn native_post_real_handler_implemented(spec: &NativePostPlanRouteSpec) -> bool 
 
 fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
     NATIVE_POST_REAL_HANDLER_PLAN_KINDS.contains(&plan_kind)
+}
+
+fn native_post_real_handler_scope_from_env() -> Option<String> {
+    env::var(NATIVE_POST_REAL_HANDLER_SCOPE_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn native_post_real_handler_scope_matches(plan_kind: &str, handler_scope: Option<&str>) -> bool {
+    handler_scope
+        .map(native_post_real_handler_scope_tokens)
+        .unwrap_or_default()
+        .iter()
+        .any(|token| *token == plan_kind)
+}
+
+fn native_post_real_handler_scope_selected_kinds(handler_scope: Option<&str>) -> Vec<&'static str> {
+    NATIVE_POST_REAL_HANDLER_PLAN_KINDS
+        .iter()
+        .copied()
+        .filter(|plan_kind| native_post_real_handler_scope_matches(plan_kind, handler_scope))
+        .collect()
+}
+
+fn native_post_real_handler_scope_tokens(handler_scope: &str) -> Vec<&str> {
+    handler_scope
+        .split(|ch: char| matches!(ch, ',' | ';' | ' ' | '\t' | '\n' | '\r'))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .collect()
 }
 
 fn native_post_real_handler_harness(
@@ -2340,6 +2413,11 @@ fn native_post_real_handler_harness(
         enablement_gate_enabled: execution_admission.enablement_gate_enabled,
         operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
         operator_approval_enabled: execution_admission.operator_approval_enabled,
+        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        handler_scope: execution_admission.handler_scope.clone(),
+        handler_scope_configured: execution_admission.handler_scope_configured,
+        handler_scope_required: execution_admission.handler_scope_required,
+        handler_scope_matches: execution_admission.handler_scope_matches,
         duplicate_check_performed,
         duplicate_found,
         duplicate_suppressed,
@@ -2383,6 +2461,12 @@ fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
     let stores = native_post_execution_stores_report();
     let real_handler_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
     let operator_approval_enabled = env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV);
+    let handler_scope = native_post_real_handler_scope_from_env();
+    let selected_handler_kinds =
+        native_post_real_handler_scope_selected_kinds(handler_scope.as_deref());
+    let selected_handler_count = selected_handler_kinds.len();
+    let handler_scope_configured = handler_scope.is_some();
+    let single_handler_scope_ready = selected_handler_count == 1;
     let all_handlers_implemented =
         readiness.real_handler_implemented_count == readiness.real_handler_candidate_count;
     let store_contracts_ready = stores.persistence_implementation_ready
@@ -2394,8 +2478,10 @@ fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
         && stores.store_capacity_ok;
     let activation_preflight_ready =
         readiness.all_evidence_contracts_ready && all_handlers_implemented && store_contracts_ready;
-    let activation_currently_enabled =
-        activation_preflight_ready && real_handler_gate_enabled && operator_approval_enabled;
+    let activation_currently_enabled = activation_preflight_ready
+        && real_handler_gate_enabled
+        && operator_approval_enabled
+        && single_handler_scope_ready;
     let activation_blocked_reason = if !readiness.all_evidence_contracts_ready {
         "execution_evidence_not_ready"
     } else if !all_handlers_implemented {
@@ -2406,8 +2492,12 @@ fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
         "real_handler_gate_disabled"
     } else if !operator_approval_enabled {
         "operator_approval_required"
+    } else if !handler_scope_configured {
+        "handler_scope_not_selected"
+    } else if !single_handler_scope_ready {
+        "handler_scope_not_single"
     } else {
-        "dual_gate_satisfied_dry_run_harness_only"
+        "single_handler_scope_satisfied_dry_run_harness_only"
     };
     let rollback_ready = activation_preflight_ready && stores.rollback_store_ready;
 
@@ -2430,6 +2520,12 @@ fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
         handler_candidate_count: readiness.real_handler_candidate_count,
         handler_implemented_count: readiness.real_handler_implemented_count,
         all_handlers_implemented,
+        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        handler_scope,
+        handler_scope_configured,
+        single_handler_scope_ready,
+        selected_handler_count,
+        selected_handler_kinds,
         execution_evidence_ready: readiness.all_evidence_contracts_ready,
         store_contracts_ready,
         store_jsonl_valid: stores.store_jsonl_valid,
@@ -2447,6 +2543,12 @@ fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
                 required_for_activation: true,
                 purpose: "operator approval for confirm-required native POST mutations",
             },
+            NativePostActivationGate {
+                env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+                enabled: single_handler_scope_ready,
+                required_for_activation: true,
+                purpose: "select exactly one native POST handler for canary dry-run harness execution",
+            },
         ],
         rollback_ready,
         rollback_anchor_required: true,
@@ -2454,7 +2556,7 @@ fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
         rollback_store_file: "rollback.jsonl",
         rollback_schema_id: "hepta.post.rollback_anchor.v1",
         rollback_actions: vec![
-            "unset HEPTA_NATIVE_POST_REAL_HANDLERS and HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED",
+            "unset HEPTA_NATIVE_POST_REAL_HANDLERS, HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED, and HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE",
             "restart ai.hepta.gateway through launchctl kickstart",
             "inspect /api/native-post-execution-stores for valid rollback anchors",
             "restore the latest hepta-codex binary/plist backup if gateway health regresses",
@@ -2480,6 +2582,12 @@ fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
 
 fn native_post_execution_readiness_report() -> NativePostExecutionReadinessResponse {
     let real_handler_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
+    let handler_scope = native_post_real_handler_scope_from_env();
+    let selected_handler_kinds =
+        native_post_real_handler_scope_selected_kinds(handler_scope.as_deref());
+    let selected_handler_count = selected_handler_kinds.len();
+    let handler_scope_configured = handler_scope.is_some();
+    let single_handler_scope_ready = selected_handler_count == 1;
     let routes = NATIVE_POST_PLAN_ROUTE_SPECS
         .iter()
         .map(native_post_execution_readiness_route)
@@ -2528,6 +2636,12 @@ fn native_post_execution_readiness_report() -> NativePostExecutionReadinessRespo
         real_handler_ready_count,
         real_handler_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
         real_handler_gate_enabled,
+        real_handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        real_handler_scope: handler_scope,
+        real_handler_scope_configured: handler_scope_configured,
+        single_handler_scope_ready,
+        selected_handler_count,
+        selected_handler_kinds,
         all_real_handlers_blocked,
         routes,
         action_dispatched: false,
@@ -4800,6 +4914,11 @@ struct NativePostExecutionAdmission {
     enablement_gate_enabled: bool,
     operator_approval_env: &'static str,
     operator_approval_enabled: bool,
+    handler_scope_env: &'static str,
+    handler_scope: Option<String>,
+    handler_scope_configured: bool,
+    handler_scope_required: bool,
+    handler_scope_matches: bool,
     request_body_admission_status: &'static str,
     request_body_ready_for_real_handler: bool,
     requires_body_schema: bool,
@@ -4826,6 +4945,11 @@ struct NativePostRealHandlerHarness {
     enablement_gate_enabled: bool,
     operator_approval_env: &'static str,
     operator_approval_enabled: bool,
+    handler_scope_env: &'static str,
+    handler_scope: Option<String>,
+    handler_scope_configured: bool,
+    handler_scope_required: bool,
+    handler_scope_matches: bool,
     duplicate_check_performed: bool,
     duplicate_found: bool,
     duplicate_suppressed: bool,
@@ -4871,6 +4995,12 @@ struct NativePostActivationPlanResponse {
     handler_candidate_count: usize,
     handler_implemented_count: usize,
     all_handlers_implemented: bool,
+    handler_scope_env: &'static str,
+    handler_scope: Option<String>,
+    handler_scope_configured: bool,
+    single_handler_scope_ready: bool,
+    selected_handler_count: usize,
+    selected_handler_kinds: Vec<&'static str>,
     execution_evidence_ready: bool,
     store_contracts_ready: bool,
     store_jsonl_valid: bool,
@@ -4927,6 +5057,12 @@ struct NativePostExecutionReadinessResponse {
     real_handler_ready_count: usize,
     real_handler_gate_env: &'static str,
     real_handler_gate_enabled: bool,
+    real_handler_scope_env: &'static str,
+    real_handler_scope: Option<String>,
+    real_handler_scope_configured: bool,
+    single_handler_scope_ready: bool,
+    selected_handler_count: usize,
+    selected_handler_kinds: Vec<&'static str>,
     all_real_handlers_blocked: bool,
     routes: Vec<NativePostExecutionReadinessRoute>,
     action_dispatched: bool,
@@ -7583,6 +7719,21 @@ mod tests {
         assert_eq!(value["handler_candidate_count"], 3);
         assert_eq!(value["handler_implemented_count"], 3);
         assert_eq!(value["all_handlers_implemented"], true);
+        assert_eq!(
+            value["handler_scope_env"],
+            NATIVE_POST_REAL_HANDLER_SCOPE_ENV
+        );
+        assert_eq!(value["handler_scope"], serde_json::Value::Null);
+        assert_eq!(value["handler_scope_configured"], false);
+        assert_eq!(value["single_handler_scope_ready"], false);
+        assert_eq!(value["selected_handler_count"], 0);
+        assert_eq!(
+            value["selected_handler_kinds"]
+                .as_array()
+                .expect("selected handler kinds")
+                .len(),
+            0
+        );
         assert_eq!(value["execution_evidence_ready"], true);
         assert_eq!(value["store_contracts_ready"], true);
         assert_eq!(value["store_jsonl_valid"], true);
@@ -7605,7 +7756,7 @@ mod tests {
         assert_eq!(value["raw_idempotency_key_exposed"], false);
         assert_eq!(value["raw_audit_payload_exposed"], false);
         let gates = value["required_gates"].as_array().expect("gates array");
-        assert_eq!(gates.len(), 2);
+        assert_eq!(gates.len(), 3);
         assert!(gates.iter().any(|gate| {
             gate["env"] == NATIVE_POST_REAL_HANDLERS_ENV
                 && gate["enabled"] == false
@@ -7613,6 +7764,11 @@ mod tests {
         }));
         assert!(gates.iter().any(|gate| {
             gate["env"] == NATIVE_POST_REAL_HANDLER_APPROVAL_ENV
+                && gate["enabled"] == false
+                && gate["required_for_activation"] == true
+        }));
+        assert!(gates.iter().any(|gate| {
+            gate["env"] == NATIVE_POST_REAL_HANDLER_SCOPE_ENV
                 && gate["enabled"] == false
                 && gate["required_for_activation"] == true
         }));
@@ -8120,6 +8276,93 @@ mod tests {
         assert_eq!(harness.store_write_succeeded, false);
         assert!(harness.store_write_report.is_none());
         assert_eq!(temp.path().join("idempotency.jsonl").exists(), false);
+    }
+
+    #[test]
+    fn native_post_real_handler_harness_requires_matching_handler_scope() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let body = r#"{"task":"secret scoped task","confirm":true,"dry_run":true,"idempotency_key":"secret-scoped-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+        let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+        let audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+        );
+        let mismatched_admission = native_post_execution_admission_with_scope(
+            spec,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            true,
+            true,
+            Some("chat_send"),
+        );
+        let matched_admission = native_post_execution_admission_with_scope(
+            spec,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            true,
+            true,
+            Some("task_publish"),
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        let mismatched_harness = native_post_real_handler_harness(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            &mismatched_admission,
+            temp.path(),
+        );
+
+        assert_eq!(mismatched_admission.admission_status, "blocked");
+        assert_eq!(
+            mismatched_admission.current_plan_executes_real_handler,
+            false
+        );
+        assert_eq!(mismatched_admission.handler_scope_configured, true);
+        assert_eq!(mismatched_admission.handler_scope_required, true);
+        assert_eq!(mismatched_admission.handler_scope_matches, false);
+        assert_eq!(
+            mismatched_admission.blocked_reason,
+            "handler_scope_not_selected"
+        );
+        assert_eq!(mismatched_harness.status, "blocked");
+        assert_eq!(mismatched_harness.handler_scope_configured, true);
+        assert_eq!(mismatched_harness.handler_scope_matches, false);
+        assert_eq!(mismatched_harness.store_write_attempted, false);
+        assert_eq!(temp.path().join("idempotency.jsonl").exists(), false);
+
+        let matched_harness = native_post_real_handler_harness(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            &matched_admission,
+            temp.path(),
+        );
+
+        assert_eq!(matched_admission.admission_status, "harness_ready");
+        assert_eq!(matched_admission.handler_scope_matches, true);
+        assert_eq!(matched_harness.status, "dry_run_recorded");
+        assert_eq!(matched_harness.handler_scope_matches, true);
+        assert_eq!(matched_harness.store_write_attempted, true);
+        assert_eq!(matched_harness.store_write_succeeded, true);
+        let content = std::fs::read_to_string(temp.path().join("idempotency.jsonl"))
+            .expect("idempotency store");
+        assert!(content.contains("task_publish"));
+        assert!(!content.contains("secret scoped task"));
+        assert!(!content.contains("secret-scoped-idem"));
     }
 
     #[test]
