@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -32,6 +35,14 @@ const DEFAULT_TELEGRAM_MLX_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 const TELEGRAM_MLX_MAX_TOKENS_ENV: &str = "HEPTA_MLX_TELEGRAM_MAX_TOKENS";
 const DEFAULT_TELEGRAM_MLX_MAX_TOKENS: u64 = 512;
 const MAX_TELEGRAM_MLX_MAX_TOKENS: u64 = 4096;
+const TELEGRAM_TYPING_KEEPALIVE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_TYPING_KEEPALIVE";
+const TELEGRAM_TYPING_KEEPALIVE_INTERVAL_ENV: &str =
+    "HEPTA_NATIVE_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS";
+const DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS: u64 = 4_000;
+const MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS: u64 = 30_000;
+const TELEGRAM_SEND_MIN_INTERVAL_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND_MIN_INTERVAL_MS";
+const MAX_TELEGRAM_SEND_MIN_INTERVAL_MS: u64 = 60_000;
+const TELEGRAM_MODEL_FAILURE_FALLBACK_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK";
 const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
 const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
 const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
@@ -41,6 +52,7 @@ const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
     "sendMessage",
     "cursor_commit",
 ];
+static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NativeTelegramPluginStatus {
@@ -1719,6 +1731,7 @@ fn call_telegram_send_message(
 ) -> Result<Value, String> {
     let endpoint = format!("https://api.telegram.org/bot{token}/sendMessage");
     let body = telegram_send_message_request_body(message_text, chat_id, reply_to_message_id)?;
+    wait_for_telegram_send_rate_limit(chat_id);
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -1745,6 +1758,47 @@ fn call_telegram_send_message(
                 .unwrap_or_else(|| "missing".to_string())
         ))
     }
+}
+
+fn call_telegram_send_chat_action(token: &str, chat_id: i64) -> Result<Value, String> {
+    let endpoint = format!("https://api.telegram.org/bot{token}/sendChatAction");
+    let body = telegram_send_chat_action_request_body(chat_id)?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|error| format!("failed to build Telegram Bot API client: {error}"))?;
+    let response = client.post(endpoint).json(&body).send().map_err(|error| {
+        format!(
+            "Telegram Bot API sendChatAction request failed: {}",
+            error.without_url()
+        )
+    })?;
+    let status = response.status();
+    let body = response.json::<Value>().map_err(|error| {
+        format!("failed to parse Telegram Bot API sendChatAction response JSON: {error}")
+    })?;
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(format!(
+            "Telegram Bot API sendChatAction HTTP status {}; description={}",
+            status.as_u16(),
+            body.get("description")
+                .and_then(Value::as_str)
+                .map(redact_token_like_text)
+                .unwrap_or_else(|| "missing".to_string())
+        ))
+    }
+}
+
+fn telegram_send_chat_action_request_body(chat_id: i64) -> Result<Value, String> {
+    if chat_id == 0 {
+        return Err("Telegram sendChatAction chat id must be non-zero".to_string());
+    }
+    Ok(serde_json::json!({
+        "chat_id": chat_id,
+        "action": "typing",
+    }))
 }
 
 fn telegram_send_message_request_body(
@@ -2384,15 +2438,28 @@ where
             gates.model_turn_gate_enabled,
         );
 
+    let typing_reply_target = candidate
+        .as_ref()
+        .and_then(|candidate| candidate.reply_target.clone());
     let model_outcome = match (candidate.clone(), duplicate_decision.clone()) {
-        (Some(candidate), Some(decision)) => execute_telegram_model_turn_after_candidate(
-            NativeTelegramModelExecutionInput {
-                candidate: Some(candidate),
-                duplicate_decision: Some(decision),
-                model_turn_gate_enabled: gates.model_turn_gate_enabled,
-            },
-            run_model,
-        ),
+        (Some(candidate), Some(decision)) => {
+            let run_model_with_typing = |prompt: &str| {
+                run_model_with_optional_typing_keepalive(
+                    token,
+                    typing_reply_target.as_ref(),
+                    prompt,
+                    run_model,
+                )
+            };
+            execute_telegram_model_turn_after_candidate(
+                NativeTelegramModelExecutionInput {
+                    candidate: Some(candidate),
+                    duplicate_decision: Some(decision),
+                    model_turn_gate_enabled: gates.model_turn_gate_enabled,
+                },
+                run_model_with_typing,
+            )
+        }
         _ => {
             let mut report =
                 NativeTelegramModelExecutionReport::from_invocation_request(&invocation_request);
@@ -2410,8 +2477,14 @@ where
         }
     };
 
+    let fallback_output = telegram_model_failure_fallback_output(&model_outcome);
+    let delivery_output = model_outcome
+        .model_output
+        .as_deref()
+        .or(fallback_output.as_deref());
+
     let send_request = build_telegram_send_request_plan(
-        model_outcome.model_output.as_deref(),
+        delivery_output,
         model_outcome.reply_target.is_some(),
         model_outcome.candidate_next_update_offset,
         gates.send_gate_enabled,
@@ -2419,7 +2492,7 @@ where
     let send_execution = execute_telegram_send_after_model_output(
         NativeTelegramSendExecutionInput {
             token,
-            model_output: model_outcome.model_output.as_deref(),
+            model_output: delivery_output,
             reply_target: model_outcome.reply_target.as_ref(),
             candidate_next_update_offset: model_outcome.candidate_next_update_offset,
             send_gate_enabled: gates.send_gate_enabled,
@@ -2445,6 +2518,96 @@ fn run_hepta_model_turn(prompt: &str) -> Result<String, String> {
     } else {
         run_hepta_exec_child_model_turn(prompt)
     }
+}
+
+fn run_model_with_optional_typing_keepalive<F>(
+    token: Option<&str>,
+    reply_target: Option<&NativeTelegramReplyTargetMaterial>,
+    prompt: &str,
+    run_model: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Result<String, String>,
+{
+    let _typing_keepalive = token
+        .zip(reply_target)
+        .and_then(|(token, target)| start_telegram_typing_keepalive(token, target.chat_id));
+    run_model(prompt)
+}
+
+fn telegram_model_failure_fallback_output(
+    outcome: &NativeTelegramModelExecutionOutcome,
+) -> Option<String> {
+    if !telegram_model_failure_fallback_enabled() {
+        return None;
+    }
+    let report = &outcome.report;
+    if !(report.session_runner_invoked && report.status == "attention") {
+        return None;
+    }
+    if outcome.reply_target.is_none() || outcome.candidate_next_update_offset.is_none() {
+        return None;
+    }
+    Some(telegram_model_failure_fallback_message())
+}
+
+fn telegram_model_failure_fallback_enabled() -> bool {
+    env_truthy(TELEGRAM_MODEL_FAILURE_FALLBACK_ENV)
+}
+
+fn telegram_model_failure_fallback_message() -> String {
+    "本地模型这次响应超时或失败了。我已先收下这条消息，避免反复重试；请稍后再发一条继续。"
+        .to_string()
+}
+
+struct TelegramTypingKeepalive {
+    stop: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl Drop for TelegramTypingKeepalive {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+fn start_telegram_typing_keepalive(token: &str, chat_id: i64) -> Option<TelegramTypingKeepalive> {
+    if !telegram_typing_keepalive_enabled() || !token_shape_ok(token) || chat_id == 0 {
+        return None;
+    }
+    let token = token.to_string();
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = Arc::clone(&stop);
+    let interval = telegram_typing_keepalive_interval();
+    let handle = thread::spawn(move || {
+        while !thread_stop.load(Ordering::Relaxed) {
+            let _ = call_telegram_send_chat_action(&token, chat_id);
+            let started = Instant::now();
+            while !thread_stop.load(Ordering::Relaxed) && started.elapsed() < interval {
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+    });
+    Some(TelegramTypingKeepalive {
+        stop,
+        handle: Some(handle),
+    })
+}
+
+fn telegram_typing_keepalive_enabled() -> bool {
+    env_truthy(TELEGRAM_TYPING_KEEPALIVE_ENV)
+}
+
+fn telegram_typing_keepalive_interval() -> Duration {
+    let millis = env::var(TELEGRAM_TYPING_KEEPALIVE_INTERVAL_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|ms| ms.clamp(1_000, MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS))
+        .unwrap_or(DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS);
+    Duration::from_millis(millis)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2667,6 +2830,39 @@ fn telegram_model_timeout() -> Duration {
         .and_then(|value| value.parse::<u64>().ok())
         .map(|ms| ms.clamp(1_000, MAX_TELEGRAM_MODEL_TIMEOUT_MS))
         .unwrap_or(DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS);
+    Duration::from_millis(millis)
+}
+
+fn wait_for_telegram_send_rate_limit(chat_id: i64) {
+    let min_interval = telegram_send_min_interval();
+    if min_interval.is_zero() {
+        return;
+    }
+    let map = TELEGRAM_SEND_RATE_LIMITS.get_or_init(|| Mutex::new(HashMap::new()));
+    let sleep_for = {
+        let mut guard = match map.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let now = Instant::now();
+        let sleep_for = guard
+            .get(&chat_id)
+            .and_then(|last| min_interval.checked_sub(last.elapsed()))
+            .unwrap_or_default();
+        guard.insert(chat_id, now + sleep_for);
+        sleep_for
+    };
+    if !sleep_for.is_zero() {
+        thread::sleep(sleep_for);
+    }
+}
+
+fn telegram_send_min_interval() -> Duration {
+    let millis = env::var(TELEGRAM_SEND_MIN_INTERVAL_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|ms| ms.min(MAX_TELEGRAM_SEND_MIN_INTERVAL_MS))
+        .unwrap_or(0);
     Duration::from_millis(millis)
 }
 
@@ -4088,6 +4284,26 @@ mod tests {
         )
         .expect_err("bad reply rejected");
         assert!(bad_reply.contains("reply message id must be positive"));
+    }
+
+    #[test]
+    fn send_chat_action_request_body_shapes_typing_action() {
+        let body =
+            telegram_send_chat_action_request_body(6476198178_i64).expect("typing request body");
+        assert_eq!(
+            body.get("chat_id").and_then(Value::as_i64),
+            Some(6476198178)
+        );
+        assert_eq!(body.get("action").and_then(Value::as_str), Some("typing"));
+        let bad = telegram_send_chat_action_request_body(0).expect_err("bad chat id rejected");
+        assert!(bad.contains("chat id must be non-zero"));
+    }
+
+    #[test]
+    fn model_failure_fallback_message_is_bounded_and_non_empty() {
+        let message = telegram_model_failure_fallback_message();
+        assert!(!message.trim().is_empty());
+        assert!(message.len() < 512);
     }
 
     #[test]
