@@ -63,6 +63,9 @@ const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
 const TELEGRAM_SOAK_MAX_ATTENTION_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION";
 const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 0;
 const MAX_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 1_000;
+const TELEGRAM_SOAK_MAX_OBSERVED_AGE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS";
+const DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS: u64 = 120_000;
+const MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS: u64 = 3_600_000;
 const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
     "receive_getUpdates",
     "duplicate_suppression",
@@ -389,10 +392,13 @@ pub(crate) struct NativeTelegramProductionReadinessStatus {
     pub(crate) min_poll_iterations: u64,
     pub(crate) max_attention_count_env: &'static str,
     pub(crate) max_attention_count: u64,
+    pub(crate) max_observed_age_env: &'static str,
+    pub(crate) max_observed_age_ms: u64,
     pub(crate) poll_loop_armed: bool,
     pub(crate) cursor_ready: bool,
     pub(crate) production_guards_ready: bool,
     pub(crate) observation_ready: bool,
+    pub(crate) observation_fresh: bool,
     pub(crate) attention_budget_ok: bool,
     pub(crate) recent_bot_api_ok: bool,
     pub(crate) redaction_guards_ok: bool,
@@ -1062,6 +1068,7 @@ fn telegram_production_readiness_status_from_parts(
 ) -> NativeTelegramProductionReadinessStatus {
     let min_poll_iterations = telegram_soak_min_poll_iterations();
     let max_attention_count = telegram_soak_max_attention_count();
+    let max_observed_age_ms = telegram_soak_max_observed_age_ms();
     let poll_loop_armed =
         requested && poll_loop_status.status == "armed" && poll_loop_status.loop_invokes_drain_once;
     let cursor_ready = cursor_status.status == "ready"
@@ -1078,6 +1085,10 @@ fn telegram_production_readiness_status_from_parts(
         && !production_guards.raw_token_exposed;
     let observation_ready = observation.poll_iterations >= min_poll_iterations
         && observation.last_observed_at_unix_ms.is_some();
+    let observation_fresh = observation
+        .last_observed_at_unix_ms
+        .map(|last_observed| now_unix_ms().saturating_sub(last_observed) <= max_observed_age_ms)
+        .unwrap_or(false);
     let attention_budget_ok = observation.attention_count <= max_attention_count
         && observation.last_status.as_deref() != Some("attention");
     let recent_bot_api_ok = observation.last_bot_api_ok != Some(false);
@@ -1106,6 +1117,9 @@ fn telegram_production_readiness_status_from_parts(
     if !observation_ready {
         readiness_blockers.push("observation_min_poll_iterations");
     }
+    if !observation_fresh {
+        readiness_blockers.push("observation_stale");
+    }
     if !attention_budget_ok {
         readiness_blockers.push("attention_budget_exceeded");
     }
@@ -1132,7 +1146,11 @@ fn telegram_production_readiness_status_from_parts(
         "disabled"
     } else if !poll_loop_armed || !cursor_ready {
         "gated"
-    } else if !attention_budget_ok || !recent_bot_api_ok || !redaction_guards_ok {
+    } else if !observation_fresh
+        || !attention_budget_ok
+        || !recent_bot_api_ok
+        || !redaction_guards_ok
+    {
         "attention"
     } else if !observation_ready {
         "warming"
@@ -1153,10 +1171,13 @@ fn telegram_production_readiness_status_from_parts(
         min_poll_iterations,
         max_attention_count_env: TELEGRAM_SOAK_MAX_ATTENTION_ENV,
         max_attention_count,
+        max_observed_age_env: TELEGRAM_SOAK_MAX_OBSERVED_AGE_ENV,
+        max_observed_age_ms,
         poll_loop_armed,
         cursor_ready,
         production_guards_ready,
         observation_ready,
+        observation_fresh,
         attention_budget_ok,
         recent_bot_api_ok,
         redaction_guards_ok,
@@ -1682,6 +1703,14 @@ fn telegram_soak_max_attention_count() -> u64 {
         .and_then(|value| value.parse::<u64>().ok())
         .map(|count| count.min(MAX_TELEGRAM_SOAK_MAX_ATTENTION))
         .unwrap_or(DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION)
+}
+
+fn telegram_soak_max_observed_age_ms() -> u64 {
+    env::var(TELEGRAM_SOAK_MAX_OBSERVED_AGE_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|age_ms| age_ms.clamp(1_000, MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS))
+        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS)
 }
 
 fn duration_millis_u64(duration: Duration) -> u64 {
@@ -5567,6 +5596,7 @@ mod tests {
         assert!(readiness.cursor_ready);
         assert!(readiness.production_guards_ready);
         assert!(readiness.observation_ready);
+        assert!(readiness.observation_fresh);
         assert!(readiness.attention_budget_ok);
         assert!(readiness.recent_bot_api_ok);
         assert!(readiness.redaction_guards_ok);
@@ -5607,6 +5637,36 @@ mod tests {
                 .readiness_blockers
                 .contains(&"bot_api_recent_failure")
         );
+    }
+
+    #[test]
+    fn production_readiness_flags_stale_soak_observations() {
+        let poll_loop = ready_poll_loop_status();
+        let cursor = ready_cursor_status();
+        let guards = ready_production_guards();
+        let mut observation = live_soak_observation(3, 0, Some("planned"), Some(true));
+        observation.last_observed_at_unix_ms = Some(1);
+
+        let readiness = telegram_production_readiness_status_from_parts(
+            true,
+            &poll_loop,
+            &cursor,
+            &guards,
+            &observation,
+        );
+
+        assert!(!readiness.ready);
+        assert_eq!(readiness.status, "attention");
+        assert_eq!(
+            readiness.max_observed_age_env,
+            TELEGRAM_SOAK_MAX_OBSERVED_AGE_ENV
+        );
+        assert_eq!(
+            readiness.max_observed_age_ms,
+            DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS
+        );
+        assert!(!readiness.observation_fresh);
+        assert!(readiness.readiness_blockers.contains(&"observation_stale"));
     }
 
     fn ready_poll_loop_status() -> NativeTelegramPollLoopStatus {
@@ -5701,7 +5761,7 @@ mod tests {
             external_send_count: 0,
             last_drained_at_unix_ms: None,
             last_drained_next_update_offset: None,
-            last_observed_at_unix_ms: Some(1),
+            last_observed_at_unix_ms: Some(now_unix_ms()),
             last_status: last_status.map(str::to_string),
             last_error: None,
             last_bot_api_ok,
