@@ -399,6 +399,7 @@ pub(crate) struct NativeTelegramProductionReadinessStatus {
     pub(crate) production_guards_ready: bool,
     pub(crate) observation_ready: bool,
     pub(crate) observation_fresh: bool,
+    pub(crate) durable_cursor_evidence_present: bool,
     pub(crate) attention_budget_ok: bool,
     pub(crate) recent_bot_api_ok: bool,
     pub(crate) redaction_guards_ok: bool,
@@ -478,6 +479,9 @@ pub(crate) struct NativeTelegramCursorStatus {
     pub(crate) cursor_file_present: bool,
     pub(crate) cursor_parse_ok: bool,
     pub(crate) next_update_offset: Option<i64>,
+    pub(crate) cursor_updated_at_unix_ms: Option<u64>,
+    pub(crate) last_delivered_next_update_offset: Option<i64>,
+    pub(crate) durable_cursor_evidence_present: bool,
     pub(crate) cursor_represents_next_update_offset: bool,
     pub(crate) duplicate_suppression_rule_valid: bool,
     pub(crate) cursor_write_policy: &'static str,
@@ -1089,6 +1093,7 @@ fn telegram_production_readiness_status_from_parts(
         .last_observed_at_unix_ms
         .map(|last_observed| now_unix_ms().saturating_sub(last_observed) <= max_observed_age_ms)
         .unwrap_or(false);
+    let durable_cursor_evidence_present = cursor_status.durable_cursor_evidence_present;
     let attention_budget_ok = observation.attention_count <= max_attention_count
         && observation.last_status.as_deref() != Some("attention");
     let recent_bot_api_ok = observation.last_bot_api_ok != Some(false);
@@ -1134,7 +1139,7 @@ fn telegram_production_readiness_status_from_parts(
     if observation.busy_count > 0 {
         readiness_warnings.push("getupdates_busy_conflicts_observed");
     }
-    if observation.drained_count == 0 {
+    if observation.drained_count == 0 && !durable_cursor_evidence_present {
         readiness_warnings.push("no_messages_drained_since_gateway_start");
     }
     if observation.external_send_count > observation.cursor_written_count {
@@ -1178,6 +1183,7 @@ fn telegram_production_readiness_status_from_parts(
         production_guards_ready,
         observation_ready,
         observation_fresh,
+        durable_cursor_evidence_present,
         attention_budget_ok,
         recent_bot_api_ok,
         redaction_guards_ok,
@@ -1236,6 +1242,9 @@ pub(crate) fn telegram_cursor_status(requested: bool) -> NativeTelegramCursorSta
             cursor_file_present: false,
             cursor_parse_ok: false,
             next_update_offset: None,
+            cursor_updated_at_unix_ms: None,
+            last_delivered_next_update_offset: None,
+            durable_cursor_evidence_present: false,
             cursor_represents_next_update_offset: true,
             duplicate_suppression_rule_valid: true,
             cursor_write_policy: "disabled",
@@ -1260,6 +1269,9 @@ fn telegram_cursor_status_from_path(path: &Path) -> NativeTelegramCursorStatus {
         cursor_file_present,
         cursor_parse_ok: false,
         next_update_offset: None,
+        cursor_updated_at_unix_ms: None,
+        last_delivered_next_update_offset: None,
+        durable_cursor_evidence_present: false,
         cursor_represents_next_update_offset: true,
         duplicate_suppression_rule_valid: telegram_update_already_drained(41, Some(42))
             && !telegram_update_already_drained(42, Some(42)),
@@ -1276,12 +1288,34 @@ fn telegram_cursor_status_from_path(path: &Path) -> NativeTelegramCursorStatus {
 
     match fs::read_to_string(path)
         .map_err(|error| format!("failed to read Telegram cursor file: {error}"))
-        .and_then(|raw| parse_telegram_cursor_next_update_offset(&raw))
-    {
-        Ok(next_update_offset) => {
+        .and_then(|raw| {
+            let next_update_offset = parse_telegram_cursor_next_update_offset(&raw)?;
+            Ok((raw, next_update_offset))
+        }) {
+        Ok((raw, next_update_offset)) => {
+            let cursor_json = serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null);
+            let raw_update_payload_persisted = cursor_json
+                .get("raw_update_payload_persisted")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let cursor_updated_at_unix_ms = cursor_json
+                .get("updated_at_unix_ms")
+                .and_then(Value::as_u64)
+                .or_else(|| file_modified_unix_ms(path));
+            let last_delivered_next_update_offset = cursor_json
+                .get("last_delivered_next_update_offset")
+                .and_then(Value::as_i64)
+                .filter(|offset| *offset >= 0)
+                .or(Some(next_update_offset));
             status.status = "ready";
             status.cursor_parse_ok = true;
             status.next_update_offset = Some(next_update_offset);
+            status.cursor_updated_at_unix_ms = cursor_updated_at_unix_ms;
+            status.last_delivered_next_update_offset = last_delivered_next_update_offset;
+            status.durable_cursor_evidence_present = cursor_updated_at_unix_ms.is_some()
+                && last_delivered_next_update_offset.is_some()
+                && !raw_update_payload_persisted;
+            status.raw_update_payload_persisted = raw_update_payload_persisted;
             status.next_migration_slice = "cursor is ready; continue active soak and expect writes only after delivery or duplicate suppression";
         }
         Err(error) => {
@@ -1338,6 +1372,8 @@ fn write_telegram_cursor_next_update_offset(path: &Path, offset: i64) -> Result<
     let body = serde_json::json!({
         "schema": "hepta.telegram.cursor.v1",
         "next_update_offset": offset,
+        "updated_at_unix_ms": now_unix_ms(),
+        "last_delivered_next_update_offset": offset,
         "raw_update_payload_persisted": false,
     });
     let raw = serde_json::to_string_pretty(&body)
@@ -1722,6 +1758,14 @@ fn now_unix_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration_millis_u64(duration))
         .unwrap_or(0)
+}
+
+fn file_modified_unix_ms(path: &Path) -> Option<u64> {
+    fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration_millis_u64(duration))
 }
 
 fn first_missing_drain_once_gate(gates: &NativeTelegramGatewayGateSummary) -> Option<&'static str> {
@@ -5399,6 +5443,9 @@ mod tests {
         assert!(status.cursor_file_present);
         assert!(status.cursor_parse_ok);
         assert_eq!(status.next_update_offset, Some(43));
+        assert_eq!(status.cursor_updated_at_unix_ms, Some(123));
+        assert_eq!(status.last_delivered_next_update_offset, Some(43));
+        assert!(status.durable_cursor_evidence_present);
         assert!(status.cursor_represents_next_update_offset);
         assert!(status.duplicate_suppression_rule_valid);
         assert!(!status.cursor_written);
@@ -5420,6 +5467,9 @@ mod tests {
         assert!(status.cursor_file_present);
         assert!(status.cursor_parse_ok);
         assert_eq!(status.next_update_offset, Some(917025960));
+        assert!(status.cursor_updated_at_unix_ms.is_some());
+        assert_eq!(status.last_delivered_next_update_offset, Some(917025960));
+        assert!(status.durable_cursor_evidence_present);
         assert!(status.cursor_represents_next_update_offset);
         assert!(status.duplicate_suppression_rule_valid);
         assert!(!status.cursor_written);
@@ -5437,6 +5487,9 @@ mod tests {
         assert!(status.cursor_file_present);
         assert!(status.cursor_parse_ok);
         assert_eq!(status.next_update_offset, Some(917025960));
+        assert!(status.cursor_updated_at_unix_ms.is_some());
+        assert_eq!(status.last_delivered_next_update_offset, Some(917025960));
+        assert!(status.durable_cursor_evidence_present);
         assert!(!status.cursor_written);
         assert!(!status.raw_update_payload_persisted);
     }
@@ -5469,11 +5522,16 @@ mod tests {
         let raw = fs::read_to_string(&cursor_path).expect("read cursor");
         assert!(raw.contains("\"schema\": \"hepta.telegram.cursor.v1\""));
         assert!(raw.contains("\"next_update_offset\": 77"));
+        assert!(raw.contains("\"updated_at_unix_ms\""));
+        assert!(raw.contains("\"last_delivered_next_update_offset\": 77"));
         assert!(raw.contains("\"raw_update_payload_persisted\": false"));
 
         let status = telegram_cursor_status_from_path(&cursor_path);
         assert_eq!(status.status, "ready");
         assert_eq!(status.next_update_offset, Some(77));
+        assert!(status.cursor_updated_at_unix_ms.is_some());
+        assert_eq!(status.last_delivered_next_update_offset, Some(77));
+        assert!(status.durable_cursor_evidence_present);
         assert!(!status.cursor_written);
         assert!(!status.raw_update_payload_persisted);
     }
@@ -5597,10 +5655,34 @@ mod tests {
         assert!(readiness.production_guards_ready);
         assert!(readiness.observation_ready);
         assert!(readiness.observation_fresh);
+        assert!(readiness.durable_cursor_evidence_present);
         assert!(readiness.attention_budget_ok);
         assert!(readiness.recent_bot_api_ok);
         assert!(readiness.redaction_guards_ok);
         assert!(readiness.readiness_blockers.is_empty());
+        assert!(readiness.readiness_warnings.is_empty());
+    }
+
+    #[test]
+    fn production_readiness_warns_when_no_durable_delivery_evidence_exists() {
+        let poll_loop = ready_poll_loop_status();
+        let mut cursor = ready_cursor_status();
+        cursor.durable_cursor_evidence_present = false;
+        cursor.cursor_updated_at_unix_ms = None;
+        cursor.last_delivered_next_update_offset = None;
+        let guards = ready_production_guards();
+        let observation = live_soak_observation(3, 0, Some("planned"), Some(true));
+
+        let readiness = telegram_production_readiness_status_from_parts(
+            true,
+            &poll_loop,
+            &cursor,
+            &guards,
+            &observation,
+        );
+
+        assert!(readiness.ready);
+        assert!(!readiness.durable_cursor_evidence_present);
         assert!(
             readiness
                 .readiness_warnings
@@ -5707,6 +5789,9 @@ mod tests {
             cursor_file_present: true,
             cursor_parse_ok: true,
             next_update_offset: Some(917025970),
+            cursor_updated_at_unix_ms: Some(now_unix_ms()),
+            last_delivered_next_update_offset: Some(917025970),
+            durable_cursor_evidence_present: true,
             cursor_represents_next_update_offset: true,
             duplicate_suppression_rule_valid: true,
             cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
