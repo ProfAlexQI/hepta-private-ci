@@ -492,6 +492,13 @@ fn route_native_gateway_request(
                     json_or_error(&control_ui_route_parity_report()),
                 );
             }
+            "/api/operator-snapshot" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    operator_snapshot_json(options, &telegram_plugin),
+                );
+            }
             "/api/telegram-plugin" => {
                 return (
                     "200 OK",
@@ -716,6 +723,65 @@ fn native_gateway_json(
             "Gateway live activation side-effect-free plan",
         ],
         next_migration_slice: "continue active Telegram soak and inspect /api/telegram-live-soak before broadening traffic",
+    })
+}
+
+fn operator_snapshot_json(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> String {
+    let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
+    let control_ui_route_parity = control_ui_route_parity_report();
+    let telegram_poll_loop_status = native_telegram::telegram_poll_loop_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
+    let telegram_live_soak_status = native_telegram::telegram_live_soak_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
+    let telegram_cursor_status =
+        native_telegram::telegram_cursor_status(options.with_telegram_plugin);
+
+    let production_soak_ready = telegram_live_soak_status.health_ready
+        && telegram_poll_loop_status.loop_invokes_drain_once
+        && telegram_cursor_status.status == "ready";
+
+    json_or_error(&NativeOperatorSnapshotResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if gateway_replacement_readiness.ready && production_soak_ready {
+            "ready"
+        } else {
+            "attention"
+        },
+        source_command: "/operator-snapshot --json",
+        native_route: true,
+        compatibility_mode: "native_operator_snapshot",
+        side_effect_free: true,
+        health: HealthResponse {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            status: "ready",
+        },
+        active_gateway_replacement_ready: gateway_replacement_readiness.ready,
+        route_matrix_ready: control_ui_route_parity.ready,
+        production_soak_ready,
+        gateway_replacement_readiness,
+        control_ui_route_parity,
+        telegram_plugin,
+        telegram_poll_loop_status,
+        telegram_live_soak_status,
+        telegram_cursor_status,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        raw_token_exposed: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        next_migration_slice: "promote the next high-value Control UI read-only route from parity shell to native status",
     })
 }
 
@@ -1053,6 +1119,36 @@ struct NativeGatewayResponse<'a> {
     telegram_readiness_summary_side_effect_free: bool,
     telegram_plugin: &'a NativeTelegramPluginStatus,
     migrated_surfaces: &'static [&'static str],
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeOperatorSnapshotResponse<'a> {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    health: HealthResponse,
+    active_gateway_replacement_ready: bool,
+    route_matrix_ready: bool,
+    production_soak_ready: bool,
+    gateway_replacement_readiness: NativeGatewayReplacementReadiness,
+    control_ui_route_parity: ControlUiRouteParityReport,
+    telegram_plugin: &'a NativeTelegramPluginStatus,
+    telegram_poll_loop_status: native_telegram::NativeTelegramPollLoopStatus,
+    telegram_live_soak_status: native_telegram::NativeTelegramLiveSoakStatus,
+    telegram_cursor_status: native_telegram::NativeTelegramCursorStatus,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    raw_token_exposed: bool,
+    raw_update_payload_exposed: bool,
+    raw_prompt_text_exposed: bool,
+    raw_response_text_exposed: bool,
     next_migration_slice: &'static str,
 }
 
@@ -1638,6 +1734,39 @@ mod tests {
             assert_eq!(value["message_sent"], false);
             assert_eq!(value["cursor_written"], false);
         }
+    }
+
+    #[test]
+    fn operator_snapshot_returns_native_aggregate_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", "/api/operator-snapshot", &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect("operator snapshot json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["native_route"], true);
+        assert_eq!(value["compatibility_mode"], "native_operator_snapshot");
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["telegram_read_performed"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["message_sent"], false);
+        assert_eq!(value["cursor_written"], false);
+        assert_eq!(value["raw_token_exposed"], false);
+        assert_eq!(value["health"]["status"], "ready");
+        assert!(value["gateway_replacement_readiness"].is_object());
+        assert!(value["control_ui_route_parity"].is_object());
+        assert!(value["telegram_plugin"].is_object());
+        assert!(value["telegram_live_soak_status"].is_object());
+        assert_ne!(
+            value["compatibility_mode"],
+            "native_control_ui_route_parity_shell"
+        );
     }
 
     #[test]
