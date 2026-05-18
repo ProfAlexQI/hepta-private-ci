@@ -3837,6 +3837,7 @@ fn operator_security_json(
         );
     let post_execution_readiness = native_post_execution_readiness_report();
     let post_execution_stores = native_post_execution_stores_report();
+    let post_activation_plan = native_post_activation_plan_report();
     let post_execution_stores_ready = post_execution_stores.persistence_implementation_ready
         && post_execution_stores.idempotency_store_ready
         && post_execution_stores.audit_store_ready
@@ -3844,6 +3845,9 @@ fn operator_security_json(
         && post_execution_stores.rate_limit_store_ready
         && post_execution_stores.store_jsonl_valid
         && post_execution_stores.store_capacity_ok;
+    let post_activation_plan_ready = post_activation_plan.activation_preflight_ready
+        && post_activation_plan.rollback_ready
+        && !post_activation_plan.activation_currently_enabled;
     let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
     let ready = control_ui_route_parity.ready
@@ -3851,6 +3855,7 @@ fn operator_security_json(
         && production_soak_ready
         && post_execution_readiness.all_evidence_contracts_ready
         && post_execution_stores_ready
+        && post_activation_plan_ready
         && loopback_bound
         && guarded_post_route_count == post_route_count;
 
@@ -3873,9 +3878,12 @@ fn operator_security_json(
         guarded_post_route_count,
         post_execution_readiness_endpoint: NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
         post_execution_stores_endpoint: NATIVE_POST_EXECUTION_STORES_ENDPOINT,
+        post_activation_plan_endpoint: NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
         post_execution_readiness,
         post_execution_stores_ready,
         post_execution_stores,
+        post_activation_plan_ready,
+        post_activation_plan,
         production_soak_ready,
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
         telegram_production_readiness_status,
@@ -5448,9 +5456,12 @@ struct NativeOperatorSecurityResponse {
     guarded_post_route_count: usize,
     post_execution_readiness_endpoint: &'static str,
     post_execution_stores_endpoint: &'static str,
+    post_activation_plan_endpoint: &'static str,
     post_execution_readiness: NativePostExecutionReadinessResponse,
     post_execution_stores_ready: bool,
     post_execution_stores: NativePostExecutionStoresResponse,
+    post_activation_plan_ready: bool,
+    post_activation_plan: NativePostActivationPlanResponse,
     production_soak_ready: bool,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
     telegram_production_readiness_status: native_telegram::NativeTelegramProductionReadinessStatus,
@@ -8226,6 +8237,10 @@ mod tests {
             value["post_execution_stores_endpoint"],
             NATIVE_POST_EXECUTION_STORES_ENDPOINT
         );
+        assert_eq!(
+            value["post_activation_plan_endpoint"],
+            NATIVE_POST_ACTIVATION_PLAN_ENDPOINT
+        );
         assert_eq!(value["post_execution_readiness"]["status"], "ready");
         assert_eq!(
             value["post_execution_readiness"]["all_real_handlers_blocked"],
@@ -8233,6 +8248,21 @@ mod tests {
         );
         assert_eq!(value["post_execution_stores_ready"], true);
         assert_eq!(value["post_execution_stores"]["status"], "ready");
+        assert_eq!(value["post_activation_plan_ready"], true);
+        assert_eq!(value["post_activation_plan"]["status"], "ready");
+        assert_eq!(
+            value["post_activation_plan"]["activation_preflight_ready"],
+            true
+        );
+        assert_eq!(
+            value["post_activation_plan"]["activation_currently_enabled"],
+            false
+        );
+        assert_eq!(
+            value["post_activation_plan"]["activation_blocked_reason"],
+            "real_handler_gate_disabled"
+        );
+        assert_eq!(value["post_activation_plan"]["rollback_ready"], true);
         assert_eq!(
             value["post_execution_stores"]["status_probe_writes_files"],
             false
