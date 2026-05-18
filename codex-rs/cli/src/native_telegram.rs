@@ -42,6 +42,12 @@ const DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS: u64 = 4_000;
 const MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS: u64 = 30_000;
 const TELEGRAM_SEND_MIN_INTERVAL_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND_MIN_INTERVAL_MS";
 const MAX_TELEGRAM_SEND_MIN_INTERVAL_MS: u64 = 60_000;
+const TELEGRAM_SEND_MAX_ATTEMPTS_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND_MAX_ATTEMPTS";
+const DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 1;
+const MAX_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 5;
+const TELEGRAM_SEND_RETRY_BACKOFF_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND_RETRY_BACKOFF_MS";
+const DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 700;
+const MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 30_000;
 const TELEGRAM_MODEL_FAILURE_FALLBACK_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK";
 const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
 const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
@@ -2322,10 +2328,10 @@ struct NativeTelegramSendExecutionInput<'a> {
 #[allow(dead_code)]
 fn execute_telegram_send_after_model_output<F>(
     input: NativeTelegramSendExecutionInput<'_>,
-    send_message: F,
+    mut send_message: F,
 ) -> NativeTelegramSendExecutionReport
 where
-    F: FnOnce(&str, i64, &str, Option<i64>) -> Result<Value, String>,
+    F: FnMut(&str, i64, &str, Option<i64>) -> Result<Value, String>,
 {
     let model_output = input
         .model_output
@@ -2374,44 +2380,62 @@ where
     report.send_attempted = true;
     report.external_network_write = true;
 
-    match send_message(
-        token,
-        reply_target.chat_id,
-        model_output,
-        reply_target.reply_to_message_id,
-    ) {
-        Ok(api) => {
-            let ok = api.get("ok").and_then(Value::as_bool).unwrap_or(false);
-            report.bot_api_ack = Some(ok);
-            if !ok {
-                report.status = "attention";
-                report.error = api
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .map(redact_token_like_text)
-                    .or_else(|| Some("Telegram Bot API sendMessage returned ok=false".to_string()));
+    let max_attempts = telegram_send_max_attempts();
+    let retry_backoff = telegram_send_retry_backoff();
+    for attempt in 1..=max_attempts {
+        match send_message(
+            token,
+            reply_target.chat_id,
+            model_output,
+            reply_target.reply_to_message_id,
+        ) {
+            Ok(api) => {
+                let ok = api.get("ok").and_then(Value::as_bool).unwrap_or(false);
+                report.bot_api_ack = Some(ok);
+                if !ok {
+                    let error = api
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .map(redact_token_like_text)
+                        .unwrap_or_else(|| {
+                            "Telegram Bot API sendMessage returned ok=false".to_string()
+                        });
+                    if attempt < max_attempts && is_telegram_send_transient_error(&error) {
+                        thread::sleep(retry_backoff);
+                        continue;
+                    }
+                    report.status = "attention";
+                    report.error = Some(error);
+                    return report;
+                }
+
+                report.external_send = true;
+                report.cursor_commit_attempted = true;
+                match write_telegram_cursor_next_update_offset(
+                    input.cursor_path,
+                    candidate_next_update_offset,
+                ) {
+                    Ok(()) => {
+                        report.status = "delivered";
+                        report.cursor_written = true;
+                    }
+                    Err(error) => {
+                        report.status = "attention";
+                        report.error = Some(redact_token_like_text(&error));
+                    }
+                }
                 return report;
             }
-
-            report.external_send = true;
-            report.cursor_commit_attempted = true;
-            match write_telegram_cursor_next_update_offset(
-                input.cursor_path,
-                candidate_next_update_offset,
-            ) {
-                Ok(()) => {
-                    report.status = "delivered";
-                    report.cursor_written = true;
+            Err(error) => {
+                let error = redact_token_like_text(&error);
+                if attempt < max_attempts && is_telegram_send_transient_error(&error) {
+                    thread::sleep(retry_backoff);
+                    continue;
                 }
-                Err(error) => {
-                    report.status = "attention";
-                    report.error = Some(redact_token_like_text(&error));
-                }
+                report.status = "attention";
+                report.error = Some(error);
+                return report;
             }
-        }
-        Err(error) => {
-            report.status = "attention";
-            report.error = Some(redact_token_like_text(&error));
         }
     }
 
@@ -2429,7 +2453,7 @@ fn execute_telegram_drain_pipeline_for_updates<F, S>(
 ) -> NativeTelegramDrainPipelineOutcome
 where
     F: FnOnce(&str) -> Result<String, String>,
-    S: FnOnce(&str, i64, &str, Option<i64>) -> Result<Value, String>,
+    S: FnMut(&str, i64, &str, Option<i64>) -> Result<Value, String>,
 {
     let (candidate, duplicate_decision, invocation_request) =
         first_model_candidate_with_duplicate_decision(
@@ -2864,6 +2888,33 @@ fn telegram_send_min_interval() -> Duration {
         .map(|ms| ms.min(MAX_TELEGRAM_SEND_MIN_INTERVAL_MS))
         .unwrap_or(0);
     Duration::from_millis(millis)
+}
+
+fn telegram_send_max_attempts() -> u64 {
+    env::var(TELEGRAM_SEND_MAX_ATTEMPTS_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|attempts| attempts.clamp(1, MAX_TELEGRAM_SEND_MAX_ATTEMPTS))
+        .unwrap_or(DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS)
+}
+
+fn telegram_send_retry_backoff() -> Duration {
+    let millis = env::var(TELEGRAM_SEND_RETRY_BACKOFF_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|ms| ms.min(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS))
+        .unwrap_or(DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS);
+    Duration::from_millis(millis)
+}
+
+fn is_telegram_send_transient_error(error: &str) -> bool {
+    error.contains("request failed")
+        || error.contains("HTTP status 429")
+        || error.contains("HTTP status 500")
+        || error.contains("HTTP status 502")
+        || error.contains("HTTP status 503")
+        || error.contains("HTTP status 504")
+        || error.contains("Too Many Requests")
 }
 
 fn wait_for_telegram_model_child(
@@ -4872,5 +4923,18 @@ mod tests {
 
         let auth_error = "Telegram Bot API getUpdates HTTP status 401; description=Unauthorized";
         assert!(!is_telegram_get_updates_conflict_error(auth_error));
+    }
+
+    #[test]
+    fn send_transient_error_classifier_keeps_auth_failures_terminal() {
+        assert!(is_telegram_send_transient_error(
+            "Telegram Bot API sendMessage HTTP status 429; description=Too Many Requests"
+        ));
+        assert!(is_telegram_send_transient_error(
+            "Telegram Bot API sendMessage HTTP status 503; description=temporary outage"
+        ));
+        assert!(!is_telegram_send_transient_error(
+            "Telegram Bot API sendMessage HTTP status 401; description=Unauthorized"
+        ));
     }
 }
