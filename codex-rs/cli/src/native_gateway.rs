@@ -504,6 +504,20 @@ fn route_native_gateway_request(
                     operator_snapshot_json(options, &telegram_plugin),
                 );
             }
+            "/api/operator-console" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    operator_console_json(options, &telegram_plugin),
+                );
+            }
+            "/api/operator-security" => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    operator_security_json(options, &telegram_plugin),
+                );
+            }
             "/api/sessions" => {
                 return (
                     "200 OK",
@@ -1079,6 +1093,149 @@ fn metadata_modified_unix_ms(metadata: &std::fs::Metadata) -> Option<u64> {
         .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
 }
 
+fn operator_console_json(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> String {
+    let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
+    let control_ui_route_parity = control_ui_route_parity_report();
+    let sessions = native_sessions_report(
+        session_root_candidates(),
+        "/sessions --json",
+        "native_sessions_inventory",
+    );
+    let telegram_live_soak_status = native_telegram::telegram_live_soak_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
+    let telegram_poll_loop_status = native_telegram::telegram_poll_loop_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
+
+    let ready = gateway_replacement_readiness.ready
+        && control_ui_route_parity.ready
+        && sessions.scan_error_count == 0
+        && telegram_live_soak_status.health_ready;
+
+    json_or_error(&NativeOperatorConsoleResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if ready { "ready" } else { "attention" },
+        source_command: "/operator-console --json",
+        native_route: true,
+        compatibility_mode: "native_operator_console",
+        side_effect_free: true,
+        health: HealthResponse {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            status: "ready",
+        },
+        operator_snapshot_endpoint: "/api/operator-snapshot",
+        operator_security_endpoint: "/api/operator-security",
+        sessions_endpoint: "/api/sessions",
+        session_activity_endpoint: "/api/session-activity",
+        gateway_replacement_readiness,
+        control_ui_route_parity,
+        sessions,
+        telegram_plugin,
+        telegram_poll_loop_status,
+        telegram_live_soak_status,
+        raw_transcript_exposed: false,
+        raw_token_exposed: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "promote transcript and task drilldown previews with explicit redaction contracts",
+    })
+}
+
+fn operator_security_json(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> String {
+    let control_ui_route_parity = control_ui_route_parity_report();
+    let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
+    let post_route_count = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| route.method == "POST")
+        .count();
+    let dry_run_post_route_count = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| route.method == "POST")
+        .filter(|route| {
+            route.side_effect_boundary.contains("dry-run")
+                || route.side_effect_boundary.contains("plan only")
+        })
+        .count();
+    let guarded_post_route_count = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| route.method == "POST")
+        .filter(|route| post_route_is_guarded(route))
+        .count();
+    let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
+    let ready = control_ui_route_parity.ready
+        && gateway_replacement_readiness.ready
+        && loopback_bound
+        && guarded_post_route_count == post_route_count;
+
+    json_or_error(&NativeOperatorSecurityResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if ready { "ready" } else { "attention" },
+        source_command: "/operator-security --json",
+        native_route: true,
+        compatibility_mode: "native_operator_security",
+        side_effect_free: true,
+        loopback_bind_required: true,
+        loopback_bound,
+        non_loopback_override_enabled: allow_non_loopback_ui(),
+        bind_addr: options.bind_addr.clone(),
+        control_ui_route_parity,
+        gateway_replacement_readiness,
+        post_route_count,
+        dry_run_post_route_count,
+        guarded_post_route_count,
+        telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
+        telegram_plugin_requested: options.with_telegram_plugin,
+        telegram_plugin_status: telegram_plugin.status,
+        redaction: NativeOperatorSecurityRedaction {
+            raw_transcript_exposed: false,
+            raw_token_exposed: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+        },
+        side_effects: NativeOperatorSecuritySideEffects {
+            external_side_effects: false,
+            gateway_mutation_performed: false,
+            telegram_read_performed: false,
+            model_invoked: false,
+            message_sent: false,
+            cursor_written: false,
+        },
+        next_migration_slice: "keep POST routes dry-run until each action has an explicit confirmation and rollback contract",
+    })
+}
+
+fn post_route_is_guarded(route: &ControlUiRouteSpec) -> bool {
+    let boundary = route.side_effect_boundary;
+    boundary.contains("dry-run")
+        || boundary.contains("plan only")
+        || boundary.contains("not executed")
+        || boundary.contains("confirm-required")
+        || boundary.contains("requires confirmation")
+        || boundary.contains("never mutates")
+        || boundary.contains("never publishes")
+        || boundary.contains("never sends")
+}
+
 fn gateway_replacement_readiness(
     options: &NativeGatewayOptions,
     telegram_plugin: &NativeTelegramPluginStatus,
@@ -1500,6 +1657,85 @@ struct NativeSessionSummary {
     relative_path: String,
     bytes: u64,
     modified_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeOperatorConsoleResponse<'a> {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    health: HealthResponse,
+    operator_snapshot_endpoint: &'static str,
+    operator_security_endpoint: &'static str,
+    sessions_endpoint: &'static str,
+    session_activity_endpoint: &'static str,
+    gateway_replacement_readiness: NativeGatewayReplacementReadiness,
+    control_ui_route_parity: ControlUiRouteParityReport,
+    sessions: NativeSessionsResponse,
+    telegram_plugin: &'a NativeTelegramPluginStatus,
+    telegram_poll_loop_status: native_telegram::NativeTelegramPollLoopStatus,
+    telegram_live_soak_status: native_telegram::NativeTelegramLiveSoakStatus,
+    raw_transcript_exposed: bool,
+    raw_token_exposed: bool,
+    raw_update_payload_exposed: bool,
+    raw_prompt_text_exposed: bool,
+    raw_response_text_exposed: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeOperatorSecurityResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    loopback_bind_required: bool,
+    loopback_bound: bool,
+    non_loopback_override_enabled: bool,
+    bind_addr: String,
+    control_ui_route_parity: ControlUiRouteParityReport,
+    gateway_replacement_readiness: NativeGatewayReplacementReadiness,
+    post_route_count: usize,
+    dry_run_post_route_count: usize,
+    guarded_post_route_count: usize,
+    telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
+    telegram_plugin_requested: bool,
+    telegram_plugin_status: &'static str,
+    redaction: NativeOperatorSecurityRedaction,
+    side_effects: NativeOperatorSecuritySideEffects,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeOperatorSecurityRedaction {
+    raw_transcript_exposed: bool,
+    raw_token_exposed: bool,
+    raw_update_payload_exposed: bool,
+    raw_prompt_text_exposed: bool,
+    raw_response_text_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeOperatorSecuritySideEffects {
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -2190,6 +2426,81 @@ mod tests {
                 "native_control_ui_route_parity_shell"
             );
         }
+    }
+
+    #[test]
+    fn operator_console_returns_native_status_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", "/api/operator-console", &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value = serde_json::from_str(&body).expect("operator console json");
+
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["native_route"], true);
+        assert_eq!(value["compatibility_mode"], "native_operator_console");
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["sessions"]["native_route"], true);
+        assert_eq!(
+            value["sessions"]["compatibility_mode"],
+            "native_sessions_inventory"
+        );
+        assert_eq!(value["external_side_effects"], false);
+        assert_eq!(value["gateway_mutation_performed"], false);
+        assert_eq!(value["telegram_read_performed"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["message_sent"], false);
+        assert_eq!(value["cursor_written"], false);
+        assert_eq!(value["raw_transcript_exposed"], false);
+        assert_ne!(
+            value["compatibility_mode"],
+            "native_control_ui_route_parity_shell"
+        );
+    }
+
+    #[test]
+    fn operator_security_returns_native_guard_matrix_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", "/api/operator-security", &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value = serde_json::from_str(&body).expect("operator security json");
+
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["native_route"], true);
+        assert_eq!(value["compatibility_mode"], "native_operator_security");
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["loopback_bind_required"], true);
+        assert_eq!(value["loopback_bound"], true);
+        assert_eq!(value["side_effects"]["external_side_effects"], false);
+        assert_eq!(value["side_effects"]["gateway_mutation_performed"], false);
+        assert_eq!(value["side_effects"]["telegram_read_performed"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["message_sent"], false);
+        assert_eq!(value["side_effects"]["cursor_written"], false);
+        assert_eq!(value["redaction"]["raw_transcript_exposed"], false);
+        assert_eq!(value["redaction"]["raw_token_exposed"], false);
+        assert_eq!(value["post_route_count"], value["guarded_post_route_count"]);
+        assert!(
+            value["dry_run_post_route_count"]
+                .as_u64()
+                .expect("dry-run count")
+                <= value["post_route_count"].as_u64().expect("post count")
+        );
+        assert_ne!(
+            value["compatibility_mode"],
+            "native_control_ui_route_parity_shell"
+        );
     }
 
     #[test]
