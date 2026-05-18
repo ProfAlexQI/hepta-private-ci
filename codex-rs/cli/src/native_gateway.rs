@@ -33,6 +33,45 @@ const MAX_NATIVE_TRANSCRIPT_QUERY_FILES: usize = 20;
 const MAX_NATIVE_TRANSCRIPT_LINES_PER_FILE: usize = 2_000;
 const MAX_NATIVE_TRANSCRIPT_EVENT_PREVIEWS_PER_FILE: usize = 40;
 
+const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
+    NativeTaskArtifactRouteSpec {
+        prefix: "/api/task/",
+        source_command: "/task <task_id> --json",
+        artifact_kind: "task_drilldown",
+        compatibility_mode: "native_task_drilldown_redacted",
+    },
+    NativeTaskArtifactRouteSpec {
+        prefix: "/api/task-patches/",
+        source_command: "/task-patches <task_id> --json",
+        artifact_kind: "task_patches",
+        compatibility_mode: "native_task_patches_redacted",
+    },
+    NativeTaskArtifactRouteSpec {
+        prefix: "/api/task-evidence/",
+        source_command: "/task-evidence <task_id> --json",
+        artifact_kind: "task_evidence",
+        compatibility_mode: "native_task_evidence_redacted",
+    },
+    NativeTaskArtifactRouteSpec {
+        prefix: "/api/task-replay/",
+        source_command: "/task-replay <task_id> --json",
+        artifact_kind: "task_replay",
+        compatibility_mode: "native_task_replay_redacted",
+    },
+    NativeTaskArtifactRouteSpec {
+        prefix: "/api/promotion-ledger/",
+        source_command: "/promotion-ledger <task_id> --json",
+        artifact_kind: "promotion_ledger",
+        compatibility_mode: "native_promotion_ledger_redacted",
+    },
+    NativeTaskArtifactRouteSpec {
+        prefix: "/api/handoff-bundle/",
+        source_command: "/handoff-bundle <task_id> --json",
+        artifact_kind: "handoff_bundle",
+        compatibility_mode: "native_handoff_bundle_redacted",
+    },
+];
+
 const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
     ControlUiRouteSpec {
         method: "GET",
@@ -639,6 +678,19 @@ fn route_native_gateway_request(
                 native_transcript_json(Some(query)),
             );
         }
+
+        for spec in NATIVE_TASK_ARTIFACT_ROUTE_SPECS {
+            if let Some(task_id) = path
+                .strip_prefix(spec.prefix)
+                .filter(|task_id| !task_id.is_empty())
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_task_artifact_json(spec, task_id),
+                );
+            }
+        }
     }
 
     if let Some(body) = control_ui_route_response(method, path) {
@@ -1209,6 +1261,53 @@ fn native_transcript_report(
         message_sent: false,
         cursor_written: false,
         next_migration_slice: "promote task drilldown routes with artifact metadata and redacted evidence previews",
+    }
+}
+
+fn native_task_artifact_json(spec: &NativeTaskArtifactRouteSpec, task_id: &str) -> String {
+    json_or_error(&native_task_artifact_report(spec, task_id))
+}
+
+fn native_task_artifact_report(
+    spec: &NativeTaskArtifactRouteSpec,
+    task_id: &str,
+) -> NativeTaskArtifactResponse {
+    let evidence_search = native_transcript_report(
+        session_root_candidates(),
+        Some(task_id),
+        MAX_NATIVE_TRANSCRIPT_QUERY_FILES,
+    );
+    let status = if evidence_search.scan_error_count == 0 {
+        "ready"
+    } else {
+        "attention"
+    };
+
+    NativeTaskArtifactResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status,
+        source_command: spec.source_command,
+        native_route: true,
+        compatibility_mode: spec.compatibility_mode,
+        side_effect_free: true,
+        artifact_kind: spec.artifact_kind,
+        task_id_redacted: true,
+        task_id_length: task_id.len(),
+        evidence_found: evidence_search.matched_line_count > 0,
+        matched_session_count: evidence_search.matched_session_count,
+        matched_line_count: evidence_search.matched_line_count,
+        evidence_search,
+        raw_task_id_exposed: false,
+        raw_transcript_exposed: false,
+        transcript_text_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "replace redacted task evidence search with structured task registry storage when available",
     }
 }
 
@@ -2043,6 +2142,42 @@ struct NativeTranscriptQueryMatch {
     matched_line_count: u64,
     first_match_line: Option<usize>,
     matched_event_type_counts: Vec<NativeTranscriptEventCount>,
+}
+
+#[derive(Debug)]
+struct NativeTaskArtifactRouteSpec {
+    prefix: &'static str,
+    source_command: &'static str,
+    artifact_kind: &'static str,
+    compatibility_mode: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeTaskArtifactResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    artifact_kind: &'static str,
+    task_id_redacted: bool,
+    task_id_length: usize,
+    evidence_found: bool,
+    matched_session_count: usize,
+    matched_line_count: u64,
+    evidence_search: NativeTranscriptResponse,
+    raw_task_id_exposed: bool,
+    raw_transcript_exposed: bool,
+    transcript_text_exposed: bool,
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    next_migration_slice: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -2897,6 +3032,135 @@ mod tests {
             assert_eq!(value["model_invoked"], false);
             assert_eq!(value["message_sent"], false);
             assert_eq!(value["cursor_written"], false);
+            assert_ne!(
+                value["compatibility_mode"],
+                "native_control_ui_route_parity_shell"
+            );
+        }
+    }
+
+    #[test]
+    fn task_artifact_report_redacts_task_id_and_transcript_text() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sessions = temp.path().join("sessions/2026/05/18");
+        std::fs::create_dir_all(&sessions).expect("create sessions dir");
+        std::fs::write(
+            sessions.join(
+                "rollout-2026-05-18T11-40-00-019e38f8-2222-7000-a111-444444444444.jsonl",
+            ),
+            concat!(
+                r#"{"timestamp":"2026-05-18T03:40:00Z","type":"event_msg","payload":{"type":"agent_message","message":"task-secret-123 produced confidential patch text"}}"#,
+                "\n",
+            ),
+        )
+        .expect("write rollout");
+
+        let transcript = native_transcript_report(
+            vec![NativeSessionRootCandidate {
+                root: temp.path().join("sessions"),
+                kind: "active",
+            }],
+            Some("task-secret-123"),
+            20,
+        );
+        let response = NativeTaskArtifactResponse {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            status: "ready",
+            source_command: "/task <task_id> --json",
+            native_route: true,
+            compatibility_mode: "native_task_drilldown_redacted",
+            side_effect_free: true,
+            artifact_kind: "task_drilldown",
+            task_id_redacted: true,
+            task_id_length: "task-secret-123".len(),
+            evidence_found: transcript.matched_line_count > 0,
+            matched_session_count: transcript.matched_session_count,
+            matched_line_count: transcript.matched_line_count,
+            evidence_search: transcript,
+            raw_task_id_exposed: false,
+            raw_transcript_exposed: false,
+            transcript_text_exposed: false,
+            model_invoked: false,
+            external_side_effects: false,
+            gateway_mutation_performed: false,
+            telegram_read_performed: false,
+            message_sent: false,
+            cursor_written: false,
+            next_migration_slice: "test",
+        };
+        let body = serde_json::to_string(&response).expect("serialize task response");
+
+        assert!(response.evidence_found);
+        assert_eq!(response.matched_line_count, 1);
+        assert_eq!(response.task_id_redacted, true);
+        assert_eq!(response.raw_task_id_exposed, false);
+        assert_eq!(response.transcript_text_exposed, false);
+        assert!(!body.contains("task-secret-123"));
+        assert!(!body.contains("confidential patch text"));
+    }
+
+    #[test]
+    fn task_artifact_routes_return_native_redacted_search_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        for (path, mode, artifact_kind) in [
+            (
+                "/api/task/sample-secret-task",
+                "native_task_drilldown_redacted",
+                "task_drilldown",
+            ),
+            (
+                "/api/task-patches/sample-secret-task",
+                "native_task_patches_redacted",
+                "task_patches",
+            ),
+            (
+                "/api/task-evidence/sample-secret-task",
+                "native_task_evidence_redacted",
+                "task_evidence",
+            ),
+            (
+                "/api/task-replay/sample-secret-task",
+                "native_task_replay_redacted",
+                "task_replay",
+            ),
+            (
+                "/api/promotion-ledger/sample-secret-task",
+                "native_promotion_ledger_redacted",
+                "promotion_ledger",
+            ),
+            (
+                "/api/handoff-bundle/sample-secret-task",
+                "native_handoff_bundle_redacted",
+                "handoff_bundle",
+            ),
+        ] {
+            let (status, content_type, body) = route_native_gateway_request("GET", path, &options);
+            assert_eq!(status, "200 OK", "{path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            assert!(!body.contains("sample-secret-task"));
+            let value: serde_json::Value =
+                serde_json::from_str(&body).expect("task artifact route json");
+            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["native_route"], true);
+            assert_eq!(value["compatibility_mode"], mode);
+            assert_eq!(value["artifact_kind"], artifact_kind);
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(value["task_id_redacted"], true);
+            assert_eq!(value["raw_task_id_exposed"], false);
+            assert_eq!(value["raw_transcript_exposed"], false);
+            assert_eq!(value["transcript_text_exposed"], false);
+            assert_eq!(value["external_side_effects"], false);
+            assert_eq!(value["gateway_mutation_performed"], false);
+            assert_eq!(value["telegram_read_performed"], false);
+            assert_eq!(value["model_invoked"], false);
+            assert_eq!(value["message_sent"], false);
+            assert_eq!(value["cursor_written"], false);
+            assert_eq!(value["evidence_search"]["query_text_exposed"], false);
             assert_ne!(
                 value["compatibility_mode"],
                 "native_control_ui_route_parity_shell"
