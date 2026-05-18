@@ -1622,6 +1622,7 @@ fn native_post_plan_report(
     let body_schema = native_post_body_schema(spec.plan_kind);
     let confirmation_contract = native_post_confirmation_contract(spec);
     let rollback_contract = native_post_rollback_contract();
+    let execution_admission = native_post_execution_admission(spec);
     NativePostPlanResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -1648,9 +1649,11 @@ fn native_post_plan_report(
         body_schema_ready: true,
         confirmation_contract_ready: true,
         rollback_contract_ready: true,
+        execution_admission_ready: true,
         body_schema,
         confirmation_contract,
         rollback_contract,
+        execution_admission,
         action_dispatched: false,
         command_executed: false,
         approval_applied: false,
@@ -1666,7 +1669,7 @@ fn native_post_plan_report(
         telegram_read_performed: false,
         message_sent: false,
         cursor_written: false,
-        next_migration_slice: "wire selected POST planners to real handlers only after body schema, confirmation, and rollback contracts are explicit",
+        next_migration_slice: "wire selected POST planners to real handlers only after execution admission, idempotency, audit, and rollback gates are satisfied",
     }
 }
 
@@ -1781,6 +1784,32 @@ fn native_post_rollback_contract() -> NativePostRollbackContract {
         real_handler_requires_rollback_contract: true,
         destructive_without_rollback: false,
         rollback_payload_exposed: false,
+    }
+}
+
+fn native_post_execution_admission(spec: &NativePostPlanRouteSpec) -> NativePostExecutionAdmission {
+    let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
+    NativePostExecutionAdmission {
+        admission_status: "blocked",
+        current_plan_executes_real_handler: false,
+        real_handler_currently_enabled: false,
+        real_handler_implemented: false,
+        allowlisted_for_real_handler,
+        enablement_gate_env: "HEPTA_NATIVE_POST_REAL_HANDLERS",
+        enablement_gate_enabled: false,
+        requires_body_schema: allowlisted_for_real_handler,
+        requires_confirmation_contract: allowlisted_for_real_handler,
+        requires_rollback_contract: allowlisted_for_real_handler,
+        requires_idempotency_key: allowlisted_for_real_handler,
+        requires_audit_event: allowlisted_for_real_handler,
+        requires_rate_limit: allowlisted_for_real_handler,
+        requires_dry_run_first: true,
+        external_side_effects_possible: allowlisted_for_real_handler,
+        blocked_reason: if allowlisted_for_real_handler {
+            "real_handler_not_wired"
+        } else {
+            "plan_only_route"
+        },
     }
 }
 
@@ -3419,9 +3448,11 @@ struct NativePostPlanResponse {
     body_schema_ready: bool,
     confirmation_contract_ready: bool,
     rollback_contract_ready: bool,
+    execution_admission_ready: bool,
     body_schema: NativePostBodySchema,
     confirmation_contract: NativePostConfirmationContract,
     rollback_contract: NativePostRollbackContract,
+    execution_admission: NativePostExecutionAdmission,
     action_dispatched: bool,
     command_executed: bool,
     approval_applied: bool,
@@ -3470,6 +3501,26 @@ struct NativePostRollbackContract {
     real_handler_requires_rollback_contract: bool,
     destructive_without_rollback: bool,
     rollback_payload_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostExecutionAdmission {
+    admission_status: &'static str,
+    current_plan_executes_real_handler: bool,
+    real_handler_currently_enabled: bool,
+    real_handler_implemented: bool,
+    allowlisted_for_real_handler: bool,
+    enablement_gate_env: &'static str,
+    enablement_gate_enabled: bool,
+    requires_body_schema: bool,
+    requires_confirmation_contract: bool,
+    requires_rollback_contract: bool,
+    requires_idempotency_key: bool,
+    requires_audit_event: bool,
+    requires_rate_limit: bool,
+    requires_dry_run_first: bool,
+    external_side_effects_possible: bool,
+    blocked_reason: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -5232,6 +5283,7 @@ mod tests {
         assert_eq!(report.body_schema_ready, true);
         assert_eq!(report.confirmation_contract_ready, true);
         assert_eq!(report.rollback_contract_ready, true);
+        assert_eq!(report.execution_admission_ready, true);
         assert_eq!(report.body_schema.schema_id, "hepta.post.ui_action.v1");
         assert_eq!(report.body_schema.body_read_during_plan, false);
         assert_eq!(report.body_schema.raw_body_exposed, false);
@@ -5253,6 +5305,25 @@ mod tests {
             "noop_no_state_written"
         );
         assert_eq!(report.rollback_contract.state_written_by_plan, false);
+        assert_eq!(report.execution_admission.admission_status, "blocked");
+        assert_eq!(
+            report
+                .execution_admission
+                .current_plan_executes_real_handler,
+            false
+        );
+        assert_eq!(
+            report.execution_admission.real_handler_currently_enabled,
+            false
+        );
+        assert_eq!(report.execution_admission.real_handler_implemented, false);
+        assert_eq!(
+            report.execution_admission.allowlisted_for_real_handler,
+            false
+        );
+        assert_eq!(report.execution_admission.enablement_gate_enabled, false);
+        assert_eq!(report.execution_admission.requires_dry_run_first, true);
+        assert_eq!(report.execution_admission.blocked_reason, "plan_only_route");
         assert_eq!(report.raw_request_body_exposed, false);
         assert_eq!(report.raw_parameter_exposed, false);
         assert_eq!(report.action_dispatched, false);
@@ -5371,6 +5442,7 @@ mod tests {
             assert_eq!(value["body_schema_ready"], true);
             assert_eq!(value["confirmation_contract_ready"], true);
             assert_eq!(value["rollback_contract_ready"], true);
+            assert_eq!(value["execution_admission_ready"], true);
             assert_eq!(value["body_schema"]["content_type"], "application/json");
             assert_eq!(value["body_schema"]["body_read_during_plan"], false);
             assert_eq!(value["body_schema"]["raw_body_exposed"], false);
@@ -5400,6 +5472,69 @@ mod tests {
             assert_eq!(
                 value["rollback_contract"]["destructive_without_rollback"],
                 false
+            );
+            assert_eq!(value["execution_admission"]["admission_status"], "blocked");
+            assert_eq!(
+                value["execution_admission"]["current_plan_executes_real_handler"],
+                false
+            );
+            assert_eq!(
+                value["execution_admission"]["real_handler_currently_enabled"],
+                false
+            );
+            assert_eq!(
+                value["execution_admission"]["real_handler_implemented"],
+                false
+            );
+            assert_eq!(
+                value["execution_admission"]["allowlisted_for_real_handler"],
+                confirm_required
+            );
+            assert_eq!(
+                value["execution_admission"]["enablement_gate_env"],
+                "HEPTA_NATIVE_POST_REAL_HANDLERS"
+            );
+            assert_eq!(
+                value["execution_admission"]["enablement_gate_enabled"],
+                false
+            );
+            assert_eq!(
+                value["execution_admission"]["requires_body_schema"],
+                confirm_required
+            );
+            assert_eq!(
+                value["execution_admission"]["requires_confirmation_contract"],
+                confirm_required
+            );
+            assert_eq!(
+                value["execution_admission"]["requires_rollback_contract"],
+                confirm_required
+            );
+            assert_eq!(
+                value["execution_admission"]["requires_idempotency_key"],
+                confirm_required
+            );
+            assert_eq!(
+                value["execution_admission"]["requires_audit_event"],
+                confirm_required
+            );
+            assert_eq!(
+                value["execution_admission"]["requires_rate_limit"],
+                confirm_required
+            );
+            assert_eq!(value["execution_admission"]["requires_dry_run_first"], true);
+            assert_eq!(
+                value["execution_admission"]["external_side_effects_possible"],
+                confirm_required
+            );
+            let expected_blocked_reason = if confirm_required {
+                "real_handler_not_wired"
+            } else {
+                "plan_only_route"
+            };
+            assert_eq!(
+                value["execution_admission"]["blocked_reason"],
+                expected_blocked_reason
             );
             assert_eq!(value["action_dispatched"], false);
             assert_eq!(value["command_executed"], false);
