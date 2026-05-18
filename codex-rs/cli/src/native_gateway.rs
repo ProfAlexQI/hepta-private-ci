@@ -35,6 +35,7 @@ const MAX_NATIVE_TRANSCRIPT_LINES_PER_FILE: usize = 2_000;
 const MAX_NATIVE_TRANSCRIPT_EVENT_PREVIEWS_PER_FILE: usize = 40;
 const MAX_NATIVE_EVENT_FILES: usize = 20;
 const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
+const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
@@ -611,17 +612,29 @@ pub(crate) async fn run_native_gateway(options: NativeGatewayOptions) -> Result<
         let mut stream = stream.context("failed to accept native gateway connection")?;
         let request = read_http_request(&mut stream)?;
         let (method, path) = request_method_and_path(&request).unwrap_or(("GET", "/"));
-        let (status, content_type, body) = route_native_gateway_request(method, path, &options);
+        let request_body = request_body_text(&request);
+        let (status, content_type, body) =
+            route_native_gateway_request_with_body(method, path, &options, request_body);
         write_http_response(&mut stream, status, content_type, body.as_bytes())?;
     }
 
     Ok(())
 }
 
+#[cfg(test)]
 fn route_native_gateway_request(
     method: &str,
     path: &str,
     options: &NativeGatewayOptions,
+) -> (&'static str, &'static str, String) {
+    route_native_gateway_request_with_body(method, path, options, None)
+}
+
+fn route_native_gateway_request_with_body(
+    method: &str,
+    path: &str,
+    options: &NativeGatewayOptions,
+    request_body: Option<&str>,
 ) -> (&'static str, &'static str, String) {
     let telegram_plugin = native_telegram::telegram_plugin_status(
         options.with_telegram_plugin,
@@ -986,7 +999,7 @@ fn route_native_gateway_request(
                 return (
                     "200 OK",
                     "application/json; charset=utf-8",
-                    native_post_plan_json(spec, parameter),
+                    native_post_plan_json(spec, parameter, request_body),
                 );
             }
         }
@@ -1636,18 +1649,24 @@ fn native_post_plan_parameter<'a>(
         .map(|_| None)
 }
 
-fn native_post_plan_json(spec: &NativePostPlanRouteSpec, parameter: Option<&str>) -> String {
-    json_or_error(&native_post_plan_report(spec, parameter))
+fn native_post_plan_json(
+    spec: &NativePostPlanRouteSpec,
+    parameter: Option<&str>,
+    request_body: Option<&str>,
+) -> String {
+    json_or_error(&native_post_plan_report(spec, parameter, request_body))
 }
 
 fn native_post_plan_report(
     spec: &NativePostPlanRouteSpec,
     parameter: Option<&str>,
+    request_body: Option<&str>,
 ) -> NativePostPlanResponse {
-    let body_schema = native_post_body_schema(spec.plan_kind);
+    let body_schema = native_post_body_schema(spec.plan_kind, request_body.is_some());
+    let body_admission = native_post_body_admission(spec, &body_schema, request_body);
     let confirmation_contract = native_post_confirmation_contract(spec);
     let rollback_contract = native_post_rollback_contract();
-    let execution_admission = native_post_execution_admission(spec);
+    let execution_admission = native_post_execution_admission(spec, &body_admission);
     NativePostPlanResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -1669,13 +1688,15 @@ fn native_post_plan_report(
         parameter_present: parameter.is_some(),
         parameter_redacted: parameter.is_some(),
         parameter_length: parameter.map(str::len),
-        request_body_read: false,
+        request_body_read: body_admission.request_body_read,
         request_body_redacted: true,
         body_schema_ready: true,
+        body_admission_ready: true,
         confirmation_contract_ready: true,
         rollback_contract_ready: true,
         execution_admission_ready: true,
         body_schema,
+        body_admission,
         confirmation_contract,
         rollback_contract,
         execution_admission,
@@ -1698,7 +1719,7 @@ fn native_post_plan_report(
     }
 }
 
-fn native_post_body_schema(plan_kind: &str) -> NativePostBodySchema {
+fn native_post_body_schema(plan_kind: &str, body_read_during_plan: bool) -> NativePostBodySchema {
     let (schema_id, body_required_for_real_handler, required_fields, optional_fields) =
         match plan_kind {
             "ui_action" => (
@@ -1717,7 +1738,7 @@ fn native_post_body_schema(plan_kind: &str) -> NativePostBodySchema {
                 "hepta.post.approval_apply.v1",
                 true,
                 vec!["approval_id", "confirm"],
-                vec!["dry_run", "reason"],
+                vec!["dry_run", "reason", "idempotency_key"],
             ),
             "task_plan" => (
                 "hepta.post.task_plan.v1",
@@ -1729,7 +1750,13 @@ fn native_post_body_schema(plan_kind: &str) -> NativePostBodySchema {
                 "hepta.post.task_publish.v1",
                 true,
                 vec!["task", "confirm"],
-                vec!["delivery", "timeout_seconds", "rollback_hint"],
+                vec![
+                    "delivery",
+                    "timeout_seconds",
+                    "rollback_hint",
+                    "dry_run",
+                    "idempotency_key",
+                ],
             ),
             "chat_register" => (
                 "hepta.post.chat_register.v1",
@@ -1765,7 +1792,13 @@ fn native_post_body_schema(plan_kind: &str) -> NativePostBodySchema {
                 "hepta.post.chat_send.v1",
                 true,
                 vec!["chat_id", "message", "confirm"],
-                vec!["thread_id", "delivery", "rollback_hint"],
+                vec![
+                    "thread_id",
+                    "delivery",
+                    "rollback_hint",
+                    "dry_run",
+                    "idempotency_key",
+                ],
             ),
             _ => ("hepta.post.unknown.v1", false, vec![], vec!["dry_run"]),
         };
@@ -1776,9 +1809,134 @@ fn native_post_body_schema(plan_kind: &str) -> NativePostBodySchema {
         body_required_for_real_handler,
         required_fields,
         optional_fields,
-        body_read_during_plan: false,
+        body_read_during_plan,
         raw_body_exposed: false,
         raw_field_values_exposed: false,
+    }
+}
+
+fn native_post_body_admission(
+    spec: &NativePostPlanRouteSpec,
+    schema: &NativePostBodySchema,
+    request_body: Option<&str>,
+) -> NativePostBodyAdmission {
+    let body_received = request_body
+        .map(str::trim)
+        .map(|body| !body.is_empty())
+        .unwrap_or(false);
+    let request_body_read = request_body.is_some();
+    let body_size_bytes = request_body.map(str::len).unwrap_or(0);
+    let body_size_within_limit = body_size_bytes <= NATIVE_POST_MAX_BODY_BYTES;
+    let json_parse_attempted = body_received && body_size_within_limit;
+    let parsed_body = if json_parse_attempted {
+        request_body.and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
+    } else {
+        None
+    };
+    let json_parse_ok = json_parse_attempted.then_some(parsed_body.is_some());
+    let object = parsed_body.as_ref().and_then(serde_json::Value::as_object);
+    let json_object_present = object.is_some();
+    let missing_required_fields = if schema.body_required_for_real_handler || body_received {
+        schema
+            .required_fields
+            .iter()
+            .copied()
+            .filter(|field| {
+                object
+                    .map(|object| !object.contains_key(*field))
+                    .unwrap_or(true)
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let required_fields_present = missing_required_fields.is_empty();
+    let optional_field_count_present = object
+        .map(|object| {
+            schema
+                .optional_fields
+                .iter()
+                .filter(|field| object.contains_key(**field))
+                .count()
+        })
+        .unwrap_or(0);
+    let confirm_field = object.and_then(|object| object.get("confirm"));
+    let confirm_field_present = confirm_field.is_some();
+    let confirm_field_truthy = json_field_truthy(confirm_field);
+    let dry_run_field = object.and_then(|object| object.get("dry_run"));
+    let dry_run_field_present = dry_run_field.is_some();
+    let dry_run_first_satisfied =
+        !spec.confirmation_required_for_real_mutation || json_field_truthy(dry_run_field);
+    let idempotency_key_required = spec.confirmation_required_for_real_mutation;
+    let idempotency_key_present = object
+        .and_then(|object| object.get("idempotency_key"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .map(|value| !value.is_empty())
+        .unwrap_or(false);
+
+    let admission_status = if !body_received && schema.body_required_for_real_handler {
+        "missing_body"
+    } else if !body_size_within_limit {
+        "body_too_large"
+    } else if json_parse_attempted && json_parse_ok != Some(true) {
+        "invalid_json"
+    } else if body_received && !json_object_present {
+        "body_not_json_object"
+    } else if !required_fields_present {
+        "missing_required_fields"
+    } else if spec.confirmation_required_for_real_mutation && !confirm_field_truthy {
+        "confirmation_missing"
+    } else if idempotency_key_required && !idempotency_key_present {
+        "idempotency_key_missing"
+    } else if spec.confirmation_required_for_real_mutation && !dry_run_first_satisfied {
+        "dry_run_first_required"
+    } else if spec.confirmation_required_for_real_mutation {
+        "ready_for_real_handler"
+    } else if body_received {
+        "validated_plan_input"
+    } else {
+        "not_required"
+    };
+    let ready_for_real_handler_input = admission_status == "ready_for_real_handler";
+
+    NativePostBodyAdmission {
+        admission_status,
+        body_received,
+        request_body_read,
+        request_body_redacted: true,
+        body_size_bytes,
+        max_body_bytes: NATIVE_POST_MAX_BODY_BYTES,
+        body_size_within_limit,
+        json_parse_attempted,
+        json_parse_ok,
+        json_object_present,
+        required_fields_present,
+        missing_required_fields,
+        optional_field_count_present,
+        confirm_field_present,
+        confirm_field_truthy,
+        dry_run_field_present,
+        dry_run_first_satisfied,
+        idempotency_key_required,
+        idempotency_key_present,
+        ready_for_real_handler_input,
+        raw_body_exposed: false,
+        raw_field_values_exposed: false,
+    }
+}
+
+fn json_field_truthy(value: Option<&serde_json::Value>) -> bool {
+    match value {
+        Some(serde_json::Value::Bool(true)) => true,
+        Some(serde_json::Value::String(value)) => {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        }
+        Some(serde_json::Value::Number(value)) => value.as_i64() == Some(1),
+        _ => false,
     }
 }
 
@@ -1812,16 +1970,24 @@ fn native_post_rollback_contract() -> NativePostRollbackContract {
     }
 }
 
-fn native_post_execution_admission(spec: &NativePostPlanRouteSpec) -> NativePostExecutionAdmission {
+fn native_post_execution_admission(
+    spec: &NativePostPlanRouteSpec,
+    body_admission: &NativePostBodyAdmission,
+) -> NativePostExecutionAdmission {
     let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
+    let enablement_gate_enabled = env_truthy("HEPTA_NATIVE_POST_REAL_HANDLERS");
+    let request_body_ready_for_real_handler =
+        !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
     NativePostExecutionAdmission {
         admission_status: "blocked",
         current_plan_executes_real_handler: false,
-        real_handler_currently_enabled: false,
+        real_handler_currently_enabled: enablement_gate_enabled,
         real_handler_implemented: false,
         allowlisted_for_real_handler,
         enablement_gate_env: "HEPTA_NATIVE_POST_REAL_HANDLERS",
-        enablement_gate_enabled: false,
+        enablement_gate_enabled,
+        request_body_admission_status: body_admission.admission_status,
+        request_body_ready_for_real_handler,
         requires_body_schema: allowlisted_for_real_handler,
         requires_confirmation_contract: allowlisted_for_real_handler,
         requires_rollback_contract: allowlisted_for_real_handler,
@@ -1830,7 +1996,9 @@ fn native_post_execution_admission(spec: &NativePostPlanRouteSpec) -> NativePost
         requires_rate_limit: allowlisted_for_real_handler,
         requires_dry_run_first: true,
         external_side_effects_possible: allowlisted_for_real_handler,
-        blocked_reason: if allowlisted_for_real_handler {
+        blocked_reason: if allowlisted_for_real_handler && !request_body_ready_for_real_handler {
+            "body_admission_not_ready"
+        } else if allowlisted_for_real_handler {
             "real_handler_not_wired"
         } else {
             "plan_only_route"
@@ -3482,10 +3650,12 @@ struct NativePostPlanResponse {
     request_body_read: bool,
     request_body_redacted: bool,
     body_schema_ready: bool,
+    body_admission_ready: bool,
     confirmation_contract_ready: bool,
     rollback_contract_ready: bool,
     execution_admission_ready: bool,
     body_schema: NativePostBodySchema,
+    body_admission: NativePostBodyAdmission,
     confirmation_contract: NativePostConfirmationContract,
     rollback_contract: NativePostRollbackContract,
     execution_admission: NativePostExecutionAdmission,
@@ -3520,6 +3690,32 @@ struct NativePostBodySchema {
 }
 
 #[derive(Debug, Serialize)]
+struct NativePostBodyAdmission {
+    admission_status: &'static str,
+    body_received: bool,
+    request_body_read: bool,
+    request_body_redacted: bool,
+    body_size_bytes: usize,
+    max_body_bytes: usize,
+    body_size_within_limit: bool,
+    json_parse_attempted: bool,
+    json_parse_ok: Option<bool>,
+    json_object_present: bool,
+    required_fields_present: bool,
+    missing_required_fields: Vec<&'static str>,
+    optional_field_count_present: usize,
+    confirm_field_present: bool,
+    confirm_field_truthy: bool,
+    dry_run_field_present: bool,
+    dry_run_first_satisfied: bool,
+    idempotency_key_required: bool,
+    idempotency_key_present: bool,
+    ready_for_real_handler_input: bool,
+    raw_body_exposed: bool,
+    raw_field_values_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct NativePostConfirmationContract {
     current_plan_requires_confirmation: bool,
     real_mutation_requires_confirmation: bool,
@@ -3548,6 +3744,8 @@ struct NativePostExecutionAdmission {
     allowlisted_for_real_handler: bool,
     enablement_gate_env: &'static str,
     enablement_gate_enabled: bool,
+    request_body_admission_status: &'static str,
+    request_body_ready_for_real_handler: bool,
     requires_body_schema: bool,
     requires_confirmation_contract: bool,
     requires_rollback_contract: bool,
@@ -4225,6 +4423,13 @@ fn request_body_bytes(bytes: &[u8]) -> &[u8] {
         .position(|window| window == b"\r\n\r\n")
         .map(|index| &bytes[index + 4..])
         .unwrap_or(&[])
+}
+
+fn request_body_text(request: &str) -> Option<&str> {
+    request
+        .split_once("\r\n\r\n")
+        .map(|(_, body)| body)
+        .filter(|body| !body.is_empty())
 }
 
 fn request_method_and_path(request: &str) -> Option<(&str, &str)> {
@@ -5342,7 +5547,7 @@ mod tests {
     #[test]
     fn post_plan_report_redacts_route_parameters_and_never_reads_body() {
         let spec = &NATIVE_POST_PLAN_ROUTE_SPECS[0];
-        let report = native_post_plan_report(spec, Some("secret-action-payload"));
+        let report = native_post_plan_report(spec, Some("secret-action-payload"), None);
         let body = serde_json::to_string(&report).expect("serialize post plan report");
 
         assert_eq!(report.status, "dry_run_ready");
@@ -5359,6 +5564,12 @@ mod tests {
         assert_eq!(report.body_schema.schema_id, "hepta.post.ui_action.v1");
         assert_eq!(report.body_schema.body_read_during_plan, false);
         assert_eq!(report.body_schema.raw_body_exposed, false);
+        assert_eq!(report.body_admission_ready, true);
+        assert_eq!(report.body_admission.admission_status, "not_required");
+        assert_eq!(report.body_admission.body_received, false);
+        assert_eq!(report.body_admission.request_body_read, false);
+        assert_eq!(report.body_admission.raw_body_exposed, false);
+        assert_eq!(report.body_admission.raw_field_values_exposed, false);
         assert_eq!(
             report
                 .body_schema
@@ -5512,6 +5723,7 @@ mod tests {
             assert_eq!(value["request_body_read"], false);
             assert_eq!(value["request_body_redacted"], true);
             assert_eq!(value["body_schema_ready"], true);
+            assert_eq!(value["body_admission_ready"], true);
             assert_eq!(value["confirmation_contract_ready"], true);
             assert_eq!(value["rollback_contract_ready"], true);
             assert_eq!(value["execution_admission_ready"], true);
@@ -5519,6 +5731,10 @@ mod tests {
             assert_eq!(value["body_schema"]["body_read_during_plan"], false);
             assert_eq!(value["body_schema"]["raw_body_exposed"], false);
             assert_eq!(value["body_schema"]["raw_field_values_exposed"], false);
+            assert_eq!(value["body_admission"]["request_body_read"], false);
+            assert_eq!(value["body_admission"]["request_body_redacted"], true);
+            assert_eq!(value["body_admission"]["raw_body_exposed"], false);
+            assert_eq!(value["body_admission"]["raw_field_values_exposed"], false);
             assert_eq!(
                 value["confirmation_contract"]["current_plan_requires_confirmation"],
                 false
@@ -5571,6 +5787,10 @@ mod tests {
                 false
             );
             assert_eq!(
+                value["execution_admission"]["request_body_admission_status"],
+                value["body_admission"]["admission_status"]
+            );
+            assert_eq!(
                 value["execution_admission"]["requires_body_schema"],
                 confirm_required
             );
@@ -5600,7 +5820,7 @@ mod tests {
                 confirm_required
             );
             let expected_blocked_reason = if confirm_required {
-                "real_handler_not_wired"
+                "body_admission_not_ready"
             } else {
                 "plan_only_route"
             };
@@ -5626,6 +5846,75 @@ mod tests {
                 "native_control_ui_route_parity_shell"
             );
         }
+    }
+
+    #[test]
+    fn post_route_body_admission_reads_and_redacts_confirm_payload() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let body = r#"{"task":"secret task text","confirm":true,"dry_run":true,"idempotency_key":"secret-idem"}"#;
+
+        let (status, content_type, response_body) = route_native_gateway_request_with_body(
+            "POST",
+            "/api/tasks/publish",
+            &options,
+            Some(body),
+        );
+
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        assert!(!response_body.contains("secret task text"));
+        assert!(!response_body.contains("secret-idem"));
+        let value: serde_json::Value =
+            serde_json::from_str(&response_body).expect("post body admission json");
+
+        assert_eq!(value["plan_kind"], "task_publish");
+        assert_eq!(value["request_body_read"], true);
+        assert_eq!(value["request_body_redacted"], true);
+        assert_eq!(value["body_schema"]["body_read_during_plan"], true);
+        assert_eq!(value["body_admission_ready"], true);
+        assert_eq!(
+            value["body_admission"]["admission_status"],
+            "ready_for_real_handler"
+        );
+        assert_eq!(value["body_admission"]["body_received"], true);
+        assert_eq!(value["body_admission"]["request_body_read"], true);
+        assert_eq!(value["body_admission"]["json_parse_attempted"], true);
+        assert_eq!(value["body_admission"]["json_parse_ok"], true);
+        assert_eq!(value["body_admission"]["json_object_present"], true);
+        assert_eq!(value["body_admission"]["required_fields_present"], true);
+        assert_eq!(
+            value["body_admission"]["missing_required_fields"],
+            serde_json::json!([])
+        );
+        assert_eq!(value["body_admission"]["confirm_field_truthy"], true);
+        assert_eq!(value["body_admission"]["dry_run_first_satisfied"], true);
+        assert_eq!(value["body_admission"]["idempotency_key_present"], true);
+        assert_eq!(
+            value["body_admission"]["ready_for_real_handler_input"],
+            true
+        );
+        assert_eq!(value["body_admission"]["raw_body_exposed"], false);
+        assert_eq!(value["body_admission"]["raw_field_values_exposed"], false);
+        assert_eq!(
+            value["execution_admission"]["request_body_admission_status"],
+            "ready_for_real_handler"
+        );
+        assert_eq!(
+            value["execution_admission"]["request_body_ready_for_real_handler"],
+            true
+        );
+        assert_eq!(
+            value["execution_admission"]["blocked_reason"],
+            "real_handler_not_wired"
+        );
+        assert_eq!(value["task_published"], false);
+        assert_eq!(value["external_side_effects"], false);
+        assert_eq!(value["gateway_mutation_performed"], false);
+        assert_eq!(value["message_sent"], false);
     }
 
     #[test]
