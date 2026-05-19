@@ -407,6 +407,7 @@ pub(crate) struct NativeTelegramProductionReadinessStatus {
     pub(crate) durable_cursor_evidence_present: bool,
     pub(crate) durable_delivery_evidence_required: bool,
     pub(crate) durable_delivery_evidence_present: bool,
+    pub(crate) durable_delivery_evidence_fresh: bool,
     pub(crate) delivery_ledger_ready: bool,
     pub(crate) attention_budget_ok: bool,
     pub(crate) recent_bot_api_ok: bool,
@@ -467,6 +468,8 @@ pub(crate) struct NativeTelegramDeliveryLedgerStatus {
     pub(crate) failed_count: usize,
     pub(crate) latest_stage: Option<String>,
     pub(crate) latest_created_unix_seconds: Option<u64>,
+    pub(crate) latest_acked_created_unix_seconds: Option<u64>,
+    pub(crate) ledger_updated_at_unix_ms: Option<u64>,
     pub(crate) provider_message_id_present: bool,
     pub(crate) durable_delivery_evidence_present: bool,
     pub(crate) raw_response_text_logged: bool,
@@ -1144,10 +1147,26 @@ fn telegram_production_readiness_status_from_parts(
         || observation.external_send_count > 0;
     let durable_delivery_evidence_present =
         delivery_ledger_status.durable_delivery_evidence_present;
+    let delivery_evidence_reference_ms = observation
+        .last_drained_at_unix_ms
+        .or(observation.last_observed_at_unix_ms);
+    let durable_delivery_evidence_fresh = if durable_delivery_evidence_required {
+        delivery_ledger_status
+            .latest_acked_created_unix_seconds
+            .map(|created| created.saturating_mul(1_000))
+            .zip(delivery_evidence_reference_ms)
+            .map(|(acked_ms, reference_ms)| {
+                acked_ms.saturating_add(max_observed_age_ms) >= reference_ms
+            })
+            .unwrap_or(false)
+    } else {
+        true
+    };
     let delivery_ledger_ready = if durable_delivery_evidence_required {
         delivery_ledger_status.status == "ready"
             && delivery_ledger_status.jsonl_valid
             && durable_delivery_evidence_present
+            && durable_delivery_evidence_fresh
     } else {
         !matches!(delivery_ledger_status.status, "attention")
     };
@@ -1191,6 +1210,9 @@ fn telegram_production_readiness_status_from_parts(
     }
     if durable_delivery_evidence_required && !durable_delivery_evidence_present {
         readiness_blockers.push("durable_delivery_evidence_missing");
+    }
+    if durable_delivery_evidence_required && !durable_delivery_evidence_fresh {
+        readiness_blockers.push("durable_delivery_evidence_stale");
     }
     if !attention_budget_ok {
         readiness_blockers.push("attention_budget_exceeded");
@@ -1256,6 +1278,7 @@ fn telegram_production_readiness_status_from_parts(
         durable_cursor_evidence_present,
         durable_delivery_evidence_required,
         durable_delivery_evidence_present,
+        durable_delivery_evidence_fresh,
         delivery_ledger_ready,
         attention_budget_ok,
         recent_bot_api_ok,
@@ -1475,6 +1498,8 @@ pub(crate) fn telegram_delivery_ledger_status(
             failed_count: 0,
             latest_stage: None,
             latest_created_unix_seconds: None,
+            latest_acked_created_unix_seconds: None,
+            ledger_updated_at_unix_ms: None,
             provider_message_id_present: false,
             durable_delivery_evidence_present: false,
             raw_response_text_logged: false,
@@ -1507,6 +1532,8 @@ fn telegram_delivery_ledger_status_from_path(path: &Path) -> NativeTelegramDeliv
         failed_count: 0,
         latest_stage: None,
         latest_created_unix_seconds: None,
+        latest_acked_created_unix_seconds: None,
+        ledger_updated_at_unix_ms: file_modified_unix_ms(path),
         provider_message_id_present: false,
         durable_delivery_evidence_present: false,
         raw_response_text_logged: false,
@@ -1544,16 +1571,28 @@ fn telegram_delivery_ledger_status_from_path(path: &Path) -> NativeTelegramDeliv
             .and_then(Value::as_str)
             .unwrap_or("unknown")
             .to_string();
+        let record_created_unix_seconds =
+            record.get("created_unix_seconds").and_then(Value::as_u64);
         if stage == "acked" {
             status.acked_count = status.acked_count.saturating_add(1);
+            if let Some(created) = record_created_unix_seconds {
+                status.latest_acked_created_unix_seconds = Some(
+                    status
+                        .latest_acked_created_unix_seconds
+                        .map_or(created, |latest| latest.max(created)),
+                );
+            }
         } else if stage == "failed" {
             status.failed_count = status.failed_count.saturating_add(1);
         }
         status.latest_stage = Some(stage);
-        status.latest_created_unix_seconds = record
-            .get("created_unix_seconds")
-            .and_then(Value::as_u64)
-            .or(status.latest_created_unix_seconds);
+        if let Some(created) = record_created_unix_seconds {
+            status.latest_created_unix_seconds = Some(
+                status
+                    .latest_created_unix_seconds
+                    .map_or(created, |latest| latest.max(created)),
+            );
+        }
         status.provider_message_id_present |= record
             .get("provider_message_id_present")
             .and_then(Value::as_bool)
@@ -6129,6 +6168,7 @@ mod tests {
         assert!(readiness.observation_fresh);
         assert!(readiness.durable_cursor_evidence_present);
         assert!(!readiness.durable_delivery_evidence_required);
+        assert!(readiness.durable_delivery_evidence_fresh);
         assert!(readiness.delivery_ledger_ready);
         assert!(readiness.attention_budget_ok);
         assert!(readiness.recent_bot_api_ok);
@@ -6148,6 +6188,7 @@ mod tests {
         delivery_ledger.durable_delivery_evidence_present = false;
         delivery_ledger.status = "empty";
         delivery_ledger.acked_count = 0;
+        delivery_ledger.latest_acked_created_unix_seconds = None;
         let guards = ready_production_guards();
         let observation = live_soak_observation(3, 0, Some("planned"), Some(true));
 
@@ -6243,6 +6284,7 @@ mod tests {
         delivery_ledger.acked_count = 0;
         delivery_ledger.provider_message_id_present = false;
         delivery_ledger.durable_delivery_evidence_present = false;
+        delivery_ledger.latest_acked_created_unix_seconds = None;
         let guards = ready_production_guards();
         let mut observation = live_soak_observation(3, 0, Some("drained"), Some(true));
         observation.drained_count = 1;
@@ -6270,6 +6312,44 @@ mod tests {
             readiness
                 .readiness_blockers
                 .contains(&"durable_delivery_evidence_missing")
+        );
+    }
+
+    #[test]
+    fn production_readiness_blocks_stale_delivery_ledger_after_send() {
+        let poll_loop = ready_poll_loop_status();
+        let cursor = ready_cursor_status();
+        let mut delivery_ledger = ready_delivery_ledger_status();
+        delivery_ledger.latest_acked_created_unix_seconds = Some(1);
+        let guards = ready_production_guards();
+        let mut observation = live_soak_observation(3, 0, Some("drained"), Some(true));
+        observation.drained_count = 1;
+        observation.send_started_count = 1;
+        observation.cursor_written_count = 1;
+        observation.external_send_count = 1;
+        observation.last_drained_at_unix_ms = Some(now_unix_ms());
+        observation.last_send_started = true;
+        observation.last_cursor_written = true;
+        observation.last_external_send = true;
+
+        let readiness = telegram_production_readiness_status_from_parts(
+            true,
+            &poll_loop,
+            &cursor,
+            &delivery_ledger,
+            &guards,
+            &observation,
+        );
+
+        assert!(!readiness.ready);
+        assert!(readiness.durable_delivery_evidence_required);
+        assert!(readiness.durable_delivery_evidence_present);
+        assert!(!readiness.durable_delivery_evidence_fresh);
+        assert!(!readiness.delivery_ledger_ready);
+        assert!(
+            readiness
+                .readiness_blockers
+                .contains(&"durable_delivery_evidence_stale")
         );
     }
 
@@ -6341,6 +6421,8 @@ mod tests {
             failed_count: 0,
             latest_stage: Some("acked".to_string()),
             latest_created_unix_seconds: Some(now_unix_ms() / 1_000),
+            latest_acked_created_unix_seconds: Some(now_unix_ms() / 1_000),
+            ledger_updated_at_unix_ms: Some(now_unix_ms()),
             provider_message_id_present: true,
             durable_delivery_evidence_present: true,
             raw_response_text_logged: false,
