@@ -1,0 +1,451 @@
+# Robrix Release CI Workflow
+
+name: Robrix Release CI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'    # Release Version Tags
+      - 'v*.*.*-*'  # Pre-release Version Tags
+  workflow_dispatch:
+    inputs:
+      build_ubuntu_24_x86_64:
+        description: 'Build Ubuntu 24.04 x86_64'
+        required: false
+        type: boolean
+        default: false
+      build_ubuntu_24_aarch64:
+        description: 'Build Ubuntu 24.04 aarch64'
+        required: false
+        type: boolean
+        default: false
+      build_ubuntu_22_x86_64:
+        description: 'Build Ubuntu 22.04 x86_64'
+        required: false
+        type: boolean
+        default: false
+      build_ubuntu_22_aarch64:
+        description: 'Build Ubuntu 22.04 aarch64'
+        required: false
+        type: boolean
+        default: false
+      build_macos_14_aarch64:
+        description: 'Build macOS 14 (Apple Silicon)'
+        required: false
+        type: boolean
+        default: false
+      build_macos_15_x86_64:
+        description: 'Build macOS 15 (Intel)'
+        required: false
+        type: boolean
+        default: false
+      build_windows_2022_x86_64:
+        description: 'Build Windows 2022 x86_64'
+        required: false
+        type: boolean
+        default: false
+      build_android_aarch64:
+        description: 'Build Android APK (aarch64 only)'
+        required: false
+        type: boolean
+        default: false
+      build_ios:
+        description: 'Build iOS app'
+        required: false
+        type: boolean
+        default: false
+      upload_testflight:
+        description: "Upload to TestFlight (true/false)"
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release tag (required if creating release)'
+        required: false
+        type: string
+        default: ''
+      create_release:
+        description: 'Create a GitHub Release'
+        required: true
+        type: boolean
+        default: false
+      pre_release:
+        description: 'Mark as a pre-release'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check_tag_version:
+    name: Check Release Tag and Cargo.toml Version Consistency
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag and Cargo.toml version
+        run: |
+          TAG_REF="${GITHUB_REF##*/}"
+          echo "Current tag: $TAG_REF"
+
+          CARGO_MANIFEST_VERSION=$(cargo metadata --no-deps --format-version 1 --frozen | jq -r '.packages[] | select(.name=="robrix") | .version' | head -n1)
+          if [[ -z "$CARGO_MANIFEST_VERSION" || "$CARGO_MANIFEST_VERSION" == "null" ]]; then
+            echo "Error: Failed to resolve robrix version from Cargo metadata."
+            exit 1
+          fi
+          echo "Cargo.toml Robrix version: $CARGO_MANIFEST_VERSION"
+
+          if [[ "$TAG_REF" != "v$CARGO_MANIFEST_VERSION" ]]; then
+            echo "Error: Tag '$TAG_REF' does not match Cargo.toml version '$CARGO_MANIFEST_VERSION'."
+            echo "Please create a tag that matches the Cargo.toml version."
+            exit 1
+          else
+            echo "Tag and Cargo.toml version are consistent."
+          fi
+
+  determine_matrices:
+    name: Determine Build Matrices
+    runs-on: ubuntu-latest
+    outputs:
+      linux_matrix: ${{ steps.set.outputs.linux_matrix }}
+      macos_matrix: ${{ steps.set.outputs.macos_matrix }}
+      windows_matrix: ${{ steps.set.outputs.windows_matrix }}
+      run_linux: ${{ steps.set.outputs.run_linux }}
+      run_macos: ${{ steps.set.outputs.run_macos }}
+      run_windows: ${{ steps.set.outputs.run_windows }}
+    steps:
+      - name: Build matrix from inputs
+        id: set
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isPush = context.eventName === 'push';
+            const inputs = context.payload.inputs || {};
+            const enabled = (value) => String(value).trim().toLowerCase() === 'true';
+
+            const linux = [];
+            const macos = [];
+            const windows = [];
+
+            const addLinux = (os, arch) => linux.push({ os, arch });
+            const addMacos = (os, arch) => macos.push({ os, arch });
+            const addWindows = () => windows.push({ os: 'windows-2022', arch: 'x86_64' });
+
+            if (isPush) {
+              addLinux('ubuntu-24.04', 'x86_64');
+              addLinux('ubuntu-24.04-arm', 'aarch64');
+              addLinux('ubuntu-22.04', 'x86_64');
+              addLinux('ubuntu-22.04-arm', 'aarch64');
+              addMacos('macos-14', 'aarch64');
+              addMacos('macos-15-intel', 'x86_64');
+              addWindows();
+            } else {
+              if (enabled(inputs.build_ubuntu_24_x86_64)) addLinux('ubuntu-24.04', 'x86_64');
+              if (enabled(inputs.build_ubuntu_24_aarch64)) addLinux('ubuntu-24.04-arm', 'aarch64');
+              if (enabled(inputs.build_ubuntu_22_x86_64)) addLinux('ubuntu-22.04', 'x86_64');
+              if (enabled(inputs.build_ubuntu_22_aarch64)) addLinux('ubuntu-22.04-arm', 'aarch64');
+              if (enabled(inputs.build_macos_14_aarch64)) addMacos('macos-14', 'aarch64');
+              if (enabled(inputs.build_macos_15_x86_64)) addMacos('macos-15-intel', 'x86_64');
+              if (enabled(inputs.build_windows_2022_x86_64)) addWindows();
+            }
+
+            core.setOutput('linux_matrix', JSON.stringify({ include: linux }));
+            core.setOutput('macos_matrix', JSON.stringify({ include: macos }));
+            core.setOutput('windows_matrix', JSON.stringify({ include: windows }));
+            core.setOutput('run_linux', linux.length > 0 ? 'true' : 'false');
+            core.setOutput('run_macos', macos.length > 0 ? 'true' : 'false');
+            core.setOutput('run_windows', windows.length > 0 ? 'true' : 'false');
+
+  create_release:
+    name: Create Release
+    needs: [check_tag_version, determine_matrices]
+    if: >-
+      ${{ always() && (
+        (github.event_name == 'push' && needs.check_tag_version.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.create_release == 'true' &&
+          (
+            needs.determine_matrices.outputs.run_linux == 'true' ||
+            needs.determine_matrices.outputs.run_macos == 'true' ||
+            needs.determine_matrices.outputs.run_windows == 'true' ||
+            github.event.inputs.build_android_aarch64 == 'true' ||
+            github.event.inputs.build_ios == 'true'
+          )
+        )
+      ) }}
+    runs-on: ubuntu-22.04
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: resolve
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            resolved_tag="${{ github.ref_name }}"
+          else
+            resolved_tag="${{ github.event.inputs.release_tag }}"
+            if [[ -z "$resolved_tag" ]]; then
+              resolved_version="$(awk '
+                /^\[package\]$/ { in_package=1; next }
+                /^\[/ { in_package=0 }
+                in_package && $1 == "version" {
+                  gsub(/"/, "", $3);
+                  print $3;
+                  exit;
+                }
+              ' Cargo.toml)"
+              if [[ -z "$resolved_version" ]]; then
+                echo "Error: Unable to resolve package.version from Cargo.toml."
+                exit 1
+              fi
+              resolved_tag="v${resolved_version}"
+              echo "release_tag not provided; fallback to ${resolved_tag}"
+            fi
+          fi
+
+          echo "tag=${resolved_tag}" >> "$GITHUB_OUTPUT"
+          echo "name=Robrix ${resolved_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.resolve.outputs.tag }}
+          name: ${{ steps.resolve.outputs.name }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.pre_release == 'true') || (github.event_name == 'push' && contains(github.ref, '-')) }}
+          token: ${{ secrets.ROBRIX_RELEASE }}
+
+      - name: Verify release access
+        shell: bash
+        run: |
+          gh api "repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}" --jq '.id'
+        env:
+          GH_TOKEN: ${{ secrets.ROBRIX_RELEASE }}
+
+  for_linux:
+    name: Release Robrix for Linux (${{ matrix.os }}, ${{ matrix.arch }})
+    needs: [check_tag_version, determine_matrices, create_release]
+    if: ${{ always() && ((github.event_name == 'push' && needs.check_tag_version.result == 'success') || (github.event_name == 'workflow_dispatch' && needs.determine_matrices.outputs.run_linux == 'true')) }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.determine_matrices.outputs.linux_matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux necessary dependencies
+        if: matrix.os == 'ubuntu-22.04' || matrix.os == 'ubuntu-22.04-arm' || matrix.os == 'ubuntu-24.04' || matrix.os == 'ubuntu-24.04-arm'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libssl-dev \
+            libsqlite3-dev \
+            pkg-config \
+            llvm \
+            clang \
+            libclang-dev \
+            binfmt-support \
+            libxcursor-dev \
+            libx11-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libwayland-dev libxkbcommon-dev
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Package (desktop)
+        uses: project-robius/makepad-packaging-action@v1
+        env:
+          CARGO_PACKAGER_SIGNING_KEY: ${{ secrets.CARGO_PACKAGER_SIGNING_KEY }}
+          CARGO_PACKAGER_SIGNING_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGNING_PASSWORD }}
+        with:
+          github_token: ${{ secrets.ROBRIX_RELEASE }}
+          packager_formats: deb
+          releaseId: ${{ needs.create_release.outputs.release_id }}
+
+  for_macos:
+    name: Release Robrix for macOS (${{ matrix.os }}, ${{ matrix.arch }})
+    needs: [check_tag_version, determine_matrices, create_release]
+    if: ${{ always() && ((github.event_name == 'push' && needs.check_tag_version.result == 'success') || (github.event_name == 'workflow_dispatch' && needs.determine_matrices.outputs.run_macos == 'true')) }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.determine_matrices.outputs.macos_matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install packaging tools
+        run: |
+          cargo install cargo-packager --locked
+          cargo install robius-packaging-commands --locked
+
+      - name: Import Apple certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_FILE=$(mktemp /tmp/certificate.XXXXXX.p12)
+          KEYCHAIN_FILE=$(mktemp /tmp/keychain.XXXXXX.keychain-db)
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_FILE"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_FILE"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
+          security import "$CERT_FILE" -k "$KEYCHAIN_FILE" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
+          security list-keychains -d user -s "$KEYCHAIN_FILE" login.keychain
+
+          rm -f "$CERT_FILE"
+
+      - name: Build DMG with Applications icon fix
+        env:
+          CARGO_PACKAGER_SIGNING_KEY: ${{ secrets.CARGO_PACKAGER_SIGNING_KEY }}
+          CARGO_PACKAGER_SIGNING_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGNING_PASSWORD }}
+        run: |
+          chmod +x ./packaging/build-macos-dmg.sh ./packaging/fix-dmg-applications-icon.sh
+          ./packaging/build-macos-dmg.sh
+
+      - name: Notarize DMG
+        env:
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          API_KEY_FILE=$(mktemp /tmp/api_key.XXXXXX.p8)
+          echo "$APP_STORE_CONNECT_API_KEY_CONTENT" > "$API_KEY_FILE"
+
+          DMG_FILE=$(find ./dist -name '*.dmg' -print -quit)
+          if [[ -z "$DMG_FILE" ]]; then
+            echo "Error: No DMG file found in dist/"
+            exit 1
+          fi
+
+          xcrun notarytool submit "$DMG_FILE" \
+            --key "$API_KEY_FILE" \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --wait
+
+          xcrun stapler staple "$DMG_FILE"
+          rm -f "$API_KEY_FILE"
+
+      - name: Upload DMG to Release
+        env:
+          GH_TOKEN: ${{ secrets.ROBRIX_RELEASE }}
+        run: |
+          DMG_FILE=$(find ./dist -name '*.dmg' -print -quit)
+          RELEASE_ID="${{ needs.create_release.outputs.release_id }}"
+          gh api "repos/${{ github.repository }}/releases/${RELEASE_ID}/assets" \
+            --method POST \
+            -H "Content-Type: application/octet-stream" \
+            --input "$DMG_FILE" \
+            -f "name=$(basename "$DMG_FILE")"
+
+  for_windows:
+    name: Release Robrix for Windows (${{ matrix.os }}, ${{ matrix.arch }})
+    needs: [check_tag_version, determine_matrices, create_release]
+    if: ${{ always() && ((github.event_name == 'push' && needs.check_tag_version.result == 'success') || (github.event_name == 'workflow_dispatch' && needs.determine_matrices.outputs.run_windows == 'true')) }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.determine_matrices.outputs.windows_matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Package (windows)
+        uses: project-robius/makepad-packaging-action@v1
+        env:
+          CARGO_PACKAGER_SIGNING_KEY: ${{ secrets.CARGO_PACKAGER_SIGNING_KEY }}
+          CARGO_PACKAGER_SIGNING_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGNING_PASSWORD }}
+        with:
+          github_token: ${{ secrets.ROBRIX_RELEASE }}
+          packager_formats: nsis
+          releaseId: ${{ needs.create_release.outputs.release_id }}
+
+  for_android:
+    name: Release Robrix for Android (aarch64)
+    needs: [check_tag_version, create_release]
+    if: ${{ always() && ((github.event_name == 'push' && needs.check_tag_version.result == 'success') || (github.event_name == 'workflow_dispatch' && github.event.inputs.build_android_aarch64 == 'true')) }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Package (android)
+        uses: project-robius/makepad-packaging-action@v1
+        env:
+          AWS_LC_SYS_CMAKE_BUILDER: 1
+          MAKEPAD_ANDROID_FULL_NDK: true
+          MAKEPAD_MOBILE_CARGO_EXTRA_ARGS: >-
+            --config profile.dev.opt-level=0
+            --config profile.dev.debug=false
+            --config profile.dev.lto=false
+            --config profile.dev.strip=true
+            --config profile.dev.debug-assertions=false
+        with:
+          github_token: ${{ secrets.ROBRIX_RELEASE }}
+          args: --target aarch64-linux-android
+          releaseId: ${{ needs.create_release.outputs.release_id }}
+
+  for_ios:
+    name: Release Robrix for iOS
+    needs: [check_tag_version, create_release]
+    if: ${{ always() && ((github.event_name == 'push' && needs.check_tag_version.result == 'success') || (github.event_name == 'workflow_dispatch' && github.event.inputs.build_ios == 'true')) }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Package (iOS)
+        uses: project-robius/makepad-packaging-action@v1
+        env:
+          AWS_LC_SYS_CMAKE_BUILDER: 1
+          MAKEPAD_MOBILE_CARGO_EXTRA_ARGS: >-
+            --config profile.dev.opt-level=0
+            --config profile.dev.debug=false
+            --config profile.dev.lto=false
+            --config profile.dev.strip=true
+            --config profile.dev.debug-assertions=false
+          MAKEPAD_IOS_ORG: org.robius.robrix
+          MAKEPAD_IOS_APP: Robrix
+          MAKEPAD_IOS_CREATE_IPA: 'true'
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: Apple Development
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        with:
+          github_token: ${{ secrets.ROBRIX_RELEASE }}
+          upload_to_testflight: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_testflight == 'true' }}
+          args: --target aarch64-apple-ios
+          releaseId: ${{ needs.create_release.outputs.release_id }}
