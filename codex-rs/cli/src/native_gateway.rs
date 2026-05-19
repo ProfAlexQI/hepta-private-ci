@@ -3,19 +3,57 @@ use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
-use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
+use hepta_gateway::DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR;
+use hepta_gateway::DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS;
+use hepta_gateway::DEFAULT_NATIVE_POST_STORE_MAX_BYTES;
+use hepta_gateway::DEFAULT_NATIVE_POST_STORE_MAX_LINES;
+use hepta_gateway::NATIVE_POST_ACTIVATION_PLAN_ENDPOINT;
+use hepta_gateway::NATIVE_POST_EXECUTION_READINESS_ENDPOINT;
+use hepta_gateway::NATIVE_POST_EXECUTION_STORE_DIR_ENV;
+use hepta_gateway::NATIVE_POST_EXECUTION_STORES_ENDPOINT;
+use hepta_gateway::NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT;
+use hepta_gateway::NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV;
+use hepta_gateway::NATIVE_POST_REAL_HANDLER_APPROVAL_ENV;
+use hepta_gateway::NATIVE_POST_REAL_HANDLER_SCOPE_ENV;
+use hepta_gateway::NATIVE_POST_REAL_HANDLERS_ENV;
+use hepta_gateway::NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT;
+use hepta_gateway::NATIVE_POST_STORE_MAX_BYTES_ENV;
+use hepta_gateway::NATIVE_POST_STORE_MAX_LINES_ENV;
+use hepta_gateway::NativePostActivationPlanResponse;
+#[cfg(test)]
+use hepta_gateway::NativePostAuditEventContract;
+#[cfg(test)]
+use hepta_gateway::NativePostBodyAdmission;
+#[cfg(test)]
+use hepta_gateway::NativePostBodySchema;
+#[cfg(test)]
+use hepta_gateway::NativePostExecutionAdmission;
+use hepta_gateway::NativePostExecutionReadinessResponse;
+use hepta_gateway::NativePostExecutionStoreLimits;
+#[cfg(test)]
+use hepta_gateway::NativePostExecutionStoreRecord;
+#[cfg(test)]
+use hepta_gateway::NativePostExecutionStoreWriteReport;
+use hepta_gateway::NativePostExecutionStoresResponse;
+use hepta_gateway::NativePostGrayReleaseEvidenceResponse;
+#[cfg(test)]
+use hepta_gateway::NativePostIdempotencyEvidence;
+#[cfg(test)]
+use hepta_gateway::NativePostPlanResponse;
+#[cfg(test)]
+use hepta_gateway::NativePostPlanRouteSpec;
+#[cfg(test)]
+use hepta_gateway::NativePostRealHandlerHarness;
+use hepta_gateway::NativePostRolloutEvidenceResponse;
 use serde::Serialize;
-use sha2::Digest;
-use sha2::Sha256;
 
 use crate::native_telegram;
 use crate::native_telegram::NativeTelegramPluginStatus;
@@ -27,11 +65,6 @@ const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERI
 const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
-const NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str = "/api/native-post-execution-readiness";
-const NATIVE_POST_EXECUTION_STORES_ENDPOINT: &str = "/api/native-post-execution-stores";
-const NATIVE_POST_ACTIVATION_PLAN_ENDPOINT: &str = "/api/native-post-activation-plan";
-const NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT: &str = "/api/native-post-rollout-evidence";
-const NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT: &str = "/api/native-post-gray-release-evidence";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
 const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
 const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str = "/api/telegram-production-readiness";
@@ -48,21 +81,6 @@ const MAX_NATIVE_TRANSCRIPT_LINES_PER_FILE: usize = 2_000;
 const MAX_NATIVE_TRANSCRIPT_EVENT_PREVIEWS_PER_FILE: usize = 40;
 const MAX_NATIVE_EVENT_FILES: usize = 20;
 const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
-const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
-const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
-const NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
-const NATIVE_POST_REAL_HANDLER_SCOPE_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE";
-const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
-const NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
-const NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
-const NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV: &str = "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS";
-const DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS: u64 = 1_000;
-const DEFAULT_NATIVE_POST_STORE_MAX_BYTES: u64 = 10 * 1024 * 1024;
-const DEFAULT_NATIVE_POST_STORE_MAX_LINES: u64 = 100_000;
-const DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR: &str = ".hepta/native-post-execution";
-const NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
-    &["approval_apply", "task_publish", "chat_send"];
-
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
         prefix: "/api/task/",
@@ -99,130 +117,6 @@ const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
         source_command: "/handoff-bundle <task_id> --json",
         artifact_kind: "handoff_bundle",
         compatibility_mode: "native_handoff_bundle_redacted",
-    },
-];
-
-const NATIVE_POST_PLAN_ROUTE_SPECS: &[NativePostPlanRouteSpec] = &[
-    NativePostPlanRouteSpec {
-        pattern: "/api/actions/<action>",
-        prefix: Some("/api/actions/"),
-        exact_path: None,
-        source_command: "/ui-action-plan <action> --dry-run --json",
-        capability: "guarded-action-post",
-        plan_kind: "ui_action",
-        compatibility_mode: "native_action_post_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/commands/<id>",
-        prefix: Some("/api/commands/"),
-        exact_path: None,
-        source_command: "/<allowlisted read-only command> --json",
-        capability: "readonly-command-runner",
-        plan_kind: "readonly_command",
-        compatibility_mode: "native_readonly_command_plan",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/approvals/exec/apply",
-        prefix: None,
-        exact_path: Some("/api/approvals/exec/apply"),
-        source_command: "/approvals exec apply --dry-run --json",
-        capability: "exec-approvals-apply-bridge",
-        plan_kind: "approval_apply",
-        compatibility_mode: "native_approvals_exec_apply_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: true,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/tasks/plan",
-        prefix: None,
-        exact_path: Some("/api/tasks/plan"),
-        source_command: "/tasks plan --dry-run --json",
-        capability: "task-publisher-plan",
-        plan_kind: "task_plan",
-        compatibility_mode: "native_task_plan_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/tasks/publish",
-        prefix: None,
-        exact_path: Some("/api/tasks/publish"),
-        source_command: "/tasks publish --confirm --json",
-        capability: "task-publisher-publish",
-        plan_kind: "task_publish",
-        compatibility_mode: "native_task_publish_confirm_required",
-        dry_run_only: false,
-        confirmation_required_for_real_mutation: true,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/register",
-        prefix: None,
-        exact_path: Some("/api/chat/register"),
-        source_command: "/chat register --json",
-        capability: "agent-chat-register",
-        plan_kind: "chat_register",
-        compatibility_mode: "native_chat_register_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/archive",
-        prefix: None,
-        exact_path: Some("/api/chat/archive"),
-        source_command: "/chat archive --json",
-        capability: "agent-chat-archive",
-        plan_kind: "chat_archive",
-        compatibility_mode: "native_chat_archive_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/unarchive",
-        prefix: None,
-        exact_path: Some("/api/chat/unarchive"),
-        source_command: "/chat unarchive --json",
-        capability: "agent-chat-unarchive",
-        plan_kind: "chat_unarchive",
-        compatibility_mode: "native_chat_unarchive_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/delete",
-        prefix: None,
-        exact_path: Some("/api/chat/delete"),
-        source_command: "/chat delete --json",
-        capability: "agent-chat-delete",
-        plan_kind: "chat_delete",
-        compatibility_mode: "native_chat_delete_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/plan",
-        prefix: None,
-        exact_path: Some("/api/chat/plan"),
-        source_command: "/chat plan --json",
-        capability: "agent-chat-plan",
-        plan_kind: "chat_plan",
-        compatibility_mode: "native_chat_plan_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat",
-        prefix: None,
-        exact_path: Some("/api/chat"),
-        source_command: "/chat send --json",
-        capability: "agent-chat-send",
-        plan_kind: "chat_send",
-        compatibility_mode: "native_chat_send_confirm_required",
-        dry_run_only: false,
-        confirmation_required_for_real_mutation: true,
     },
 ];
 
@@ -1119,16 +1013,25 @@ fn route_native_gateway_request_with_body(
         }
     }
 
-    if method == "POST" {
-        for spec in NATIVE_POST_PLAN_ROUTE_SPECS {
-            if let Some(parameter) = native_post_plan_parameter(spec, path) {
-                return (
-                    "200 OK",
-                    "application/json; charset=utf-8",
-                    native_post_plan_json(spec, parameter, request_body),
-                );
-            }
-        }
+    if let Some(report) = hepta_gateway::native_post_dispatch_plan_report(
+        method,
+        path,
+        request_body,
+        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
+        env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
+        native_post_real_handler_scope_from_env().as_deref(),
+        &native_post_execution_store_root(),
+        NativePostExecutionStoreLimits {
+            max_store_bytes: native_post_store_max_bytes(),
+            max_store_lines: native_post_store_max_lines(),
+            rate_limit_window_ms: native_post_rate_limit_window_ms(),
+        },
+    ) {
+        return (
+            "200 OK",
+            "application/json; charset=utf-8",
+            json_or_error(&report),
+        );
     }
 
     if let Some(body) = control_ui_route_response(method, path) {
@@ -1219,6 +1122,7 @@ fn native_gateway_json(
         replacement_blocker,
         gateway_replacement_readiness_endpoint: GATEWAY_REPLACEMENT_READINESS_ENDPOINT,
         gateway_replacement_readiness,
+        gateway_route_core_status: native_gateway_route_core_status(),
         gateway_live_activation_plan_endpoint: GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
         gateway_live_activation_plan: gateway_live_activation_plan(options, telegram_plugin),
         control_ui_route_parity_endpoint: CONTROL_UI_ROUTE_PARITY_ENDPOINT,
@@ -1769,458 +1673,67 @@ fn native_task_artifact_report(
     }
 }
 
-fn native_post_plan_parameter<'a>(
-    spec: &NativePostPlanRouteSpec,
-    path: &'a str,
-) -> Option<Option<&'a str>> {
-    if let Some(prefix) = spec.prefix {
-        return path
-            .strip_prefix(prefix)
-            .filter(|parameter| !parameter.is_empty())
-            .map(Some);
-    }
-    spec.exact_path
-        .filter(|exact_path| *exact_path == path)
-        .map(|_| None)
+#[cfg(test)]
+fn native_post_plan_route_specs() -> &'static [NativePostPlanRouteSpec] {
+    hepta_gateway::native_post_plan_route_specs()
 }
 
-fn native_post_plan_json(
-    spec: &NativePostPlanRouteSpec,
-    parameter: Option<&str>,
-    request_body: Option<&str>,
-) -> String {
-    json_or_error(&native_post_plan_report(spec, parameter, request_body))
-}
-
+#[cfg(test)]
 fn native_post_plan_report(
     spec: &NativePostPlanRouteSpec,
     parameter: Option<&str>,
     request_body: Option<&str>,
 ) -> NativePostPlanResponse {
-    let body_schema = native_post_body_schema(spec.plan_kind, request_body.is_some());
-    let body_admission = native_post_body_admission(spec, &body_schema, request_body);
-    let confirmation_contract = native_post_confirmation_contract(spec);
-    let rollback_contract = native_post_rollback_contract();
-    let mut idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
-    let mut audit_event_contract = native_post_audit_event_contract(
+    hepta_gateway::native_post_plan_report(
         spec,
-        &body_schema,
-        &body_admission,
-        &idempotency_evidence,
-    );
-    let execution_admission = native_post_execution_admission(
-        spec,
-        &body_admission,
-        &idempotency_evidence,
-        &audit_event_contract,
-    );
-    let real_handler_harness = native_post_real_handler_harness(
-        spec,
-        &body_schema,
-        &body_admission,
-        &idempotency_evidence,
-        &audit_event_contract,
-        &execution_admission,
+        parameter,
+        request_body,
+        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
+        env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
+        native_post_real_handler_scope_from_env().as_deref(),
         &native_post_execution_store_root(),
-    );
-    if real_handler_harness.duplicate_check_performed {
-        idempotency_evidence.current_plan_lookup_performed = true;
-    }
-    if real_handler_harness.store_write_succeeded {
-        idempotency_evidence.current_plan_store_written = true;
-        audit_event_contract.current_plan_emits_audit_event = true;
-        audit_event_contract.current_plan_persists_audit_event = true;
-    }
-    NativePostPlanResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if spec.confirmation_required_for_real_mutation {
-            "confirm_required"
-        } else {
-            "dry_run_ready"
+        NativePostExecutionStoreLimits {
+            max_store_bytes: native_post_store_max_bytes(),
+            max_store_lines: native_post_store_max_lines(),
+            rate_limit_window_ms: native_post_rate_limit_window_ms(),
         },
-        method: "POST",
-        pattern: spec.pattern,
-        source_command: spec.source_command,
-        capability: spec.capability,
-        native_route: true,
-        compatibility_mode: spec.compatibility_mode,
-        side_effect_free: !real_handler_harness.store_write_attempted,
-        plan_kind: spec.plan_kind,
-        dry_run_only: spec.dry_run_only,
-        confirmation_required_for_real_mutation: spec.confirmation_required_for_real_mutation,
-        parameter_present: parameter.is_some(),
-        parameter_redacted: parameter.is_some(),
-        parameter_length: parameter.map(str::len),
-        request_body_read: body_admission.request_body_read,
-        request_body_redacted: true,
-        body_schema_ready: true,
-        body_admission_ready: true,
-        confirmation_contract_ready: true,
-        rollback_contract_ready: true,
-        idempotency_evidence_ready: true,
-        audit_event_contract_ready: true,
-        execution_admission_ready: true,
-        body_schema,
-        body_admission,
-        confirmation_contract,
-        rollback_contract,
-        idempotency_evidence,
-        audit_event_contract,
-        execution_admission,
-        real_handler_harness_ready: true,
-        real_handler_harness,
-        action_dispatched: false,
-        command_executed: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        raw_request_body_exposed: false,
-        raw_parameter_exposed: false,
-        raw_token_exposed: false,
-        raw_transcript_exposed: false,
-        model_invoked: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        message_sent: false,
-        cursor_written: false,
-        next_migration_slice: "wire selected POST planners to real handlers only after execution admission, idempotency, audit, and rollback gates are satisfied",
-    }
+    )
 }
 
+#[cfg(test)]
 fn native_post_body_schema(plan_kind: &str, body_read_during_plan: bool) -> NativePostBodySchema {
-    let (schema_id, body_required_for_real_handler, required_fields, optional_fields) =
-        match plan_kind {
-            "ui_action" => (
-                "hepta.post.ui_action.v1",
-                false,
-                vec![],
-                vec!["action_payload", "dry_run", "confirm", "reason"],
-            ),
-            "readonly_command" => (
-                "hepta.post.readonly_command.v1",
-                false,
-                vec![],
-                vec!["command_args", "dry_run"],
-            ),
-            "approval_apply" => (
-                "hepta.post.approval_apply.v1",
-                true,
-                vec!["approval_id", "confirm"],
-                vec!["dry_run", "reason", "idempotency_key"],
-            ),
-            "task_plan" => (
-                "hepta.post.task_plan.v1",
-                false,
-                vec![],
-                vec!["task", "channel", "delivery", "dry_run"],
-            ),
-            "task_publish" => (
-                "hepta.post.task_publish.v1",
-                true,
-                vec!["task", "confirm"],
-                vec![
-                    "delivery",
-                    "timeout_seconds",
-                    "rollback_hint",
-                    "dry_run",
-                    "idempotency_key",
-                ],
-            ),
-            "chat_register" => (
-                "hepta.post.chat_register.v1",
-                true,
-                vec!["chat_id"],
-                vec!["label", "metadata"],
-            ),
-            "chat_archive" => (
-                "hepta.post.chat_archive.v1",
-                true,
-                vec!["chat_id"],
-                vec!["reason"],
-            ),
-            "chat_unarchive" => (
-                "hepta.post.chat_unarchive.v1",
-                true,
-                vec!["chat_id"],
-                vec!["reason"],
-            ),
-            "chat_delete" => (
-                "hepta.post.chat_delete.v1",
-                true,
-                vec!["chat_id"],
-                vec!["reason", "confirm"],
-            ),
-            "chat_plan" => (
-                "hepta.post.chat_plan.v1",
-                false,
-                vec![],
-                vec!["chat_id", "message", "dry_run"],
-            ),
-            "chat_send" => (
-                "hepta.post.chat_send.v1",
-                true,
-                vec!["chat_id", "message", "confirm"],
-                vec![
-                    "thread_id",
-                    "delivery",
-                    "rollback_hint",
-                    "dry_run",
-                    "idempotency_key",
-                ],
-            ),
-            _ => ("hepta.post.unknown.v1", false, vec![], vec!["dry_run"]),
-        };
-
-    NativePostBodySchema {
-        schema_id,
-        content_type: "application/json",
-        body_required_for_real_handler,
-        required_fields,
-        optional_fields,
-        body_read_during_plan,
-        raw_body_exposed: false,
-        raw_field_values_exposed: false,
-    }
+    hepta_gateway::native_post_body_schema(plan_kind, body_read_during_plan)
 }
 
+#[cfg(test)]
 fn native_post_body_admission(
     spec: &NativePostPlanRouteSpec,
     schema: &NativePostBodySchema,
     request_body: Option<&str>,
 ) -> NativePostBodyAdmission {
-    let body_received = request_body
-        .map(str::trim)
-        .map(|body| !body.is_empty())
-        .unwrap_or(false);
-    let request_body_read = request_body.is_some();
-    let body_size_bytes = request_body.map(str::len).unwrap_or(0);
-    let body_size_within_limit = body_size_bytes <= NATIVE_POST_MAX_BODY_BYTES;
-    let json_parse_attempted = body_received && body_size_within_limit;
-    let parsed_body = if json_parse_attempted {
-        request_body.and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
-    } else {
-        None
-    };
-    let json_parse_ok = json_parse_attempted.then_some(parsed_body.is_some());
-    let object = parsed_body.as_ref().and_then(serde_json::Value::as_object);
-    let json_object_present = object.is_some();
-    let missing_required_fields = if schema.body_required_for_real_handler || body_received {
-        schema
-            .required_fields
-            .iter()
-            .copied()
-            .filter(|field| {
-                object
-                    .map(|object| !object.contains_key(*field))
-                    .unwrap_or(true)
-            })
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-    let required_fields_present = missing_required_fields.is_empty();
-    let optional_field_count_present = object
-        .map(|object| {
-            schema
-                .optional_fields
-                .iter()
-                .filter(|field| object.contains_key(**field))
-                .count()
-        })
-        .unwrap_or(0);
-    let confirm_field = object.and_then(|object| object.get("confirm"));
-    let confirm_field_present = confirm_field.is_some();
-    let confirm_field_truthy = json_field_truthy(confirm_field);
-    let dry_run_field = object.and_then(|object| object.get("dry_run"));
-    let dry_run_field_present = dry_run_field.is_some();
-    let dry_run_first_satisfied =
-        !spec.confirmation_required_for_real_mutation || json_field_truthy(dry_run_field);
-    let idempotency_key_required = spec.confirmation_required_for_real_mutation;
-    let idempotency_key_value = object
-        .and_then(|object| object.get("idempotency_key"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let idempotency_key_present = idempotency_key_value.is_some();
-    let idempotency_key_fingerprint = idempotency_key_value.map(native_post_redacted_fingerprint);
-
-    let admission_status = if !body_received && schema.body_required_for_real_handler {
-        "missing_body"
-    } else if !body_size_within_limit {
-        "body_too_large"
-    } else if json_parse_attempted && json_parse_ok != Some(true) {
-        "invalid_json"
-    } else if body_received && !json_object_present {
-        "body_not_json_object"
-    } else if !required_fields_present {
-        "missing_required_fields"
-    } else if spec.confirmation_required_for_real_mutation && !confirm_field_truthy {
-        "confirmation_missing"
-    } else if idempotency_key_required && !idempotency_key_present {
-        "idempotency_key_missing"
-    } else if spec.confirmation_required_for_real_mutation && !dry_run_first_satisfied {
-        "dry_run_first_required"
-    } else if spec.confirmation_required_for_real_mutation {
-        "ready_for_real_handler"
-    } else if body_received {
-        "validated_plan_input"
-    } else {
-        "not_required"
-    };
-    let ready_for_real_handler_input = admission_status == "ready_for_real_handler";
-
-    NativePostBodyAdmission {
-        admission_status,
-        body_received,
-        request_body_read,
-        request_body_redacted: true,
-        body_size_bytes,
-        max_body_bytes: NATIVE_POST_MAX_BODY_BYTES,
-        body_size_within_limit,
-        json_parse_attempted,
-        json_parse_ok,
-        json_object_present,
-        required_fields_present,
-        missing_required_fields,
-        optional_field_count_present,
-        confirm_field_present,
-        confirm_field_truthy,
-        dry_run_field_present,
-        dry_run_first_satisfied,
-        idempotency_key_required,
-        idempotency_key_present,
-        idempotency_key_fingerprint,
-        ready_for_real_handler_input,
-        raw_body_exposed: false,
-        raw_field_values_exposed: false,
-    }
+    hepta_gateway::native_post_body_admission(spec, schema, request_body)
 }
 
-fn native_post_redacted_fingerprint(value: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(b"hepta-native-post-idempotency-v1:");
-    hasher.update(value.as_bytes());
-    let digest = hasher.finalize();
-    let mut encoded = String::with_capacity("sha256:".len() + digest.len() * 2);
-    encoded.push_str("sha256:");
-    for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(&mut encoded, "{byte:02x}");
-    }
-    encoded
-}
-
-fn json_field_truthy(value: Option<&serde_json::Value>) -> bool {
-    match value {
-        Some(serde_json::Value::Bool(true)) => true,
-        Some(serde_json::Value::String(value)) => {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        }
-        Some(serde_json::Value::Number(value)) => value.as_i64() == Some(1),
-        _ => false,
-    }
-}
-
-fn native_post_confirmation_contract(
-    spec: &NativePostPlanRouteSpec,
-) -> NativePostConfirmationContract {
-    NativePostConfirmationContract {
-        current_plan_requires_confirmation: false,
-        real_mutation_requires_confirmation: spec.confirmation_required_for_real_mutation,
-        accepted_confirmation_field: spec
-            .confirmation_required_for_real_mutation
-            .then_some("confirm"),
-        operator_approval_required: spec.confirmation_required_for_real_mutation,
-        confirmation_mechanism: if spec.confirmation_required_for_real_mutation {
-            "explicit_confirm_field_plus_operator_approval"
-        } else {
-            "not_required_for_plan_only_route"
-        },
-        raw_confirmation_payload_exposed: false,
-    }
-}
-
-fn native_post_rollback_contract() -> NativePostRollbackContract {
-    NativePostRollbackContract {
-        current_plan_noop: true,
-        state_written_by_plan: false,
-        current_plan_rollback_strategy: "noop_no_state_written",
-        real_handler_requires_rollback_contract: true,
-        destructive_without_rollback: false,
-        rollback_payload_exposed: false,
-    }
-}
-
+#[cfg(test)]
 fn native_post_idempotency_evidence(
     spec: &NativePostPlanRouteSpec,
     body_admission: &NativePostBodyAdmission,
 ) -> NativePostIdempotencyEvidence {
-    let required = spec.confirmation_required_for_real_mutation;
-    NativePostIdempotencyEvidence {
-        required,
-        key_present: body_admission.idempotency_key_present,
-        key_redacted: body_admission.idempotency_key_present,
-        key_fingerprint: body_admission.idempotency_key_fingerprint.clone(),
-        key_shape_valid: !required || body_admission.idempotency_key_present,
-        lookup_required_before_real_handler: required,
-        duplicate_suppression_required: required,
-        durable_store_required: required,
-        current_plan_lookup_performed: false,
-        current_plan_store_written: false,
-        raw_key_exposed: false,
-    }
+    hepta_gateway::native_post_idempotency_evidence(spec, body_admission)
 }
 
+#[cfg(test)]
 fn native_post_audit_event_contract(
     spec: &NativePostPlanRouteSpec,
     body_schema: &NativePostBodySchema,
     body_admission: &NativePostBodyAdmission,
     idempotency_evidence: &NativePostIdempotencyEvidence,
 ) -> NativePostAuditEventContract {
-    let required = spec.confirmation_required_for_real_mutation;
-    NativePostAuditEventContract {
-        required,
-        schema_id: "hepta.post.execution_audit.v1",
-        event_kind: spec.plan_kind,
-        body_schema_id: body_schema.schema_id,
-        route_pattern_recorded: true,
-        capability_recorded: true,
-        body_admission_status_recorded: true,
-        idempotency_evidence_recorded: required,
-        rollback_contract_recorded: required,
-        operator_approval_recorded: required,
-        ready_for_real_handler: !required
-            || (body_admission.ready_for_real_handler_input
-                && idempotency_evidence.key_shape_valid),
-        current_plan_emits_audit_event: false,
-        current_plan_persists_audit_event: false,
-        raw_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_parameter_exposed: false,
-        raw_idempotency_key_exposed: false,
-    }
-}
-
-fn native_post_execution_admission(
-    spec: &NativePostPlanRouteSpec,
-    body_admission: &NativePostBodyAdmission,
-    idempotency_evidence: &NativePostIdempotencyEvidence,
-    audit_event_contract: &NativePostAuditEventContract,
-) -> NativePostExecutionAdmission {
-    let handler_scope = native_post_real_handler_scope_from_env();
-    native_post_execution_admission_with_scope(
+    hepta_gateway::native_post_audit_event_contract(
         spec,
+        body_schema,
         body_admission,
         idempotency_evidence,
-        audit_event_contract,
-        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
-        env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
-        handler_scope.as_deref(),
     )
 }
 
@@ -2244,6 +1757,7 @@ fn native_post_execution_admission_with_gates(
     )
 }
 
+#[cfg(test)]
 fn native_post_execution_admission_with_scope(
     spec: &NativePostPlanRouteSpec,
     body_admission: &NativePostBodyAdmission,
@@ -2253,86 +1767,20 @@ fn native_post_execution_admission_with_scope(
     operator_approval_enabled: bool,
     handler_scope: Option<&str>,
 ) -> NativePostExecutionAdmission {
-    let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
-    let real_handler_implemented = native_post_real_handler_implemented(spec);
-    let handler_scope_configured = handler_scope
-        .map(str::trim)
-        .map(|scope| !scope.is_empty())
-        .unwrap_or(false);
-    let handler_scope_matches = !allowlisted_for_real_handler
-        || native_post_real_handler_scope_matches(spec.plan_kind, handler_scope);
-    let handler_scope_required = allowlisted_for_real_handler && real_handler_implemented;
-    let request_body_ready_for_real_handler =
-        !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
-    let execution_evidence_ready = !allowlisted_for_real_handler
-        || (idempotency_evidence.key_shape_valid && audit_event_contract.ready_for_real_handler);
-    let current_plan_executes_real_handler = allowlisted_for_real_handler
-        && request_body_ready_for_real_handler
-        && execution_evidence_ready
-        && real_handler_implemented
-        && enablement_gate_enabled
-        && operator_approval_enabled
-        && (!handler_scope_required || handler_scope_matches);
-    NativePostExecutionAdmission {
-        admission_status: if current_plan_executes_real_handler {
-            "harness_ready"
-        } else {
-            "blocked"
-        },
-        current_plan_executes_real_handler,
-        real_handler_currently_enabled: enablement_gate_enabled,
-        real_handler_implemented,
-        allowlisted_for_real_handler,
-        enablement_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
+    hepta_gateway::native_post_execution_admission_with_scope(
+        spec,
+        body_admission,
+        idempotency_evidence,
+        audit_event_contract,
         enablement_gate_enabled,
-        operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
         operator_approval_enabled,
-        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        handler_scope: handler_scope
-            .map(str::trim)
-            .filter(|scope| !scope.is_empty())
-            .map(str::to_string),
-        handler_scope_configured,
-        handler_scope_required,
-        handler_scope_matches,
-        request_body_admission_status: body_admission.admission_status,
-        request_body_ready_for_real_handler,
-        requires_body_schema: allowlisted_for_real_handler,
-        requires_confirmation_contract: allowlisted_for_real_handler,
-        requires_rollback_contract: allowlisted_for_real_handler,
-        requires_idempotency_key: allowlisted_for_real_handler,
-        idempotency_evidence_ready: execution_evidence_ready,
-        requires_audit_event: allowlisted_for_real_handler,
-        audit_event_contract_ready: execution_evidence_ready,
-        requires_rate_limit: allowlisted_for_real_handler,
-        requires_dry_run_first: true,
-        external_side_effects_possible: allowlisted_for_real_handler,
-        blocked_reason: if allowlisted_for_real_handler && !request_body_ready_for_real_handler {
-            "body_admission_not_ready"
-        } else if allowlisted_for_real_handler && !execution_evidence_ready {
-            "execution_evidence_not_ready"
-        } else if allowlisted_for_real_handler && !real_handler_implemented {
-            "real_handler_not_wired"
-        } else if allowlisted_for_real_handler && !enablement_gate_enabled {
-            "real_handler_gate_disabled"
-        } else if allowlisted_for_real_handler && !operator_approval_enabled {
-            "operator_approval_required"
-        } else if allowlisted_for_real_handler && handler_scope_required && !handler_scope_matches {
-            "handler_scope_not_selected"
-        } else if allowlisted_for_real_handler {
-            "real_handler_harness_dry_run_only"
-        } else {
-            "plan_only_route"
-        },
-    }
+        handler_scope,
+    )
 }
 
-fn native_post_real_handler_implemented(spec: &NativePostPlanRouteSpec) -> bool {
-    native_post_plan_kind_has_real_handler(spec.plan_kind)
-}
-
+#[cfg(test)]
 fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
-    NATIVE_POST_REAL_HANDLER_PLAN_KINDS.contains(&plan_kind)
+    hepta_gateway::native_post_plan_kind_has_real_handler(plan_kind)
 }
 
 fn native_post_real_handler_scope_from_env() -> Option<String> {
@@ -2342,30 +1790,7 @@ fn native_post_real_handler_scope_from_env() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn native_post_real_handler_scope_matches(plan_kind: &str, handler_scope: Option<&str>) -> bool {
-    handler_scope
-        .map(native_post_real_handler_scope_tokens)
-        .unwrap_or_default()
-        .iter()
-        .any(|token| *token == plan_kind)
-}
-
-fn native_post_real_handler_scope_selected_kinds(handler_scope: Option<&str>) -> Vec<&'static str> {
-    NATIVE_POST_REAL_HANDLER_PLAN_KINDS
-        .iter()
-        .copied()
-        .filter(|plan_kind| native_post_real_handler_scope_matches(plan_kind, handler_scope))
-        .collect()
-}
-
-fn native_post_real_handler_scope_tokens(handler_scope: &str) -> Vec<&str> {
-    handler_scope
-        .split(|ch: char| matches!(ch, ',' | ';' | ' ' | '\t' | '\n' | '\r'))
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .collect()
-}
-
+#[cfg(test)]
 fn native_post_real_handler_harness(
     spec: &NativePostPlanRouteSpec,
     body_schema: &NativePostBodySchema,
@@ -2375,149 +1800,20 @@ fn native_post_real_handler_harness(
     execution_admission: &NativePostExecutionAdmission,
     store_root: &Path,
 ) -> NativePostRealHandlerHarness {
-    let dual_gate_satisfied = execution_admission.enablement_gate_enabled
-        && execution_admission.operator_approval_enabled;
-    let duplicate_check_performed = execution_admission.current_plan_executes_real_handler
-        && idempotency_evidence.key_fingerprint.is_some();
-    let (duplicate_found, duplicate_check_error) = if duplicate_check_performed {
-        match native_post_idempotency_duplicate_present(
-            store_root,
-            idempotency_evidence.key_fingerprint.as_deref(),
-        ) {
-            Ok(found) => (found, None),
-            Err(_error) => (false, Some("native_post_idempotency_check_failed")),
-        }
-    } else {
-        (false, None)
-    };
-    let duplicate_suppressed = duplicate_check_performed && duplicate_found;
-    let rate_limit_window_ms = native_post_rate_limit_window_ms();
-    let rate_limit_check_performed = execution_admission.current_plan_executes_real_handler
-        && !duplicate_suppressed
-        && duplicate_check_error.is_none();
-    let (rate_limited, rate_limit_check_error) = if rate_limit_check_performed {
-        match native_post_rate_limit_recent_present(
-            store_root,
-            spec.plan_kind,
-            rate_limit_window_ms,
-        ) {
-            Ok(limited) => (limited, None),
-            Err(_error) => (false, Some("native_post_rate_limit_check_failed")),
-        }
-    } else {
-        (false, None)
-    };
-    let capacity_check_performed = execution_admission.current_plan_executes_real_handler
-        && !duplicate_suppressed
-        && duplicate_check_error.is_none()
-        && !rate_limited
-        && rate_limit_check_error.is_none();
-    let pending_record = if capacity_check_performed {
-        Some(native_post_execution_store_record(
-            spec,
-            body_schema,
-            body_admission,
-            idempotency_evidence,
-            audit_event_contract,
-            true,
-        ))
-    } else {
-        None
-    };
-    let (store_capacity_ok, store_capacity_check_error) = if let Some(record) = &pending_record {
-        match native_post_execution_store_capacity_allows_append(store_root, record) {
-            Ok(ok) => (ok, None),
-            Err(_error) => (false, Some("native_post_store_capacity_check_failed")),
-        }
-    } else {
-        (true, None)
-    };
-    let store_write_attempted =
-        capacity_check_performed && store_capacity_ok && store_capacity_check_error.is_none();
-    let (store_write_succeeded, store_write_report, store_write_error) = if store_write_attempted {
-        match persist_native_post_execution_store_record(
-            store_root,
-            pending_record
-                .as_ref()
-                .expect("pending record exists before store write"),
-        ) {
-            Ok(report) => (true, Some(report), None),
-            Err(_error) => (
-                false,
-                None,
-                Some("native_post_execution_store_write_failed"),
-            ),
-        }
-    } else {
-        (false, None, None)
-    };
-    NativePostRealHandlerHarness {
-        status: if !execution_admission.allowlisted_for_real_handler {
-            "plan_only_route"
-        } else if !execution_admission.real_handler_implemented {
-            "not_implemented"
-        } else if !store_write_attempted {
-            if duplicate_suppressed {
-                "duplicate_suppressed"
-            } else if duplicate_check_error.is_some() {
-                "idempotency_check_failed"
-            } else if rate_limited {
-                "rate_limited"
-            } else if rate_limit_check_error.is_some() {
-                "rate_limit_check_failed"
-            } else if !store_capacity_ok {
-                "store_capacity_blocked"
-            } else if store_capacity_check_error.is_some() {
-                "store_capacity_check_failed"
-            } else {
-                "blocked"
-            }
-        } else if store_write_succeeded {
-            "dry_run_recorded"
-        } else {
-            "store_write_failed"
+    hepta_gateway::native_post_real_handler_harness(
+        spec,
+        body_schema,
+        body_admission,
+        idempotency_evidence,
+        audit_event_contract,
+        execution_admission,
+        store_root,
+        NativePostExecutionStoreLimits {
+            max_store_bytes: native_post_store_max_bytes(),
+            max_store_lines: native_post_store_max_lines(),
+            rate_limit_window_ms: native_post_rate_limit_window_ms(),
         },
-        handler_kind: spec.plan_kind,
-        dry_run_only: true,
-        handler_implemented: execution_admission.real_handler_implemented,
-        dual_gate_satisfied,
-        enablement_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
-        enablement_gate_enabled: execution_admission.enablement_gate_enabled,
-        operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
-        operator_approval_enabled: execution_admission.operator_approval_enabled,
-        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        handler_scope: execution_admission.handler_scope.clone(),
-        handler_scope_configured: execution_admission.handler_scope_configured,
-        handler_scope_required: execution_admission.handler_scope_required,
-        handler_scope_matches: execution_admission.handler_scope_matches,
-        duplicate_check_performed,
-        duplicate_found,
-        duplicate_suppressed,
-        duplicate_check_error,
-        rate_limit_check_performed,
-        rate_limited,
-        rate_limit_suppressed: rate_limit_check_performed && rate_limited,
-        rate_limit_window_ms,
-        rate_limit_check_error,
-        capacity_check_performed,
-        store_capacity_ok,
-        store_capacity_check_error,
-        store_write_attempted,
-        store_write_succeeded,
-        store_write_report,
-        store_write_error,
-        task_published: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        raw_request_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-    }
+    )
 }
 
 fn native_post_execution_readiness_json() -> String {
@@ -2537,462 +1833,41 @@ fn native_post_gray_release_evidence_json() -> String {
 }
 
 fn native_post_gray_release_evidence_report() -> NativePostGrayReleaseEvidenceResponse {
-    native_post_gray_release_evidence_report_for_root_with_gates(
+    hepta_gateway::native_post_gray_release_evidence_report(
         &native_post_execution_store_root(),
+        native_post_store_max_bytes(),
+        native_post_store_max_lines(),
         native_post_real_handler_scope_from_env().as_deref(),
         env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
         env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
     )
 }
 
-fn native_post_gray_release_evidence_report_for_root_with_gates(
-    root: &Path,
-    handler_scope: Option<&str>,
-    real_handler_gate_enabled: bool,
-    operator_approval_enabled: bool,
-) -> NativePostGrayReleaseEvidenceResponse {
-    let readiness = native_post_execution_readiness_report();
-    let max_store_bytes = native_post_store_max_bytes();
-    let max_store_lines = native_post_store_max_lines();
-    let store_files =
-        native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
-    let store_jsonl_valid = store_files
-        .iter()
-        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
-    let store_capacity_ok = store_files
-        .iter()
-        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
-    let store_contracts_ready = store_jsonl_valid && store_capacity_ok;
-    let all_handlers_implemented =
-        readiness.real_handler_implemented_count == readiness.real_handler_candidate_count;
-    let activation_preflight_ready =
-        readiness.all_evidence_contracts_ready && all_handlers_implemented && store_contracts_ready;
-    let selected_handler_kinds = native_post_real_handler_scope_selected_kinds(handler_scope);
-    let selected_handler_count = selected_handler_kinds.len();
-    let single_handler_scope_ready = selected_handler_count == 1;
-    let selected_handler_kind = single_handler_scope_ready.then(|| selected_handler_kinds[0]);
-    let activation_currently_enabled = activation_preflight_ready
-        && real_handler_gate_enabled
-        && operator_approval_enabled
-        && single_handler_scope_ready;
-    let rollout_evidence = native_post_rollout_evidence_report_for_root(root);
-    let selected_handler_evidence = native_post_selected_handler_rollout_evidence(
-        &root.join("rollback.jsonl"),
-        selected_handler_kind,
-    );
-    let selected_handler_evidence_ready = selected_handler_evidence.dry_run_record_present
-        && selected_handler_evidence.rollback_anchor_present
-        && !selected_handler_evidence.raw_request_body_exposed
-        && !selected_handler_evidence.raw_field_values_exposed
-        && !selected_handler_evidence.raw_idempotency_key_exposed
-        && !selected_handler_evidence.raw_audit_payload_exposed;
-    let gray_release_evidence_ready = activation_preflight_ready
-        && single_handler_scope_ready
-        && rollout_evidence.rollout_evidence_ready
-        && selected_handler_evidence_ready;
-    let gray_release_ready = activation_currently_enabled && gray_release_evidence_ready;
-    let gray_release_phase = if !activation_preflight_ready {
-        "activation_preflight_not_ready"
-    } else if !single_handler_scope_ready {
-        "handler_scope_not_single"
-    } else if !real_handler_gate_enabled {
-        "real_handler_gate_disabled"
-    } else if !operator_approval_enabled {
-        "operator_approval_required"
-    } else if !selected_handler_evidence.dry_run_record_present {
-        "awaiting_scoped_dry_run_record"
-    } else if !selected_handler_evidence.rollback_anchor_present {
-        "rollback_anchor_missing"
-    } else if !selected_handler_evidence_ready {
-        "redaction_attention"
-    } else {
-        "gray_release_ready"
-    };
-
-    NativePostGrayReleaseEvidenceResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if gray_release_ready {
-            "ready"
-        } else if activation_preflight_ready {
-            "staged"
-        } else {
-            "attention"
-        },
-        endpoint: NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
-        source_command: "/native-post-gray-release-evidence --json",
-        native_route: true,
-        compatibility_mode: "native_post_gray_release_evidence",
-        side_effect_free: true,
-        activation_plan_endpoint: NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
-        rollout_evidence_endpoint: NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
-        store_root_env: NATIVE_POST_EXECUTION_STORE_DIR_ENV,
-        store_root: root.display().to_string(),
-        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        handler_scope: handler_scope.map(str::to_string),
-        selected_handler_count,
-        selected_handler_kinds,
-        selected_handler_kind: selected_handler_kind.map(str::to_string),
-        single_handler_scope_ready,
-        real_handler_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
-        real_handler_gate_enabled,
-        operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
-        operator_approval_enabled,
-        activation_preflight_ready,
-        activation_currently_enabled,
-        store_jsonl_valid,
-        store_capacity_ok,
-        rollout_evidence_ready: rollout_evidence.rollout_evidence_ready,
-        gray_release_evidence_ready,
-        selected_handler_evidence_ready,
-        gray_release_ready,
-        gray_release_phase,
-        selected_handler_evidence,
-        rollback_actions: vec![
-            "unset HEPTA_NATIVE_POST_REAL_HANDLERS, HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED, and HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE",
-            "restart ai.hepta.gateway after plist/env changes",
-            "inspect /api/native-post-gray-release-evidence and /api/native-post-rollout-evidence before reattempting activation",
-            "restore the latest hepta-codex binary/plist backup if gateway health regresses",
-        ],
-        dry_run_only: true,
-        real_mutation_performed: false,
-        store_write_attempted: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        raw_request_body_exposed: rollout_evidence.raw_request_body_exposed,
-        raw_field_values_exposed: rollout_evidence.raw_field_values_exposed,
-        raw_idempotency_key_exposed: rollout_evidence.raw_idempotency_key_exposed,
-        raw_audit_payload_exposed: rollout_evidence.raw_audit_payload_exposed,
-        next_migration_slice: "run exactly one scoped POST dry-run canary and require rollback evidence before any real mutation wiring",
-    }
-}
-
 fn native_post_rollout_evidence_report() -> NativePostRolloutEvidenceResponse {
-    native_post_rollout_evidence_report_for_root(&native_post_execution_store_root())
-}
-
-fn native_post_rollout_evidence_report_for_root(root: &Path) -> NativePostRolloutEvidenceResponse {
-    let max_store_bytes = native_post_store_max_bytes();
-    let max_store_lines = native_post_store_max_lines();
-    let store_files =
-        native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
-    let store_jsonl_valid = store_files
-        .iter()
-        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
-    let store_capacity_ok = store_files
-        .iter()
-        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
-    let rollback_path = root.join("rollback.jsonl");
-    let scan = native_post_rollout_evidence_scan(&rollback_path);
-    let rollout_evidence_ready = store_jsonl_valid
-        && store_capacity_ok
-        && scan.jsonl_readable
-        && scan.invalid_json_line_count == 0;
-    let activation_plan = native_post_activation_plan_report();
-
-    NativePostRolloutEvidenceResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if rollout_evidence_ready {
-            "ready"
-        } else {
-            "attention"
-        },
-        endpoint: NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
-        source_command: "/native-post-rollout-evidence --json",
-        native_route: true,
-        compatibility_mode: "native_post_rollout_evidence",
-        side_effect_free: true,
-        store_root_env: NATIVE_POST_EXECUTION_STORE_DIR_ENV,
-        store_root: root.display().to_string(),
-        rollback_store_file: "rollback.jsonl",
-        store_jsonl_valid,
-        store_capacity_ok,
-        rollout_evidence_ready,
-        activation_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        activation_scope: activation_plan.handler_scope,
-        single_handler_scope_ready: activation_plan.single_handler_scope_ready,
-        selected_handler_count: activation_plan.selected_handler_count,
-        selected_handler_kinds: activation_plan.selected_handler_kinds,
-        rollback_anchor_present: scan.rollback_anchor_count > 0,
-        dry_run_record_present: scan.dry_run_record_count > 0,
-        record_count: scan.record_count,
-        dry_run_record_count: scan.dry_run_record_count,
-        rollback_anchor_count: scan.rollback_anchor_count,
-        line_count: scan.line_count,
-        valid_json_line_count: scan.valid_json_line_count,
-        invalid_json_line_count: scan.invalid_json_line_count,
-        jsonl_readable: scan.jsonl_readable,
-        read_error: scan.read_error,
-        plan_kind_counts: scan.plan_kind_counts,
-        latest_record: scan.latest_record,
-        raw_request_body_exposed: scan.raw_request_body_exposed,
-        raw_field_values_exposed: scan.raw_field_values_exposed,
-        raw_idempotency_key_exposed: scan.raw_idempotency_key_exposed,
-        raw_audit_payload_exposed: scan.raw_audit_payload_exposed,
-        real_mutation_performed: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        next_migration_slice: "run one scoped dry-run canary until rollback evidence is present, then decide whether to wire a real handler behind the same scope gate",
-    }
+    hepta_gateway::native_post_rollout_evidence_report(
+        &native_post_execution_store_root(),
+        native_post_store_max_bytes(),
+        native_post_store_max_lines(),
+        native_post_real_handler_scope_from_env().as_deref(),
+    )
 }
 
 fn native_post_activation_plan_report() -> NativePostActivationPlanResponse {
-    let readiness = native_post_execution_readiness_report();
-    let stores = native_post_execution_stores_report();
-    let real_handler_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
-    let operator_approval_enabled = env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV);
-    let handler_scope = native_post_real_handler_scope_from_env();
-    let selected_handler_kinds =
-        native_post_real_handler_scope_selected_kinds(handler_scope.as_deref());
-    let selected_handler_count = selected_handler_kinds.len();
-    let handler_scope_configured = handler_scope.is_some();
-    let single_handler_scope_ready = selected_handler_count == 1;
-    let all_handlers_implemented =
-        readiness.real_handler_implemented_count == readiness.real_handler_candidate_count;
-    let store_contracts_ready = stores.persistence_implementation_ready
-        && stores.idempotency_store_ready
-        && stores.audit_store_ready
-        && stores.rollback_store_ready
-        && stores.rate_limit_store_ready
-        && stores.store_jsonl_valid
-        && stores.store_capacity_ok;
-    let activation_preflight_ready =
-        readiness.all_evidence_contracts_ready && all_handlers_implemented && store_contracts_ready;
-    let activation_currently_enabled = activation_preflight_ready
-        && real_handler_gate_enabled
-        && operator_approval_enabled
-        && single_handler_scope_ready;
-    let activation_blocked_reason = if !readiness.all_evidence_contracts_ready {
-        "execution_evidence_not_ready"
-    } else if !all_handlers_implemented {
-        "real_handler_not_implemented"
-    } else if !store_contracts_ready {
-        "store_contract_not_ready"
-    } else if !real_handler_gate_enabled {
-        "real_handler_gate_disabled"
-    } else if !operator_approval_enabled {
-        "operator_approval_required"
-    } else if !handler_scope_configured {
-        "handler_scope_not_selected"
-    } else if !single_handler_scope_ready {
-        "handler_scope_not_single"
-    } else {
-        "single_handler_scope_satisfied_dry_run_harness_only"
-    };
-    let rollback_ready = activation_preflight_ready && stores.rollback_store_ready;
-
-    NativePostActivationPlanResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if activation_preflight_ready {
-            "ready"
-        } else {
-            "attention"
-        },
-        endpoint: NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
-        source_command: "/native-post-activation-plan --json",
-        native_route: true,
-        compatibility_mode: "native_post_activation_plan",
-        side_effect_free: true,
-        activation_preflight_ready,
-        activation_currently_enabled,
-        activation_blocked_reason,
-        handler_candidate_count: readiness.real_handler_candidate_count,
-        handler_implemented_count: readiness.real_handler_implemented_count,
-        all_handlers_implemented,
-        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        handler_scope,
-        handler_scope_configured,
-        single_handler_scope_ready,
-        selected_handler_count,
-        selected_handler_kinds,
-        execution_evidence_ready: readiness.all_evidence_contracts_ready,
-        store_contracts_ready,
-        store_jsonl_valid: stores.store_jsonl_valid,
-        store_capacity_ok: stores.store_capacity_ok,
-        required_gates: vec![
-            NativePostActivationGate {
-                env: NATIVE_POST_REAL_HANDLERS_ENV,
-                enabled: real_handler_gate_enabled,
-                required_for_activation: true,
-                purpose: "allow native POST real-handler harness execution",
-            },
-            NativePostActivationGate {
-                env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
-                enabled: operator_approval_enabled,
-                required_for_activation: true,
-                purpose: "operator approval for confirm-required native POST mutations",
-            },
-            NativePostActivationGate {
-                env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-                enabled: single_handler_scope_ready,
-                required_for_activation: true,
-                purpose: "select exactly one native POST handler for canary dry-run harness execution",
-            },
-        ],
-        rollback_ready,
-        rollback_anchor_required: true,
-        rollback_store_kind: "rollback",
-        rollback_store_file: "rollback.jsonl",
-        rollback_schema_id: "hepta.post.rollback_anchor.v1",
-        rollback_actions: vec![
-            "unset HEPTA_NATIVE_POST_REAL_HANDLERS, HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED, and HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE",
-            "restart ai.hepta.gateway through launchctl kickstart",
-            "inspect /api/native-post-execution-stores for valid rollback anchors",
-            "restore the latest hepta-codex binary/plist backup if gateway health regresses",
-        ],
-        dry_run_only: true,
-        real_mutation_performed: false,
-        store_write_attempted: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        raw_request_body_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-        next_migration_slice: "activate one handler only under dual gate after this plan remains ready and rollback anchors are observed",
-    }
+    hepta_gateway::native_post_activation_plan_report(
+        &native_post_execution_store_root(),
+        native_post_store_max_bytes(),
+        native_post_store_max_lines(),
+        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
+        env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
+        native_post_real_handler_scope_from_env().as_deref(),
+    )
 }
 
 fn native_post_execution_readiness_report() -> NativePostExecutionReadinessResponse {
-    let real_handler_gate_enabled = env_truthy(NATIVE_POST_REAL_HANDLERS_ENV);
-    let handler_scope = native_post_real_handler_scope_from_env();
-    let selected_handler_kinds =
-        native_post_real_handler_scope_selected_kinds(handler_scope.as_deref());
-    let selected_handler_count = selected_handler_kinds.len();
-    let handler_scope_configured = handler_scope.is_some();
-    let single_handler_scope_ready = selected_handler_count == 1;
-    let routes = NATIVE_POST_PLAN_ROUTE_SPECS
-        .iter()
-        .map(native_post_execution_readiness_route)
-        .collect::<Vec<_>>();
-    let real_handler_candidate_count = routes
-        .iter()
-        .filter(|route| route.allowlisted_for_real_handler)
-        .count();
-    let plan_only_route_count = routes.len().saturating_sub(real_handler_candidate_count);
-    let evidence_contract_route_count = routes
-        .iter()
-        .filter(|route| route.execution_evidence_contract_ready)
-        .count();
-    let real_handler_implemented_count = routes
-        .iter()
-        .filter(|route| route.real_handler_implemented)
-        .count();
-    let real_handler_ready_count = routes
-        .iter()
-        .filter(|route| route.ready_for_real_handler_wiring)
-        .count();
-    let all_evidence_contracts_ready = evidence_contract_route_count == routes.len();
-    let all_real_handlers_blocked = routes
-        .iter()
-        .all(|route| !route.current_plan_executes_real_handler);
-
-    NativePostExecutionReadinessResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if all_evidence_contracts_ready {
-            "ready"
-        } else {
-            "attention"
-        },
-        endpoint: NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
-        source_command: "/native-post-execution-readiness --json",
-        native_route: true,
-        compatibility_mode: "native_post_execution_readiness",
-        side_effect_free: true,
-        post_route_count: routes.len(),
-        real_handler_candidate_count,
-        plan_only_route_count,
-        evidence_contract_route_count,
-        all_evidence_contracts_ready,
-        real_handler_implemented_count,
-        real_handler_ready_count,
-        real_handler_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
-        real_handler_gate_enabled,
-        real_handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        real_handler_scope: handler_scope,
-        real_handler_scope_configured: handler_scope_configured,
-        single_handler_scope_ready,
-        selected_handler_count,
-        selected_handler_kinds,
-        all_real_handlers_blocked,
-        routes,
-        action_dispatched: false,
-        command_executed: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        raw_request_body_exposed: false,
-        raw_parameter_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        next_migration_slice: "activate the task-publish real-handler harness only under dual gate plus operator approval, then keep expanding one handler at a time",
-    }
-}
-
-fn native_post_execution_readiness_route(
-    spec: &NativePostPlanRouteSpec,
-) -> NativePostExecutionReadinessRoute {
-    let body_schema = native_post_body_schema(spec.plan_kind, false);
-    let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
-    let execution_evidence_contract_ready = true;
-    let real_handler_implemented = native_post_real_handler_implemented(spec);
-    NativePostExecutionReadinessRoute {
-        pattern: spec.pattern,
-        capability: spec.capability,
-        plan_kind: spec.plan_kind,
-        compatibility_mode: spec.compatibility_mode,
-        dry_run_only: spec.dry_run_only,
-        allowlisted_for_real_handler,
-        body_schema_id: body_schema.schema_id,
-        body_required_for_real_handler: body_schema.body_required_for_real_handler,
-        body_schema_ready: true,
-        confirmation_contract_ready: true,
-        rollback_contract_ready: true,
-        idempotency_evidence_contract_ready: true,
-        audit_event_contract_ready: true,
-        rate_limit_contract_ready: true,
-        execution_evidence_contract_ready,
-        ready_for_real_handler_wiring: allowlisted_for_real_handler
-            && execution_evidence_contract_ready,
-        current_plan_executes_real_handler: false,
-        real_handler_implemented,
-        blocked_reason: if allowlisted_for_real_handler && real_handler_implemented {
-            "real_handler_gate_disabled"
-        } else if allowlisted_for_real_handler {
-            "real_handler_not_wired"
-        } else {
-            "plan_only_route"
-        },
-    }
+    hepta_gateway::native_post_execution_readiness_report(
+        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
+        native_post_real_handler_scope_from_env().as_deref(),
+    )
 }
 
 fn native_post_execution_stores_json() -> String {
@@ -3000,85 +1875,11 @@ fn native_post_execution_stores_json() -> String {
 }
 
 fn native_post_execution_stores_report() -> NativePostExecutionStoresResponse {
-    let root = native_post_execution_store_root();
-    let max_store_bytes = native_post_store_max_bytes();
-    let max_store_lines = native_post_store_max_lines();
-    let store_files =
-        native_post_execution_store_file_statuses(&root, max_store_bytes, max_store_lines);
-    let root_exists = root.exists();
-    let root_is_dir = root.is_dir();
-    let existing_file_count = store_files.iter().filter(|file| file.exists).count();
-    let total_bytes = store_files.iter().map(|file| file.bytes).sum::<u64>();
-    let total_line_count = store_files.iter().map(|file| file.line_count).sum::<u64>();
-    let valid_json_line_count = store_files
-        .iter()
-        .map(|file| file.valid_json_line_count)
-        .sum::<u64>();
-    let invalid_json_line_count = store_files
-        .iter()
-        .map(|file| file.invalid_json_line_count)
-        .sum::<u64>();
-    let store_jsonl_valid = store_files
-        .iter()
-        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
-    let store_capacity_ok = store_files
-        .iter()
-        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
-    NativePostExecutionStoresResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if store_jsonl_valid && store_capacity_ok {
-            "ready"
-        } else {
-            "attention"
-        },
-        endpoint: NATIVE_POST_EXECUTION_STORES_ENDPOINT,
-        source_command: "/native-post-execution-stores --json",
-        native_route: true,
-        compatibility_mode: "native_post_execution_stores",
-        side_effect_free: true,
-        store_root_env: NATIVE_POST_EXECUTION_STORE_DIR_ENV,
-        store_root: root.display().to_string(),
-        root_exists,
-        root_is_dir,
-        store_file_count: store_files.len(),
-        existing_file_count,
-        max_store_bytes_env: NATIVE_POST_STORE_MAX_BYTES_ENV,
-        max_store_bytes,
-        max_store_lines_env: NATIVE_POST_STORE_MAX_LINES_ENV,
-        max_store_lines,
-        total_bytes,
-        store_jsonl_valid,
-        store_capacity_ok,
-        total_line_count,
-        valid_json_line_count,
-        invalid_json_line_count,
-        stores: store_files,
-        persistence_implementation_ready: true,
-        idempotency_store_ready: true,
-        audit_store_ready: true,
-        rollback_store_ready: true,
-        rate_limit_store_ready: true,
-        status_probe_creates_directory: false,
-        status_probe_writes_files: false,
-        current_plan_executes_real_handler: false,
-        raw_request_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-        action_dispatched: false,
-        command_executed: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        next_migration_slice: "wire a first low-risk real handler only after these stores are called under HEPTA_NATIVE_POST_REAL_HANDLERS with operator approval",
-    }
+    hepta_gateway::native_post_execution_stores_report(
+        &native_post_execution_store_root(),
+        native_post_store_max_bytes(),
+        native_post_store_max_lines(),
+    )
 }
 
 fn native_post_execution_store_root() -> PathBuf {
@@ -3105,376 +1906,7 @@ fn native_post_store_max_lines() -> u64 {
         .unwrap_or(DEFAULT_NATIVE_POST_STORE_MAX_LINES)
 }
 
-fn native_post_execution_store_file_statuses(
-    root: &Path,
-    max_store_bytes: u64,
-    max_store_lines: u64,
-) -> Vec<NativePostExecutionStoreFileStatus> {
-    native_post_execution_store_specs()
-        .iter()
-        .map(|spec| {
-            native_post_execution_store_file_status(root, spec, max_store_bytes, max_store_lines)
-        })
-        .collect()
-}
-
-fn native_post_execution_store_file_status(
-    root: &Path,
-    spec: &NativePostExecutionStoreFileSpec,
-    max_store_bytes: u64,
-    max_store_lines: u64,
-) -> NativePostExecutionStoreFileStatus {
-    let path = root.join(spec.filename);
-    let metadata = path.metadata().ok();
-    let exists = metadata.as_ref().is_some_and(std::fs::Metadata::is_file);
-    let (jsonl_readable, line_count, valid_json_line_count, invalid_json_line_count) =
-        native_post_execution_store_jsonl_health(&path, exists);
-    let bytes = metadata.as_ref().map(std::fs::Metadata::len).unwrap_or(0);
-    NativePostExecutionStoreFileStatus {
-        store_kind: spec.store_kind,
-        schema_id: spec.schema_id,
-        filename: spec.filename,
-        path: path.display().to_string(),
-        exists,
-        bytes,
-        max_bytes: max_store_bytes,
-        bytes_within_limit: bytes <= max_store_bytes,
-        append_only: true,
-        jsonl: true,
-        jsonl_readable,
-        jsonl_valid: jsonl_readable && invalid_json_line_count == 0,
-        line_count,
-        max_lines: max_store_lines,
-        line_count_within_limit: line_count <= max_store_lines,
-        valid_json_line_count,
-        invalid_json_line_count,
-        raw_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-    }
-}
-
-fn native_post_execution_store_jsonl_health(path: &Path, exists: bool) -> (bool, u64, u64, u64) {
-    if !exists {
-        return (true, 0, 0, 0);
-    }
-    let content = match fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(_) => return (false, 0, 0, 0),
-    };
-    let mut line_count = 0_u64;
-    let mut valid_json_line_count = 0_u64;
-    let mut invalid_json_line_count = 0_u64;
-    for line in content.lines() {
-        line_count = line_count.saturating_add(1);
-        if serde_json::from_str::<serde_json::Value>(line).is_ok() {
-            valid_json_line_count = valid_json_line_count.saturating_add(1);
-        } else {
-            invalid_json_line_count = invalid_json_line_count.saturating_add(1);
-        }
-    }
-    (
-        true,
-        line_count,
-        valid_json_line_count,
-        invalid_json_line_count,
-    )
-}
-
-fn native_post_execution_store_specs() -> &'static [NativePostExecutionStoreFileSpec] {
-    &[
-        NativePostExecutionStoreFileSpec {
-            store_kind: "idempotency",
-            schema_id: "hepta.post.idempotency_entry.v1",
-            filename: "idempotency.jsonl",
-        },
-        NativePostExecutionStoreFileSpec {
-            store_kind: "audit",
-            schema_id: "hepta.post.execution_audit.v1",
-            filename: "audit.jsonl",
-        },
-        NativePostExecutionStoreFileSpec {
-            store_kind: "rollback",
-            schema_id: "hepta.post.rollback_anchor.v1",
-            filename: "rollback.jsonl",
-        },
-        NativePostExecutionStoreFileSpec {
-            store_kind: "rate_limit",
-            schema_id: "hepta.post.rate_limit_entry.v1",
-            filename: "rate-limit.jsonl",
-        },
-    ]
-}
-
-fn native_post_rollout_evidence_scan(path: &Path) -> NativePostRolloutEvidenceScan {
-    let mut line_count = 0_u64;
-    let mut valid_json_line_count = 0_u64;
-    let mut invalid_json_line_count = 0_u64;
-    let mut record_count = 0_u64;
-    let mut dry_run_record_count = 0_u64;
-    let mut rollback_anchor_count = 0_u64;
-    let mut plan_kind_counts = BTreeMap::<String, u64>::new();
-    let mut latest_record: Option<NativePostRolloutEvidenceRecordSummary> = None;
-    let mut latest_recorded_at = 0_u64;
-    let mut raw_request_body_exposed = false;
-    let mut raw_field_values_exposed = false;
-    let mut raw_idempotency_key_exposed = false;
-    let mut raw_audit_payload_exposed = false;
-
-    let content = match fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return NativePostRolloutEvidenceScan {
-                jsonl_readable: true,
-                read_error: None,
-                line_count,
-                valid_json_line_count,
-                invalid_json_line_count,
-                record_count,
-                dry_run_record_count,
-                rollback_anchor_count,
-                plan_kind_counts: Vec::new(),
-                latest_record,
-                raw_request_body_exposed,
-                raw_field_values_exposed,
-                raw_idempotency_key_exposed,
-                raw_audit_payload_exposed,
-            };
-        }
-        Err(_) => {
-            return NativePostRolloutEvidenceScan {
-                jsonl_readable: false,
-                read_error: Some("rollback_store_read_failed"),
-                line_count,
-                valid_json_line_count,
-                invalid_json_line_count,
-                record_count,
-                dry_run_record_count,
-                rollback_anchor_count,
-                plan_kind_counts: Vec::new(),
-                latest_record,
-                raw_request_body_exposed,
-                raw_field_values_exposed,
-                raw_idempotency_key_exposed,
-                raw_audit_payload_exposed,
-            };
-        }
-    };
-
-    for line in content.lines() {
-        line_count = line_count.saturating_add(1);
-        let value = match serde_json::from_str::<serde_json::Value>(line) {
-            Ok(value) => value,
-            Err(_) => {
-                invalid_json_line_count = invalid_json_line_count.saturating_add(1);
-                continue;
-            }
-        };
-        valid_json_line_count = valid_json_line_count.saturating_add(1);
-        record_count = record_count.saturating_add(1);
-        let plan_kind = value
-            .get("plan_kind")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("unknown")
-            .to_string();
-        *plan_kind_counts.entry(plan_kind.clone()).or_insert(0) += 1;
-        let current_plan_executes_real_handler = value
-            .get("current_plan_executes_real_handler")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
-        if current_plan_executes_real_handler {
-            dry_run_record_count = dry_run_record_count.saturating_add(1);
-        }
-        if value
-            .get("rollback_strategy")
-            .and_then(serde_json::Value::as_str)
-            == Some("pending_real_handler_rollback_anchor")
-        {
-            rollback_anchor_count = rollback_anchor_count.saturating_add(1);
-        }
-        raw_request_body_exposed |= json_bool_field(&value, "raw_request_body_exposed");
-        raw_field_values_exposed |= json_bool_field(&value, "raw_field_values_exposed");
-        raw_idempotency_key_exposed |= json_bool_field(&value, "raw_idempotency_key_exposed");
-        raw_audit_payload_exposed |= json_bool_field(&value, "raw_audit_payload_exposed");
-
-        let recorded_at = value
-            .get("recorded_at_unix_ms")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
-        if latest_record.is_none() || recorded_at >= latest_recorded_at {
-            latest_recorded_at = recorded_at;
-            latest_record = Some(native_post_rollout_evidence_record_summary(&value));
-        }
-    }
-
-    NativePostRolloutEvidenceScan {
-        jsonl_readable: true,
-        read_error: None,
-        line_count,
-        valid_json_line_count,
-        invalid_json_line_count,
-        record_count,
-        dry_run_record_count,
-        rollback_anchor_count,
-        plan_kind_counts: plan_kind_counts
-            .into_iter()
-            .map(|(plan_kind, count)| NativePostRolloutEvidencePlanKindCount { plan_kind, count })
-            .collect(),
-        latest_record,
-        raw_request_body_exposed,
-        raw_field_values_exposed,
-        raw_idempotency_key_exposed,
-        raw_audit_payload_exposed,
-    }
-}
-
-fn native_post_rollout_evidence_record_summary(
-    value: &serde_json::Value,
-) -> NativePostRolloutEvidenceRecordSummary {
-    NativePostRolloutEvidenceRecordSummary {
-        recorded_at_unix_ms: value
-            .get("recorded_at_unix_ms")
-            .and_then(serde_json::Value::as_u64),
-        route_pattern: json_string_field(value, "route_pattern"),
-        capability: json_string_field(value, "capability"),
-        plan_kind: json_string_field(value, "plan_kind"),
-        body_schema_id: json_string_field(value, "body_schema_id"),
-        body_admission_status: json_string_field(value, "body_admission_status"),
-        rollback_strategy: json_string_field(value, "rollback_strategy"),
-        rate_limit_bucket: json_string_field(value, "rate_limit_bucket"),
-        current_plan_executes_real_handler: json_bool_field(
-            value,
-            "current_plan_executes_real_handler",
-        ),
-        idempotency_key_redacted: json_bool_field(value, "idempotency_key_redacted"),
-        idempotency_key_fingerprint_present: value
-            .get("idempotency_key_fingerprint")
-            .and_then(serde_json::Value::as_str)
-            .map(|fingerprint| !fingerprint.trim().is_empty())
-            .unwrap_or(false),
-        raw_request_body_exposed: json_bool_field(value, "raw_request_body_exposed"),
-        raw_field_values_exposed: json_bool_field(value, "raw_field_values_exposed"),
-        raw_idempotency_key_exposed: json_bool_field(value, "raw_idempotency_key_exposed"),
-        raw_audit_payload_exposed: json_bool_field(value, "raw_audit_payload_exposed"),
-    }
-}
-
-fn native_post_selected_handler_rollout_evidence(
-    path: &Path,
-    selected_handler_kind: Option<&str>,
-) -> NativePostSelectedHandlerRolloutEvidence {
-    let selected_handler_kind_string = selected_handler_kind.map(str::to_string);
-    let mut record_count = 0_u64;
-    let mut dry_run_record_count = 0_u64;
-    let mut rollback_anchor_count = 0_u64;
-    let mut latest_record: Option<NativePostRolloutEvidenceRecordSummary> = None;
-    let mut latest_recorded_at = 0_u64;
-    let mut raw_request_body_exposed = false;
-    let mut raw_field_values_exposed = false;
-    let mut raw_idempotency_key_exposed = false;
-    let mut raw_audit_payload_exposed = false;
-
-    let Some(selected_handler_kind) = selected_handler_kind else {
-        return NativePostSelectedHandlerRolloutEvidence {
-            selected_handler_kind: selected_handler_kind_string,
-            record_count,
-            dry_run_record_count,
-            rollback_anchor_count,
-            dry_run_record_present: false,
-            rollback_anchor_present: false,
-            latest_record,
-            raw_request_body_exposed,
-            raw_field_values_exposed,
-            raw_idempotency_key_exposed,
-            raw_audit_payload_exposed,
-        };
-    };
-
-    let content = match fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(_) => {
-            return NativePostSelectedHandlerRolloutEvidence {
-                selected_handler_kind: selected_handler_kind_string,
-                record_count,
-                dry_run_record_count,
-                rollback_anchor_count,
-                dry_run_record_present: false,
-                rollback_anchor_present: false,
-                latest_record,
-                raw_request_body_exposed,
-                raw_field_values_exposed,
-                raw_idempotency_key_exposed,
-                raw_audit_payload_exposed,
-            };
-        }
-    };
-
-    for line in content.lines() {
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
-        if value.get("plan_kind").and_then(serde_json::Value::as_str) != Some(selected_handler_kind)
-        {
-            continue;
-        }
-        record_count = record_count.saturating_add(1);
-        let current_plan_executes_real_handler =
-            json_bool_field(&value, "current_plan_executes_real_handler");
-        if current_plan_executes_real_handler {
-            dry_run_record_count = dry_run_record_count.saturating_add(1);
-        }
-        if value
-            .get("rollback_strategy")
-            .and_then(serde_json::Value::as_str)
-            == Some("pending_real_handler_rollback_anchor")
-        {
-            rollback_anchor_count = rollback_anchor_count.saturating_add(1);
-        }
-        raw_request_body_exposed |= json_bool_field(&value, "raw_request_body_exposed");
-        raw_field_values_exposed |= json_bool_field(&value, "raw_field_values_exposed");
-        raw_idempotency_key_exposed |= json_bool_field(&value, "raw_idempotency_key_exposed");
-        raw_audit_payload_exposed |= json_bool_field(&value, "raw_audit_payload_exposed");
-
-        let recorded_at = value
-            .get("recorded_at_unix_ms")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
-        if latest_record.is_none() || recorded_at >= latest_recorded_at {
-            latest_recorded_at = recorded_at;
-            latest_record = Some(native_post_rollout_evidence_record_summary(&value));
-        }
-    }
-
-    NativePostSelectedHandlerRolloutEvidence {
-        selected_handler_kind: selected_handler_kind_string,
-        record_count,
-        dry_run_record_count,
-        rollback_anchor_count,
-        dry_run_record_present: dry_run_record_count > 0,
-        rollback_anchor_present: rollback_anchor_count > 0,
-        latest_record,
-        raw_request_body_exposed,
-        raw_field_values_exposed,
-        raw_idempotency_key_exposed,
-        raw_audit_payload_exposed,
-    }
-}
-
-fn json_string_field(value: &serde_json::Value, field: &str) -> Option<String> {
-    value
-        .get(field)
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-}
-
-fn json_bool_field(value: &serde_json::Value, field: &str) -> bool {
-    value
-        .get(field)
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false)
-}
-
-#[allow(dead_code)]
+#[cfg(test)]
 fn native_post_execution_store_record(
     spec: &NativePostPlanRouteSpec,
     body_schema: &NativePostBodySchema,
@@ -3483,130 +1915,37 @@ fn native_post_execution_store_record(
     audit_event_contract: &NativePostAuditEventContract,
     current_plan_executes_real_handler: bool,
 ) -> NativePostExecutionStoreRecord {
-    NativePostExecutionStoreRecord {
-        schema_id: "hepta.post.execution_store_record.v1",
-        recorded_at_unix_ms: native_post_now_unix_ms(),
-        route_pattern: spec.pattern,
-        capability: spec.capability,
-        plan_kind: spec.plan_kind,
-        body_schema_id: body_schema.schema_id,
-        body_admission_status: body_admission.admission_status,
-        idempotency_key_required: body_admission.idempotency_key_required,
-        idempotency_key_present: idempotency_evidence.key_present,
-        idempotency_key_redacted: idempotency_evidence.key_redacted,
-        idempotency_key_fingerprint: idempotency_evidence.key_fingerprint.clone(),
-        duplicate_suppression_required: idempotency_evidence.duplicate_suppression_required,
-        audit_event_schema_id: audit_event_contract.schema_id,
-        audit_event_ready_for_real_handler: audit_event_contract.ready_for_real_handler,
-        rollback_strategy: "pending_real_handler_rollback_anchor",
-        rate_limit_bucket: spec.plan_kind,
+    hepta_gateway::native_post_execution_store_record(
+        spec,
+        body_schema,
+        body_admission,
+        idempotency_evidence,
+        audit_event_contract,
         current_plan_executes_real_handler,
-        raw_request_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-    }
-}
-
-fn native_post_execution_store_capacity_allows_append(
-    root: &Path,
-    record: &NativePostExecutionStoreRecord,
-) -> Result<bool, String> {
-    native_post_execution_store_capacity_allows_append_with_limits(
-        root,
-        record,
-        native_post_store_max_bytes(),
-        native_post_store_max_lines(),
     )
 }
 
+#[cfg(test)]
 fn native_post_execution_store_capacity_allows_append_with_limits(
     root: &Path,
     record: &NativePostExecutionStoreRecord,
     max_store_bytes: u64,
     max_store_lines: u64,
 ) -> Result<bool, String> {
-    let line = serde_json::to_string(record)
-        .map_err(|error| format!("failed to serialize native POST execution record: {error}"))?;
-    let projected_line_bytes = line.len() as u64 + 1;
-    for spec in native_post_execution_store_specs() {
-        let status =
-            native_post_execution_store_file_status(root, spec, max_store_bytes, max_store_lines);
-        if !status.jsonl_readable || !status.jsonl_valid {
-            return Ok(false);
-        }
-        if status.bytes.saturating_add(projected_line_bytes) > max_store_bytes {
-            return Ok(false);
-        }
-        if status.line_count.saturating_add(1) > max_store_lines {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+    hepta_gateway::native_post_execution_store_capacity_allows_append_with_limits(
+        root,
+        record,
+        max_store_bytes,
+        max_store_lines,
+    )
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 fn persist_native_post_execution_store_record(
     root: &Path,
     record: &NativePostExecutionStoreRecord,
 ) -> Result<NativePostExecutionStoreWriteReport, String> {
-    fs::create_dir_all(root).map_err(|error| {
-        format!(
-            "failed to create native POST execution store root {}: {error}",
-            root.display()
-        )
-    })?;
-    let line = serde_json::to_string(record)
-        .map_err(|error| format!("failed to serialize native POST execution record: {error}"))?;
-    let mut written_files = Vec::new();
-    for spec in native_post_execution_store_specs() {
-        let path = root.join(spec.filename);
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|error| {
-                format!(
-                    "failed to open native POST execution store {}: {error}",
-                    path.display()
-                )
-            })?;
-        writeln!(file, "{line}").map_err(|error| {
-            format!(
-                "failed to append native POST execution store {}: {error}",
-                path.display()
-            )
-        })?;
-        written_files.push(path.display().to_string());
-    }
-    Ok(NativePostExecutionStoreWriteReport {
-        status: "written",
-        root: root.display().to_string(),
-        written_file_count: written_files.len(),
-        written_files,
-        raw_request_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-    })
-}
-
-fn native_post_idempotency_duplicate_present(
-    root: &Path,
-    key_fingerprint: Option<&str>,
-) -> Result<bool, String> {
-    let Some(key_fingerprint) = key_fingerprint else {
-        return Ok(false);
-    };
-    let path = root.join("idempotency.jsonl");
-    match fs::read_to_string(&path) {
-        Ok(content) => Ok(content.lines().any(|line| line.contains(key_fingerprint))),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(format!(
-            "failed to read native POST idempotency store {}: {error}",
-            path.display()
-        )),
-    }
+    hepta_gateway::persist_native_post_execution_store_record(root, record)
 }
 
 fn native_post_rate_limit_window_ms() -> u64 {
@@ -3615,57 +1954,6 @@ fn native_post_rate_limit_window_ms() -> u64 {
         .and_then(|value| value.trim().parse::<u64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS)
-}
-
-fn native_post_now_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
-        .unwrap_or(0)
-}
-
-fn native_post_rate_limit_recent_present(
-    root: &Path,
-    bucket: &str,
-    window_ms: u64,
-) -> Result<bool, String> {
-    let path = root.join("rate-limit.jsonl");
-    let content = match fs::read_to_string(&path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => {
-            return Err(format!(
-                "failed to read native POST rate-limit store {}: {error}",
-                path.display()
-            ));
-        }
-    };
-    let now_ms = native_post_now_unix_ms();
-    for line in content.lines() {
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
-        let Some(record_bucket) = value
-            .get("rate_limit_bucket")
-            .and_then(serde_json::Value::as_str)
-        else {
-            continue;
-        };
-        if record_bucket != bucket {
-            continue;
-        }
-        let Some(recorded_at_ms) = value
-            .get("recorded_at_unix_ms")
-            .and_then(serde_json::Value::as_u64)
-        else {
-            continue;
-        };
-        if now_ms.saturating_sub(recorded_at_ms) <= window_ms {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn native_events_json(surface: NativeEventSurface, cursor: Option<&str>) -> String {
@@ -5103,6 +3391,7 @@ struct NativeGatewayResponse<'a> {
     replacement_blocker: Option<&'static str>,
     gateway_replacement_readiness_endpoint: &'static str,
     gateway_replacement_readiness: NativeGatewayReplacementReadiness,
+    gateway_route_core_status: NativeGatewayRouteCoreStatus,
     gateway_live_activation_plan_endpoint: &'static str,
     gateway_live_activation_plan: NativeGatewayLiveActivationPlan,
     control_ui_route_parity_endpoint: &'static str,
@@ -5135,6 +3424,51 @@ struct NativeGatewayResponse<'a> {
     telegram_plugin: &'a NativeTelegramPluginStatus,
     migrated_surfaces: &'static [&'static str],
     next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeGatewayRouteCoreStatus {
+    source_crate: &'static str,
+    route_core_ready: bool,
+    surface_id: String,
+    session_key: String,
+    transport: &'static str,
+    normalized_text: String,
+    supported_transports: &'static [&'static str],
+    side_effect_free: bool,
+}
+
+fn native_gateway_route_core_status() -> NativeGatewayRouteCoreStatus {
+    let surface = hepta_gateway::GatewaySurface;
+    let envelope = hepta_gateway::GatewayEnvelope::new(
+        "hepta",
+        "operator",
+        hepta_gateway::GatewayTransport::Webhook,
+        "  /status --json  ",
+    )
+    .with_session_hint("hepta:operator");
+    let plan = surface.route_plan(&envelope);
+
+    NativeGatewayRouteCoreStatus {
+        source_crate: "hepta-gateway",
+        route_core_ready: surface.supports_transport(envelope.transport)
+            && !plan.session_key.trim().is_empty()
+            && !plan.normalized_text.trim().is_empty(),
+        surface_id: plan.surface_id,
+        session_key: plan.session_key,
+        transport: gateway_transport_label(plan.transport),
+        normalized_text: plan.normalized_text,
+        supported_transports: &["cli", "webhook", "queue"],
+        side_effect_free: true,
+    }
+}
+
+fn gateway_transport_label(transport: hepta_gateway::GatewayTransport) -> &'static str {
+    match transport {
+        hepta_gateway::GatewayTransport::Cli => "cli",
+        hepta_gateway::GatewayTransport::Webhook => "webhook",
+        hepta_gateway::GatewayTransport::Queue => "queue",
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -5310,19 +3644,6 @@ struct NativeTaskArtifactRouteSpec {
     source_command: &'static str,
     artifact_kind: &'static str,
     compatibility_mode: &'static str,
-}
-
-#[derive(Debug)]
-struct NativePostPlanRouteSpec {
-    pattern: &'static str,
-    prefix: Option<&'static str>,
-    exact_path: Option<&'static str>,
-    source_command: &'static str,
-    capability: &'static str,
-    plan_kind: &'static str,
-    compatibility_mode: &'static str,
-    dry_run_only: bool,
-    confirmation_required_for_real_mutation: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5514,639 +3835,6 @@ struct NativeTaskArtifactResponse {
     message_sent: bool,
     cursor_written: bool,
     next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostPlanResponse {
-    product: &'static str,
-    runtime: &'static str,
-    status: &'static str,
-    method: &'static str,
-    pattern: &'static str,
-    source_command: &'static str,
-    capability: &'static str,
-    native_route: bool,
-    compatibility_mode: &'static str,
-    side_effect_free: bool,
-    plan_kind: &'static str,
-    dry_run_only: bool,
-    confirmation_required_for_real_mutation: bool,
-    parameter_present: bool,
-    parameter_redacted: bool,
-    parameter_length: Option<usize>,
-    request_body_read: bool,
-    request_body_redacted: bool,
-    body_schema_ready: bool,
-    body_admission_ready: bool,
-    confirmation_contract_ready: bool,
-    rollback_contract_ready: bool,
-    idempotency_evidence_ready: bool,
-    audit_event_contract_ready: bool,
-    execution_admission_ready: bool,
-    body_schema: NativePostBodySchema,
-    body_admission: NativePostBodyAdmission,
-    confirmation_contract: NativePostConfirmationContract,
-    rollback_contract: NativePostRollbackContract,
-    idempotency_evidence: NativePostIdempotencyEvidence,
-    audit_event_contract: NativePostAuditEventContract,
-    execution_admission: NativePostExecutionAdmission,
-    real_handler_harness_ready: bool,
-    real_handler_harness: NativePostRealHandlerHarness,
-    action_dispatched: bool,
-    command_executed: bool,
-    approval_applied: bool,
-    task_published: bool,
-    chat_mutated: bool,
-    raw_request_body_exposed: bool,
-    raw_parameter_exposed: bool,
-    raw_token_exposed: bool,
-    raw_transcript_exposed: bool,
-    model_invoked: bool,
-    external_side_effects: bool,
-    gateway_mutation_performed: bool,
-    telegram_read_performed: bool,
-    message_sent: bool,
-    cursor_written: bool,
-    next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostBodySchema {
-    schema_id: &'static str,
-    content_type: &'static str,
-    body_required_for_real_handler: bool,
-    required_fields: Vec<&'static str>,
-    optional_fields: Vec<&'static str>,
-    body_read_during_plan: bool,
-    raw_body_exposed: bool,
-    raw_field_values_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostBodyAdmission {
-    admission_status: &'static str,
-    body_received: bool,
-    request_body_read: bool,
-    request_body_redacted: bool,
-    body_size_bytes: usize,
-    max_body_bytes: usize,
-    body_size_within_limit: bool,
-    json_parse_attempted: bool,
-    json_parse_ok: Option<bool>,
-    json_object_present: bool,
-    required_fields_present: bool,
-    missing_required_fields: Vec<&'static str>,
-    optional_field_count_present: usize,
-    confirm_field_present: bool,
-    confirm_field_truthy: bool,
-    dry_run_field_present: bool,
-    dry_run_first_satisfied: bool,
-    idempotency_key_required: bool,
-    idempotency_key_present: bool,
-    idempotency_key_fingerprint: Option<String>,
-    ready_for_real_handler_input: bool,
-    raw_body_exposed: bool,
-    raw_field_values_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostConfirmationContract {
-    current_plan_requires_confirmation: bool,
-    real_mutation_requires_confirmation: bool,
-    accepted_confirmation_field: Option<&'static str>,
-    operator_approval_required: bool,
-    confirmation_mechanism: &'static str,
-    raw_confirmation_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostRollbackContract {
-    current_plan_noop: bool,
-    state_written_by_plan: bool,
-    current_plan_rollback_strategy: &'static str,
-    real_handler_requires_rollback_contract: bool,
-    destructive_without_rollback: bool,
-    rollback_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostIdempotencyEvidence {
-    required: bool,
-    key_present: bool,
-    key_redacted: bool,
-    key_fingerprint: Option<String>,
-    key_shape_valid: bool,
-    lookup_required_before_real_handler: bool,
-    duplicate_suppression_required: bool,
-    durable_store_required: bool,
-    current_plan_lookup_performed: bool,
-    current_plan_store_written: bool,
-    raw_key_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostAuditEventContract {
-    required: bool,
-    schema_id: &'static str,
-    event_kind: &'static str,
-    body_schema_id: &'static str,
-    route_pattern_recorded: bool,
-    capability_recorded: bool,
-    body_admission_status_recorded: bool,
-    idempotency_evidence_recorded: bool,
-    rollback_contract_recorded: bool,
-    operator_approval_recorded: bool,
-    ready_for_real_handler: bool,
-    current_plan_emits_audit_event: bool,
-    current_plan_persists_audit_event: bool,
-    raw_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_parameter_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostExecutionAdmission {
-    admission_status: &'static str,
-    current_plan_executes_real_handler: bool,
-    real_handler_currently_enabled: bool,
-    real_handler_implemented: bool,
-    allowlisted_for_real_handler: bool,
-    enablement_gate_env: &'static str,
-    enablement_gate_enabled: bool,
-    operator_approval_env: &'static str,
-    operator_approval_enabled: bool,
-    handler_scope_env: &'static str,
-    handler_scope: Option<String>,
-    handler_scope_configured: bool,
-    handler_scope_required: bool,
-    handler_scope_matches: bool,
-    request_body_admission_status: &'static str,
-    request_body_ready_for_real_handler: bool,
-    requires_body_schema: bool,
-    requires_confirmation_contract: bool,
-    requires_rollback_contract: bool,
-    requires_idempotency_key: bool,
-    idempotency_evidence_ready: bool,
-    requires_audit_event: bool,
-    audit_event_contract_ready: bool,
-    requires_rate_limit: bool,
-    requires_dry_run_first: bool,
-    external_side_effects_possible: bool,
-    blocked_reason: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostRealHandlerHarness {
-    status: &'static str,
-    handler_kind: &'static str,
-    dry_run_only: bool,
-    handler_implemented: bool,
-    dual_gate_satisfied: bool,
-    enablement_gate_env: &'static str,
-    enablement_gate_enabled: bool,
-    operator_approval_env: &'static str,
-    operator_approval_enabled: bool,
-    handler_scope_env: &'static str,
-    handler_scope: Option<String>,
-    handler_scope_configured: bool,
-    handler_scope_required: bool,
-    handler_scope_matches: bool,
-    duplicate_check_performed: bool,
-    duplicate_found: bool,
-    duplicate_suppressed: bool,
-    duplicate_check_error: Option<&'static str>,
-    rate_limit_check_performed: bool,
-    rate_limited: bool,
-    rate_limit_suppressed: bool,
-    rate_limit_window_ms: u64,
-    rate_limit_check_error: Option<&'static str>,
-    capacity_check_performed: bool,
-    store_capacity_ok: bool,
-    store_capacity_check_error: Option<&'static str>,
-    store_write_attempted: bool,
-    store_write_succeeded: bool,
-    store_write_report: Option<NativePostExecutionStoreWriteReport>,
-    store_write_error: Option<&'static str>,
-    task_published: bool,
-    external_side_effects: bool,
-    gateway_mutation_performed: bool,
-    telegram_read_performed: bool,
-    model_invoked: bool,
-    message_sent: bool,
-    cursor_written: bool,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostActivationPlanResponse {
-    product: &'static str,
-    runtime: &'static str,
-    status: &'static str,
-    endpoint: &'static str,
-    source_command: &'static str,
-    native_route: bool,
-    compatibility_mode: &'static str,
-    side_effect_free: bool,
-    activation_preflight_ready: bool,
-    activation_currently_enabled: bool,
-    activation_blocked_reason: &'static str,
-    handler_candidate_count: usize,
-    handler_implemented_count: usize,
-    all_handlers_implemented: bool,
-    handler_scope_env: &'static str,
-    handler_scope: Option<String>,
-    handler_scope_configured: bool,
-    single_handler_scope_ready: bool,
-    selected_handler_count: usize,
-    selected_handler_kinds: Vec<&'static str>,
-    execution_evidence_ready: bool,
-    store_contracts_ready: bool,
-    store_jsonl_valid: bool,
-    store_capacity_ok: bool,
-    required_gates: Vec<NativePostActivationGate>,
-    rollback_ready: bool,
-    rollback_anchor_required: bool,
-    rollback_store_kind: &'static str,
-    rollback_store_file: &'static str,
-    rollback_schema_id: &'static str,
-    rollback_actions: Vec<&'static str>,
-    dry_run_only: bool,
-    real_mutation_performed: bool,
-    store_write_attempted: bool,
-    approval_applied: bool,
-    task_published: bool,
-    chat_mutated: bool,
-    external_side_effects: bool,
-    gateway_mutation_performed: bool,
-    telegram_read_performed: bool,
-    model_invoked: bool,
-    message_sent: bool,
-    cursor_written: bool,
-    raw_request_body_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-    next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostActivationGate {
-    env: &'static str,
-    enabled: bool,
-    required_for_activation: bool,
-    purpose: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostGrayReleaseEvidenceResponse {
-    product: &'static str,
-    runtime: &'static str,
-    status: &'static str,
-    endpoint: &'static str,
-    source_command: &'static str,
-    native_route: bool,
-    compatibility_mode: &'static str,
-    side_effect_free: bool,
-    activation_plan_endpoint: &'static str,
-    rollout_evidence_endpoint: &'static str,
-    store_root_env: &'static str,
-    store_root: String,
-    handler_scope_env: &'static str,
-    handler_scope: Option<String>,
-    selected_handler_count: usize,
-    selected_handler_kinds: Vec<&'static str>,
-    selected_handler_kind: Option<String>,
-    single_handler_scope_ready: bool,
-    real_handler_gate_env: &'static str,
-    real_handler_gate_enabled: bool,
-    operator_approval_env: &'static str,
-    operator_approval_enabled: bool,
-    activation_preflight_ready: bool,
-    activation_currently_enabled: bool,
-    store_jsonl_valid: bool,
-    store_capacity_ok: bool,
-    rollout_evidence_ready: bool,
-    gray_release_evidence_ready: bool,
-    selected_handler_evidence_ready: bool,
-    gray_release_ready: bool,
-    gray_release_phase: &'static str,
-    selected_handler_evidence: NativePostSelectedHandlerRolloutEvidence,
-    rollback_actions: Vec<&'static str>,
-    dry_run_only: bool,
-    real_mutation_performed: bool,
-    store_write_attempted: bool,
-    approval_applied: bool,
-    task_published: bool,
-    chat_mutated: bool,
-    external_side_effects: bool,
-    gateway_mutation_performed: bool,
-    telegram_read_performed: bool,
-    model_invoked: bool,
-    message_sent: bool,
-    cursor_written: bool,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-    next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostRolloutEvidenceResponse {
-    product: &'static str,
-    runtime: &'static str,
-    status: &'static str,
-    endpoint: &'static str,
-    source_command: &'static str,
-    native_route: bool,
-    compatibility_mode: &'static str,
-    side_effect_free: bool,
-    store_root_env: &'static str,
-    store_root: String,
-    rollback_store_file: &'static str,
-    store_jsonl_valid: bool,
-    store_capacity_ok: bool,
-    rollout_evidence_ready: bool,
-    activation_scope_env: &'static str,
-    activation_scope: Option<String>,
-    single_handler_scope_ready: bool,
-    selected_handler_count: usize,
-    selected_handler_kinds: Vec<&'static str>,
-    rollback_anchor_present: bool,
-    dry_run_record_present: bool,
-    record_count: u64,
-    dry_run_record_count: u64,
-    rollback_anchor_count: u64,
-    line_count: u64,
-    valid_json_line_count: u64,
-    invalid_json_line_count: u64,
-    jsonl_readable: bool,
-    read_error: Option<&'static str>,
-    plan_kind_counts: Vec<NativePostRolloutEvidencePlanKindCount>,
-    latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-    real_mutation_performed: bool,
-    approval_applied: bool,
-    task_published: bool,
-    chat_mutated: bool,
-    external_side_effects: bool,
-    gateway_mutation_performed: bool,
-    telegram_read_performed: bool,
-    model_invoked: bool,
-    message_sent: bool,
-    cursor_written: bool,
-    next_migration_slice: &'static str,
-}
-
-struct NativePostRolloutEvidenceScan {
-    jsonl_readable: bool,
-    read_error: Option<&'static str>,
-    line_count: u64,
-    valid_json_line_count: u64,
-    invalid_json_line_count: u64,
-    record_count: u64,
-    dry_run_record_count: u64,
-    rollback_anchor_count: u64,
-    plan_kind_counts: Vec<NativePostRolloutEvidencePlanKindCount>,
-    latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostRolloutEvidencePlanKindCount {
-    plan_kind: String,
-    count: u64,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostRolloutEvidenceRecordSummary {
-    recorded_at_unix_ms: Option<u64>,
-    route_pattern: Option<String>,
-    capability: Option<String>,
-    plan_kind: Option<String>,
-    body_schema_id: Option<String>,
-    body_admission_status: Option<String>,
-    rollback_strategy: Option<String>,
-    rate_limit_bucket: Option<String>,
-    current_plan_executes_real_handler: bool,
-    idempotency_key_redacted: bool,
-    idempotency_key_fingerprint_present: bool,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostSelectedHandlerRolloutEvidence {
-    selected_handler_kind: Option<String>,
-    record_count: u64,
-    dry_run_record_count: u64,
-    rollback_anchor_count: u64,
-    dry_run_record_present: bool,
-    rollback_anchor_present: bool,
-    latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostExecutionReadinessResponse {
-    product: &'static str,
-    runtime: &'static str,
-    status: &'static str,
-    endpoint: &'static str,
-    source_command: &'static str,
-    native_route: bool,
-    compatibility_mode: &'static str,
-    side_effect_free: bool,
-    post_route_count: usize,
-    real_handler_candidate_count: usize,
-    plan_only_route_count: usize,
-    evidence_contract_route_count: usize,
-    all_evidence_contracts_ready: bool,
-    real_handler_implemented_count: usize,
-    real_handler_ready_count: usize,
-    real_handler_gate_env: &'static str,
-    real_handler_gate_enabled: bool,
-    real_handler_scope_env: &'static str,
-    real_handler_scope: Option<String>,
-    real_handler_scope_configured: bool,
-    single_handler_scope_ready: bool,
-    selected_handler_count: usize,
-    selected_handler_kinds: Vec<&'static str>,
-    all_real_handlers_blocked: bool,
-    routes: Vec<NativePostExecutionReadinessRoute>,
-    action_dispatched: bool,
-    command_executed: bool,
-    approval_applied: bool,
-    task_published: bool,
-    chat_mutated: bool,
-    raw_request_body_exposed: bool,
-    raw_parameter_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-    external_side_effects: bool,
-    gateway_mutation_performed: bool,
-    telegram_read_performed: bool,
-    model_invoked: bool,
-    message_sent: bool,
-    cursor_written: bool,
-    next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostExecutionReadinessRoute {
-    pattern: &'static str,
-    capability: &'static str,
-    plan_kind: &'static str,
-    compatibility_mode: &'static str,
-    dry_run_only: bool,
-    allowlisted_for_real_handler: bool,
-    body_schema_id: &'static str,
-    body_required_for_real_handler: bool,
-    body_schema_ready: bool,
-    confirmation_contract_ready: bool,
-    rollback_contract_ready: bool,
-    idempotency_evidence_contract_ready: bool,
-    audit_event_contract_ready: bool,
-    rate_limit_contract_ready: bool,
-    execution_evidence_contract_ready: bool,
-    ready_for_real_handler_wiring: bool,
-    current_plan_executes_real_handler: bool,
-    real_handler_implemented: bool,
-    blocked_reason: &'static str,
-}
-
-struct NativePostExecutionStoreFileSpec {
-    store_kind: &'static str,
-    schema_id: &'static str,
-    filename: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostExecutionStoresResponse {
-    product: &'static str,
-    runtime: &'static str,
-    status: &'static str,
-    endpoint: &'static str,
-    source_command: &'static str,
-    native_route: bool,
-    compatibility_mode: &'static str,
-    side_effect_free: bool,
-    store_root_env: &'static str,
-    store_root: String,
-    root_exists: bool,
-    root_is_dir: bool,
-    store_file_count: usize,
-    existing_file_count: usize,
-    max_store_bytes_env: &'static str,
-    max_store_bytes: u64,
-    max_store_lines_env: &'static str,
-    max_store_lines: u64,
-    total_bytes: u64,
-    store_jsonl_valid: bool,
-    store_capacity_ok: bool,
-    total_line_count: u64,
-    valid_json_line_count: u64,
-    invalid_json_line_count: u64,
-    stores: Vec<NativePostExecutionStoreFileStatus>,
-    persistence_implementation_ready: bool,
-    idempotency_store_ready: bool,
-    audit_store_ready: bool,
-    rollback_store_ready: bool,
-    rate_limit_store_ready: bool,
-    status_probe_creates_directory: bool,
-    status_probe_writes_files: bool,
-    current_plan_executes_real_handler: bool,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-    action_dispatched: bool,
-    command_executed: bool,
-    approval_applied: bool,
-    task_published: bool,
-    chat_mutated: bool,
-    external_side_effects: bool,
-    gateway_mutation_performed: bool,
-    telegram_read_performed: bool,
-    model_invoked: bool,
-    message_sent: bool,
-    cursor_written: bool,
-    next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostExecutionStoreFileStatus {
-    store_kind: &'static str,
-    schema_id: &'static str,
-    filename: &'static str,
-    path: String,
-    exists: bool,
-    bytes: u64,
-    max_bytes: u64,
-    bytes_within_limit: bool,
-    append_only: bool,
-    jsonl: bool,
-    jsonl_readable: bool,
-    jsonl_valid: bool,
-    line_count: u64,
-    max_lines: u64,
-    line_count_within_limit: bool,
-    valid_json_line_count: u64,
-    invalid_json_line_count: u64,
-    raw_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostExecutionStoreRecord {
-    schema_id: &'static str,
-    recorded_at_unix_ms: u64,
-    route_pattern: &'static str,
-    capability: &'static str,
-    plan_kind: &'static str,
-    body_schema_id: &'static str,
-    body_admission_status: &'static str,
-    idempotency_key_required: bool,
-    idempotency_key_present: bool,
-    idempotency_key_redacted: bool,
-    idempotency_key_fingerprint: Option<String>,
-    duplicate_suppression_required: bool,
-    audit_event_schema_id: &'static str,
-    audit_event_ready_for_real_handler: bool,
-    rollback_strategy: &'static str,
-    rate_limit_bucket: &'static str,
-    current_plan_executes_real_handler: bool,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct NativePostExecutionStoreWriteReport {
-    status: &'static str,
-    root: String,
-    written_file_count: usize,
-    written_files: Vec<String>,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -6972,6 +4660,8 @@ mod tests {
         assert!(body.contains(
             r#""gateway_replacement_readiness_endpoint":"/api/gateway-replacement-readiness""#
         ));
+        assert!(body.contains(r#""gateway_route_core_status":{"source_crate":"hepta-gateway""#));
+        assert!(body.contains(r#""route_core_ready":true"#));
         assert!(body.contains(
             r#""gateway_live_activation_plan_endpoint":"/api/gateway-live-activation-plan""#
         ));
@@ -8109,7 +5799,7 @@ mod tests {
 
     #[test]
     fn post_plan_report_redacts_route_parameters_and_never_reads_body() {
-        let spec = &NATIVE_POST_PLAN_ROUTE_SPECS[0];
+        let spec = &native_post_plan_route_specs()[0];
         let report = native_post_plan_report(spec, Some("secret-action-payload"), None);
         let body = serde_json::to_string(&report).expect("serialize post plan report");
 
@@ -8682,7 +6372,7 @@ mod tests {
         assert_eq!(value["side_effect_free"], true);
         assert_eq!(
             value["post_route_count"],
-            serde_json::json!(NATIVE_POST_PLAN_ROUTE_SPECS.len())
+            serde_json::json!(native_post_plan_route_specs().len())
         );
         assert_eq!(value["real_handler_candidate_count"], 3);
         assert_eq!(
@@ -8970,8 +6660,7 @@ mod tests {
     #[test]
     fn native_post_execution_store_status_counts_jsonl_health() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let spec = &native_post_execution_store_specs()[0];
-        let store_file = temp.path().join(spec.filename);
+        let store_file = temp.path().join("idempotency.jsonl");
         std::fs::write(
             &store_file,
             concat!(
@@ -8983,7 +6672,12 @@ mod tests {
         )
         .expect("write store");
 
-        let status = native_post_execution_store_file_status(temp.path(), spec, 1024, 10);
+        let report = hepta_gateway::native_post_execution_stores_report(temp.path(), 1024, 10);
+        let status = report
+            .stores
+            .iter()
+            .find(|store| store.filename == "idempotency.jsonl")
+            .expect("idempotency store status");
 
         assert_eq!(status.exists, true);
         assert_eq!(status.bytes_within_limit, true);
@@ -8999,8 +6693,7 @@ mod tests {
     #[test]
     fn native_post_execution_store_status_blocks_oversized_jsonl() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let spec = &native_post_execution_store_specs()[0];
-        let store_file = temp.path().join(spec.filename);
+        let store_file = temp.path().join("idempotency.jsonl");
         std::fs::write(
             &store_file,
             concat!(
@@ -9012,7 +6705,12 @@ mod tests {
         )
         .expect("write store");
 
-        let status = native_post_execution_store_file_status(temp.path(), spec, 8, 1);
+        let report = hepta_gateway::native_post_execution_stores_report(temp.path(), 8, 1);
+        let status = report
+            .stores
+            .iter()
+            .find(|store| store.filename == "idempotency.jsonl")
+            .expect("idempotency store status");
 
         assert_eq!(status.exists, true);
         assert_eq!(status.jsonl_valid, true);
@@ -9024,7 +6722,7 @@ mod tests {
 
     #[test]
     fn native_post_real_handler_harness_records_redacted_dry_run_under_dual_gate() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9103,7 +6801,7 @@ mod tests {
 
     #[test]
     fn native_post_execution_store_capacity_blocks_projected_append_over_limits() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9162,7 +6860,7 @@ mod tests {
 
     #[test]
     fn native_post_real_handler_harness_suppresses_duplicate_idempotency_key() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9231,7 +6929,7 @@ mod tests {
 
     #[test]
     fn native_post_real_handler_harness_rate_limits_recent_bucket() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9340,7 +7038,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
 
         for (plan_kind, body, raw_secret, raw_idempotency_key) in candidates {
-            let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            let spec = native_post_plan_route_specs()
                 .iter()
                 .find(|spec| spec.plan_kind == plan_kind)
                 .expect("candidate spec");
@@ -9408,7 +7106,7 @@ mod tests {
 
     #[test]
     fn native_post_real_handler_harness_requires_operator_approval_gate() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9463,7 +7161,7 @@ mod tests {
 
     #[test]
     fn native_post_real_handler_harness_requires_matching_handler_scope() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9550,7 +7248,7 @@ mod tests {
 
     #[test]
     fn native_post_execution_store_writer_persists_redacted_records() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9593,7 +7291,7 @@ mod tests {
 
     #[test]
     fn native_post_rollout_evidence_summarizes_redacted_rollback_anchor() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9617,7 +7315,12 @@ mod tests {
         );
         let temp = tempfile::tempdir().expect("tempdir");
 
-        let empty = native_post_rollout_evidence_report_for_root(temp.path());
+        let empty = hepta_gateway::native_post_rollout_evidence_report(
+            temp.path(),
+            DEFAULT_NATIVE_POST_STORE_MAX_BYTES,
+            DEFAULT_NATIVE_POST_STORE_MAX_LINES,
+            None,
+        );
         assert_eq!(empty.status, "ready");
         assert_eq!(empty.record_count, 0);
         assert_eq!(empty.rollback_anchor_present, false);
@@ -9625,7 +7328,12 @@ mod tests {
         assert!(empty.latest_record.is_none());
 
         persist_native_post_execution_store_record(temp.path(), &record).expect("write stores");
-        let report = native_post_rollout_evidence_report_for_root(temp.path());
+        let report = hepta_gateway::native_post_rollout_evidence_report(
+            temp.path(),
+            DEFAULT_NATIVE_POST_STORE_MAX_BYTES,
+            DEFAULT_NATIVE_POST_STORE_MAX_LINES,
+            None,
+        );
 
         assert_eq!(report.status, "ready");
         assert_eq!(report.rollout_evidence_ready, true);
@@ -9657,7 +7365,7 @@ mod tests {
 
     #[test]
     fn native_post_gray_release_evidence_requires_scoped_rollback_anchor() {
-        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+        let spec = native_post_plan_route_specs()
             .iter()
             .find(|spec| spec.plan_kind == "task_publish")
             .expect("task publish spec");
@@ -9680,8 +7388,10 @@ mod tests {
             true,
         );
         let temp = tempfile::tempdir().expect("tempdir");
-        let before = native_post_gray_release_evidence_report_for_root_with_gates(
+        let before = hepta_gateway::native_post_gray_release_evidence_report(
             temp.path(),
+            DEFAULT_NATIVE_POST_STORE_MAX_BYTES,
+            DEFAULT_NATIVE_POST_STORE_MAX_LINES,
             Some("task_publish"),
             true,
             true,
@@ -9692,8 +7402,10 @@ mod tests {
         assert_eq!(before.selected_handler_evidence_ready, false);
 
         persist_native_post_execution_store_record(temp.path(), &record).expect("write stores");
-        let report = native_post_gray_release_evidence_report_for_root_with_gates(
+        let report = hepta_gateway::native_post_gray_release_evidence_report(
             temp.path(),
+            DEFAULT_NATIVE_POST_STORE_MAX_BYTES,
+            DEFAULT_NATIVE_POST_STORE_MAX_LINES,
             Some("task_publish"),
             true,
             true,
