@@ -74,6 +74,8 @@ personal/
 .DS_Store
 Thumbs.db
 Icon?
+!apps/hepta-native/resources/icons/
+!apps/hepta-native/resources/icons/**
 .Spotlight-V100/
 
 # Unwanted package managers

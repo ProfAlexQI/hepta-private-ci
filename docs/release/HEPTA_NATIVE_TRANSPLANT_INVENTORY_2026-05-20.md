@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: source-only inventory for bringing `Hepta/apps/hepta-native` into `hepta-codex`
-Status: inventory complete; Patch 1 source-only app/docs import executed; Patch 2 isolated build/test gates passed; Patch 3 local bridge alignment in progress; no install, deploy, or Telegram ownership change performed
+Status: inventory complete; Patch 1 source-only app/docs import executed; Patch 2 isolated build/test gates passed; Patch 3 local bridge alignment complete for current bridge/fixture/status smoke; no install, deploy, or Telegram ownership change performed
 
 ## Current Truth
 
@@ -19,9 +19,9 @@ This means the native desktop/mobile client should be transplanted as a top-leve
 
 Source-only payload under `apps/hepta-native`, excluding `target/`:
 
-- 251 source files found in old repo, including ignored local `AGENTS.md`
-- 250 files copied to `hepta-codex`, excluding ignored local `AGENTS.md`
-- 123 Rust source files under `src/`
+- 252 source files currently present in `hepta-codex`, excluding `target/`
+- ignored local `AGENTS.md` remains excluded from the reviewable transplant
+- 125 Rust source files under `src/`
 - 111 packaging/resource files under `packaging/` and `resources/`
 - about 5.8 MB by `du -ck` source-file sum
 - live build output present in source tree: `apps/hepta-native/target/` is about 31 GB and must not be copied
@@ -139,6 +139,10 @@ Verification for this slice:
 - trailing-whitespace scan on changed native bridge/fixture/doc files passed
 - `git diff --check` passed
 - verified `apps/hepta-native/target/` still does not exist in `hepta-codex`
+
+## Audit Correction
+
+The first package pass missed the `apps/hepta-native/resources/icons/` SVG set because the repo-root `.gitignore` had a broad `Icon?` OS-file rule. The directory existed locally, so isolated native checks could pass, but the files were not reviewable/tracked. The post-package audit fixed this by adding explicit `.gitignore` exceptions for `apps/hepta-native/resources/icons/**` and including the 57 SVG resources in the review package.
 
 ## Remaining Patch Shape
 

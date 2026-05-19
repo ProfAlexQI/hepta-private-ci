@@ -24,7 +24,7 @@ This manifest records the initial direct transplant of Robrix into Hepta for the
 | project-robius/robrix | b2bb6cf | MIT | `.github/workflows/main.yml` | `apps/hepta-native/.github/workflows/main.yml` | initial direct copy from Robrix baseline | copied |
 | project-robius/robrix | b2bb6cf | MIT | `.github/workflows/release.yml` | `apps/hepta-native/.github/workflows/release.yml` | initial direct copy from Robrix baseline | copied |
 | project-robius/robrix | b2bb6cf | MIT | `.gitignore` | `apps/hepta-native/.gitignore` | initial direct copy from Robrix baseline | copied |
-| project-robius/robrix | b2bb6cf | MIT | `AGENTS.md` | `apps/hepta-native/AGENTS.md` | initial direct copy from Robrix baseline | copied |
+| project-robius/robrix | b2bb6cf | MIT | `AGENTS.md` | `apps/hepta-native/AGENTS.md` | excluded from the reviewable transplant because it is local agent guidance, not runtime source or attribution material | excluded |
 | project-robius/robrix | b2bb6cf | MIT | `Cargo.lock` | `apps/hepta-native/Cargo.lock` | Cargo lock updated by cargo metadata/check after package rename | renamed |
 | project-robius/robrix | b2bb6cf | MIT | `Cargo.toml` | `apps/hepta-native/Cargo.toml` | copied then package/product metadata renamed for Hepta Native | renamed |
 | project-robius/robrix | b2bb6cf | MIT | `LICENSE-MIT` | `apps/hepta-native/LICENSE-MIT` | initial direct copy from Robrix baseline | copied |
