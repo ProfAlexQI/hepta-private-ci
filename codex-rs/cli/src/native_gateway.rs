@@ -35,6 +35,8 @@ const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
 const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
 const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str = "/api/telegram-production-readiness";
 const TELEGRAM_DELIVERY_LEDGER_ENDPOINT: &str = "/api/telegram-delivery-ledger";
+const TELEGRAM_OWNER_HANDOFF_ENDPOINT: &str = "/api/telegram-owner-handoff";
+const LEGACY_OPENCLAW_CONFIG_PATH_ENV: &str = "HEPTA_LEGACY_OPENCLAW_CONFIG_PATH";
 const ACTIVE_GATEWAY_LABEL: &str = "ai.hepta.gateway";
 const ACTIVE_GATEWAY_LEGACY_BINARY: &str = "/Users/qianqi/.local/opt/hepta/bin/hepta";
 const HEPTA_CODEX_RELEASE_BINARY: &str = "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex";
@@ -461,6 +463,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/telegram-delivery-ledger --json",
         capability: "telegram-delivery-ledger",
         side_effect_boundary: "read-only durable delivery ledger health; no Telegram read/send",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/telegram-owner-handoff",
+        source_command: "/telegram-owner-handoff --json",
+        capability: "telegram-owner-handoff",
+        side_effect_boundary: "read-only Telegram poller owner handoff guard; no Telegram read/send",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1040,6 +1049,13 @@ fn route_native_gateway_request_with_body(
                     )),
                 );
             }
+            TELEGRAM_OWNER_HANDOFF_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&telegram_owner_handoff_status(options)),
+                );
+            }
             "/api/telegram-cursor" => {
                 return (
                     "200 OK",
@@ -1174,6 +1190,7 @@ fn native_gateway_json(
 ) -> String {
     let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
     let control_ui_route_parity = control_ui_route_parity_report();
+    let telegram_owner_handoff_status = telegram_owner_handoff_status(options);
     let active_gateway_replacement_ready = gateway_replacement_readiness.ready;
     let replacement_blocker = gateway_replacement_readiness.blockers.first().copied();
     json_or_error(&NativeGatewayResponse {
@@ -1214,6 +1231,8 @@ fn native_gateway_json(
         telegram_delivery_ledger_status: native_telegram::telegram_delivery_ledger_status(
             options.with_telegram_plugin,
         ),
+        telegram_owner_handoff_endpoint: TELEGRAM_OWNER_HANDOFF_ENDPOINT,
+        telegram_owner_handoff_status,
         telegram_cursor_endpoint: "/api/telegram-cursor",
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
         telegram_poll_loop_status: native_telegram::telegram_poll_loop_status(
@@ -1243,6 +1262,7 @@ fn native_gateway_json(
             "Telegram live soak guard and observation surface",
             "Telegram production readiness guard surface",
             "Telegram durable delivery ledger surface",
+            "Telegram owner handoff conflict guard",
             "Telegram cursor state surface",
             "Control UI route parity report",
             "Control UI side-effect-free compatibility endpoints",
@@ -4234,6 +4254,7 @@ fn operator_security_json(
             options.with_telegram_plugin,
             options.telegram_plugin_poll_ms,
         );
+    let telegram_owner_handoff_status = telegram_owner_handoff_status(options);
     let post_execution_readiness = native_post_execution_readiness_report();
     let post_execution_stores = native_post_execution_stores_report();
     let post_activation_plan = native_post_activation_plan_report();
@@ -4255,6 +4276,7 @@ fn operator_security_json(
         && post_execution_readiness.all_evidence_contracts_ready
         && post_execution_stores_ready
         && post_activation_plan_ready
+        && telegram_owner_handoff_status.conflict_free
         && loopback_bound
         && guarded_post_route_count == post_route_count;
 
@@ -4286,6 +4308,8 @@ fn operator_security_json(
         production_soak_ready,
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
         telegram_production_readiness_status,
+        telegram_owner_handoff_endpoint: TELEGRAM_OWNER_HANDOFF_ENDPOINT,
+        telegram_owner_handoff_status,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
         redaction: NativeOperatorSecurityRedaction {
@@ -4309,6 +4333,182 @@ fn operator_security_json(
     })
 }
 
+fn telegram_owner_handoff_status(
+    options: &NativeGatewayOptions,
+) -> NativeTelegramOwnerHandoffStatus {
+    let legacy_config_path = legacy_openclaw_config_path();
+    let (legacy_config_found, legacy_config_parse_ok, legacy_telegram_enabled, error) =
+        read_legacy_openclaw_telegram_enabled(legacy_config_path.as_deref());
+    let poll_loop_status = native_telegram::telegram_poll_loop_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
+    let gate_summary = native_telegram::telegram_gateway_gate_summary();
+
+    telegram_owner_handoff_status_from_inputs(NativeTelegramOwnerHandoffInputs {
+        legacy_config_path: legacy_config_path.map(|path| path.display().to_string()),
+        legacy_config_found,
+        legacy_config_parse_ok,
+        legacy_telegram_enabled,
+        legacy_config_error: error,
+        hepta_telegram_requested: options.with_telegram_plugin,
+        hepta_poll_loop_armed: poll_loop_status.status == "armed"
+            && poll_loop_status.loop_invokes_drain_once,
+        hepta_poll_loop_gate_enabled: poll_loop_status.poll_loop_gate_enabled,
+        hepta_delivery_approval_gate_enabled: gate_summary.delivery_approval_gate_enabled,
+    })
+}
+
+fn telegram_owner_handoff_status_from_inputs(
+    inputs: NativeTelegramOwnerHandoffInputs,
+) -> NativeTelegramOwnerHandoffStatus {
+    let legacy_telegram_enabled = inputs.legacy_telegram_enabled;
+    let legacy_telegram_enabled_explicit = legacy_telegram_enabled.is_some();
+    let legacy_enabled = legacy_telegram_enabled == Some(true);
+    let double_poller_risk = legacy_enabled && inputs.hepta_poll_loop_armed;
+    let conflict_free = inputs.legacy_config_parse_ok && !double_poller_risk;
+    let hepta_takeover_ready = conflict_free
+        && inputs.hepta_telegram_requested
+        && inputs.hepta_poll_loop_armed
+        && !legacy_enabled;
+
+    let active_owner = if double_poller_risk {
+        "conflict_risk"
+    } else if inputs.hepta_poll_loop_armed {
+        "hepta"
+    } else if legacy_enabled {
+        "legacy_openclaw"
+    } else {
+        "none"
+    };
+
+    let status = if !inputs.legacy_config_parse_ok {
+        "attention"
+    } else if double_poller_risk {
+        "conflict_risk"
+    } else if hepta_takeover_ready {
+        "hepta_takeover_ready"
+    } else if legacy_enabled {
+        "legacy_owner"
+    } else {
+        "handoff_pending"
+    };
+
+    let mut takeover_blockers = Vec::new();
+    if !inputs.legacy_config_parse_ok {
+        takeover_blockers.push("legacy_openclaw_config_unreadable");
+    }
+    if legacy_enabled {
+        takeover_blockers.push("legacy_openclaw_telegram_enabled");
+    }
+    if !inputs.hepta_telegram_requested {
+        takeover_blockers.push("hepta_telegram_not_requested");
+    }
+    if !inputs.hepta_delivery_approval_gate_enabled {
+        takeover_blockers.push("hepta_delivery_approval_gate_disabled");
+    }
+    if !inputs.hepta_poll_loop_gate_enabled {
+        takeover_blockers.push("hepta_poll_loop_gate_disabled");
+    }
+    if !inputs.hepta_poll_loop_armed {
+        takeover_blockers.push("hepta_poll_loop_not_armed");
+    }
+
+    NativeTelegramOwnerHandoffStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status,
+        endpoint: TELEGRAM_OWNER_HANDOFF_ENDPOINT,
+        ready: conflict_free,
+        conflict_free,
+        hepta_takeover_ready,
+        side_effect_free: true,
+        active_owner,
+        legacy_config_path: inputs.legacy_config_path,
+        legacy_config_found: inputs.legacy_config_found,
+        legacy_config_parse_ok: inputs.legacy_config_parse_ok,
+        legacy_telegram_enabled,
+        legacy_telegram_enabled_explicit,
+        hepta_telegram_requested: inputs.hepta_telegram_requested,
+        hepta_poll_loop_armed: inputs.hepta_poll_loop_armed,
+        hepta_poll_loop_gate_enabled: inputs.hepta_poll_loop_gate_enabled,
+        hepta_delivery_approval_gate_enabled: inputs.hepta_delivery_approval_gate_enabled,
+        double_poller_risk,
+        takeover_blockers,
+        legacy_config_error: inputs.legacy_config_error,
+        raw_token_exposed: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        next_migration_slice: if hepta_takeover_ready {
+            "legacy Telegram polling is disabled and Hepta is the only armed poller; continue live soak and ledger freshness checks"
+        } else if double_poller_risk {
+            "disable the legacy OpenClaw Telegram plugin before arming Hepta polling to avoid Bot API 409 conflicts"
+        } else if legacy_enabled {
+            "keep legacy OpenClaw as owner until the controlled flip disables its Telegram plugin and arms Hepta gates"
+        } else {
+            "arm Hepta Telegram gates only after confirming legacy OpenClaw Telegram polling is disabled"
+        },
+    }
+}
+
+fn legacy_openclaw_config_path() -> Option<PathBuf> {
+    if let Ok(path) = env::var(LEGACY_OPENCLAW_CONFIG_PATH_ENV) {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    env::var_os("HOME").map(|home| PathBuf::from(home).join(".openclaw/openclaw.json"))
+}
+
+fn read_legacy_openclaw_telegram_enabled(
+    path: Option<&Path>,
+) -> (bool, bool, Option<bool>, Option<String>) {
+    let Some(path) = path else {
+        return (false, true, None, None);
+    };
+    if !path.is_file() {
+        return (false, true, None, None);
+    }
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) => {
+            return (
+                true,
+                false,
+                None,
+                Some(format!("failed to read legacy OpenClaw config: {error}")),
+            );
+        }
+    };
+    let value = match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(value) => value,
+        Err(error) => {
+            return (
+                true,
+                false,
+                None,
+                Some(format!("failed to parse legacy OpenClaw config: {error}")),
+            );
+        }
+    };
+
+    (true, true, legacy_openclaw_telegram_enabled(&value), None)
+}
+
+fn legacy_openclaw_telegram_enabled(value: &serde_json::Value) -> Option<bool> {
+    value
+        .pointer("/plugins/entries/telegram/enabled")
+        .and_then(serde_json::Value::as_bool)
+        .or_else(|| {
+            value
+                .pointer("/channels/telegram/enabled")
+                .and_then(serde_json::Value::as_bool)
+        })
+}
+
 fn post_route_is_guarded(route: &ControlUiRouteSpec) -> bool {
     let boundary = route.side_effect_boundary;
     boundary.contains("dry-run")
@@ -4330,6 +4530,7 @@ fn gateway_replacement_readiness(
         options.with_telegram_plugin,
         options.telegram_plugin_poll_ms,
     );
+    let telegram_owner_handoff_status = telegram_owner_handoff_status(options);
     let control_ui_route_parity = control_ui_route_parity_report();
     let release_build_verified = env_truthy(RELEASE_BUILD_VERIFIED_ENV);
     let control_ui_parity_verified =
@@ -4388,6 +4589,11 @@ fn gateway_replacement_readiness(
             name: "telegram_poll_loop_invokes_drain_once",
             ready: telegram_poll_loop_status.loop_invokes_drain_once,
             detail: "poll loop must route through the gated drain-once pipeline",
+        },
+        NativeGatewayReplacementCheck {
+            name: "telegram_owner_handoff_ready",
+            ready: telegram_owner_handoff_status.hepta_takeover_ready,
+            detail: "legacy OpenClaw Telegram polling must be disabled before Hepta becomes the armed Telegram owner",
         },
         NativeGatewayReplacementCheck {
             name: "telegram_cursor_policy_ready",
@@ -4481,6 +4687,8 @@ fn gateway_replacement_readiness(
                 enabled: control_ui_parity_verified,
             },
         },
+        telegram_owner_handoff_endpoint: TELEGRAM_OWNER_HANDOFF_ENDPOINT,
+        telegram_owner_handoff_status,
         control_ui_route_parity,
         next_migration_slice,
     }
@@ -4652,6 +4860,8 @@ struct NativeGatewayResponse<'a> {
     telegram_production_readiness_status: native_telegram::NativeTelegramProductionReadinessStatus,
     telegram_delivery_ledger_endpoint: &'static str,
     telegram_delivery_ledger_status: native_telegram::NativeTelegramDeliveryLedgerStatus,
+    telegram_owner_handoff_endpoint: &'static str,
+    telegram_owner_handoff_status: NativeTelegramOwnerHandoffStatus,
     telegram_cursor_endpoint: &'static str,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
     telegram_poll_loop_status: native_telegram::NativeTelegramPollLoopStatus,
@@ -5980,6 +6190,8 @@ struct NativeOperatorSecurityResponse {
     production_soak_ready: bool,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
     telegram_production_readiness_status: native_telegram::NativeTelegramProductionReadinessStatus,
+    telegram_owner_handoff_endpoint: &'static str,
+    telegram_owner_handoff_status: NativeTelegramOwnerHandoffStatus,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
     redaction: NativeOperatorSecurityRedaction,
@@ -6008,6 +6220,49 @@ struct NativeOperatorSecuritySideEffects {
     cursor_written: bool,
 }
 
+#[derive(Debug, Clone)]
+struct NativeTelegramOwnerHandoffInputs {
+    legacy_config_path: Option<String>,
+    legacy_config_found: bool,
+    legacy_config_parse_ok: bool,
+    legacy_telegram_enabled: Option<bool>,
+    legacy_config_error: Option<String>,
+    hepta_telegram_requested: bool,
+    hepta_poll_loop_armed: bool,
+    hepta_poll_loop_gate_enabled: bool,
+    hepta_delivery_approval_gate_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct NativeTelegramOwnerHandoffStatus {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    endpoint: &'static str,
+    ready: bool,
+    conflict_free: bool,
+    hepta_takeover_ready: bool,
+    side_effect_free: bool,
+    active_owner: &'static str,
+    legacy_config_path: Option<String>,
+    legacy_config_found: bool,
+    legacy_config_parse_ok: bool,
+    legacy_telegram_enabled: Option<bool>,
+    legacy_telegram_enabled_explicit: bool,
+    hepta_telegram_requested: bool,
+    hepta_poll_loop_armed: bool,
+    hepta_poll_loop_gate_enabled: bool,
+    hepta_delivery_approval_gate_enabled: bool,
+    double_poller_risk: bool,
+    takeover_blockers: Vec<&'static str>,
+    legacy_config_error: Option<String>,
+    raw_token_exposed: bool,
+    raw_update_payload_exposed: bool,
+    raw_prompt_text_exposed: bool,
+    raw_response_text_exposed: bool,
+    next_migration_slice: &'static str,
+}
+
 #[derive(Debug, Serialize)]
 struct NativeGatewayReplacementReadiness {
     product: &'static str,
@@ -6020,6 +6275,8 @@ struct NativeGatewayReplacementReadiness {
     blockers: Vec<&'static str>,
     checks: Vec<NativeGatewayReplacementCheck>,
     required_env_gates: NativeGatewayReplacementEnvGates,
+    telegram_owner_handoff_endpoint: &'static str,
+    telegram_owner_handoff_status: NativeTelegramOwnerHandoffStatus,
     control_ui_route_parity: ControlUiRouteParityReport,
     next_migration_slice: &'static str,
 }
@@ -6410,6 +6667,9 @@ mod tests {
         assert!(
             body.contains(r#""telegram_delivery_ledger_endpoint":"/api/telegram-delivery-ledger""#)
         );
+        assert!(
+            body.contains(r#""telegram_owner_handoff_endpoint":"/api/telegram-owner-handoff""#)
+        );
         assert!(body.contains(r#""side_effect_free":true"#));
         assert!(body.contains(r#""production_guards""#));
         assert!(body.contains(r#""poll_loop_gate_env":"HEPTA_NATIVE_TELEGRAM_POLL_LOOP""#));
@@ -6532,6 +6792,80 @@ mod tests {
     }
 
     #[test]
+    fn telegram_owner_handoff_endpoint_is_side_effect_free() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", TELEGRAM_OWNER_HANDOFF_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect("owner handoff json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["endpoint"], TELEGRAM_OWNER_HANDOFF_ENDPOINT);
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["raw_token_exposed"], false);
+        assert_eq!(value["raw_update_payload_exposed"], false);
+        assert_eq!(value["raw_prompt_text_exposed"], false);
+        assert_eq!(value["raw_response_text_exposed"], false);
+        assert!(value["takeover_blockers"].is_array());
+    }
+
+    #[test]
+    fn telegram_owner_handoff_detects_double_poller_risk() {
+        let status = telegram_owner_handoff_status_from_inputs(NativeTelegramOwnerHandoffInputs {
+            legacy_config_path: Some("/tmp/openclaw.json".to_string()),
+            legacy_config_found: true,
+            legacy_config_parse_ok: true,
+            legacy_telegram_enabled: Some(true),
+            legacy_config_error: None,
+            hepta_telegram_requested: true,
+            hepta_poll_loop_armed: true,
+            hepta_poll_loop_gate_enabled: true,
+            hepta_delivery_approval_gate_enabled: true,
+        });
+
+        assert_eq!(status.status, "conflict_risk");
+        assert_eq!(status.active_owner, "conflict_risk");
+        assert!(!status.ready);
+        assert!(!status.conflict_free);
+        assert!(!status.hepta_takeover_ready);
+        assert!(status.double_poller_risk);
+        assert!(
+            status
+                .takeover_blockers
+                .contains(&"legacy_openclaw_telegram_enabled")
+        );
+        assert!(!status.raw_token_exposed);
+    }
+
+    #[test]
+    fn telegram_owner_handoff_allows_hepta_only_after_legacy_disabled() {
+        let status = telegram_owner_handoff_status_from_inputs(NativeTelegramOwnerHandoffInputs {
+            legacy_config_path: Some("/tmp/openclaw.json".to_string()),
+            legacy_config_found: true,
+            legacy_config_parse_ok: true,
+            legacy_telegram_enabled: Some(false),
+            legacy_config_error: None,
+            hepta_telegram_requested: true,
+            hepta_poll_loop_armed: true,
+            hepta_poll_loop_gate_enabled: true,
+            hepta_delivery_approval_gate_enabled: true,
+        });
+
+        assert_eq!(status.status, "hepta_takeover_ready");
+        assert_eq!(status.active_owner, "hepta");
+        assert!(status.ready);
+        assert!(status.conflict_free);
+        assert!(status.hepta_takeover_ready);
+        assert!(!status.double_poller_risk);
+        assert!(status.takeover_blockers.is_empty());
+    }
+
+    #[test]
     fn gateway_replacement_readiness_endpoint_reports_blockers_without_side_effects() {
         let options = NativeGatewayOptions {
             bind_addr: "127.0.0.1:7373".to_string(),
@@ -6562,6 +6896,11 @@ mod tests {
         assert!(blockers.contains(&"release_build_verified"));
         assert!(blockers.contains(&"control_ui_route_parity_verified"));
         assert!(!blockers.contains(&"control_ui_route_matrix_ready"));
+        assert!(value["telegram_owner_handoff_status"].is_object());
+        assert_eq!(
+            value["telegram_owner_handoff_endpoint"],
+            TELEGRAM_OWNER_HANDOFF_ENDPOINT
+        );
         assert_eq!(value["control_ui_route_parity"]["ready"], true);
         assert!(
             value["control_ui_route_parity"]["route_count"]
@@ -9032,6 +9371,18 @@ mod tests {
         );
         assert_eq!(
             value["telegram_production_readiness_status"]["raw_token_exposed"],
+            false
+        );
+        assert_eq!(
+            value["telegram_owner_handoff_endpoint"],
+            TELEGRAM_OWNER_HANDOFF_ENDPOINT
+        );
+        assert_eq!(
+            value["telegram_owner_handoff_status"]["side_effect_free"],
+            true
+        );
+        assert_eq!(
+            value["telegram_owner_handoff_status"]["raw_token_exposed"],
             false
         );
         assert_eq!(value["post_route_count"], value["guarded_post_route_count"]);
