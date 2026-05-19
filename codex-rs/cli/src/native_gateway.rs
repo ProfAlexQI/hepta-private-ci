@@ -31,6 +31,7 @@ const NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str = "/api/native-post-executi
 const NATIVE_POST_EXECUTION_STORES_ENDPOINT: &str = "/api/native-post-execution-stores";
 const NATIVE_POST_ACTIVATION_PLAN_ENDPOINT: &str = "/api/native-post-activation-plan";
 const NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT: &str = "/api/native-post-rollout-evidence";
+const NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT: &str = "/api/native-post-gray-release-evidence";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
 const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
 const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str = "/api/telegram-production-readiness";
@@ -281,6 +282,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/native-post-rollout-evidence --json",
         capability: "native-post-rollout-evidence",
         side_effect_boundary: "read-only POST rollout evidence summary; no writes",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: "/api/native-post-gray-release-evidence",
+        source_command: "/native-post-gray-release-evidence --json",
+        capability: "native-post-gray-release-evidence",
+        side_effect_boundary: "read-only single-handler POST gray release evidence; no writes",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -857,6 +865,13 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     native_post_rollout_evidence_json(),
+                );
+            }
+            NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    native_post_gray_release_evidence_json(),
                 );
             }
             "/api/sessions" => {
@@ -2517,6 +2532,148 @@ fn native_post_rollout_evidence_json() -> String {
     json_or_error(&native_post_rollout_evidence_report())
 }
 
+fn native_post_gray_release_evidence_json() -> String {
+    json_or_error(&native_post_gray_release_evidence_report())
+}
+
+fn native_post_gray_release_evidence_report() -> NativePostGrayReleaseEvidenceResponse {
+    native_post_gray_release_evidence_report_for_root_with_gates(
+        &native_post_execution_store_root(),
+        native_post_real_handler_scope_from_env().as_deref(),
+        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
+        env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
+    )
+}
+
+fn native_post_gray_release_evidence_report_for_root_with_gates(
+    root: &Path,
+    handler_scope: Option<&str>,
+    real_handler_gate_enabled: bool,
+    operator_approval_enabled: bool,
+) -> NativePostGrayReleaseEvidenceResponse {
+    let readiness = native_post_execution_readiness_report();
+    let max_store_bytes = native_post_store_max_bytes();
+    let max_store_lines = native_post_store_max_lines();
+    let store_files =
+        native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
+    let store_jsonl_valid = store_files
+        .iter()
+        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
+    let store_capacity_ok = store_files
+        .iter()
+        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
+    let store_contracts_ready = store_jsonl_valid && store_capacity_ok;
+    let all_handlers_implemented =
+        readiness.real_handler_implemented_count == readiness.real_handler_candidate_count;
+    let activation_preflight_ready =
+        readiness.all_evidence_contracts_ready && all_handlers_implemented && store_contracts_ready;
+    let selected_handler_kinds = native_post_real_handler_scope_selected_kinds(handler_scope);
+    let selected_handler_count = selected_handler_kinds.len();
+    let single_handler_scope_ready = selected_handler_count == 1;
+    let selected_handler_kind = single_handler_scope_ready.then(|| selected_handler_kinds[0]);
+    let activation_currently_enabled = activation_preflight_ready
+        && real_handler_gate_enabled
+        && operator_approval_enabled
+        && single_handler_scope_ready;
+    let rollout_evidence = native_post_rollout_evidence_report_for_root(root);
+    let selected_handler_evidence = native_post_selected_handler_rollout_evidence(
+        &root.join("rollback.jsonl"),
+        selected_handler_kind,
+    );
+    let selected_handler_evidence_ready = selected_handler_evidence.dry_run_record_present
+        && selected_handler_evidence.rollback_anchor_present
+        && !selected_handler_evidence.raw_request_body_exposed
+        && !selected_handler_evidence.raw_field_values_exposed
+        && !selected_handler_evidence.raw_idempotency_key_exposed
+        && !selected_handler_evidence.raw_audit_payload_exposed;
+    let gray_release_evidence_ready = activation_preflight_ready
+        && single_handler_scope_ready
+        && rollout_evidence.rollout_evidence_ready
+        && selected_handler_evidence_ready;
+    let gray_release_ready = activation_currently_enabled && gray_release_evidence_ready;
+    let gray_release_phase = if !activation_preflight_ready {
+        "activation_preflight_not_ready"
+    } else if !single_handler_scope_ready {
+        "handler_scope_not_single"
+    } else if !real_handler_gate_enabled {
+        "real_handler_gate_disabled"
+    } else if !operator_approval_enabled {
+        "operator_approval_required"
+    } else if !selected_handler_evidence.dry_run_record_present {
+        "awaiting_scoped_dry_run_record"
+    } else if !selected_handler_evidence.rollback_anchor_present {
+        "rollback_anchor_missing"
+    } else if !selected_handler_evidence_ready {
+        "redaction_attention"
+    } else {
+        "gray_release_ready"
+    };
+
+    NativePostGrayReleaseEvidenceResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if gray_release_ready {
+            "ready"
+        } else if activation_preflight_ready {
+            "staged"
+        } else {
+            "attention"
+        },
+        endpoint: NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
+        source_command: "/native-post-gray-release-evidence --json",
+        native_route: true,
+        compatibility_mode: "native_post_gray_release_evidence",
+        side_effect_free: true,
+        activation_plan_endpoint: NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
+        rollout_evidence_endpoint: NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
+        store_root_env: NATIVE_POST_EXECUTION_STORE_DIR_ENV,
+        store_root: root.display().to_string(),
+        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        handler_scope: handler_scope.map(str::to_string),
+        selected_handler_count,
+        selected_handler_kinds,
+        selected_handler_kind: selected_handler_kind.map(str::to_string),
+        single_handler_scope_ready,
+        real_handler_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
+        real_handler_gate_enabled,
+        operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+        operator_approval_enabled,
+        activation_preflight_ready,
+        activation_currently_enabled,
+        store_jsonl_valid,
+        store_capacity_ok,
+        rollout_evidence_ready: rollout_evidence.rollout_evidence_ready,
+        gray_release_evidence_ready,
+        selected_handler_evidence_ready,
+        gray_release_ready,
+        gray_release_phase,
+        selected_handler_evidence,
+        rollback_actions: vec![
+            "unset HEPTA_NATIVE_POST_REAL_HANDLERS, HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED, and HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE",
+            "restart ai.hepta.gateway after plist/env changes",
+            "inspect /api/native-post-gray-release-evidence and /api/native-post-rollout-evidence before reattempting activation",
+            "restore the latest hepta-codex binary/plist backup if gateway health regresses",
+        ],
+        dry_run_only: true,
+        real_mutation_performed: false,
+        store_write_attempted: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        raw_request_body_exposed: rollout_evidence.raw_request_body_exposed,
+        raw_field_values_exposed: rollout_evidence.raw_field_values_exposed,
+        raw_idempotency_key_exposed: rollout_evidence.raw_idempotency_key_exposed,
+        raw_audit_payload_exposed: rollout_evidence.raw_audit_payload_exposed,
+        next_migration_slice: "run exactly one scoped POST dry-run canary and require rollback evidence before any real mutation wiring",
+    }
+}
+
 fn native_post_rollout_evidence_report() -> NativePostRolloutEvidenceResponse {
     native_post_rollout_evidence_report_for_root(&native_post_execution_store_root())
 }
@@ -3199,6 +3356,107 @@ fn native_post_rollout_evidence_record_summary(
         raw_field_values_exposed: json_bool_field(value, "raw_field_values_exposed"),
         raw_idempotency_key_exposed: json_bool_field(value, "raw_idempotency_key_exposed"),
         raw_audit_payload_exposed: json_bool_field(value, "raw_audit_payload_exposed"),
+    }
+}
+
+fn native_post_selected_handler_rollout_evidence(
+    path: &Path,
+    selected_handler_kind: Option<&str>,
+) -> NativePostSelectedHandlerRolloutEvidence {
+    let selected_handler_kind_string = selected_handler_kind.map(str::to_string);
+    let mut record_count = 0_u64;
+    let mut dry_run_record_count = 0_u64;
+    let mut rollback_anchor_count = 0_u64;
+    let mut latest_record: Option<NativePostRolloutEvidenceRecordSummary> = None;
+    let mut latest_recorded_at = 0_u64;
+    let mut raw_request_body_exposed = false;
+    let mut raw_field_values_exposed = false;
+    let mut raw_idempotency_key_exposed = false;
+    let mut raw_audit_payload_exposed = false;
+
+    let Some(selected_handler_kind) = selected_handler_kind else {
+        return NativePostSelectedHandlerRolloutEvidence {
+            selected_handler_kind: selected_handler_kind_string,
+            record_count,
+            dry_run_record_count,
+            rollback_anchor_count,
+            dry_run_record_present: false,
+            rollback_anchor_present: false,
+            latest_record,
+            raw_request_body_exposed,
+            raw_field_values_exposed,
+            raw_idempotency_key_exposed,
+            raw_audit_payload_exposed,
+        };
+    };
+
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(_) => {
+            return NativePostSelectedHandlerRolloutEvidence {
+                selected_handler_kind: selected_handler_kind_string,
+                record_count,
+                dry_run_record_count,
+                rollback_anchor_count,
+                dry_run_record_present: false,
+                rollback_anchor_present: false,
+                latest_record,
+                raw_request_body_exposed,
+                raw_field_values_exposed,
+                raw_idempotency_key_exposed,
+                raw_audit_payload_exposed,
+            };
+        }
+    };
+
+    for line in content.lines() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if value.get("plan_kind").and_then(serde_json::Value::as_str) != Some(selected_handler_kind)
+        {
+            continue;
+        }
+        record_count = record_count.saturating_add(1);
+        let current_plan_executes_real_handler =
+            json_bool_field(&value, "current_plan_executes_real_handler");
+        if current_plan_executes_real_handler {
+            dry_run_record_count = dry_run_record_count.saturating_add(1);
+        }
+        if value
+            .get("rollback_strategy")
+            .and_then(serde_json::Value::as_str)
+            == Some("pending_real_handler_rollback_anchor")
+        {
+            rollback_anchor_count = rollback_anchor_count.saturating_add(1);
+        }
+        raw_request_body_exposed |= json_bool_field(&value, "raw_request_body_exposed");
+        raw_field_values_exposed |= json_bool_field(&value, "raw_field_values_exposed");
+        raw_idempotency_key_exposed |= json_bool_field(&value, "raw_idempotency_key_exposed");
+        raw_audit_payload_exposed |= json_bool_field(&value, "raw_audit_payload_exposed");
+
+        let recorded_at = value
+            .get("recorded_at_unix_ms")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        if latest_record.is_none() || recorded_at >= latest_recorded_at {
+            latest_recorded_at = recorded_at;
+            latest_record = Some(native_post_rollout_evidence_record_summary(&value));
+        }
+    }
+
+    NativePostSelectedHandlerRolloutEvidence {
+        selected_handler_kind: selected_handler_kind_string,
+        record_count,
+        dry_run_record_count,
+        rollback_anchor_count,
+        dry_run_record_present: dry_run_record_count > 0,
+        rollback_anchor_present: rollback_anchor_count > 0,
+        latest_record,
+        raw_request_body_exposed,
+        raw_field_values_exposed,
+        raw_idempotency_key_exposed,
+        raw_audit_payload_exposed,
     }
 }
 
@@ -4258,6 +4516,7 @@ fn operator_security_json(
     let post_execution_readiness = native_post_execution_readiness_report();
     let post_execution_stores = native_post_execution_stores_report();
     let post_activation_plan = native_post_activation_plan_report();
+    let post_gray_release_evidence = native_post_gray_release_evidence_report();
     let post_execution_stores_ready = post_execution_stores.persistence_implementation_ready
         && post_execution_stores.idempotency_store_ready
         && post_execution_stores.audit_store_ready
@@ -4268,6 +4527,8 @@ fn operator_security_json(
     let post_activation_plan_ready = post_activation_plan.activation_preflight_ready
         && post_activation_plan.rollback_ready
         && !post_activation_plan.activation_currently_enabled;
+    let post_gray_release_evidence_ready = !post_activation_plan.activation_currently_enabled
+        || post_gray_release_evidence.gray_release_evidence_ready;
     let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
     let ready = control_ui_route_parity.ready
@@ -4276,6 +4537,7 @@ fn operator_security_json(
         && post_execution_readiness.all_evidence_contracts_ready
         && post_execution_stores_ready
         && post_activation_plan_ready
+        && post_gray_release_evidence_ready
         && telegram_owner_handoff_status.conflict_free
         && loopback_bound
         && guarded_post_route_count == post_route_count;
@@ -4305,6 +4567,9 @@ fn operator_security_json(
         post_execution_stores,
         post_activation_plan_ready,
         post_activation_plan,
+        post_gray_release_evidence_endpoint: NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
+        post_gray_release_evidence_ready,
+        post_gray_release_evidence,
         production_soak_ready,
         telegram_gate_summary: native_telegram::telegram_gateway_gate_summary(),
         telegram_production_readiness_status,
@@ -5536,6 +5801,60 @@ struct NativePostActivationGate {
 }
 
 #[derive(Debug, Serialize)]
+struct NativePostGrayReleaseEvidenceResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    endpoint: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    activation_plan_endpoint: &'static str,
+    rollout_evidence_endpoint: &'static str,
+    store_root_env: &'static str,
+    store_root: String,
+    handler_scope_env: &'static str,
+    handler_scope: Option<String>,
+    selected_handler_count: usize,
+    selected_handler_kinds: Vec<&'static str>,
+    selected_handler_kind: Option<String>,
+    single_handler_scope_ready: bool,
+    real_handler_gate_env: &'static str,
+    real_handler_gate_enabled: bool,
+    operator_approval_env: &'static str,
+    operator_approval_enabled: bool,
+    activation_preflight_ready: bool,
+    activation_currently_enabled: bool,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    rollout_evidence_ready: bool,
+    gray_release_evidence_ready: bool,
+    selected_handler_evidence_ready: bool,
+    gray_release_ready: bool,
+    gray_release_phase: &'static str,
+    selected_handler_evidence: NativePostSelectedHandlerRolloutEvidence,
+    rollback_actions: Vec<&'static str>,
+    dry_run_only: bool,
+    real_mutation_performed: bool,
+    store_write_attempted: bool,
+    approval_applied: bool,
+    task_published: bool,
+    chat_mutated: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    model_invoked: bool,
+    message_sent: bool,
+    cursor_written: bool,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
+    next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Serialize)]
 struct NativePostRolloutEvidenceResponse {
     product: &'static str,
     runtime: &'static str,
@@ -5621,6 +5940,21 @@ struct NativePostRolloutEvidenceRecordSummary {
     current_plan_executes_real_handler: bool,
     idempotency_key_redacted: bool,
     idempotency_key_fingerprint_present: bool,
+    raw_request_body_exposed: bool,
+    raw_field_values_exposed: bool,
+    raw_idempotency_key_exposed: bool,
+    raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NativePostSelectedHandlerRolloutEvidence {
+    selected_handler_kind: Option<String>,
+    record_count: u64,
+    dry_run_record_count: u64,
+    rollback_anchor_count: u64,
+    dry_run_record_present: bool,
+    rollback_anchor_present: bool,
+    latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
     raw_request_body_exposed: bool,
     raw_field_values_exposed: bool,
     raw_idempotency_key_exposed: bool,
@@ -6187,6 +6521,9 @@ struct NativeOperatorSecurityResponse {
     post_execution_stores: NativePostExecutionStoresResponse,
     post_activation_plan_ready: bool,
     post_activation_plan: NativePostActivationPlanResponse,
+    post_gray_release_evidence_endpoint: &'static str,
+    post_gray_release_evidence_ready: bool,
+    post_gray_release_evidence: NativePostGrayReleaseEvidenceResponse,
     production_soak_ready: bool,
     telegram_gate_summary: native_telegram::NativeTelegramGatewayGateSummary,
     telegram_production_readiness_status: native_telegram::NativeTelegramProductionReadinessStatus,
@@ -8571,6 +8908,66 @@ mod tests {
     }
 
     #[test]
+    fn native_post_gray_release_evidence_route_reports_staged_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("gray release evidence json");
+
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["status"], "staged");
+        assert_eq!(value["native_route"], true);
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_post_gray_release_evidence"
+        );
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(
+            value["activation_plan_endpoint"],
+            NATIVE_POST_ACTIVATION_PLAN_ENDPOINT
+        );
+        assert_eq!(
+            value["rollout_evidence_endpoint"],
+            NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT
+        );
+        assert_eq!(value["handler_scope"], serde_json::Value::Null);
+        assert_eq!(value["selected_handler_count"], 0);
+        assert_eq!(value["single_handler_scope_ready"], false);
+        assert_eq!(value["activation_preflight_ready"], true);
+        assert_eq!(value["activation_currently_enabled"], false);
+        assert_eq!(value["gray_release_ready"], false);
+        assert_eq!(value["gray_release_phase"], "handler_scope_not_single");
+        assert_eq!(
+            value["selected_handler_evidence"]["dry_run_record_present"],
+            false
+        );
+        assert_eq!(
+            value["selected_handler_evidence"]["rollback_anchor_present"],
+            false
+        );
+        assert_eq!(value["store_write_attempted"], false);
+        assert_eq!(value["task_published"], false);
+        assert_eq!(value["chat_mutated"], false);
+        assert_eq!(value["telegram_read_performed"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["message_sent"], false);
+        assert_eq!(value["cursor_written"], false);
+        assert_eq!(value["raw_request_body_exposed"], false);
+        assert_eq!(value["raw_idempotency_key_exposed"], false);
+        assert_eq!(value["raw_audit_payload_exposed"], false);
+    }
+
+    #[test]
     fn native_post_execution_store_status_counts_jsonl_health() {
         let temp = tempfile::tempdir().expect("tempdir");
         let spec = &native_post_execution_store_specs()[0];
@@ -9259,6 +9656,80 @@ mod tests {
     }
 
     #[test]
+    fn native_post_gray_release_evidence_requires_scoped_rollback_anchor() {
+        let spec = NATIVE_POST_PLAN_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let body = r#"{"task":"secret gray task","confirm":true,"dry_run":true,"idempotency_key":"secret-gray-idem"}"#;
+        let body_schema = native_post_body_schema(spec.plan_kind, true);
+        let body_admission = native_post_body_admission(spec, &body_schema, Some(body));
+        let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+        let audit_event_contract = native_post_audit_event_contract(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+        );
+        let record = native_post_execution_store_record(
+            spec,
+            &body_schema,
+            &body_admission,
+            &idempotency_evidence,
+            &audit_event_contract,
+            true,
+        );
+        let temp = tempfile::tempdir().expect("tempdir");
+        let before = native_post_gray_release_evidence_report_for_root_with_gates(
+            temp.path(),
+            Some("task_publish"),
+            true,
+            true,
+        );
+        assert_eq!(before.status, "staged");
+        assert_eq!(before.gray_release_phase, "awaiting_scoped_dry_run_record");
+        assert_eq!(before.gray_release_ready, false);
+        assert_eq!(before.selected_handler_evidence_ready, false);
+
+        persist_native_post_execution_store_record(temp.path(), &record).expect("write stores");
+        let report = native_post_gray_release_evidence_report_for_root_with_gates(
+            temp.path(),
+            Some("task_publish"),
+            true,
+            true,
+        );
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.gray_release_phase, "gray_release_ready");
+        assert_eq!(report.activation_currently_enabled, true);
+        assert_eq!(report.single_handler_scope_ready, true);
+        assert_eq!(
+            report.selected_handler_kind.as_deref(),
+            Some("task_publish")
+        );
+        assert_eq!(report.gray_release_evidence_ready, true);
+        assert_eq!(report.selected_handler_evidence_ready, true);
+        assert_eq!(report.gray_release_ready, true);
+        assert_eq!(report.selected_handler_evidence.record_count, 1);
+        assert_eq!(report.selected_handler_evidence.dry_run_record_count, 1);
+        assert_eq!(report.selected_handler_evidence.rollback_anchor_count, 1);
+        assert_eq!(
+            report
+                .selected_handler_evidence
+                .latest_record
+                .as_ref()
+                .and_then(|record| record.plan_kind.as_deref()),
+            Some("task_publish")
+        );
+        assert_eq!(report.raw_request_body_exposed, false);
+        assert_eq!(report.raw_idempotency_key_exposed, false);
+        let rollback_content =
+            std::fs::read_to_string(temp.path().join("rollback.jsonl")).expect("rollback store");
+        assert!(!rollback_content.contains("secret gray task"));
+        assert!(!rollback_content.contains("secret-gray-idem"));
+    }
+
+    #[test]
     fn operator_console_returns_native_status_without_side_effects() {
         let options = NativeGatewayOptions {
             bind_addr: "127.0.0.1:7373".to_string(),
@@ -9334,6 +9805,10 @@ mod tests {
             value["post_activation_plan_endpoint"],
             NATIVE_POST_ACTIVATION_PLAN_ENDPOINT
         );
+        assert_eq!(
+            value["post_gray_release_evidence_endpoint"],
+            NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT
+        );
         assert_eq!(value["post_execution_readiness"]["status"], "ready");
         assert_eq!(
             value["post_execution_readiness"]["all_real_handlers_blocked"],
@@ -9356,6 +9831,16 @@ mod tests {
             "real_handler_gate_disabled"
         );
         assert_eq!(value["post_activation_plan"]["rollback_ready"], true);
+        assert_eq!(value["post_gray_release_evidence_ready"], true);
+        assert_eq!(value["post_gray_release_evidence"]["status"], "staged");
+        assert_eq!(
+            value["post_gray_release_evidence"]["gray_release_ready"],
+            false
+        );
+        assert_eq!(
+            value["post_gray_release_evidence"]["store_write_attempted"],
+            false
+        );
         assert_eq!(
             value["post_execution_stores"]["status_probe_writes_files"],
             false
