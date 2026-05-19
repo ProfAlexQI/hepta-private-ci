@@ -2826,6 +2826,16 @@ fn operator_security_json(
         || post_gray_release_evidence.gray_release_evidence_ready;
     let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
+    let legacy_owner_coexistence_ready = control_ui_route_parity.ready
+        && post_execution_readiness.all_evidence_contracts_ready
+        && post_execution_stores_ready
+        && post_activation_plan_ready
+        && post_gray_release_evidence_ready
+        && telegram_owner_handoff_status.conflict_free
+        && telegram_owner_handoff_status.active_owner == "legacy_openclaw"
+        && !telegram_owner_handoff_status.hepta_poll_loop_armed
+        && loopback_bound
+        && guarded_post_route_count == post_route_count;
     let ready = control_ui_route_parity.ready
         && gateway_replacement_readiness.ready
         && production_soak_ready
@@ -2845,6 +2855,21 @@ fn operator_security_json(
         native_route: true,
         compatibility_mode: "native_operator_security",
         side_effect_free: true,
+        security_mode: if ready {
+            "active_replacement_ready"
+        } else if legacy_owner_coexistence_ready {
+            "legacy_owner_coexistence_ready"
+        } else {
+            "attention_required"
+        },
+        legacy_owner_coexistence_ready,
+        attention_reason: if ready {
+            "none"
+        } else if legacy_owner_coexistence_ready {
+            "telegram_replacement_not_requested"
+        } else {
+            "security_gate_not_ready"
+        },
         loopback_bind_required: true,
         loopback_bound,
         non_loopback_override_enabled: allow_non_loopback_ui(),
@@ -4199,6 +4224,9 @@ struct NativeOperatorSecurityResponse {
     native_route: bool,
     compatibility_mode: &'static str,
     side_effect_free: bool,
+    security_mode: &'static str,
+    legacy_owner_coexistence_ready: bool,
+    attention_reason: &'static str,
     loopback_bind_required: bool,
     loopback_bound: bool,
     non_loopback_override_enabled: bool,
@@ -7500,6 +7528,19 @@ mod tests {
         assert_eq!(value["native_route"], true);
         assert_eq!(value["compatibility_mode"], "native_operator_security");
         assert_eq!(value["side_effect_free"], true);
+        let security_mode = value["security_mode"]
+            .as_str()
+            .expect("operator security mode");
+        assert!(
+            [
+                "active_replacement_ready",
+                "legacy_owner_coexistence_ready",
+                "attention_required"
+            ]
+            .contains(&security_mode)
+        );
+        assert!(value["legacy_owner_coexistence_ready"].is_boolean());
+        assert!(value["attention_reason"].is_string());
         assert_eq!(value["loopback_bind_required"], true);
         assert_eq!(value["loopback_bound"], true);
         assert_eq!(value["side_effects"]["external_side_effects"], false);

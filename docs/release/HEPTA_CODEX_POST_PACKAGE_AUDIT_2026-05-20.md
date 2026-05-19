@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: local release-review audit for `00320d3..6fc04e5` plus the audit fix commit
-Status: audit complete; deploy not performed
+Status: audit complete; controlled install later performed without Telegram owner handoff
 
 ## Audit Scope
 
@@ -29,11 +29,11 @@ Fix applied:
 - included the 57 SVG resources in the review package;
 - updated the Robrix copy manifest and native transplant inventory to reflect the excluded local `AGENTS.md` and the icon-resource correction.
 
-### P2 - Operational: installed binary is older than audited release build
+### P2 - Closed: installed binary was older than audited release build
 
-The audited source now builds a release binary at `codex-rs/target/release/hepta`, but it has not been installed. The active service binary at `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex` remains the previously deployed binary.
+The audited source built a release binary at `codex-rs/target/release/hepta`, but it had not been installed at initial audit time. The active service binary at `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex` still represented the previously deployed binary.
 
-This is expected because the audit intentionally avoided install/deploy/restart, but it is a deployment precondition: do not treat the running service as representing this audited package until a controlled install is performed.
+This was expected because the audit intentionally avoided install/deploy/restart. It was closed later by the controlled install documented in `HEPTA_CODEX_CONTROLLED_INSTALL_2026-05-20.md`, while preserving old OpenClaw as Telegram owner.
 
 ## No P0 Blockers Found
 
@@ -76,7 +76,9 @@ Additional audit-fix verification:
 
 ## Release Decision
 
-The local package is audit-clean for a controlled install rehearsal after the icon-resource fix is committed. Do not deploy as a blind continuation. The next step should be an explicit install plan with:
+The local package was audit-clean for a controlled install rehearsal after the icon-resource fix was committed. It has since been installed through the controlled install path, not as a blind continuation. Any future Telegram owner handoff remains a separate operation requiring explicit instruction.
+
+Controlled install requirements were:
 
 - binary/plist backups;
 - active-owner snapshot;
