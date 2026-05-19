@@ -2,20 +2,22 @@
 
 Date: 2026-05-20
 Scope: post-audit local install of `hepta-codex` without Telegram owner handoff
-Status: installed; legacy Telegram owner preserved
+Status: installed; legacy Telegram owner preserved; single-handler native POST dry-run canary recorded
 
 ## Installed Build
 
 - source repo: `/Users/qianqi/.openclaw/workspace/hepta-codex`
-- source commit: `5bb8577 fix: include Hepta Native icon resources`
+- source commit: `ed61f2b docs: record Hepta controlled install`
 - release binary: `codex-rs/target/release/hepta`
 - installed binary: `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex`
-- installed sha256: `31914dec00ca16793e396013951d350f63d5aa5cf00554c4f40690cc700e312e`
+- installed sha256: `8aa6dd230a83054eb8eba528635cc8346e2e1d337fd91c8b941bb04dea8af333`
 
 Backups created before replacement:
 
 - binary: `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-post-audit-install-20260520-070751`
+- binary: `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-coexistence-fields-20260520-074900`
 - plist: `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-post-audit-install-20260520-070751.plist`
+- plist: `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-coexistence-fields-20260520-074900.plist`
 
 ## Boundary
 
@@ -39,6 +41,49 @@ Active service checks after replacement:
 - `/api/native-post-activation-plan`: disabled, blocked by `real_handler_gate_disabled`
 - `/api/control-ui-route-parity`: ready, `route_count=51`, `missing_route_count=0`
 - old OpenClaw `/health`: live
+
+After the coexistence-status patch, `/api/operator-security` intentionally remains
+`status=attention` while reporting:
+
+- `security_mode=legacy_owner_coexistence_ready`
+- `legacy_owner_coexistence_ready=true`
+- `attention_reason=telegram_replacement_not_requested`
+
+That is the expected local install posture until an operator explicitly asks for
+Telegram owner handoff.
+
+## Native POST Dry-Run Canary
+
+A scoped single-handler native POST canary was run through the installed binary on
+a temporary loopback server, using the active native POST execution store. The
+temporary process had only these native POST gates enabled:
+
+- `HEPTA_NATIVE_POST_REAL_HANDLERS=1`
+- `HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED=1`
+- `HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE=task_publish`
+
+The active `ai.hepta.gateway` service was not reconfigured and still reports
+`activation_currently_enabled=false` with `activation_blocked_reason=real_handler_gate_disabled`.
+
+Canary result:
+
+- route: `POST /api/tasks/publish`
+- body mode: `confirm=true`, `dry_run=true`
+- handler: `task_publish`
+- harness status: `dry_run_recorded`
+- gray release endpoint under the scoped temp process: `gray_release_ready=true`, `gray_release_phase=gray_release_ready`
+- rollout evidence: `rollout_evidence_ready=true`
+- execution stores: `store_jsonl_valid=true`, `store_capacity_ok=true`, `total_line_count=8`
+- no mutation: `task_published=false`, `real_mutation_performed=false`
+- no external side effects: `external_side_effects=false`
+- redaction held: `raw_request_body_exposed=false`, `raw_idempotency_key_exposed=false`
+
+Active-service boundary after the canary:
+
+- `/health`: `ready`
+- `/api/telegram-owner-handoff`: `active_owner=legacy_openclaw`, `hepta_poll_loop_armed=false`, `double_poller_risk=false`
+- `/api/telegram-poll-loop`: `status=gated`, no external read or send by status
+- `/api/native-post-activation-plan`: `activation_currently_enabled=false`
 
 ## Next Gate
 

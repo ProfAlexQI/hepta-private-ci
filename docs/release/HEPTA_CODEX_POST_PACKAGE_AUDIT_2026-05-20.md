@@ -33,7 +33,7 @@ Fix applied:
 
 The audited source built a release binary at `codex-rs/target/release/hepta`, but it had not been installed at initial audit time. The active service binary at `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex` still represented the previously deployed binary.
 
-This was expected because the audit intentionally avoided install/deploy/restart. It was closed later by the controlled install documented in `HEPTA_CODEX_CONTROLLED_INSTALL_2026-05-20.md`, while preserving old OpenClaw as Telegram owner.
+This was expected because the audit intentionally avoided install/deploy/restart. It was closed later by the controlled install documented in `HEPTA_CODEX_CONTROLLED_INSTALL_2026-05-20.md`, while preserving old OpenClaw as Telegram owner. The current installed binary after the follow-up coexistence-status patch is `ed61f2b` with sha256 `8aa6dd230a83054eb8eba528635cc8346e2e1d337fd91c8b941bb04dea8af333`.
 
 ## No P0 Blockers Found
 
@@ -77,6 +77,8 @@ Additional audit-fix verification:
 ## Release Decision
 
 The local package was audit-clean for a controlled install rehearsal after the icon-resource fix was committed. It has since been installed through the controlled install path, not as a blind continuation. Any future Telegram owner handoff remains a separate operation requiring explicit instruction.
+
+A subsequent native POST single-handler dry-run canary for `task_publish` recorded gray-release evidence without publishing a task or enabling active-service native POST activation. That canary is recorded in `HEPTA_CODEX_CONTROLLED_INSTALL_2026-05-20.md`.
 
 Controlled install requirements were:
 
