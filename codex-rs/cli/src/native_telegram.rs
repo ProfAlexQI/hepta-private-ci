@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,6 +19,9 @@ const LEGACY_CONFIG_FILE_NAME: &str = "openclaw.json";
 const LOCAL_IMPORT_CONFIG_PATH: &str = ".hepta/local-import/private/config/openclaw.json";
 const LOCAL_IMPORT_MANIFEST_PATH: &str = ".hepta/local-import/manifest.json";
 const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
+const TELEGRAM_DELIVERY_LEDGER_PATH: &str = ".hepta/telegram/delivery-ledger.jsonl";
+const TELEGRAM_DELIVERY_STORE_IDENTIFIER: &str = "/store/delivery";
+const TELEGRAM_DELIVERY_MAX_RETRIES: u32 = 5;
 const TELEGRAM_ALLOWED_UPDATES: &str =
     "[\"message\",\"edited_message\",\"callback_query\",\"message_reaction\"]";
 pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
@@ -344,6 +348,7 @@ pub(crate) struct NativeTelegramLiveSoakStatus {
     pub(crate) endpoint: &'static str,
     pub(crate) poll_loop_status: NativeTelegramPollLoopStatus,
     pub(crate) cursor_status: NativeTelegramCursorStatus,
+    pub(crate) delivery_ledger_status: NativeTelegramDeliveryLedgerStatus,
     pub(crate) production_guards: NativeTelegramProductionGuardStatus,
     pub(crate) production_readiness: NativeTelegramProductionReadinessStatus,
     pub(crate) observation: NativeTelegramLiveSoakObservationReport,
@@ -400,6 +405,9 @@ pub(crate) struct NativeTelegramProductionReadinessStatus {
     pub(crate) observation_ready: bool,
     pub(crate) observation_fresh: bool,
     pub(crate) durable_cursor_evidence_present: bool,
+    pub(crate) durable_delivery_evidence_required: bool,
+    pub(crate) durable_delivery_evidence_present: bool,
+    pub(crate) delivery_ledger_ready: bool,
     pub(crate) attention_budget_ok: bool,
     pub(crate) recent_bot_api_ok: bool,
     pub(crate) redaction_guards_ok: bool,
@@ -440,6 +448,33 @@ pub(crate) struct NativeTelegramLiveSoakObservationReport {
     pub(crate) raw_prompt_text_exposed: bool,
     pub(crate) raw_response_text_exposed: bool,
     pub(crate) raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NativeTelegramDeliveryLedgerStatus {
+    pub(crate) product: &'static str,
+    pub(crate) runtime: &'static str,
+    pub(crate) requested: bool,
+    pub(crate) status: &'static str,
+    pub(crate) ledger_path: &'static str,
+    pub(crate) ledger_file_present: bool,
+    pub(crate) jsonl_readable: bool,
+    pub(crate) jsonl_valid: bool,
+    pub(crate) line_count: usize,
+    pub(crate) valid_json_line_count: usize,
+    pub(crate) invalid_json_line_count: usize,
+    pub(crate) acked_count: usize,
+    pub(crate) failed_count: usize,
+    pub(crate) latest_stage: Option<String>,
+    pub(crate) latest_created_unix_seconds: Option<u64>,
+    pub(crate) provider_message_id_present: bool,
+    pub(crate) durable_delivery_evidence_present: bool,
+    pub(crate) raw_response_text_logged: bool,
+    pub(crate) raw_chat_id_logged: bool,
+    pub(crate) raw_message_id_logged: bool,
+    pub(crate) raw_token_logged: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) next_migration_slice: &'static str,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -675,6 +710,9 @@ pub(crate) struct NativeTelegramSendExecutionReport {
     pub(crate) send_allowed: bool,
     pub(crate) send_attempted: bool,
     pub(crate) bot_api_ack: Option<bool>,
+    pub(crate) delivery_ledger_write_attempted: bool,
+    pub(crate) delivery_ledger_written_count: usize,
+    pub(crate) latest_delivery_ledger_stage: Option<String>,
     pub(crate) cursor_commit_attempted: bool,
     pub(crate) cursor_written: bool,
     pub(crate) request_body_materialized_by_execution: bool,
@@ -997,12 +1035,14 @@ pub(crate) fn telegram_live_soak_status(
 ) -> NativeTelegramLiveSoakStatus {
     let poll_loop_status = telegram_poll_loop_status(requested, poll_ms);
     let cursor_status = telegram_cursor_status(requested);
+    let delivery_ledger_status = telegram_delivery_ledger_status(requested);
     let observation = telegram_live_soak_observation_report();
     let production_guards = telegram_production_guard_status();
     let production_readiness = telegram_production_readiness_status_from_parts(
         requested,
         &poll_loop_status,
         &cursor_status,
+        &delivery_ledger_status,
         &production_guards,
         &observation,
     );
@@ -1034,6 +1074,7 @@ pub(crate) fn telegram_live_soak_status(
         endpoint: "/api/telegram-live-soak",
         poll_loop_status,
         cursor_status,
+        delivery_ledger_status,
         production_guards,
         production_readiness,
         observation,
@@ -1052,12 +1093,14 @@ pub(crate) fn telegram_production_readiness_status(
 ) -> NativeTelegramProductionReadinessStatus {
     let poll_loop_status = telegram_poll_loop_status(requested, poll_ms);
     let cursor_status = telegram_cursor_status(requested);
+    let delivery_ledger_status = telegram_delivery_ledger_status(requested);
     let production_guards = telegram_production_guard_status();
     let observation = telegram_live_soak_observation_report();
     telegram_production_readiness_status_from_parts(
         requested,
         &poll_loop_status,
         &cursor_status,
+        &delivery_ledger_status,
         &production_guards,
         &observation,
     )
@@ -1067,6 +1110,7 @@ fn telegram_production_readiness_status_from_parts(
     requested: bool,
     poll_loop_status: &NativeTelegramPollLoopStatus,
     cursor_status: &NativeTelegramCursorStatus,
+    delivery_ledger_status: &NativeTelegramDeliveryLedgerStatus,
     production_guards: &NativeTelegramProductionGuardStatus,
     observation: &NativeTelegramLiveSoakObservationReport,
 ) -> NativeTelegramProductionReadinessStatus {
@@ -1094,6 +1138,19 @@ fn telegram_production_readiness_status_from_parts(
         .map(|last_observed| now_unix_ms().saturating_sub(last_observed) <= max_observed_age_ms)
         .unwrap_or(false);
     let durable_cursor_evidence_present = cursor_status.durable_cursor_evidence_present;
+    let durable_delivery_evidence_required = observation.drained_count > 0
+        || observation.send_started_count > 0
+        || observation.cursor_written_count > 0
+        || observation.external_send_count > 0;
+    let durable_delivery_evidence_present =
+        delivery_ledger_status.durable_delivery_evidence_present;
+    let delivery_ledger_ready = if durable_delivery_evidence_required {
+        delivery_ledger_status.status == "ready"
+            && delivery_ledger_status.jsonl_valid
+            && durable_delivery_evidence_present
+    } else {
+        !matches!(delivery_ledger_status.status, "attention")
+    };
     let attention_budget_ok = observation.attention_count <= max_attention_count
         && observation.last_status.as_deref() != Some("attention");
     let recent_bot_api_ok = observation.last_bot_api_ok != Some(false);
@@ -1104,7 +1161,11 @@ fn telegram_production_readiness_status_from_parts(
         && !poll_loop_status.raw_update_payload_exposed
         && !poll_loop_status.raw_prompt_text_exposed
         && !poll_loop_status.raw_response_text_exposed
-        && !poll_loop_status.raw_token_exposed;
+        && !poll_loop_status.raw_token_exposed
+        && !delivery_ledger_status.raw_response_text_logged
+        && !delivery_ledger_status.raw_chat_id_logged
+        && !delivery_ledger_status.raw_message_id_logged
+        && !delivery_ledger_status.raw_token_logged;
 
     let mut readiness_blockers = Vec::new();
     if !requested {
@@ -1125,6 +1186,12 @@ fn telegram_production_readiness_status_from_parts(
     if !observation_fresh {
         readiness_blockers.push("observation_stale");
     }
+    if !delivery_ledger_ready {
+        readiness_blockers.push("delivery_ledger_not_ready");
+    }
+    if durable_delivery_evidence_required && !durable_delivery_evidence_present {
+        readiness_blockers.push("durable_delivery_evidence_missing");
+    }
     if !attention_budget_ok {
         readiness_blockers.push("attention_budget_exceeded");
     }
@@ -1139,7 +1206,10 @@ fn telegram_production_readiness_status_from_parts(
     if observation.busy_count > 0 {
         readiness_warnings.push("getupdates_busy_conflicts_observed");
     }
-    if observation.drained_count == 0 && !durable_cursor_evidence_present {
+    if observation.drained_count == 0
+        && !durable_cursor_evidence_present
+        && !durable_delivery_evidence_present
+    {
         readiness_warnings.push("no_messages_drained_since_gateway_start");
     }
     if observation.external_send_count > observation.cursor_written_count {
@@ -1184,6 +1254,9 @@ fn telegram_production_readiness_status_from_parts(
         observation_ready,
         observation_fresh,
         durable_cursor_evidence_present,
+        durable_delivery_evidence_required,
+        durable_delivery_evidence_present,
+        delivery_ledger_ready,
         attention_budget_ok,
         recent_bot_api_ok,
         redaction_guards_ok,
@@ -1382,6 +1455,269 @@ fn write_telegram_cursor_next_update_offset(path: &Path, offset: i64) -> Result<
         .map_err(|error| format!("failed to write Telegram cursor file: {error}"))
 }
 
+pub(crate) fn telegram_delivery_ledger_status(
+    requested: bool,
+) -> NativeTelegramDeliveryLedgerStatus {
+    if !requested {
+        return NativeTelegramDeliveryLedgerStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested,
+            status: "disabled",
+            ledger_path: TELEGRAM_DELIVERY_LEDGER_PATH,
+            ledger_file_present: false,
+            jsonl_readable: false,
+            jsonl_valid: false,
+            line_count: 0,
+            valid_json_line_count: 0,
+            invalid_json_line_count: 0,
+            acked_count: 0,
+            failed_count: 0,
+            latest_stage: None,
+            latest_created_unix_seconds: None,
+            provider_message_id_present: false,
+            durable_delivery_evidence_present: false,
+            raw_response_text_logged: false,
+            raw_chat_id_logged: false,
+            raw_message_id_logged: false,
+            raw_token_logged: false,
+            error: None,
+            next_migration_slice: "enable Telegram plugin before reading delivery ledger state",
+        };
+    }
+
+    telegram_delivery_ledger_status_from_path(Path::new(TELEGRAM_DELIVERY_LEDGER_PATH))
+}
+
+fn telegram_delivery_ledger_status_from_path(path: &Path) -> NativeTelegramDeliveryLedgerStatus {
+    let ledger_file_present = path.is_file();
+    let mut status = NativeTelegramDeliveryLedgerStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: true,
+        status: "missing",
+        ledger_path: TELEGRAM_DELIVERY_LEDGER_PATH,
+        ledger_file_present,
+        jsonl_readable: false,
+        jsonl_valid: false,
+        line_count: 0,
+        valid_json_line_count: 0,
+        invalid_json_line_count: 0,
+        acked_count: 0,
+        failed_count: 0,
+        latest_stage: None,
+        latest_created_unix_seconds: None,
+        provider_message_id_present: false,
+        durable_delivery_evidence_present: false,
+        raw_response_text_logged: false,
+        raw_chat_id_logged: false,
+        raw_message_id_logged: false,
+        raw_token_logged: false,
+        error: None,
+        next_migration_slice: "delivery ledger is empty until native Telegram send is approved and delivered",
+    };
+
+    if !ledger_file_present {
+        return status;
+    }
+
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) => {
+            status.status = "attention";
+            status.error = Some(redact_token_like_text(&format!(
+                "failed to read Telegram delivery ledger: {error}"
+            )));
+            return status;
+        }
+    };
+    status.jsonl_readable = true;
+    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+        status.line_count = status.line_count.saturating_add(1);
+        let Ok(record) = serde_json::from_str::<Value>(line) else {
+            status.invalid_json_line_count = status.invalid_json_line_count.saturating_add(1);
+            continue;
+        };
+        status.valid_json_line_count = status.valid_json_line_count.saturating_add(1);
+        let stage = record
+            .get("stage")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        if stage == "acked" {
+            status.acked_count = status.acked_count.saturating_add(1);
+        } else if stage == "failed" {
+            status.failed_count = status.failed_count.saturating_add(1);
+        }
+        status.latest_stage = Some(stage);
+        status.latest_created_unix_seconds = record
+            .get("created_unix_seconds")
+            .and_then(Value::as_u64)
+            .or(status.latest_created_unix_seconds);
+        status.provider_message_id_present |= record
+            .get("provider_message_id_present")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        status.raw_response_text_logged |= record
+            .get("content_logged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || record
+                .get("message_text_logged")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+        status.raw_chat_id_logged |= record
+            .get("raw_chat_id_logged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        status.raw_message_id_logged |= record
+            .get("raw_message_id_logged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        status.raw_token_logged |= record
+            .get("raw_token_logged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+    }
+
+    status.jsonl_valid = status.invalid_json_line_count == 0;
+    status.durable_delivery_evidence_present =
+        status.acked_count > 0 && status.provider_message_id_present && status.jsonl_valid;
+    status.status = if !status.jsonl_valid
+        || status.raw_response_text_logged
+        || status.raw_chat_id_logged
+        || status.raw_message_id_logged
+        || status.raw_token_logged
+    {
+        "attention"
+    } else if status.durable_delivery_evidence_present {
+        "ready"
+    } else {
+        "empty"
+    };
+    status.next_migration_slice = if status.status == "ready" {
+        "delivery ledger has durable redacted ack evidence; keep it aligned with cursor commits"
+    } else {
+        "write redacted enqueued/acked delivery records before committing Telegram cursor offsets"
+    };
+    status
+}
+
+fn append_telegram_delivery_lifecycle_record(path: &Path, record: &Value) -> Result<(), String> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create Telegram delivery ledger directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|error| {
+            format!(
+                "failed to open Telegram delivery ledger {}: {error}",
+                path.display()
+            )
+        })?;
+    let bytes = serde_json::to_vec(record)
+        .map_err(|error| format!("failed to render Telegram delivery ledger record: {error}"))?;
+    file.write_all(&bytes).map_err(|error| {
+        format!(
+            "failed to write Telegram delivery ledger {}: {error}",
+            path.display()
+        )
+    })?;
+    file.write_all(b"\n").map_err(|error| {
+        format!(
+            "failed to finalize Telegram delivery ledger {}: {error}",
+            path.display()
+        )
+    })
+}
+
+fn telegram_delivery_lifecycle_record(
+    stage: &'static str,
+    candidate_next_update_offset: Option<i64>,
+    model_output_present: bool,
+    provider_send_attempted: bool,
+    bot_api_ack: Option<bool>,
+    provider_message_id_present: bool,
+    error: Option<&str>,
+) -> Value {
+    let acked = stage == "acked" && bot_api_ack == Some(true);
+    let failed = stage == "failed";
+    let permanent_error = failed && telegram_delivery_error_is_permanent(error);
+    let retry_scheduled = failed && !permanent_error;
+    let next_retry_count = if retry_scheduled { 1 } else { 0 };
+    serde_json::json!({
+        "schema_version": 1,
+        "store_identifier": TELEGRAM_DELIVERY_STORE_IDENTIFIER,
+        "entry_id": candidate_next_update_offset
+            .map(|offset| format!("telegram:next-offset:{offset}"))
+            .unwrap_or_else(|| "telegram:next-offset:missing".to_string()),
+        "idempotency_key": candidate_next_update_offset
+            .map(|offset| format!("telegram:next-offset:{offset}"))
+            .unwrap_or_else(|| "telegram:next-offset:missing".to_string()),
+        "stage": stage,
+        "created_unix_seconds": now_unix_ms() / 1_000,
+        "channel": "telegram",
+        "session_key_shape": "agent:main:telegram:[redacted]",
+        "payload_count": usize::from(model_output_present),
+        "payload_text_chunk_count": usize::from(model_output_present),
+        "payload_media_count": 0,
+        "payload_button_count": 0,
+        "content_logged": false,
+        "message_text_logged": false,
+        "raw_chat_id_logged": false,
+        "raw_message_id_logged": false,
+        "raw_token_logged": false,
+        "enqueue_before_provider_send": true,
+        "active_claim_required": true,
+        "active_claim_acquired": true,
+        "provider_send_attempted": provider_send_attempted,
+        "provider_message_id_present": provider_message_id_present,
+        "ack_after_provider_message_id": acked,
+        "acked": acked,
+        "failed": failed,
+        "retry_scheduled": retry_scheduled,
+        "next_retry_count": next_retry_count,
+        "next_retry_backoff_ms": retry_scheduled.then(|| telegram_delivery_backoff_ms(next_retry_count)),
+        "max_retries": TELEGRAM_DELIVERY_MAX_RETRIES,
+        "permanent_error_moved_to_failed": permanent_error,
+        "recovery_replay_supported": true,
+        "store_mutated": true,
+        "external_send_attempted": provider_send_attempted,
+        "error": error.map(redact_token_like_text),
+    })
+}
+
+fn telegram_delivery_backoff_ms(next_retry_count: u32) -> u64 {
+    match next_retry_count {
+        0 => 0,
+        1 => 5_000,
+        2 => 25_000,
+        3 => 120_000,
+        _ => 600_000,
+    }
+}
+
+fn telegram_delivery_error_is_permanent(error: Option<&str>) -> bool {
+    let Some(error) = error.map(str::to_ascii_lowercase) else {
+        return false;
+    };
+    error.contains("unauthorized")
+        || error.contains("forbidden")
+        || error.contains("bot was blocked")
+        || error.contains("chat not found")
+        || error.contains("bad request")
+}
+
 fn telegram_drain_once_status_with_gates(
     requested: bool,
     gates: NativeTelegramGatewayGateSummary,
@@ -1495,6 +1831,7 @@ fn telegram_drain_once_status_with_gates(
                                     Some(token.as_str()),
                                     &gates,
                                     Path::new(TELEGRAM_INGRESS_CURSOR_PATH),
+                                    Path::new(TELEGRAM_DELIVERY_LEDGER_PATH),
                                     run_hepta_model_turn,
                                     call_telegram_send_message,
                                 );
@@ -2928,6 +3265,7 @@ struct NativeTelegramSendExecutionInput<'a> {
     candidate_next_update_offset: Option<i64>,
     send_gate_enabled: bool,
     cursor_path: &'a Path,
+    delivery_ledger_path: &'a Path,
 }
 
 #[allow(dead_code)]
@@ -2980,6 +3318,29 @@ where
         return report;
     };
 
+    report.delivery_ledger_write_attempted = true;
+    let enqueued_record = telegram_delivery_lifecycle_record(
+        "enqueued",
+        input.candidate_next_update_offset,
+        report.model_output_present,
+        false,
+        None,
+        false,
+        None,
+    );
+    match append_telegram_delivery_lifecycle_record(input.delivery_ledger_path, &enqueued_record) {
+        Ok(()) => {
+            report.delivery_ledger_written_count =
+                report.delivery_ledger_written_count.saturating_add(1);
+            report.latest_delivery_ledger_stage = Some("enqueued".to_string());
+        }
+        Err(error) => {
+            report.status = "attention";
+            report.error = Some(redact_token_like_text(&error));
+            return report;
+        }
+    }
+
     report.status = "sending";
     report.request_body_materialized_by_execution = true;
     report.send_attempted = true;
@@ -2997,6 +3358,10 @@ where
             Ok(api) => {
                 let ok = api.get("ok").and_then(Value::as_bool).unwrap_or(false);
                 report.bot_api_ack = Some(ok);
+                let provider_message_id_present = api
+                    .pointer("/result/message_id")
+                    .and_then(Value::as_i64)
+                    .is_some();
                 if !ok {
                     let error = api
                         .get("description")
@@ -3009,12 +3374,53 @@ where
                         thread::sleep(retry_backoff);
                         continue;
                     }
+                    if let Err(ledger_error) = append_telegram_delivery_lifecycle_record(
+                        input.delivery_ledger_path,
+                        &telegram_delivery_lifecycle_record(
+                            "failed",
+                            input.candidate_next_update_offset,
+                            report.model_output_present,
+                            true,
+                            Some(false),
+                            provider_message_id_present,
+                            Some(&error),
+                        ),
+                    ) {
+                        report.error = Some(redact_token_like_text(&ledger_error));
+                        return report;
+                    }
+                    report.delivery_ledger_written_count =
+                        report.delivery_ledger_written_count.saturating_add(1);
+                    report.latest_delivery_ledger_stage = Some("failed".to_string());
                     report.status = "attention";
                     report.error = Some(error);
                     return report;
                 }
 
                 report.external_send = true;
+                match append_telegram_delivery_lifecycle_record(
+                    input.delivery_ledger_path,
+                    &telegram_delivery_lifecycle_record(
+                        "acked",
+                        input.candidate_next_update_offset,
+                        report.model_output_present,
+                        true,
+                        Some(true),
+                        provider_message_id_present,
+                        None,
+                    ),
+                ) {
+                    Ok(()) => {
+                        report.delivery_ledger_written_count =
+                            report.delivery_ledger_written_count.saturating_add(1);
+                        report.latest_delivery_ledger_stage = Some("acked".to_string());
+                    }
+                    Err(error) => {
+                        report.status = "attention";
+                        report.error = Some(redact_token_like_text(&error));
+                        return report;
+                    }
+                }
                 report.cursor_commit_attempted = true;
                 match write_telegram_cursor_next_update_offset(
                     input.cursor_path,
@@ -3037,6 +3443,24 @@ where
                     thread::sleep(retry_backoff);
                     continue;
                 }
+                if let Err(ledger_error) = append_telegram_delivery_lifecycle_record(
+                    input.delivery_ledger_path,
+                    &telegram_delivery_lifecycle_record(
+                        "failed",
+                        input.candidate_next_update_offset,
+                        report.model_output_present,
+                        true,
+                        None,
+                        false,
+                        Some(&error),
+                    ),
+                ) {
+                    report.error = Some(redact_token_like_text(&ledger_error));
+                    return report;
+                }
+                report.delivery_ledger_written_count =
+                    report.delivery_ledger_written_count.saturating_add(1);
+                report.latest_delivery_ledger_stage = Some("failed".to_string());
                 report.status = "attention";
                 report.error = Some(error);
                 return report;
@@ -3053,6 +3477,7 @@ fn execute_telegram_drain_pipeline_for_updates<F, S>(
     token: Option<&str>,
     gates: &NativeTelegramGatewayGateSummary,
     cursor_path: &Path,
+    delivery_ledger_path: &Path,
     run_model: F,
     send_message: S,
 ) -> NativeTelegramDrainPipelineOutcome
@@ -3126,6 +3551,7 @@ where
             candidate_next_update_offset: model_outcome.candidate_next_update_offset,
             send_gate_enabled: gates.send_gate_enabled,
             cursor_path,
+            delivery_ledger_path,
         },
         send_message,
     );
@@ -4131,6 +4557,9 @@ impl NativeTelegramSendExecutionReport {
             send_allowed: false,
             send_attempted: false,
             bot_api_ack: None,
+            delivery_ledger_write_attempted: false,
+            delivery_ledger_written_count: 0,
+            latest_delivery_ledger_stage: None,
             cursor_commit_attempted: false,
             cursor_written: false,
             request_body_materialized_by_execution: false,
@@ -4172,6 +4601,9 @@ impl NativeTelegramSendExecutionReport {
             send_allowed: request.send_allowed,
             send_attempted: false,
             bot_api_ack: None,
+            delivery_ledger_write_attempted: false,
+            delivery_ledger_written_count: 0,
+            latest_delivery_ledger_stage: None,
             cursor_commit_attempted: false,
             cursor_written: false,
             request_body_materialized_by_execution: false,
@@ -4993,6 +5425,7 @@ mod tests {
     fn send_execution_commits_cursor_only_after_bot_api_ack() {
         let temp = tempfile::tempdir().expect("tempdir");
         let cursor_path = temp.path().join("cursor.json");
+        let delivery_ledger_path = temp.path().join("delivery-ledger.jsonl");
         let reply_target = NativeTelegramReplyTargetMaterial {
             chat_id: 6476198178_i64,
             reply_to_message_id: Some(11),
@@ -5008,6 +5441,7 @@ mod tests {
                 candidate_next_update_offset: Some(50),
                 send_gate_enabled: true,
                 cursor_path: &cursor_path,
+                delivery_ledger_path: &delivery_ledger_path,
             },
             |observed_token, chat_id, text, reply_to_message_id| {
                 assert_eq!(observed_token, token);
@@ -5030,6 +5464,12 @@ mod tests {
         assert!(report.send_allowed);
         assert!(report.send_attempted);
         assert_eq!(report.bot_api_ack, Some(true));
+        assert!(report.delivery_ledger_write_attempted);
+        assert_eq!(report.delivery_ledger_written_count, 2);
+        assert_eq!(
+            report.latest_delivery_ledger_stage.as_deref(),
+            Some("acked")
+        );
         assert!(report.cursor_commit_attempted);
         assert!(report.cursor_written);
         assert!(report.request_body_materialized_by_execution);
@@ -5043,6 +5483,10 @@ mod tests {
 
         let cursor = telegram_cursor_status_from_path(&cursor_path);
         assert_eq!(cursor.next_update_offset, Some(50));
+        let delivery_ledger = telegram_delivery_ledger_status_from_path(&delivery_ledger_path);
+        assert_eq!(delivery_ledger.status, "ready");
+        assert_eq!(delivery_ledger.acked_count, 1);
+        assert!(delivery_ledger.durable_delivery_evidence_present);
         let serialized = serde_json::to_string(&report).expect("serialize");
         assert!(!serialized.contains("private model response text"));
         assert!(!serialized.contains("6476198178"));
@@ -5053,6 +5497,7 @@ mod tests {
     fn send_execution_keeps_cursor_uncommitted_on_send_failure() {
         let temp = tempfile::tempdir().expect("tempdir");
         let cursor_path = temp.path().join("cursor.json");
+        let delivery_ledger_path = temp.path().join("delivery-ledger.jsonl");
         let reply_target = NativeTelegramReplyTargetMaterial {
             chat_id: 6476198178_i64,
             reply_to_message_id: Some(11),
@@ -5068,6 +5513,7 @@ mod tests {
                     candidate_next_update_offset: Some(50),
                     send_gate_enabled: true,
                     cursor_path: &cursor_path,
+                    delivery_ledger_path: &delivery_ledger_path,
                 },
                 |_, _, _, _| {
                     Err("Telegram Bot API sendMessage HTTP status 500; description=temporary outage"
@@ -5078,18 +5524,28 @@ mod tests {
         assert_eq!(report.status, "attention");
         assert!(report.send_attempted);
         assert_eq!(report.bot_api_ack, None);
+        assert_eq!(report.delivery_ledger_written_count, 2);
+        assert_eq!(
+            report.latest_delivery_ledger_stage.as_deref(),
+            Some("failed")
+        );
         assert!(!report.cursor_commit_attempted);
         assert!(!report.cursor_written);
         assert!(report.external_network_write);
         assert!(!report.external_send);
         assert!(report.error.unwrap().contains("temporary outage"));
         assert!(!cursor_path.exists());
+        let delivery_ledger = telegram_delivery_ledger_status_from_path(&delivery_ledger_path);
+        assert_eq!(delivery_ledger.status, "empty");
+        assert_eq!(delivery_ledger.failed_count, 1);
+        assert!(!delivery_ledger.durable_delivery_evidence_present);
     }
 
     #[test]
     fn send_execution_requires_gate_before_network_write() {
         let temp = tempfile::tempdir().expect("tempdir");
         let cursor_path = temp.path().join("cursor.json");
+        let delivery_ledger_path = temp.path().join("delivery-ledger.jsonl");
         let reply_target = NativeTelegramReplyTargetMaterial {
             chat_id: 6476198178_i64,
             reply_to_message_id: Some(11),
@@ -5104,6 +5560,7 @@ mod tests {
                 candidate_next_update_offset: Some(50),
                 send_gate_enabled: false,
                 cursor_path: &cursor_path,
+                delivery_ledger_path: &delivery_ledger_path,
             },
             |_, _, _, _| panic!("sendMessage must not run while gated"),
         );
@@ -5111,18 +5568,22 @@ mod tests {
         assert_eq!(report.status, "gated");
         assert!(!report.send_allowed);
         assert!(!report.send_attempted);
+        assert!(!report.delivery_ledger_write_attempted);
+        assert_eq!(report.delivery_ledger_written_count, 0);
         assert!(!report.cursor_commit_attempted);
         assert!(!report.cursor_written);
         assert!(!report.external_network_write);
         assert!(!report.external_send);
         assert!(report.error.unwrap().contains(TELEGRAM_SEND_GATE_ENV));
         assert!(!cursor_path.exists());
+        assert!(!delivery_ledger_path.exists());
     }
 
     #[test]
     fn drain_pipeline_runs_model_then_send_and_commits_cursor_after_ack() {
         let temp = tempfile::tempdir().expect("tempdir");
         let cursor_path = temp.path().join("cursor.json");
+        let delivery_ledger_path = temp.path().join("delivery-ledger.jsonl");
         let token = "123456:ABCDEFGHIJKLMNOPQRSTUVWX";
         let update = serde_json::json!({
             "update_id": 49,
@@ -5153,6 +5614,7 @@ mod tests {
             Some(token),
             &gates,
             &cursor_path,
+            &delivery_ledger_path,
             |prompt| {
                 assert_eq!(prompt, "private pipeline prompt");
                 Ok("private pipeline response".to_string())
@@ -5185,11 +5647,15 @@ mod tests {
         assert_eq!(outcome.send_execution.status, "delivered");
         assert!(outcome.send_execution.send_attempted);
         assert_eq!(outcome.send_execution.bot_api_ack, Some(true));
+        assert_eq!(outcome.send_execution.delivery_ledger_written_count, 2);
         assert!(outcome.send_execution.cursor_written);
         assert!(outcome.send_execution.external_send);
 
         let cursor = telegram_cursor_status_from_path(&cursor_path);
         assert_eq!(cursor.next_update_offset, Some(50));
+        let delivery_ledger = telegram_delivery_ledger_status_from_path(&delivery_ledger_path);
+        assert_eq!(delivery_ledger.status, "ready");
+        assert_eq!(delivery_ledger.latest_stage.as_deref(), Some("acked"));
         let model_json = serde_json::to_string(&outcome.model_execution).expect("serialize");
         let send_json = serde_json::to_string(&outcome.send_execution).expect("serialize");
         assert!(!model_json.contains("private pipeline prompt"));
@@ -5203,6 +5669,7 @@ mod tests {
     fn drain_pipeline_respects_model_gate_before_runner_and_send() {
         let temp = tempfile::tempdir().expect("tempdir");
         let cursor_path = temp.path().join("cursor.json");
+        let delivery_ledger_path = temp.path().join("delivery-ledger.jsonl");
         let update = serde_json::json!({
             "update_id": 49,
             "message": {
@@ -5231,6 +5698,7 @@ mod tests {
             Some("123456:ABCDEFGHIJKLMNOPQRSTUVWX"),
             &gates,
             &cursor_path,
+            &delivery_ledger_path,
             |_| panic!("model runner must not run while model gate is closed"),
             |_, _, _, _| panic!("sendMessage must not run without model output"),
         );
@@ -5604,6 +6072,7 @@ mod tests {
     fn production_readiness_requires_minimum_soak_observations() {
         let poll_loop = ready_poll_loop_status();
         let cursor = ready_cursor_status();
+        let delivery_ledger = ready_delivery_ledger_status();
         let guards = ready_production_guards();
         let observation = live_soak_observation(2, 0, Some("planned"), Some(true));
 
@@ -5611,6 +6080,7 @@ mod tests {
             true,
             &poll_loop,
             &cursor,
+            &delivery_ledger,
             &guards,
             &observation,
         );
@@ -5637,6 +6107,7 @@ mod tests {
     fn production_readiness_is_ready_after_clean_guarded_soak() {
         let poll_loop = ready_poll_loop_status();
         let cursor = ready_cursor_status();
+        let delivery_ledger = ready_delivery_ledger_status();
         let guards = ready_production_guards();
         let observation = live_soak_observation(3, 0, Some("planned"), Some(true));
 
@@ -5644,6 +6115,7 @@ mod tests {
             true,
             &poll_loop,
             &cursor,
+            &delivery_ledger,
             &guards,
             &observation,
         );
@@ -5656,6 +6128,8 @@ mod tests {
         assert!(readiness.observation_ready);
         assert!(readiness.observation_fresh);
         assert!(readiness.durable_cursor_evidence_present);
+        assert!(!readiness.durable_delivery_evidence_required);
+        assert!(readiness.delivery_ledger_ready);
         assert!(readiness.attention_budget_ok);
         assert!(readiness.recent_bot_api_ok);
         assert!(readiness.redaction_guards_ok);
@@ -5670,6 +6144,10 @@ mod tests {
         cursor.durable_cursor_evidence_present = false;
         cursor.cursor_updated_at_unix_ms = None;
         cursor.last_delivered_next_update_offset = None;
+        let mut delivery_ledger = ready_delivery_ledger_status();
+        delivery_ledger.durable_delivery_evidence_present = false;
+        delivery_ledger.status = "empty";
+        delivery_ledger.acked_count = 0;
         let guards = ready_production_guards();
         let observation = live_soak_observation(3, 0, Some("planned"), Some(true));
 
@@ -5677,6 +6155,7 @@ mod tests {
             true,
             &poll_loop,
             &cursor,
+            &delivery_ledger,
             &guards,
             &observation,
         );
@@ -5694,6 +6173,7 @@ mod tests {
     fn production_readiness_flags_attention_budget_failures() {
         let poll_loop = ready_poll_loop_status();
         let cursor = ready_cursor_status();
+        let delivery_ledger = ready_delivery_ledger_status();
         let guards = ready_production_guards();
         let observation = live_soak_observation(3, 1, Some("attention"), Some(false));
 
@@ -5701,6 +6181,7 @@ mod tests {
             true,
             &poll_loop,
             &cursor,
+            &delivery_ledger,
             &guards,
             &observation,
         );
@@ -5725,6 +6206,7 @@ mod tests {
     fn production_readiness_flags_stale_soak_observations() {
         let poll_loop = ready_poll_loop_status();
         let cursor = ready_cursor_status();
+        let delivery_ledger = ready_delivery_ledger_status();
         let guards = ready_production_guards();
         let mut observation = live_soak_observation(3, 0, Some("planned"), Some(true));
         observation.last_observed_at_unix_ms = Some(1);
@@ -5733,6 +6215,7 @@ mod tests {
             true,
             &poll_loop,
             &cursor,
+            &delivery_ledger,
             &guards,
             &observation,
         );
@@ -5749,6 +6232,45 @@ mod tests {
         );
         assert!(!readiness.observation_fresh);
         assert!(readiness.readiness_blockers.contains(&"observation_stale"));
+    }
+
+    #[test]
+    fn production_readiness_blocks_when_send_was_observed_without_delivery_ledger() {
+        let poll_loop = ready_poll_loop_status();
+        let cursor = ready_cursor_status();
+        let mut delivery_ledger = ready_delivery_ledger_status();
+        delivery_ledger.status = "empty";
+        delivery_ledger.acked_count = 0;
+        delivery_ledger.provider_message_id_present = false;
+        delivery_ledger.durable_delivery_evidence_present = false;
+        let guards = ready_production_guards();
+        let mut observation = live_soak_observation(3, 0, Some("drained"), Some(true));
+        observation.drained_count = 1;
+        observation.send_started_count = 1;
+        observation.cursor_written_count = 1;
+        observation.external_send_count = 1;
+        observation.last_send_started = true;
+        observation.last_cursor_written = true;
+        observation.last_external_send = true;
+
+        let readiness = telegram_production_readiness_status_from_parts(
+            true,
+            &poll_loop,
+            &cursor,
+            &delivery_ledger,
+            &guards,
+            &observation,
+        );
+
+        assert!(!readiness.ready);
+        assert!(readiness.durable_delivery_evidence_required);
+        assert!(!readiness.durable_delivery_evidence_present);
+        assert!(!readiness.delivery_ledger_ready);
+        assert!(
+            readiness
+                .readiness_blockers
+                .contains(&"durable_delivery_evidence_missing")
+        );
     }
 
     fn ready_poll_loop_status() -> NativeTelegramPollLoopStatus {
@@ -5797,6 +6319,34 @@ mod tests {
             cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
             cursor_written: false,
             raw_update_payload_persisted: false,
+            error: None,
+            next_migration_slice: "test",
+        }
+    }
+
+    fn ready_delivery_ledger_status() -> NativeTelegramDeliveryLedgerStatus {
+        NativeTelegramDeliveryLedgerStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: true,
+            status: "ready",
+            ledger_path: TELEGRAM_DELIVERY_LEDGER_PATH,
+            ledger_file_present: true,
+            jsonl_readable: true,
+            jsonl_valid: true,
+            line_count: 2,
+            valid_json_line_count: 2,
+            invalid_json_line_count: 0,
+            acked_count: 1,
+            failed_count: 0,
+            latest_stage: Some("acked".to_string()),
+            latest_created_unix_seconds: Some(now_unix_ms() / 1_000),
+            provider_message_id_present: true,
+            durable_delivery_evidence_present: true,
+            raw_response_text_logged: false,
+            raw_chat_id_logged: false,
+            raw_message_id_logged: false,
+            raw_token_logged: false,
             error: None,
             next_migration_slice: "test",
         }
