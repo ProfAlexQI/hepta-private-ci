@@ -1,0 +1,9 @@
+[package]
+name = "hepta-intelligence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hepta-core.workspace = true
+serde = { workspace = true, features = ["derive"] }

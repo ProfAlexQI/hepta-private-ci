@@ -1,0 +1,14 @@
+[package]
+name = "hepta-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hepta-core.workspace = true
+hepta-intelligence.workspace = true
+hepta-memory.workspace = true
+hepta-plugins.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

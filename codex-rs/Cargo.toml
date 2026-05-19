@@ -81,6 +81,12 @@ members = [
     "utils/absolute-path",
     "utils/cargo-bin",
     "git-utils",
+    "hepta-core",
+    "hepta-intelligence",
+    "hepta-gateway",
+    "hepta-memory",
+    "hepta-plugins",
+    "hepta-runtime",
     "utils/cache",
     "utils/image",
     "utils/json-to-toml",
@@ -172,6 +178,12 @@ codex-install-context = { path = "install-context" }
 codex-file-search = { path = "file-search" }
 codex-file-watcher = { path = "file-watcher" }
 codex-git-utils = { path = "git-utils" }
+hepta-core = { path = "hepta-core" }
+hepta-gateway = { path = "hepta-gateway" }
+hepta-intelligence = { path = "hepta-intelligence" }
+hepta-memory = { path = "hepta-memory" }
+hepta-plugins = { path = "hepta-plugins" }
+hepta-runtime = { path = "hepta-runtime" }
 codex-hooks = { path = "hooks" }
 codex-keyring-store = { path = "keyring-store" }
 codex-linux-sandbox = { path = "linux-sandbox" }

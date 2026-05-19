@@ -1,0 +1,8 @@
+[package]
+name = "hepta-plugins"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hepta-core.workspace = true
