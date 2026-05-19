@@ -31,8 +31,8 @@ Hepta Control UI is a dependency-free, static-first local frontend for Hepta's R
 ## Gates
 
 ```bash
-HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo run -q -p hepta -- /control-ui --json
-HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo run -q -p hepta -- /ui-contract-audit --json
+HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo test --manifest-path codex-rs/Cargo.toml -q -p hepta-core control_ui_report_is_complete_and_asset_backed
+HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway
 ./scripts/hepta-control-ui-smoke.sh
 ```
 
@@ -40,7 +40,7 @@ Main smoke covers contract, Rust/no-JS asset checks, quality, browser route safe
 
 ## Architecture notes
 
-The shipped UI is generated from `hepta-core::control_ui` and served as HTML/CSS by `apps/hepta/src/main.rs`. The former browser modules under `apps/hepta-control-ui/modules/` have been retired as JS artifacts; `apps/hepta-control-ui/modules/README.md` remains only as a boundary ledger for the Rust renderer's absorbed responsibilities:
+The shipped UI is generated from `hepta-core::control_ui` and served as HTML/CSS by the `codex-rs` `codex-cli --bin hepta` entrypoint. The former browser modules under `apps/hepta-control-ui/modules/` have been retired as JS artifacts; `apps/hepta-control-ui/modules/README.md` remains only as a boundary ledger for the Rust renderer's absorbed responsibilities:
 
 - chat-state
 - chat-render
@@ -86,7 +86,7 @@ Visual/layout and perceptual baselines live under `apps/hepta-control-ui/baselin
 ## Run locally
 
 ```bash
-cargo run -p hepta -- --serve-ui 127.0.0.1:7373
+cargo run --manifest-path codex-rs/Cargo.toml -p codex-cli --bin hepta -- --serve-ui 127.0.0.1:7373
 ```
 
 Then open:

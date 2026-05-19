@@ -2,7 +2,8 @@ use serde::Serialize;
 
 use crate::control_ui::{CONTROL_UI_README, CONTROL_UI_RUST_RENDERER_MARKERS};
 
-pub const HEPTA_SERVER_MAIN_RS: &str = include_str!("../../../apps/hepta/src/main.rs");
+pub const HEPTA_NATIVE_GATEWAY_RS: &str = include_str!("../../cli/src/native_gateway.rs");
+pub const HEPTA_NATIVE_POST_RS: &str = include_str!("../../hepta-gateway/src/native_post.rs");
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OperatorCommandSafetyDecision {
@@ -169,39 +170,36 @@ fn has_explicit_operator_confirmation(command: &str, slash_command: &str) -> boo
 }
 
 pub fn operator_security_report() -> OperatorSecurityReport {
-    let loopback_bind_enforced = HEPTA_SERVER_MAIN_RS.contains("is_loopback_bind_addr")
-        && HEPTA_SERVER_MAIN_RS.contains("HEPTA_ALLOW_NON_LOOPBACK_UI")
-        && HEPTA_SERVER_MAIN_RS.contains("refusing to serve UI on non-loopback address");
-    let security_headers_present = HEPTA_SERVER_MAIN_RS.contains("Content-Security-Policy")
-        && HEPTA_SERVER_MAIN_RS.contains("X-Content-Type-Options: nosniff")
-        && HEPTA_SERVER_MAIN_RS.contains("Referrer-Policy: no-referrer");
-    let post_actions_dry_run_only = HEPTA_SERVER_MAIN_RS.contains("/api/actions/")
-        && HEPTA_SERVER_MAIN_RS.contains("/ui-action-plan {} --dry-run --json")
-        && HEPTA_SERVER_MAIN_RS.contains("202 Accepted");
-    let confirmed_local_mutation_guard_present = HEPTA_SERVER_MAIN_RS
+    let loopback_bind_enforced = HEPTA_NATIVE_GATEWAY_RS.contains("is_loopback_bind_addr")
+        && HEPTA_NATIVE_GATEWAY_RS.contains("HEPTA_ALLOW_NON_LOOPBACK_UI")
+        && HEPTA_NATIVE_GATEWAY_RS.contains("refusing to serve UI on non-loopback address");
+    let security_headers_present = HEPTA_NATIVE_GATEWAY_RS.contains("Content-Security-Policy")
+        && HEPTA_NATIVE_GATEWAY_RS.contains("X-Content-Type-Options: nosniff")
+        && HEPTA_NATIVE_GATEWAY_RS.contains("Referrer-Policy: no-referrer");
+    let post_actions_dry_run_only = HEPTA_NATIVE_POST_RS.contains("/api/actions/<action>")
+        && HEPTA_NATIVE_POST_RS.contains("/ui-action-plan <action> --dry-run --json")
+        && HEPTA_NATIVE_POST_RS.contains("native_action_post_dry_run");
+    let confirmed_local_mutation_guard_present = HEPTA_NATIVE_POST_RS
         .contains("/api/tasks/publish")
-        && HEPTA_SERVER_MAIN_RS.contains("/api/chat")
-        && HEPTA_SERVER_MAIN_RS.contains("/api/approvals/exec/apply")
-        && HEPTA_SERVER_MAIN_RS.contains("confirm=true")
-        && HEPTA_SERVER_MAIN_RS.contains("external_side_effects")
-        && HEPTA_SERVER_MAIN_RS.contains("maybe_autosave");
-    let read_only_command_allowlist_present = HEPTA_SERVER_MAIN_RS.contains("readonly_ui_command")
-        && HEPTA_SERVER_MAIN_RS.contains("command is not allowlisted")
-        && HEPTA_SERVER_MAIN_RS.contains("\"read_only\": true");
-    let unsupported_post_fail_closed = HEPTA_SERVER_MAIN_RS.contains("405 Method Not Allowed")
-        && HEPTA_SERVER_MAIN_RS.contains("supported POST endpoints are /api/actions/<action>");
+        && HEPTA_NATIVE_POST_RS.contains("/api/chat")
+        && HEPTA_NATIVE_POST_RS.contains("/api/approvals/exec/apply")
+        && HEPTA_NATIVE_POST_RS.contains("confirmation_required_for_real_mutation: true")
+        && HEPTA_NATIVE_POST_RS.contains("external_side_effects: false");
+    let read_only_command_allowlist_present = HEPTA_NATIVE_POST_RS.contains("/api/commands/<id>")
+        && HEPTA_NATIVE_POST_RS.contains("readonly_command")
+        && HEPTA_NATIVE_POST_RS.contains("native_readonly_command_plan");
+    let unsupported_post_fail_closed = HEPTA_NATIVE_GATEWAY_RS.contains("405 Method Not Allowed")
+        && HEPTA_NATIVE_GATEWAY_RS.contains("supported POST endpoints are /api/actions/<action>");
     let policy_approval_bridge_present = CONTROL_UI_RUST_RENDERER_MARKERS
         .contains("renderApprovalCards")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/approvals")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/policy");
-    let runtime_operator_guard_present = HEPTA_SERVER_MAIN_RS.contains("/api/runtime/operator")
-        && HEPTA_SERVER_MAIN_RS.contains("/runtime/operator")
-        && HEPTA_SERVER_MAIN_RS.contains("/kill")
-        && HEPTA_SERVER_MAIN_RS.contains("/steer")
-        && HEPTA_SERVER_MAIN_RS.contains("runtime_operator_mutation_executed")
-        && HEPTA_SERVER_MAIN_RS.contains("subagent_kill_performed")
-        && HEPTA_SERVER_MAIN_RS.contains("subagent_steer_performed")
-        && HEPTA_SERVER_MAIN_RS.contains("raw_message_logged");
+    let runtime_operator_guard_present = HEPTA_NATIVE_GATEWAY_RS.contains("/api/runtime/operator")
+        && HEPTA_NATIVE_GATEWAY_RS.contains("/runtime/operator --dry-run --json")
+        && HEPTA_NATIVE_POST_RS.contains("runtime_operator")
+        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("POST /api/runtime/operator")
+        && CONTROL_UI_RUST_RENDERER_MARKERS
+            .contains("Confirm-gated runtime kill/steer dry-run evidence");
     let audit_event_visibility_present = CONTROL_UI_RUST_RENDERER_MARKERS
         .contains("renderEventTimeline")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/events-report")
@@ -216,7 +214,7 @@ pub fn operator_security_report() -> OperatorSecurityReport {
             "loopback-bind-guard",
             "Loopback-only serving guard",
             loopback_bind_enforced,
-            "apps/hepta/src/main.rs refuses non-loopback UI bind unless explicitly overridden",
+            "codex-rs/cli/src/native_gateway.rs refuses non-loopback UI bind unless explicitly overridden",
         ),
         lane(
             "security-headers",

@@ -49,7 +49,7 @@ Verified before this document revision:
   - `apps/hepta-control-ui/index.html`
   - `apps/hepta-control-ui/styles.css`
   - `crates/hepta-core/src/control_ui.rs`
-  - `apps/hepta/src/main.rs`
+  - old Hepta app entrypoint: `apps/hepta/src/main.rs`; in `hepta-codex`, the active entrypoint is `codex-rs` `codex-cli --bin hepta`
   - `scripts/hepta-control-ui-smoke.sh`
 
 Current Hepta UI constraints:

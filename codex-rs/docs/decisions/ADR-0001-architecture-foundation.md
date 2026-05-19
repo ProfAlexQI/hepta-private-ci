@@ -37,16 +37,16 @@ Python and TypeScript are allowed only as supporting layers:
 
 ### 2. Initial repository topology
 
-Hepta starts as a **single Rust workspace** with **6 crates** plus one app entrypoint.
+In `hepta-codex`, Hepta starts inside the existing `codex-rs` Rust workspace with 6 Hepta crates and the `codex-cli --bin hepta` entrypoint.
 
 Initial workspace members:
-- `crates/hepta-core`
-- `crates/hepta-runtime`
-- `crates/hepta-memory`
-- `crates/hepta-gateway`
-- `crates/hepta-cli`
-- `crates/hepta-plugins`
-- `apps/hepta`
+- `codex-rs/hepta-core`
+- `codex-rs/hepta-runtime`
+- `codex-rs/hepta-memory`
+- `codex-rs/hepta-gateway`
+- `codex-rs/hepta-intelligence`
+- `codex-rs/hepta-plugins`
+- `codex-rs/cli` as the `hepta` binary entrypoint
 
 ### 3. Crate responsibilities
 

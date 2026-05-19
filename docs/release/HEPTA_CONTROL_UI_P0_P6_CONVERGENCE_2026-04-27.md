@@ -17,7 +17,7 @@ This note closes the Hepta Control UI maturation ladder from P0 through P6:
 
 ## Operator walkthrough
 
-1. Start local UI: `cargo run -p hepta -- --serve-ui 127.0.0.1:7373`.
+1. Start local UI: `cargo run --manifest-path codex-rs/Cargo.toml -p codex-cli --bin hepta -- --serve-ui 127.0.0.1:7373`.
 2. Open Chat: verify three-column desktop layout with conversation rail, thread, and Workspace Room.
 3. Use command palette (`⌘K`): jump to Tasks, Developer, Ops, or Benchmark.
 4. Use thread search: confirm active-result search keeps focus.
@@ -41,14 +41,8 @@ The manifest records viewport dimensions, screenshot byte counts, SHA-256 hashes
 ## Gate commands
 
 ```bash
-node --check apps/hepta-control-ui/app.js
-node scripts/hepta-control-ui-functional-smoke.mjs
-node scripts/hepta-control-ui-quality-smoke.mjs
-node scripts/hepta-control-ui-browser-smoke.mjs
-node scripts/hepta-control-ui-release-smoke.mjs
-cargo test -p hepta-core control_ui --quiet
-cargo test -p hepta-cli control_ui_command_reports_complete_static_frontend --quiet
-cargo check --quiet
+HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo test --manifest-path codex-rs/Cargo.toml -q -p hepta-core control_ui
+HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway
 ./scripts/hepta-control-ui-smoke.sh
 ```
 

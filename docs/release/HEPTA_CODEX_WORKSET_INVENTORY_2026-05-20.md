@@ -33,7 +33,6 @@ Untracked groups:
 - `codex-rs/hepta-plugins`: 13 files
 - `docs/release`: 6 files
 - `docs/architecture`: 4 files
-- `apps/hepta`: 3 files
 - `codex-rs/hepta-memory`: 2 files
 - `scripts/hepta-control-ui-smoke.sh`: 1 file
 - `docs/decisions`: 1 file
@@ -50,7 +49,6 @@ Source payload sizes:
 - `codex-rs/hepta-gateway`: about 644 KB
 - `codex-rs/hepta-intelligence`: about 428 KB
 - `apps/hepta-control-ui`: about 232 KB
-- `apps/hepta`: about 208 KB
 - `codex-rs/hepta-memory`: about 200 KB
 - `codex-rs/hepta-plugins`: about 152 KB
 - `docs`: about 140 KB
@@ -93,9 +91,8 @@ Recommended local packaging order:
    - `codex-rs/cli/src/native_telegram.rs`
    - `HEPTA_ARCHITECTURE_MERGE_ROUTE_2026-05-19.md`
 
-3. `feat: add Hepta control UI and app wrapper`
+3. `feat: add Hepta control UI app assets`
    - `apps/hepta-control-ui`
-   - `apps/hepta`
    - Control UI release docs under `docs/release/HEPTA_CONTROL_UI_*`
    - `scripts/hepta-control-ui-smoke.sh`
 
@@ -106,6 +103,18 @@ Recommended local packaging order:
 
 5. `docs: inventory Hepta codex merge workset`
    - this file
+
+## Post-Packaging Correction
+
+The old `apps/hepta` wrapper was initially observed in the untracked payload, but it is not a valid `hepta-codex` entrypoint because its manifest and source depend on the old Hepta workspace's `hepta-cli` API. It has been removed from the reviewable package. The supported Control UI entrypoint is now:
+
+```bash
+cargo run --manifest-path codex-rs/Cargo.toml -p codex-cli --bin hepta -- --serve-ui 127.0.0.1:7373
+```
+
+The Control UI smoke script was aligned to the same `codex-rs/Cargo.toml` manifest and `codex-cli --bin hepta` binary.
+
+Because `codex-cli --bin hepta` does not expose old Hepta slash commands as direct CLI subcommands, the smoke now validates Control UI and native gateway behavior through Rust tests rather than `cargo run ... /control-ui --json`.
 
 ## Verification Already Seen
 

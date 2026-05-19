@@ -35,7 +35,7 @@
   "taskEvidence": { "task_id": "task-golden-001", "status": "ready", "summary": "Golden evidence payload" },
   "taskReplay": { "task_id": "task-golden-001", "replay_status": "passed", "event_count": 11 },
   "roomTaskArtifactPreview": { "task_id": "task-golden-001", "workspace_id": "workspace:golden-live", "kind": "evidence", "data": { "task_id": "task-golden-001", "status": "ready", "summary": "Golden evidence preview", "artifact_count": 3 } },
-  "roomTaskActionPlan": { "task_id": "task-golden-001", "action": "apply-patches", "confirmation_gate": "Golden dry-run review gate", "mapped_command": "HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo run -q -p hepta -- /apply-task-patches <task_id> --dry-run --json" },
+  "roomTaskActionPlan": { "task_id": "task-golden-001", "action": "apply-patches", "confirmation_gate": "Golden dry-run review gate", "mapped_command": "HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo run --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta -- /apply-task-patches <task_id> --dry-run --json" },
   "endpointHealth": [
     { "path": "/api/tasks", "ok": true, "status": 200, "detail": "golden ready", "latency_ms": 42 },
     { "path": "/api/events-report", "ok": true, "status": 200, "detail": "golden events", "latency_ms": 24 }

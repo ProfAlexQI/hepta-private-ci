@@ -165,6 +165,17 @@ const NATIVE_POST_PLAN_ROUTE_SPECS: &[NativePostPlanRouteSpec] = &[
         dry_run_only: false,
         confirmation_required_for_real_mutation: true,
     },
+    NativePostPlanRouteSpec {
+        pattern: "/api/runtime/operator",
+        prefix: None,
+        exact_path: Some("/api/runtime/operator"),
+        source_command: "/runtime/operator --dry-run --json",
+        capability: "runtime-operator-plan",
+        plan_kind: "runtime_operator",
+        compatibility_mode: "native_runtime_operator_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
 ];
 
 pub fn native_post_plan_route_specs() -> &'static [NativePostPlanRouteSpec] {
@@ -2808,7 +2819,7 @@ mod tests {
             super::native_post_execution_readiness_report(false, Some("task_publish chat_send"));
 
         assert_eq!(report.status, "ready");
-        assert_eq!(report.post_route_count, 11);
+        assert_eq!(report.post_route_count, 12);
         assert_eq!(report.real_handler_candidate_count, 3);
         assert_eq!(report.real_handler_implemented_count, 3);
         assert_eq!(report.selected_handler_count, 2);

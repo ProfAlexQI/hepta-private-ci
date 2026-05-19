@@ -465,6 +465,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         side_effect_boundary: "confirm-required in old Hepta; parity shell never sends",
     },
     ControlUiRouteSpec {
+        method: "POST",
+        pattern: "/api/runtime/operator",
+        source_command: "/runtime/operator --dry-run --json",
+        capability: "runtime-operator-plan",
+        side_effect_boundary: "dry-run runtime operator plan; never mutates Gateway/session state",
+    },
+    ControlUiRouteSpec {
         method: "GET",
         pattern: "/api/external-agent-benchmark",
         source_command: "/external-agent-benchmark --json",
@@ -1042,7 +1049,7 @@ fn route_native_gateway_request_with_body(
         (
             "405 Method Not Allowed",
             "text/plain; charset=utf-8",
-            "method not allowed".to_string(),
+            "method not allowed; supported POST endpoints are /api/actions/<action> and native POST route specs".to_string(),
         )
     } else {
         (
@@ -4587,7 +4594,7 @@ fn write_http_response(
     body: &[u8],
 ) -> Result<()> {
     let header = format!(
-        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\nContent-Security-Policy: default-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\r\n",
         body.len()
     );
     stream

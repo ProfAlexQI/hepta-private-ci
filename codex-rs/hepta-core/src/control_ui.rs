@@ -52,6 +52,8 @@ renderOperatorSecurity
 /api/operator-security
 operatorSecurity
 all_operator_security_lanes_100
+POST /api/runtime/operator
+Confirm-gated runtime kill/steer dry-run evidence
 renderTaskPublisher
 submitTaskPublisher
 data-task-publish
@@ -894,7 +896,7 @@ pub fn control_ui_report() -> ControlUiReport {
         ref_agent_alignment_percent,
         local_preview_ready,
         rust_frontend_ownership,
-        serve_command: "cargo run -p hepta -- --serve-ui 127.0.0.1:7373",
+        serve_command: "cargo run --manifest-path codex-rs/Cargo.toml -p codex-cli --bin hepta -- --serve-ui 127.0.0.1:7373",
         smoke_gate: "./scripts/hepta-control-ui-smoke.sh",
         package_path: "apps/hepta-control-ui",
         screens,

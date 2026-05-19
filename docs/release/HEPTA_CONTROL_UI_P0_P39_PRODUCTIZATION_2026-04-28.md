@@ -22,9 +22,9 @@ This extends the P0-P29 Control UI line with ten productization gates requested 
 
 ```bash
 ./scripts/hepta-control-ui-smoke.sh
-cargo test -p hepta-core control_ui --quiet
-cargo test -p hepta-cli control_ui_command_reports_complete_static_frontend --quiet
-cargo check --quiet
+cargo test --manifest-path codex-rs/Cargo.toml -q -p hepta-core control_ui
+cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway
+cargo check --manifest-path codex-rs/Cargo.toml --quiet
 ```
 
 ## Expected Audit

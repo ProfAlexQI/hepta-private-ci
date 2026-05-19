@@ -6,7 +6,7 @@ Status: inventory complete; Patch 1 source-only app/docs import executed; Patch 
 
 ## Current Truth
 
-`hepta-codex` has absorbed the Hepta control UI, app wrapper, core/runtime/gateway/intelligence/memory/plugins crates, and native Telegram/POST surfaces. It does not yet contain the standalone desktop/mobile client:
+`hepta-codex` has absorbed the Hepta control UI, core/runtime/gateway/intelligence/memory/plugins crates, and native Telegram/POST surfaces. The active command entrypoint is `codex-rs` `codex-cli --bin hepta`; the old standalone `apps/hepta` wrapper was excluded because it depends on the old Hepta workspace layout. The repository did not yet contain the standalone desktop/mobile client before this transplant:
 
 - source present in old repo: `/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native`
 - destination now present in current repo: `/Users/qianqi/.openclaw/workspace/hepta-codex/apps/hepta-native`

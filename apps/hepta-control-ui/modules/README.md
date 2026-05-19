@@ -16,6 +16,6 @@ This directory is now a boundary ledger only. Browser-side module JavaScript has
 
 ## Rule
 
-Do not add new `.js` files under `apps/hepta-control-ui/`. Cross-boundary UI changes must update Rust renderer markers/checks in `crates/hepta-core/src/control_ui.rs` and keep `./scripts/hepta-control-ui-smoke.sh` green.
+Do not add new `.js` files under `apps/hepta-control-ui/`. Cross-boundary UI changes must update Rust renderer markers/checks in `codex-rs/hepta-core/src/control_ui.rs` and keep `./scripts/hepta-control-ui-smoke.sh` green.
 
 The former single-file static delivery rule is preserved as a Rust-rendered no-JS delivery rule: no browser module file should become the new ungoverned blob.
