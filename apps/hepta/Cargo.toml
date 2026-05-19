@@ -1,0 +1,22 @@
+[package]
+name = "hepta"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "hepta"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+cliclack.workspace = true
+console.workspace = true
+hepta-cli.workspace = true
+hepta-core.workspace = true
+hepta-gateway.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

@@ -1,0 +1,28 @@
+{
+  "baseline": "Hepta Control UI visual diff baseline - calm workspace",
+  "viewport": {
+    "width": 1440,
+    "height": 980
+  },
+  "desktop": {
+    "messages": 5,
+    "chatRail": {
+      "x": 16,
+      "y": 72,
+      "w": 268,
+      "h": 890
+    },
+    "threadPanel": {
+      "x": 294,
+      "y": 72,
+      "w": 780,
+      "h": 890
+    },
+    "roomPanel": {
+      "x": 1084,
+      "y": 72,
+      "w": 340,
+      "h": 890
+    }
+  }
+}

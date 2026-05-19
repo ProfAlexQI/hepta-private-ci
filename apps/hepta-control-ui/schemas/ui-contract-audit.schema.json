@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["product", "status", "audit_percent", "p0_p21_converged", "p0_p29_converged", "p0_p39_converged", "convergence_percent", "convergence_lanes"],
+  "properties": {
+    "product": { "const": "Hepta" },
+    "status": { "const": "complete" },
+    "audit_percent": { "type": "number", "minimum": 100 },
+    "p0_p21_converged": { "const": true },
+    "p0_p29_converged": { "const": true },
+    "p0_p39_converged": { "const": true },
+    "convergence_percent": { "type": "number", "minimum": 100 },
+    "convergence_lanes": { "type": "array", "minItems": 40 }
+  }
+}

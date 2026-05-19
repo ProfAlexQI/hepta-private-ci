@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["product", "ui_name", "status", "screen_count", "implemented_screen_count", "assets", "screens"],
+  "properties": {
+    "product": { "const": "Hepta" },
+    "ui_name": { "const": "Hepta Control UI" },
+    "status": { "const": "complete" },
+    "screen_count": { "type": "number", "minimum": 25 },
+    "implemented_screen_count": { "type": "number", "minimum": 25 },
+    "command_binding_count": { "type": "number", "minimum": 50 },
+    "assets": { "type": "array", "minItems": 4 },
+    "screens": { "type": "array", "minItems": 25 }
+  }
+}

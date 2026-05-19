@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "required": ["agent_id", "workspace_id", "message", "confirm"],
+  "properties": {
+    "agent_id": { "type": "string" },
+    "workspace_id": { "type": "string" },
+    "from_agent_id": { "type": "string" },
+    "message": { "type": "string" },
+    "confirm": { "type": "boolean" },
+    "routing_mode": { "type": "string" },
+    "target_agent_ids": { "type": "array" }
+  }
+}

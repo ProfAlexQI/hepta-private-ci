@@ -1,0 +1,43 @@
+{
+  "workspace_id": "workspace:golden-live",
+  "task_id": "task-golden-001",
+  "messages": [
+    {
+      "id": "golden-user-1",
+      "role": "user",
+      "agent_id": "planner",
+      "content": "Use real-output-shaped golden fixtures for tasks, events, artifacts, and errors.",
+      "context_audit": [{ "source": "golden-task", "id": "task-golden-001", "summary": "golden live data", "health": "fresh" }]
+    },
+    {
+      "id": "golden-agent-1",
+      "role": "assistant",
+      "agent_id": "builder",
+      "content": "Golden evidence loaded; result drawer and room actions are ready."
+    }
+  ],
+  "workspaceMembers": {
+    "member_count": 2,
+    "members": [
+      { "agent_id": "planner", "role": "planner", "status": "online", "workspace_id": "workspace:golden-live" },
+      { "agent_id": "builder", "role": "builder", "status": "online", "workspace_id": "workspace:golden-live" }
+    ]
+  },
+  "tasks": {
+    "workspace_filter": "workspace:golden-live",
+    "visible_count": 1,
+    "tasks": [
+      { "task_id": "task-golden-001", "status": "ready", "namespace_status": "owned", "workspace_id": "workspace:golden-live", "instruction": "Golden live-data UI validation" }
+    ]
+  },
+  "selectedTask": { "task_id": "task-golden-001", "status": "ready", "workspace_id": "workspace:golden-live", "worker_id": "builder" },
+  "taskDetail": { "task_id": "task-golden-001", "status": "ready", "summary": "Golden task detail from local runtime" },
+  "taskEvidence": { "task_id": "task-golden-001", "status": "ready", "summary": "Golden evidence payload" },
+  "taskReplay": { "task_id": "task-golden-001", "replay_status": "passed", "event_count": 11 },
+  "roomTaskArtifactPreview": { "task_id": "task-golden-001", "workspace_id": "workspace:golden-live", "kind": "evidence", "data": { "task_id": "task-golden-001", "status": "ready", "summary": "Golden evidence preview", "artifact_count": 3 } },
+  "roomTaskActionPlan": { "task_id": "task-golden-001", "action": "apply-patches", "confirmation_gate": "Golden dry-run review gate", "mapped_command": "HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo run -q -p hepta -- /apply-task-patches <task_id> --dry-run --json" },
+  "endpointHealth": [
+    { "path": "/api/tasks", "ok": true, "status": 200, "detail": "golden ready", "latency_ms": 42 },
+    { "path": "/api/events-report", "ok": true, "status": 200, "detail": "golden events", "latency_ms": 24 }
+  ]
+}

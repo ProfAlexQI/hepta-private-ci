@@ -1,0 +1,9 @@
+{
+  "payloads": [
+    "<script>window.__HEPTA_XSS=1</script>",
+    "<img src=x onerror=window.__HEPTA_XSS=2>",
+    "javascript:alert(1)",
+    "<svg><animate onbegin=window.__HEPTA_XSS=3 /></svg>",
+    "</style><style>body{display:none}</style>"
+  ]
+}
