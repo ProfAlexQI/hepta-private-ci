@@ -23,9 +23,9 @@ messages, mutate native POST state, or write files.
 - adjacent search/readability ops files: `3`
 - provider adapters inventoried: `15`
 - adjacent search adapters inventoried: `3`
-- current `hepta-codex` scripts: `7`
-- current native gateway source commands: `54`
-- Control UI route parity after this slice: `54/54`, missing `0`
+- current `hepta-codex` scripts: `8`
+- current native gateway source commands: `55`
+- Control UI route parity after runtime/session dry-run continuation: `55/55`, missing `0`
 
 ## Provider Files Covered
 
@@ -60,6 +60,7 @@ Adjacent search/readability files covered:
 
 ## Safe Next Slice
 
-Continue with runtime-event/task/session surfaces as local dry-run planners.
-Keep channel adapters disabled/live-gated until a separate explicit operator
-request exists. Credentialed provider smokes remain blocked.
+Continue with channel adapters as disabled live-gated status reports. Inventory
+local tooling/content surfaces before any process execution, filesystem
+mutation, network read, or channel delivery smoke. Credentialed provider smokes
+remain blocked.

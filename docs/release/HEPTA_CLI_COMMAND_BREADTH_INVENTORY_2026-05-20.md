@@ -27,9 +27,9 @@ networks. It is an inventory and sequencing surface only.
 - old standalone `*_ops.rs`: `65`
 - old rough command references: `574`
 - old standalone scripts: `20`
-- current `hepta-codex` scripts: `7` after provider metadata continuation
-- current native gateway source commands: `54` after provider metadata continuation
-- Control UI route parity after provider metadata continuation: `54/54`, missing `0`
+- current `hepta-codex` scripts: `8` after runtime/session dry-run continuation
+- current native gateway source commands: `55` after runtime/session dry-run continuation
+- Control UI route parity after runtime/session dry-run continuation: `55/55`, missing `0`
 
 ## Ops Families
 
@@ -37,7 +37,7 @@ networks. It is an inventory and sequencing surface only.
 | --- | ---: | --- |
 | provider metadata bridges | 15 | read-only metadata report |
 | channel/runtime adapters | 13 | disabled status or dry-run plan |
-| runtime ops/admin | 12 | local dry-run planner |
+| runtime ops/admin | 12 | dry-run inventory landed; expand planner contracts |
 | local tooling/content | 11 | read-only inventory then temp-workspace smoke |
 | memory/capability/absorption | 14 | read-only gap report |
 
@@ -54,8 +54,8 @@ gap explicit without claiming command compatibility.
 
 ## Safe Sequence
 
-1. Port runtime-event/task/session surfaces as local dry-run planners.
-2. Port channel adapters only as disabled live-gated status reports.
+1. Port channel adapters only as disabled live-gated status reports.
+2. Inventory local tooling/content surfaces before process or filesystem smokes.
 3. Defer credentialed/live smokes until explicit operator approval.
 
 This keeps the migration moving while preserving the standing safety boundary:

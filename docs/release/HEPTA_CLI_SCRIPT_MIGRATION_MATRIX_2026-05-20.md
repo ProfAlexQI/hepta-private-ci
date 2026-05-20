@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: old standalone Hepta CLI/script surface versus current `hepta-codex`
-Status: first executable migration slice and CLI breadth inventory landed
+Status: first executable migration slices and CLI breadth inventories landed
 
 ## Why This Exists
 
@@ -23,10 +23,10 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 54 after the provider metadata inventory endpoint
-  (`53` after the CLI command inventory endpoint)
+- native gateway source commands: 55 after the runtime/session dry-run inventory endpoint
+  (`54` after the provider metadata inventory endpoint; `53` after the CLI command inventory endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 7
+- scripts after this slice: 8
 
 New executable scripts added in this slice:
 
@@ -36,6 +36,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-browser-visual-smoke.sh`
 - `scripts/hepta-codex-cli-command-inventory.sh`
 - `scripts/hepta-codex-provider-metadata-inventory.sh`
+- `scripts/hepta-codex-runtime-session-dry-run-inventory.sh`
 
 Existing carried script:
 
@@ -62,6 +63,7 @@ Existing carried script:
 | `hepta-local-import.sh` | not ported | partially represented by `/api/config`, `/api/optional-configs`, and installed env |
 | `hepta-onboard-daemon-wizard-parity-gate.sh` | not ported | defer |
 | `hepta-autonomous-coding-subagent-gate.sh` | not ported | defer until old worker command surface is intentionally re-exposed |
+| Runtime/session dry-run inventory | replaced by `hepta-codex-runtime-session-dry-run-inventory.sh` for 12 old runtime/admin ops files | migrate as side-effect-free dry-run inventory |
 
 ## CLI Ops Migration Matrix
 
@@ -90,6 +92,7 @@ These are currently exposed as live API/source-command equivalents:
 - machine-readable merge/function completion audit
 - machine-readable CLI command breadth inventory
 - machine-readable provider/search metadata inventory
+- machine-readable runtime/task/session dry-run inventory
 - task/chat/approval dry-run and confirm-required plans
 - external agent benchmark
 
@@ -197,8 +200,8 @@ Checks:
 - old standalone `*_ops.rs` count remains `65`
 - old rough command reference count remains `574`
 - old standalone script count remains `20`
-- current `hepta-codex` script count is `7`
-- native gateway source-command count is `54`
+- current `hepta-codex` script count is `8`
+- native gateway source-command count is `55`
 - CLI ops families cover all `65` old ops files
 - merge-completion and CLI inventory reports agree on route/script counts
 - provider invocation, credential reads, Telegram reads/sends, native POST
@@ -213,8 +216,8 @@ Checks:
 
 - old provider ops file count remains `15`
 - adjacent search/readability ops file count remains `3`
-- current `hepta-codex` script count is `7`
-- native gateway source-command count is `54`
+- current `hepta-codex` script count is `8`
+- native gateway source-command count is `55`
 - provider adapter count is `15`
 - adjacent search adapter count is `3`
 - provider live invocation and credentialed smoke remain disabled
@@ -224,9 +227,28 @@ Checks:
   Telegram reads/sends, native POST mutation, and filesystem writes remain
   disabled
 
+### `hepta-codex-runtime-session-dry-run-inventory.sh`
+
+Purpose: validate the side-effect-free runtime/task/session dry-run inventory
+exposed by `/api/hepta-runtime-session-dry-run-inventory`.
+
+Checks:
+
+- old runtime/admin ops file count remains `12`
+- current `hepta-codex` script count is `8`
+- native gateway source-command count is `55`
+- dry-run surface count is `12`
+- planner-ready count is `12`
+- live mutation surface count is `0`
+- task registry, session store, gateway event, hook, process, provider/model,
+  credential, external network, Telegram, native POST, and filesystem effects
+  remain disabled
+- runtime/session, CLI inventory, provider inventory, and merge-completion
+  reports agree on route/script counts
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 7/20 by count, and more
+This slice improves script parity from 1/20 to 8/20 by count, and more
 importantly turns six useful old operational intents into
 `hepta-codex`-native commands:
 
@@ -236,8 +258,9 @@ importantly turns six useful old operational intents into
 - browser visual smoke
 - CLI command breadth inventory
 - provider/search metadata inventory
+- runtime/task/session dry-run inventory
 
 It does not close the old CLI breadth gap, but it turns that gap and the first
-provider/search family into machine-readable route and script gates. The next
-track is porting old runtime-event/task/session command families as dry-run
-planners before any credentialed/live activation.
+provider/search/runtime-session families into machine-readable route and script
+gates. The next track is porting channel adapters as disabled live-gated status
+reports before any credentialed/live activation.

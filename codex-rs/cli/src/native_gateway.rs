@@ -66,6 +66,8 @@ const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
 const HEPTA_MERGE_COMPLETION_ENDPOINT: &str = "/api/hepta-merge-completion";
 const HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT: &str = "/api/hepta-cli-command-inventory";
 const HEPTA_PROVIDER_METADATA_INVENTORY_ENDPOINT: &str = "/api/hepta-provider-metadata-inventory";
+const HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_ENDPOINT: &str =
+    "/api/hepta-runtime-session-dry-run-inventory";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -172,6 +174,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-provider-metadata-inventory --json",
         capability: "hepta-provider-metadata-inventory",
         side_effect_boundary: "read-only provider/search metadata migration inventory",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_ENDPOINT,
+        source_command: "/hepta-runtime-session-dry-run-inventory --json",
+        capability: "hepta-runtime-session-dry-run-inventory",
+        side_effect_boundary: "read-only runtime/task/session dry-run migration inventory",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -764,6 +773,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_provider_metadata_inventory_report()),
                 );
             }
+            HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_runtime_session_dry_run_inventory_report()),
+                );
+            }
             "/api/operator-snapshot" => {
                 return (
                     "200 OK",
@@ -1146,6 +1162,7 @@ fn index_html(
         <p><code>/api/hepta-merge-completion</code> exposes the current merge/function completion audit, route parity, and remaining gated blockers without reading Telegram, sending messages, or enabling native POST real handlers.</p>
         <p><code>/api/hepta-cli-command-inventory</code> exposes the old standalone Hepta CLI breadth inventory as a read-only migration map.</p>
         <p><code>/api/hepta-provider-metadata-inventory</code> narrows the provider/search bridge slice to metadata-only status without reading credentials or invoking providers.</p>
+        <p><code>/api/hepta-runtime-session-dry-run-inventory</code> covers runtime-event, task, session, gateway, diagnostics, and admin ops as local dry-run migration plans without mutating registries or enqueuing gateway events.</p>
       </section>
       <section class="panel">
         <p>Readiness payload:</p>
@@ -1252,8 +1269,9 @@ fn native_gateway_json(
             "Hepta merge and functional completion audit surface",
             "Hepta CLI command breadth read-only inventory",
             "Hepta provider/search metadata inventory",
+            "Hepta runtime/task/session dry-run inventory",
         ],
-        next_migration_slice: "port old Hepta CLI command breadth as read-only or dry-run slices before any live handoff",
+        next_migration_slice: "port channel adapters as disabled live-gated status reports before any live handoff",
     })
 }
 
@@ -3628,6 +3646,67 @@ struct HeptaProviderMetadataInventorySideEffects {
     filesystem_written: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct HeptaRuntimeSessionDryRunInventoryResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    runtime_inventory_doc: &'static str,
+    old_runtime_ops_file_count: usize,
+    current_hepta_codex_script_total: usize,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    missing_route_count: usize,
+    dry_run_surface_count: usize,
+    covered_old_ops_file_count: usize,
+    planner_ready_count: usize,
+    live_mutation_surface_count: usize,
+    dry_run_inventory_ready: bool,
+    old_cli_invocation_compatibility_claimed: bool,
+    task_registry_mutation_enabled: bool,
+    session_store_mutation_enabled: bool,
+    gateway_event_enqueue_enabled: bool,
+    external_telemetry_push_enabled: bool,
+    script_inventory_script: &'static str,
+    dry_run_surfaces: &'static [HeptaRuntimeSessionDryRunSurface],
+    next_slices: &'static [&'static str],
+    blockers: &'static [&'static str],
+    side_effects: HeptaRuntimeSessionDryRunInventorySideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaRuntimeSessionDryRunSurface {
+    name: &'static str,
+    old_ops_file: &'static str,
+    migration_status: &'static str,
+    safe_next_mode: &'static str,
+    planner_ready: bool,
+    live_mutation_enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaRuntimeSessionDryRunInventorySideEffects {
+    task_registry_mutated: bool,
+    session_store_mutated: bool,
+    gateway_event_enqueued: bool,
+    hook_enqueued: bool,
+    process_spawned: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    credential_read: bool,
+    external_network_read: bool,
+    external_send_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    native_post_mutation_performed: bool,
+    filesystem_written: bool,
+}
+
 const HEPTA_CLI_OPS_FAMILIES: &[HeptaCliOpsFamily] = &[
     HeptaCliOpsFamily {
         name: "provider_metadata_bridges",
@@ -3690,8 +3769,8 @@ const HEPTA_CLI_OPS_FAMILIES: &[HeptaCliOpsFamily] = &[
             "thread_binding_ops.rs",
             "update_plan_ops.rs",
         ],
-        migration_status: "partially_represented_by_native_gateway",
-        safe_next_mode: "local_dry_run_planner",
+        migration_status: "dry_run_inventory_landed",
+        safe_next_mode: "expand_local_planner_contracts",
     },
     HeptaCliOpsFamily {
         name: "local_tooling_content",
@@ -3886,6 +3965,171 @@ const HEPTA_ADJACENT_SEARCH_METADATA_ADAPTERS: &[HeptaProviderMetadataAdapter] =
     },
 ];
 
+const HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES: &[HeptaRuntimeSessionDryRunSurface] = &[
+    HeptaRuntimeSessionDryRunSurface {
+        name: "commitment",
+        old_ops_file: "commitment_ops.rs",
+        migration_status: "dry_run_inventory_only",
+        safe_next_mode: "commitment_report_plan_without_store_write",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "diagnostics-otel",
+        old_ops_file: "diagnostics_otel_ops.rs",
+        migration_status: "dry_run_inventory_only",
+        safe_next_mode: "local_exporter_config_report_without_push",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "diagnostics-prometheus",
+        old_ops_file: "diagnostics_prometheus_ops.rs",
+        migration_status: "dry_run_inventory_only",
+        safe_next_mode: "local_scrape_contract_report_without_listener_mutation",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "gateway-admin",
+        old_ops_file: "gateway_ops.rs",
+        migration_status: "partially_absorbed_by_native_gateway_status",
+        safe_next_mode: "gateway_action_plan_without_dispatch",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "heartbeat",
+        old_ops_file: "heartbeat_ops.rs",
+        migration_status: "dry_run_inventory_only",
+        safe_next_mode: "heartbeat_policy_plan_without_timer_registration",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "operator-admin",
+        old_ops_file: "operator_admin_ops.rs",
+        migration_status: "partially_absorbed_by_operator_security_snapshot",
+        safe_next_mode: "operator_admin_plan_without_privileged_mutation",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "runtime-control",
+        old_ops_file: "runtime_control_ops.rs",
+        migration_status: "dry_run_inventory_only",
+        safe_next_mode: "runtime_control_plan_without_process_or_launchd_mutation",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "runtime-event",
+        old_ops_file: "runtime_event_ops.rs",
+        migration_status: "represented_by_local_runtime_event_reports",
+        safe_next_mode: "runtime_event_plan_without_queue_or_registry_mutation",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "session-orchestration",
+        old_ops_file: "session_orchestration_ops.rs",
+        migration_status: "partially_absorbed_by_redacted_session_inventory",
+        safe_next_mode: "session_orchestration_plan_without_session_store_write",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "task-provenance",
+        old_ops_file: "task_provenance_ops.rs",
+        migration_status: "partially_absorbed_by_redacted_task_artifact_routes",
+        safe_next_mode: "task_provenance_plan_without_task_registry_write",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "thread-binding",
+        old_ops_file: "thread_binding_ops.rs",
+        migration_status: "dry_run_inventory_only",
+        safe_next_mode: "thread_binding_plan_without_channel_or_store_mutation",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+    HeptaRuntimeSessionDryRunSurface {
+        name: "update-plan",
+        old_ops_file: "update_plan_ops.rs",
+        migration_status: "dry_run_inventory_only",
+        safe_next_mode: "update_plan_preview_without_task_or_plan_mutation",
+        planner_ready: true,
+        live_mutation_enabled: false,
+    },
+];
+
+fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRunInventoryResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaRuntimeSessionDryRunInventoryResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "attention",
+        source_command: "/hepta-runtime-session-dry-run-inventory --json",
+        native_route: true,
+        compatibility_mode: "native_runtime_session_dry_run_inventory",
+        side_effect_free: true,
+        audit_date: "2026-05-20",
+        runtime_inventory_doc: "docs/release/HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_2026-05-20.md",
+        old_runtime_ops_file_count: 12,
+        current_hepta_codex_script_total: 8,
+        native_gateway_source_command_count: 55,
+        route_count: route_matrix.route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        dry_run_surface_count: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES.len(),
+        covered_old_ops_file_count: 12,
+        planner_ready_count: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES
+            .iter()
+            .filter(|surface| surface.planner_ready)
+            .count(),
+        live_mutation_surface_count: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES
+            .iter()
+            .filter(|surface| surface.live_mutation_enabled)
+            .count(),
+        dry_run_inventory_ready: true,
+        old_cli_invocation_compatibility_claimed: false,
+        task_registry_mutation_enabled: false,
+        session_store_mutation_enabled: false,
+        gateway_event_enqueue_enabled: false,
+        external_telemetry_push_enabled: false,
+        script_inventory_script: "scripts/hepta-codex-runtime-session-dry-run-inventory.sh",
+        dry_run_surfaces: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES,
+        next_slices: &[
+            "promote channel adapters only as disabled live-gated status reports",
+            "inventory local tooling/content surfaces before any process or filesystem mutation",
+            "keep old CLI invocation compatibility unclaimed until command shims are explicitly requested",
+        ],
+        blockers: &[
+            "old_runtime_cli_invocation_compatibility_not_claimed",
+            "task_registry_live_mutation_not_operator_approved",
+            "session_store_live_mutation_not_operator_approved",
+            "gateway_event_enqueue_not_operator_approved",
+            "external_telemetry_push_not_operator_approved",
+        ],
+        side_effects: HeptaRuntimeSessionDryRunInventorySideEffects {
+            task_registry_mutated: false,
+            session_store_mutated: false,
+            gateway_event_enqueued: false,
+            hook_enqueued: false,
+            process_spawned: false,
+            provider_invoked: false,
+            model_invoked: false,
+            credential_read: false,
+            external_network_read: false,
+            external_send_performed: false,
+            telegram_read_performed: false,
+            message_sent: false,
+            native_post_mutation_performed: false,
+            filesystem_written: false,
+        },
+    }
+}
+
 fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
     HeptaProviderMetadataInventoryResponse {
@@ -3900,8 +4144,8 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         provider_inventory_doc: "docs/release/HEPTA_PROVIDER_METADATA_INVENTORY_2026-05-20.md",
         old_provider_ops_file_count: 15,
         adjacent_search_ops_file_count: 3,
-        current_hepta_codex_script_total: 7,
-        native_gateway_source_command_count: 54,
+        current_hepta_codex_script_total: 8,
+        native_gateway_source_command_count: 55,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         provider_adapter_count: HEPTA_PROVIDER_METADATA_ADAPTERS.len(),
@@ -3913,8 +4157,8 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         provider_adapters: HEPTA_PROVIDER_METADATA_ADAPTERS,
         adjacent_search_adapters: HEPTA_ADJACENT_SEARCH_METADATA_ADAPTERS,
         next_slices: &[
-            "convert runtime-event task and session surfaces into dry-run planners",
             "promote channel adapters only as disabled live-gated status reports",
+            "inventory local tooling/content surfaces before process or filesystem smokes",
             "keep provider prompt/API smokes blocked until explicit operator approval",
         ],
         blockers: &[
@@ -3954,8 +4198,8 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 7,
-        native_gateway_source_command_count: 54,
+        current_hepta_codex_script_total: 8,
+        native_gateway_source_command_count: 55,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         ops_family_count: HEPTA_CLI_OPS_FAMILIES.len(),
@@ -3966,8 +4210,8 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         script_inventory_script: "scripts/hepta-codex-cli-command-inventory.sh",
         ops_families: HEPTA_CLI_OPS_FAMILIES,
         next_slices: &[
-            "port runtime-event/task/session surfaces as local dry-run planners",
             "port channel adapters only as disabled live-gated status reports",
+            "inventory local tooling/content surfaces before process or filesystem smokes",
             "defer credentialed/live smokes until explicit operator approval",
         ],
         blockers: &[
@@ -4012,11 +4256,11 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
         active_service_coexistence_percent: 88,
         production_replacement_percent: 68,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 7,
-        carried_or_adapted_script_count: 7,
+        current_hepta_codex_script_total: 8,
+        carried_or_adapted_script_count: 8,
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
-        native_gateway_source_command_count: 54,
+        native_gateway_source_command_count: 55,
         route_matrix_ready: route_matrix.ready,
         route_count: route_matrix.route_count,
         implemented_route_count: route_matrix.implemented_route_count,
@@ -4039,7 +4283,7 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
             "old_hepta_release_external_scripts_not_fully_ported",
         ],
         next_actions: &[
-            "continue runtime-event task and session dry-run planner migration",
+            "continue channel adapter disabled status migration",
             "keep browser visual smoke, preflight, soak, and watchdog gates green",
             "prepare but do not execute controlled Telegram owner handoff",
             "only perform Telegram owner handoff after explicit operator approval",
@@ -5679,6 +5923,7 @@ mod tests {
         assert!(routes.contains(&"GET /api/hepta-merge-completion".to_string()));
         assert!(routes.contains(&"GET /api/hepta-cli-command-inventory".to_string()));
         assert!(routes.contains(&"GET /api/hepta-provider-metadata-inventory".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-runtime-session-dry-run-inventory".to_string()));
     }
 
     #[test]
@@ -5702,10 +5947,10 @@ mod tests {
         assert_eq!(value["active_service_coexistence_percent"], 88);
         assert_eq!(value["production_replacement_percent"], 68);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 7);
+        assert_eq!(value["current_hepta_codex_script_total"], 8);
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
-        assert_eq!(value["native_gateway_source_command_count"], 54);
+        assert_eq!(value["native_gateway_source_command_count"], 55);
         assert_eq!(value["route_matrix_ready"], true);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["merge_completion_control_ui_surfaced"], true);
@@ -5716,7 +5961,7 @@ mod tests {
             "scripts/hepta-codex-browser-visual-smoke.sh"
         );
         assert!(
-            value["route_count"].as_u64().expect("route count") >= 54,
+            value["route_count"].as_u64().expect("route count") >= 55,
             "merge-completion route should be included in parity count"
         );
         assert_eq!(value["production_owner_handoff_required"], true);
@@ -5775,8 +6020,8 @@ mod tests {
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 7);
-        assert_eq!(value["native_gateway_source_command_count"], 54);
+        assert_eq!(value["current_hepta_codex_script_total"], 8);
+        assert_eq!(value["native_gateway_source_command_count"], 55);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["ops_family_count"], 5);
         assert_eq!(value["ops_file_family_covered_count"], 65);
@@ -5839,8 +6084,8 @@ mod tests {
         );
         assert_eq!(value["old_provider_ops_file_count"], 15);
         assert_eq!(value["adjacent_search_ops_file_count"], 3);
-        assert_eq!(value["current_hepta_codex_script_total"], 7);
-        assert_eq!(value["native_gateway_source_command_count"], 54);
+        assert_eq!(value["current_hepta_codex_script_total"], 8);
+        assert_eq!(value["native_gateway_source_command_count"], 55);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["provider_adapter_count"], 15);
         assert_eq!(value["adjacent_search_adapter_count"], 3);
@@ -5873,6 +6118,82 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(blockers.contains(&"provider_prompt_smoke_not_operator_approved"));
         assert!(blockers.contains(&"provider_credentials_not_read_by_inventory"));
+    }
+
+    #[test]
+    fn hepta_runtime_session_dry_run_inventory_endpoint_is_side_effect_free() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("runtime session inventory json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-runtime-session-dry-run-inventory --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_runtime_session_dry_run_inventory"
+        );
+        assert_eq!(value["old_runtime_ops_file_count"], 12);
+        assert_eq!(value["current_hepta_codex_script_total"], 8);
+        assert_eq!(value["native_gateway_source_command_count"], 55);
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["dry_run_surface_count"], 12);
+        assert_eq!(value["covered_old_ops_file_count"], 12);
+        assert_eq!(value["planner_ready_count"], 12);
+        assert_eq!(value["live_mutation_surface_count"], 0);
+        assert_eq!(value["dry_run_inventory_ready"], true);
+        assert_eq!(value["old_cli_invocation_compatibility_claimed"], false);
+        assert_eq!(value["task_registry_mutation_enabled"], false);
+        assert_eq!(value["session_store_mutation_enabled"], false);
+        assert_eq!(value["gateway_event_enqueue_enabled"], false);
+        assert_eq!(value["external_telemetry_push_enabled"], false);
+        assert_eq!(
+            value["script_inventory_script"],
+            "scripts/hepta-codex-runtime-session-dry-run-inventory.sh"
+        );
+        let surfaces = value["dry_run_surfaces"]
+            .as_array()
+            .expect("runtime dry-run surfaces");
+        assert_eq!(surfaces.len(), 12);
+        assert_eq!(surfaces[7]["name"], "runtime-event");
+        assert_eq!(surfaces[8]["name"], "session-orchestration");
+        assert_eq!(surfaces[9]["name"], "task-provenance");
+        assert_eq!(value["side_effects"]["task_registry_mutated"], false);
+        assert_eq!(value["side_effects"]["session_store_mutated"], false);
+        assert_eq!(value["side_effects"]["gateway_event_enqueued"], false);
+        assert_eq!(value["side_effects"]["hook_enqueued"], false);
+        assert_eq!(value["side_effects"]["process_spawned"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["telegram_read_performed"], false);
+        assert_eq!(value["side_effects"]["message_sent"], false);
+        assert_eq!(
+            value["side_effects"]["native_post_mutation_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["filesystem_written"], false);
+        let blockers = value["blockers"]
+            .as_array()
+            .expect("blockers")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blockers.contains(&"task_registry_live_mutation_not_operator_approved"));
+        assert!(blockers.contains(&"gateway_event_enqueue_not_operator_approved"));
     }
 
     #[test]
