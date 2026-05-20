@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: install and live verification for `/api/hepta-merge-completion` and follow-on safe inventory routes
-Status: installed; live route parity updated to `53/53`; external mutation gates remain closed
+Status: installed; live route parity updated to `54/54`; external mutation gates remain closed
 
 ## Installed Build
 
@@ -38,6 +38,16 @@ CLI command inventory continuation:
 - live route parity after install: `53/53`
 - script count after install: `6`
 
+Provider metadata inventory continuation:
+
+- source workset: `/api/hepta-provider-metadata-inventory`,
+  `scripts/hepta-codex-provider-metadata-inventory.sh`, and inventory docs
+- release sha256: `6a428f61d0cedfb803ffec324b3fc4a4fc09025ae4731afad9d7b346a883ec5a`
+- installed sha256: `6a428f61d0cedfb803ffec324b3fc4a4fc09025ae4731afad9d7b346a883ec5a`
+- binary sha match: `true`
+- live route parity after install: `54/54`
+- script count after install: `7`
+
 Backups created before replacement:
 
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093102`
@@ -46,6 +56,7 @@ Backups created before replacement:
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-gateway-index-merge-completion-20260520-101433`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-browser-visual-smoke-20260520-110537`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-cli-command-inventory-20260520-115611`
+- `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-provider-metadata-inventory-20260520-124444`
 
 Launchd plist backup created before the browser visual smoke continuation
 replacement:
@@ -56,6 +67,11 @@ Launchd plist backup created before the CLI command inventory continuation
 replacement:
 
 - `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-cli-command-inventory-20260520-115611.plist`
+
+Launchd plist backup created before the provider metadata inventory continuation
+replacement:
+
+- `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-provider-metadata-inventory-20260520-124444.plist`
 
 The first backup was created during a no-op install attempt that used the wrong
 release path (`target/release/hepta`). The installed SHA did not change during
@@ -72,13 +88,13 @@ binary with `codex-rs/target/release/hepta`.
 - `local_deterministic_function_percent=91`
 - `active_service_coexistence_percent=88`
 - `production_replacement_percent=68`
-- `native_gateway_source_command_count=53` after CLI inventory continuation
-- `current_hepta_codex_script_total=6` after CLI inventory continuation
+- `native_gateway_source_command_count=54` after provider metadata continuation
+- `current_hepta_codex_script_total=7` after provider metadata continuation
 - `merge_completion_control_ui_surfaced=true`
 - `merge_completion_gateway_index_surfaced=true`
 - `browser_visual_smoke_ready=true`
 - `browser_visual_smoke_command=scripts/hepta-codex-browser-visual-smoke.sh`
-- `route_count=53` after CLI inventory continuation
+- `route_count=54` after provider metadata continuation
 - `missing_route_count=0`
 - `telegram_live_send_enabled=false`
 - `native_post_real_activation_enabled=false`
@@ -111,8 +127,8 @@ The old CLI breadth inventory is now exposed by
 - `old_hepta_ops_file_count=65`
 - `old_hepta_rough_command_reference_count=574`
 - `old_hepta_script_total=20`
-- `current_hepta_codex_script_total=6`
-- `native_gateway_source_command_count=53`
+- `current_hepta_codex_script_total=7`
+- `native_gateway_source_command_count=54`
 - `ops_family_count=5`
 - `ops_file_family_covered_count=65`
 - `old_cli_command_breadth_fully_migrated=false`
@@ -120,13 +136,28 @@ The old CLI breadth inventory is now exposed by
 - provider invocation, credential reads, Telegram reads/sends, native POST real
   mutation, external network reads, and filesystem writes all `false`
 
+The provider/search metadata inventory continuation adds
+`/api/hepta-provider-metadata-inventory` and
+`scripts/hepta-codex-provider-metadata-inventory.sh`:
+
+- `old_provider_ops_file_count=15`
+- `adjacent_search_ops_file_count=3`
+- `provider_adapter_count=15`
+- `adjacent_search_adapter_count=3`
+- `current_hepta_codex_script_total=7`
+- `native_gateway_source_command_count=54`
+- `provider_live_invocation_enabled=false`
+- `credentialed_smoke_performed=false`
+- provider invocation, credential reads, external network reads, model calls,
+  Telegram reads/sends, native POST mutation, and filesystem writes all `false`
+
 ## Route Parity
 
 `/api/control-ui-route-parity` after install:
 
 - `status=ready`
-- `route_count=53` after CLI inventory continuation
-- `implemented_route_count=53` after CLI inventory continuation
+- `route_count=54` after provider metadata continuation
+- `implemented_route_count=54` after provider metadata continuation
 - `missing_route_count=0`
 
 ## Safety Boundary
@@ -147,6 +178,7 @@ Pre-install gates:
 - `cargo check --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_merge_completion_endpoint_returns_machine_readable_audit -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_cli_command_inventory -- --nocapture`
+- `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_provider_metadata_inventory -- --nocapture`
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta control_ui_route_parity_report_covers_old_hepta_routes -- --nocapture`
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `57 passed`
 - `HEPTA_CODEX_PREFLIGHT_RELEASE=0 scripts/hepta-codex-preflight.sh`
@@ -162,13 +194,22 @@ Post-install gates:
 - `scripts/hepta-codex-live-soak.sh`: `12/12` samples passed
 - `scripts/hepta-codex-cli-command-inventory.sh`: passed, merge-completion and
   CLI inventory counts synchronized
+- `scripts/hepta-codex-provider-metadata-inventory.sh`: passed, provider, CLI,
+  and merge-completion counts synchronized
 - gateway index smoke: found `Merge completion`, `82 / 91 / 88 / 68`, and `/api/hepta-merge-completion`
 - browser visual smoke after final install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
   evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.Sq2URq`
-- live `/api/hepta-merge-completion` reports six current scripts, browser
-  visual smoke ready, route parity `53/53`, and no
+- live `/api/hepta-merge-completion` reports seven current scripts after
+  provider metadata continuation, browser visual smoke ready, route parity
+  `54/54`, and no
   `browser_visual_e2e_not_run_in_this_audit` blocker
+- provider metadata browser visual smoke after provider install:
+  `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
+  evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.pXuv34`
+- short live soak after provider install:
+  `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`
+  passed `3/3`
 
 Known non-blocking warnings:
 

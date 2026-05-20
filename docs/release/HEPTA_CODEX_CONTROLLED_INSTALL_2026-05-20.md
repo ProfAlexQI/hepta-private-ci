@@ -43,8 +43,9 @@ Active service checks after replacement:
 - old OpenClaw `/health`: live
 
 Continuation note: the later merge-completion/API inventory installs upgraded
-the same controlled coexistence service first to `route_count=52`, then to a
-planned `route_count=53` with `/api/hepta-cli-command-inventory`; see
+the same controlled coexistence service first to `route_count=52`, then to
+`route_count=53` with `/api/hepta-cli-command-inventory`, and then to
+`route_count=54` with `/api/hepta-provider-metadata-inventory`; see
 `HEPTA_MERGE_COMPLETION_API_INSTALL_2026-05-20.md`.
 
 After the coexistence-status patch, `/api/operator-security` intentionally remains

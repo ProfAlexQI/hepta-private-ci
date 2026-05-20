@@ -23,10 +23,10 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 53 after the CLI command inventory endpoint
-  (`52` after the merge-completion audit endpoint)
+- native gateway source commands: 54 after the provider metadata inventory endpoint
+  (`53` after the CLI command inventory endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 6
+- scripts after this slice: 7
 
 New executable scripts added in this slice:
 
@@ -35,6 +35,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-watchdog.sh`
 - `scripts/hepta-codex-browser-visual-smoke.sh`
 - `scripts/hepta-codex-cli-command-inventory.sh`
+- `scripts/hepta-codex-provider-metadata-inventory.sh`
 
 Existing carried script:
 
@@ -88,6 +89,7 @@ These are currently exposed as live API/source-command equivalents:
 - native POST readiness/stores/activation/gray-release/rollout
 - machine-readable merge/function completion audit
 - machine-readable CLI command breadth inventory
+- machine-readable provider/search metadata inventory
 - task/chat/approval dry-run and confirm-required plans
 - external agent benchmark
 
@@ -195,17 +197,37 @@ Checks:
 - old standalone `*_ops.rs` count remains `65`
 - old rough command reference count remains `574`
 - old standalone script count remains `20`
-- current `hepta-codex` script count is `6`
-- native gateway source-command count is `53`
+- current `hepta-codex` script count is `7`
+- native gateway source-command count is `54`
 - CLI ops families cover all `65` old ops files
 - merge-completion and CLI inventory reports agree on route/script counts
 - provider invocation, credential reads, Telegram reads/sends, native POST
   mutation, external network reads, and filesystem writes remain disabled
 
+### `hepta-codex-provider-metadata-inventory.sh`
+
+Purpose: validate the metadata-only provider/search bridge inventory exposed by
+`/api/hepta-provider-metadata-inventory`.
+
+Checks:
+
+- old provider ops file count remains `15`
+- adjacent search/readability ops file count remains `3`
+- current `hepta-codex` script count is `7`
+- native gateway source-command count is `54`
+- provider adapter count is `15`
+- adjacent search adapter count is `3`
+- provider live invocation and credentialed smoke remain disabled
+- provider, CLI inventory, and merge-completion reports agree on route/script
+  counts
+- provider invocation, credential reads, external network reads, model calls,
+  Telegram reads/sends, native POST mutation, and filesystem writes remain
+  disabled
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 6/20 by count, and more
-importantly turns five useful old operational intents into
+This slice improves script parity from 1/20 to 7/20 by count, and more
+importantly turns six useful old operational intents into
 `hepta-codex`-native commands:
 
 - preflight
@@ -213,8 +235,9 @@ importantly turns five useful old operational intents into
 - installed/live watchdog
 - browser visual smoke
 - CLI command breadth inventory
+- provider/search metadata inventory
 
-It does not close the old CLI breadth gap, but it turns that gap into a
-machine-readable route and script gate. The next track is porting individual old
-provider/search/runtime/channel command families as read-only reports or dry-run
+It does not close the old CLI breadth gap, but it turns that gap and the first
+provider/search family into machine-readable route and script gates. The next
+track is porting old runtime-event/task/session command families as dry-run
 planners before any credentialed/live activation.

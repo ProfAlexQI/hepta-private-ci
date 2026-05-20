@@ -27,9 +27,9 @@ networks. It is an inventory and sequencing surface only.
 - old standalone `*_ops.rs`: `65`
 - old rough command references: `574`
 - old standalone scripts: `20`
-- current `hepta-codex` scripts: `6`
-- current native gateway source commands: `53`
-- Control UI route parity after this slice: `53/53`, missing `0`
+- current `hepta-codex` scripts: `7` after provider metadata continuation
+- current native gateway source commands: `54` after provider metadata continuation
+- Control UI route parity after provider metadata continuation: `54/54`, missing `0`
 
 ## Ops Families
 
@@ -54,10 +54,9 @@ gap explicit without claiming command compatibility.
 
 ## Safe Sequence
 
-1. Port provider/search metadata bridges as read-only reports.
-2. Port runtime-event/task/session surfaces as local dry-run planners.
-3. Port channel adapters only as disabled live-gated status reports.
-4. Defer credentialed/live smokes until explicit operator approval.
+1. Port runtime-event/task/session surfaces as local dry-run planners.
+2. Port channel adapters only as disabled live-gated status reports.
+3. Defer credentialed/live smokes until explicit operator approval.
 
 This keeps the migration moving while preserving the standing safety boundary:
 no Telegram takeover, no live send, no native POST real handler, and no external
