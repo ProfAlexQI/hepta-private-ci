@@ -78,7 +78,7 @@ Additional audit-fix verification:
 
 The local package was audit-clean for a controlled install rehearsal after the icon-resource fix was committed. It has since been installed through the controlled install path, not as a blind continuation. Any future Telegram owner handoff remains a separate operation requiring explicit instruction.
 
-A subsequent native POST single-handler dry-run canary for `task_publish` recorded gray-release evidence without publishing a task or enabling active-service native POST activation. That canary is recorded in `HEPTA_CODEX_CONTROLLED_INSTALL_2026-05-20.md`.
+Subsequent native POST single-handler dry-run canaries for `task_publish`, `approval_apply`, and `chat_send` recorded gray-release evidence without publishing a task, applying an approval, sending chat, or enabling active-service native POST activation. Those canaries are recorded in `HEPTA_CODEX_CONTROLLED_INSTALL_2026-05-20.md`.
 
 Controlled install requirements were:
 

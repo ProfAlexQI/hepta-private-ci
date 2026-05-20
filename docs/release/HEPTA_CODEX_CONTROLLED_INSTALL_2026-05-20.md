@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: post-audit local install of `hepta-codex` without Telegram owner handoff
-Status: installed; legacy Telegram owner preserved; single-handler native POST dry-run canary recorded
+Status: installed; legacy Telegram owner preserved; native POST dry-run canaries recorded
 
 ## Installed Build
 
@@ -52,20 +52,21 @@ After the coexistence-status patch, `/api/operator-security` intentionally remai
 That is the expected local install posture until an operator explicitly asks for
 Telegram owner handoff.
 
-## Native POST Dry-Run Canary
+## Native POST Dry-Run Canaries
 
-A scoped single-handler native POST canary was run through the installed binary on
-a temporary loopback server, using the active native POST execution store. The
-temporary process had only these native POST gates enabled:
+Scoped single-handler native POST canaries were run through the installed binary
+on temporary loopback servers, using the active native POST execution store. Each
+temporary process selected exactly one handler and had only these native POST
+gates enabled:
 
 - `HEPTA_NATIVE_POST_REAL_HANDLERS=1`
 - `HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED=1`
-- `HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE=task_publish`
+- `HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE=<single handler>`
 
 The active `ai.hepta.gateway` service was not reconfigured and still reports
 `activation_currently_enabled=false` with `activation_blocked_reason=real_handler_gate_disabled`.
 
-Canary result:
+Canary result for `task_publish`:
 
 - route: `POST /api/tasks/publish`
 - body mode: `confirm=true`, `dry_run=true`
@@ -73,10 +74,40 @@ Canary result:
 - harness status: `dry_run_recorded`
 - gray release endpoint under the scoped temp process: `gray_release_ready=true`, `gray_release_phase=gray_release_ready`
 - rollout evidence: `rollout_evidence_ready=true`
-- execution stores: `store_jsonl_valid=true`, `store_capacity_ok=true`, `total_line_count=8`
+- execution stores after the first canary: `store_jsonl_valid=true`, `store_capacity_ok=true`, `total_line_count=8`
 - no mutation: `task_published=false`, `real_mutation_performed=false`
 - no external side effects: `external_side_effects=false`
 - redaction held: `raw_request_body_exposed=false`, `raw_idempotency_key_exposed=false`
+
+Canary result for `approval_apply`:
+
+- route: `POST /api/approvals/exec/apply`
+- body mode: `confirm=true`, `dry_run=true`
+- handler: `approval_apply`
+- harness status: `dry_run_recorded`
+- gray release endpoint under the scoped temp process: `gray_release_ready=true`
+- no mutation: `task_published=false`, `message_sent=false`
+- no external side effects: `external_side_effects=false`
+- redaction held: `raw_request_body_exposed=false`
+
+Canary result for `chat_send`:
+
+- route: `POST /api/chat`
+- body mode: `confirm=true`, `dry_run=true`
+- handler: `chat_send`
+- harness status: `dry_run_recorded`
+- gray release endpoint under the scoped temp process: `gray_release_ready=true`
+- no mutation: `task_published=false`, `message_sent=false`, `chat_mutated=false`
+- no external side effects: `external_side_effects=false`
+- redaction held: `raw_request_body_exposed=false`
+
+Execution store after all three handlers:
+
+- `store_jsonl_valid=true`
+- `store_capacity_ok=true`
+- `total_line_count=16`
+- per-store line count: `4` each in `audit.jsonl`, `idempotency.jsonl`, `rate-limit.jsonl`, and `rollback.jsonl`
+- raw body and idempotency exposure remained false
 
 Active-service boundary after the canary:
 
