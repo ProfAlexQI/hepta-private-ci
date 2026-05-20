@@ -23,10 +23,14 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 58 after the memory/capability absorption inventory endpoint
-  (`57` after the local tooling/content inventory endpoint; `56` after the channel adapter status inventory endpoint; `55` after the runtime/session dry-run inventory endpoint; `54` after the provider metadata inventory endpoint; `53` after the CLI command inventory endpoint)
+- native gateway source commands: 59 after the release/hardening status gate
+  (`58` after the memory/capability absorption inventory endpoint; `57`
+  after the local tooling/content inventory endpoint; `56` after the channel
+  adapter status inventory endpoint; `55` after the runtime/session dry-run
+  inventory endpoint; `54` after the provider metadata inventory endpoint;
+  `53` after the CLI command inventory endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 11
+- scripts after this slice: 12
 
 New executable scripts added in this slice:
 
@@ -40,6 +44,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-channel-adapter-status-inventory.sh`
 - `scripts/hepta-codex-local-tooling-content-inventory.sh`
 - `scripts/hepta-codex-memory-capability-inventory.sh`
+- `scripts/hepta-codex-release-hardening-status-gate.sh`
 
 Existing carried script:
 
@@ -70,6 +75,7 @@ Existing carried script:
 | Channel adapter status inventory | replaced by `hepta-codex-channel-adapter-status-inventory.sh` for 13 old channel/runtime adapter ops files | migrate as disabled/live-gated status inventory |
 | Local tooling/content inventory | replaced by `hepta-codex-local-tooling-content-inventory.sh` for 11 old canvas/diff/filesystem/process/search/tool/wiki ops files | migrate as planning-only inventory |
 | Memory/capability absorption inventory | replaced by `hepta-codex-memory-capability-inventory.sh` for 14 old memory/capability/plugin/coding-agent/skill ops files | migrate as read-only gap inventory |
+| Release/hardening status gate | replaced by `hepta-codex-release-hardening-status-gate.sh` for 12 remaining old release/external/ops/hardening script families | migrate as local-only status gate |
 
 ## CLI Ops Migration Matrix
 
@@ -209,8 +215,8 @@ Checks:
 - old standalone `*_ops.rs` count remains `65`
 - old rough command reference count remains `574`
 - old standalone script count remains `20`
-- current `hepta-codex` script count is `11`
-- native gateway source-command count is `58`
+- current `hepta-codex` script count is `12`
+- native gateway source-command count is `59`
 - CLI ops families cover all `65` old ops files
 - merge-completion and CLI inventory reports agree on route/script counts
 - provider invocation, credential reads, Telegram reads/sends, native POST
@@ -225,8 +231,8 @@ Checks:
 
 - old provider ops file count remains `15`
 - adjacent search/readability ops file count remains `3`
-- current `hepta-codex` script count is `11`
-- native gateway source-command count is `58`
+- current `hepta-codex` script count is `12`
+- native gateway source-command count is `59`
 - provider adapter count is `15`
 - adjacent search adapter count is `3`
 - provider live invocation and credentialed smoke remain disabled
@@ -244,8 +250,8 @@ exposed by `/api/hepta-runtime-session-dry-run-inventory`.
 Checks:
 
 - old runtime/admin ops file count remains `12`
-- current `hepta-codex` script count is `11`
-- native gateway source-command count is `58`
+- current `hepta-codex` script count is `12`
+- native gateway source-command count is `59`
 - dry-run surface count is `12`
 - planner-ready count is `12`
 - live mutation surface count is `0`
@@ -263,8 +269,8 @@ exposed by `/api/hepta-channel-adapter-status-inventory`.
 Checks:
 
 - old channel/runtime adapter ops file count remains `13`
-- current `hepta-codex` script count is `11`
-- native gateway source-command count is `58`
+- current `hepta-codex` script count is `12`
+- native gateway source-command count is `59`
 - adapter count is `13`
 - disabled status ready count is `13`
 - live adapter enabled count is `0`
@@ -284,8 +290,8 @@ Purpose: validate the planning-only local tooling/content inventory exposed by
 Checks:
 
 - old local tooling/content ops file count remains `11`
-- current `hepta-codex` script count is `11`
-- native gateway source-command count is `58`
+- current `hepta-codex` script count is `12`
+- native gateway source-command count is `59`
 - local tooling/content surface count is `11`
 - planner-ready count is `11`
 - live process execution, filesystem touch, network read, and tool invocation
@@ -304,8 +310,8 @@ exposed by `/api/hepta-memory-capability-absorption-inventory`.
 Checks:
 
 - old memory/capability/absorption ops file count remains `14`
-- current `hepta-codex` script count is `11`
-- native gateway source-command count is `58`
+- current `hepta-codex` script count is `12`
+- native gateway source-command count is `59`
 - surface count is `14`
 - absorbed or represented surface count is `9`
 - gap-report-ready count is `14`
@@ -319,9 +325,38 @@ Checks:
   CLI inventory, provider inventory, and merge-completion reports agree on
   route/script counts
 
+### `hepta-codex-release-hardening-status-gate.sh`
+
+Purpose: validate the local-only release/hardening status gate exposed by
+`/api/hepta-release-hardening-status-gate`.
+
+Checks:
+
+- remaining old release/hardening script family count is `12`
+- current `hepta-codex` script count is `12`
+- native gateway source-command count is `59`
+- status gate count is `12`
+- local status gate ready count is `12`
+- live execution enabled count is `0`
+- external-production gate count is `3`
+- launchd mutation required count is `3`
+- filesystem artifact write required count is `2`
+- operator approval required count is `12`
+- external production gates, artifact pack, launchd mutation, recurring
+  watchdog install, local import execution, and autonomous subagent spawn remain
+  disabled
+- process spawn, filesystem read/write, artifact write, launchd mutation,
+  watchdog service install, external network read/send, provider/model
+  invocation, credential reads, Telegram owner handoff/read/send, native POST
+  mutation, channel read/send, coding-agent spawn, and gateway mutation remain
+  disabled
+- release/hardening, memory/capability, local tooling/content, channel adapter,
+  runtime/session, CLI inventory, provider inventory, and merge-completion
+  reports agree on route/script counts
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 11/20 by count, and more
+This slice improves script parity from 1/20 to 12/20 by count, and more
 importantly turns ten useful old operational intents into
 `hepta-codex`-native commands:
 
@@ -335,10 +370,12 @@ importantly turns ten useful old operational intents into
 - channel adapter disabled status inventory
 - local tooling/content planning inventory
 - memory/capability absorption gap inventory
+- release/hardening status gate
 
 It does not close the old CLI breadth gap, but it turns that gap and the first
 provider/search/runtime-session/channel/local-tooling/memory-capability
-families into machine-readable route and script gates. The next track is
-porting remaining external release and hardening scripts as local-only status
-gates before any live handoff, process, filesystem, network, file-transfer, or
-channel-delivery smoke.
+families, plus the remaining release/hardening script family gap, into
+machine-readable route and script gates. The next track is turning the highest
+value remaining old CLI families into more specific planners or isolated
+fixtures before any live handoff, process, filesystem, network, file-transfer,
+or channel-delivery smoke.
