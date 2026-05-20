@@ -17,6 +17,14 @@ Weighted completion estimate from this audit:
 - Production replacement completion: 68%
 - Public/externally credentialed GA completion: not claimed
 
+2026-05-20 22:xx refresh: this document was re-audited against the current
+installed `hepta-codex` service at `main@8537122`. The live route matrix is now
+`60/60`, current `hepta-codex` scripts are `13`, native gateway source command
+count is `60`, and the release/installed binary SHA is
+`a6a72e499f39cd94e80df66f6e50e9e3d2146dc7edf8be9335d9611909fcfa18`.
+Where older sections below mention `52/52` or `58/58`, the current refresh
+supersedes them with `60/60`.
+
 The highest-confidence completed areas are the Rust runtime crates, Codex native
 gateway entrypoint, Control UI route matrix, native POST dry-run handler harness,
 and source-only Hepta Native transplant. The highest-risk incomplete areas are
@@ -347,3 +355,79 @@ work is not random bug fixing; it is three explicit productization tracks:
    live poll/model/send soak.
 3. Promote native POST and Hepta Native from dry-run/source-tested to explicitly
    approved production activation/release.
+
+## 2026-05-20 22:xx Refresh Evidence
+
+Current repo/service truth:
+
+- `hepta-codex`: clean `main@8537122 docs: record Hepta provider channel dry-run install`
+- standalone `Hepta`: clean `main@25f14b5 fix: direct codex fork plan away from bridge`
+- active LaunchAgent: `ai.hepta.gateway`, running
+  `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex` on
+  `http://127.0.0.1:7373`
+- release binary SHA and installed binary SHA match:
+  `a6a72e499f39cd94e80df66f6e50e9e3d2146dc7edf8be9335d9611909fcfa18`
+
+Live endpoint spot checks:
+
+- `/health`: `ready`
+- `/api/control-ui-route-parity`: `60/60`, missing `0`
+- `/api/hepta-merge-completion`: `attention`, expected blockers are Telegram
+  owner handoff not requested, live poll/send not approved, native POST real
+  activation not approved, old CLI breadth not fully migrated, and old release
+  scripts not fully ported
+- `/api/operator-security`: `attention`, expected coexistence reason
+  `telegram_replacement_not_requested`
+- `/api/telegram-owner-handoff`: active owner `legacy_openclaw`,
+  `double_poller_risk=false`, Hepta takeover not armed
+- `/api/telegram-poll-loop`: `gated`, no status-triggered external read/send
+- `/api/native-post-activation-plan`: `ready`,
+  `activation_currently_enabled=false`, blocked by `real_handler_gate_disabled`
+- `/api/hepta-provider-channel-dry-run-plan`: 5/5 dry-run plan families ready,
+  43 old provider/search/channel/runtime ops files covered, live invocation
+  enabled count `0`, credential-read-required count `0`
+- `/api/hepta-release-hardening-status-gate`: 12/12 local status gates ready,
+  live execution enabled count `0`
+
+Current gates passed during this refresh:
+
+- `HEPTA_CODEX_PREFLIGHT_RELEASE=0 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 scripts/hepta-codex-preflight.sh`
+  - `cargo metadata --offline`
+  - `cargo fmt --all --check` with known stable rustfmt nightly-option warnings
+  - workspace `cargo check` for Hepta crates plus `codex-cli --bin hepta`
+  - `hepta-gateway`: 147 lib + 18 integration tests passed
+  - `codex-cli native_gateway`: 64 passed
+  - `codex-cli native_telegram`: 4 passed
+  - `codex-cli native_post`: 17 passed
+  - Control UI smoke passed
+  - Hepta Native check passed and `hepta_` tests passed: 52
+  - release build intentionally skipped by `HEPTA_CODEX_PREFLIGHT_RELEASE=0`
+  - `git diff --check` and clean `git status`
+- `scripts/hepta-codex-watchdog.sh`: passed, SHA match true, route count 60,
+  legacy owner preserved, Telegram poll loop gated, native POST activation off
+- `scripts/hepta-codex-live-soak.sh` with 3 samples: 3/3 ready
+- inventory/status scripts passed:
+  - `hepta-codex-cli-command-inventory.sh`
+  - `hepta-codex-provider-metadata-inventory.sh`
+  - `hepta-codex-runtime-session-dry-run-inventory.sh`
+  - `hepta-codex-channel-adapter-status-inventory.sh`
+  - `hepta-codex-local-tooling-content-inventory.sh`
+  - `hepta-codex-memory-capability-inventory.sh`
+  - `hepta-codex-release-hardening-status-gate.sh`
+  - `hepta-codex-provider-channel-dry-run-plan.sh`
+- `scripts/hepta-codex-browser-visual-smoke.sh`: passed on desktop and mobile
+  Chrome headless views; output directory
+  `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.RZ0X6f`
+
+Current completion interpretation after refresh:
+
+- Source/package merge remains about `82%`: the main runtime/gateway/control
+  package is clean and installed, but old CLI command compatibility is not fully
+  ported.
+- Local deterministic functionality remains about `91%`: all local gates passed,
+  with no live provider/channel/Telegram/native POST mutation.
+- Active-service coexistence remains about `88%`: installed service is healthy
+  and route-complete in coexistence mode.
+- Production replacement remains about `68%`: not a replacement until Telegram
+  ownership, live poll/model/send soak, native POST real activation, and old
+  release-script parity are explicitly approved and completed.
