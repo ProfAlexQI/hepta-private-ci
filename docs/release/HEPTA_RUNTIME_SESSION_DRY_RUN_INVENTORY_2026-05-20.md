@@ -25,9 +25,9 @@ messages, activate native POST real handlers, push telemetry, or write files.
 - dry-run surfaces exposed: `12`
 - planner-ready surfaces: `12`
 - live mutation surfaces enabled: `0`
-- current `hepta-codex` scripts: `10`
-- current native gateway source commands: `57`
-- Control UI route parity after local tooling/content inventory continuation: `57/57`, missing `0`
+- current `hepta-codex` scripts: `11`
+- current native gateway source commands: `58`
+- Control UI route parity after memory/capability absorption inventory continuation: `58/58`, missing `0`
 
 ## Files Covered
 
@@ -61,6 +61,6 @@ effects remain blocked until an explicit operator request exists.
 
 ## Safe Next Slice
 
-Promote memory/capability absorption gaps as read-only reports before any
+Port remaining external release and hardening scripts as local-only status gates before any
 process execution, filesystem mutation, network read, file transfer, channel
 delivery, or webhook smoke.

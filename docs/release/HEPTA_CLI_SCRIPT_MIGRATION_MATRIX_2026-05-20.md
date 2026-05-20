@@ -23,10 +23,10 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 57 after the local tooling/content inventory endpoint
-  (`56` after the channel adapter status inventory endpoint; `55` after the runtime/session dry-run inventory endpoint; `54` after the provider metadata inventory endpoint; `53` after the CLI command inventory endpoint)
+- native gateway source commands: 58 after the memory/capability absorption inventory endpoint
+  (`57` after the local tooling/content inventory endpoint; `56` after the channel adapter status inventory endpoint; `55` after the runtime/session dry-run inventory endpoint; `54` after the provider metadata inventory endpoint; `53` after the CLI command inventory endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 10
+- scripts after this slice: 11
 
 New executable scripts added in this slice:
 
@@ -39,6 +39,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-runtime-session-dry-run-inventory.sh`
 - `scripts/hepta-codex-channel-adapter-status-inventory.sh`
 - `scripts/hepta-codex-local-tooling-content-inventory.sh`
+- `scripts/hepta-codex-memory-capability-inventory.sh`
 
 Existing carried script:
 
@@ -68,6 +69,7 @@ Existing carried script:
 | Runtime/session dry-run inventory | replaced by `hepta-codex-runtime-session-dry-run-inventory.sh` for 12 old runtime/admin ops files | migrate as side-effect-free dry-run inventory |
 | Channel adapter status inventory | replaced by `hepta-codex-channel-adapter-status-inventory.sh` for 13 old channel/runtime adapter ops files | migrate as disabled/live-gated status inventory |
 | Local tooling/content inventory | replaced by `hepta-codex-local-tooling-content-inventory.sh` for 11 old canvas/diff/filesystem/process/search/tool/wiki ops files | migrate as planning-only inventory |
+| Memory/capability absorption inventory | replaced by `hepta-codex-memory-capability-inventory.sh` for 14 old memory/capability/plugin/coding-agent/skill ops files | migrate as read-only gap inventory |
 
 ## CLI Ops Migration Matrix
 
@@ -99,6 +101,7 @@ These are currently exposed as live API/source-command equivalents:
 - machine-readable runtime/task/session dry-run inventory
 - machine-readable channel adapter disabled status inventory
 - machine-readable local tooling/content planning inventory
+- machine-readable memory/capability absorption gap inventory
 - task/chat/approval dry-run and confirm-required plans
 - external agent benchmark
 
@@ -206,8 +209,8 @@ Checks:
 - old standalone `*_ops.rs` count remains `65`
 - old rough command reference count remains `574`
 - old standalone script count remains `20`
-- current `hepta-codex` script count is `10`
-- native gateway source-command count is `57`
+- current `hepta-codex` script count is `11`
+- native gateway source-command count is `58`
 - CLI ops families cover all `65` old ops files
 - merge-completion and CLI inventory reports agree on route/script counts
 - provider invocation, credential reads, Telegram reads/sends, native POST
@@ -222,8 +225,8 @@ Checks:
 
 - old provider ops file count remains `15`
 - adjacent search/readability ops file count remains `3`
-- current `hepta-codex` script count is `10`
-- native gateway source-command count is `57`
+- current `hepta-codex` script count is `11`
+- native gateway source-command count is `58`
 - provider adapter count is `15`
 - adjacent search adapter count is `3`
 - provider live invocation and credentialed smoke remain disabled
@@ -241,8 +244,8 @@ exposed by `/api/hepta-runtime-session-dry-run-inventory`.
 Checks:
 
 - old runtime/admin ops file count remains `12`
-- current `hepta-codex` script count is `10`
-- native gateway source-command count is `57`
+- current `hepta-codex` script count is `11`
+- native gateway source-command count is `58`
 - dry-run surface count is `12`
 - planner-ready count is `12`
 - live mutation surface count is `0`
@@ -260,8 +263,8 @@ exposed by `/api/hepta-channel-adapter-status-inventory`.
 Checks:
 
 - old channel/runtime adapter ops file count remains `13`
-- current `hepta-codex` script count is `10`
-- native gateway source-command count is `57`
+- current `hepta-codex` script count is `11`
+- native gateway source-command count is `58`
 - adapter count is `13`
 - disabled status ready count is `13`
 - live adapter enabled count is `0`
@@ -281,8 +284,8 @@ Purpose: validate the planning-only local tooling/content inventory exposed by
 Checks:
 
 - old local tooling/content ops file count remains `11`
-- current `hepta-codex` script count is `10`
-- native gateway source-command count is `57`
+- current `hepta-codex` script count is `11`
+- native gateway source-command count is `58`
 - local tooling/content surface count is `11`
 - planner-ready count is `11`
 - live process execution, filesystem touch, network read, and tool invocation
@@ -293,10 +296,33 @@ Checks:
 - local tooling/content, channel adapter, runtime/session, CLI inventory,
   provider inventory, and merge-completion reports agree on route/script counts
 
+### `hepta-codex-memory-capability-inventory.sh`
+
+Purpose: validate the read-only memory/capability absorption gap inventory
+exposed by `/api/hepta-memory-capability-absorption-inventory`.
+
+Checks:
+
+- old memory/capability/absorption ops file count remains `14`
+- current `hepta-codex` script count is `11`
+- native gateway source-command count is `58`
+- surface count is `14`
+- absorbed or represented surface count is `9`
+- gap-report-ready count is `14`
+- live mutation surface count is `0`
+- memory store, capability registry, plugin registry, coding-agent spawn,
+  search-provider live query, and skill-workshop writes remain disabled
+- filesystem read/write, external network read, provider/model invocation,
+  credential reads, channel read/send, native POST mutation, gateway mutation,
+  and external send remain disabled
+- memory/capability, local tooling/content, channel adapter, runtime/session,
+  CLI inventory, provider inventory, and merge-completion reports agree on
+  route/script counts
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 10/20 by count, and more
-importantly turns nine useful old operational intents into
+This slice improves script parity from 1/20 to 11/20 by count, and more
+importantly turns ten useful old operational intents into
 `hepta-codex`-native commands:
 
 - preflight
@@ -308,9 +334,11 @@ importantly turns nine useful old operational intents into
 - runtime/task/session dry-run inventory
 - channel adapter disabled status inventory
 - local tooling/content planning inventory
+- memory/capability absorption gap inventory
 
 It does not close the old CLI breadth gap, but it turns that gap and the first
-provider/search/runtime-session/channel/local-tooling families into
-machine-readable route and script gates. The next track is promoting
-memory/capability absorption gaps as read-only reports before any live process,
-filesystem, network, file-transfer, or channel-delivery smoke.
+provider/search/runtime-session/channel/local-tooling/memory-capability
+families into machine-readable route and script gates. The next track is
+porting remaining external release and hardening scripts as local-only status
+gates before any live handoff, process, filesystem, network, file-transfer, or
+channel-delivery smoke.

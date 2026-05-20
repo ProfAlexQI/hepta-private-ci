@@ -23,9 +23,9 @@ messages, mutate native POST state, or write files.
 - adjacent search/readability ops files: `3`
 - provider adapters inventoried: `15`
 - adjacent search adapters inventoried: `3`
-- current `hepta-codex` scripts: `10`
-- current native gateway source commands: `57`
-- Control UI route parity after local tooling/content inventory continuation: `57/57`, missing `0`
+- current `hepta-codex` scripts: `11`
+- current native gateway source commands: `58`
+- Control UI route parity after memory/capability absorption inventory continuation: `58/58`, missing `0`
 
 ## Provider Files Covered
 
@@ -60,6 +60,6 @@ Adjacent search/readability files covered:
 
 ## Safe Next Slice
 
-Promote memory/capability absorption gaps as read-only reports before any
+Port remaining external release and hardening scripts as local-only status gates before any
 process execution, filesystem mutation, network read, or channel delivery
 smoke. Credentialed provider smokes remain blocked.

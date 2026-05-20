@@ -13,8 +13,8 @@ jq -e '
   and .side_effect_free == true
   and .old_provider_ops_file_count == 15
   and .adjacent_search_ops_file_count == 3
-  and .current_hepta_codex_script_total == 10
-  and .native_gateway_source_command_count == 57
+  and .current_hepta_codex_script_total == 11
+  and .native_gateway_source_command_count == 58
   and .missing_route_count == 0
   and .provider_adapter_count == 15
   and .adjacent_search_adapter_count == 3
@@ -34,15 +34,15 @@ jq -e '
 
 jq -e '
   .runtime == "hepta-codex"
-  and .current_hepta_codex_script_total == 10
-  and .native_gateway_source_command_count == 57
+  and .current_hepta_codex_script_total == 11
+  and .native_gateway_source_command_count == 58
   and .missing_route_count == 0
 ' <<<"$CLI_JSON" >/dev/null
 
 jq -e '
   .runtime == "hepta-codex"
-  and .current_hepta_codex_script_total == 10
-  and .native_gateway_source_command_count == 57
+  and .current_hepta_codex_script_total == 11
+  and .native_gateway_source_command_count == 58
   and .missing_route_count == 0
   and .telegram_live_send_enabled == false
   and .native_post_real_activation_enabled == false

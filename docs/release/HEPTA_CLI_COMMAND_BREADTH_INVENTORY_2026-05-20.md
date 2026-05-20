@@ -27,9 +27,9 @@ networks. It is an inventory and sequencing surface only.
 - old standalone `*_ops.rs`: `65`
 - old rough command references: `574`
 - old standalone scripts: `20`
-- current `hepta-codex` scripts: `10` after local tooling/content inventory continuation
-- current native gateway source commands: `57` after local tooling/content inventory continuation
-- Control UI route parity after local tooling/content inventory continuation: `57/57`, missing `0`
+- current `hepta-codex` scripts: `11` after memory/capability absorption inventory continuation
+- current native gateway source commands: `58` after memory/capability absorption inventory continuation
+- Control UI route parity after memory/capability absorption inventory continuation: `58/58`, missing `0`
 
 ## Ops Families
 
@@ -54,7 +54,7 @@ gap explicit without claiming command compatibility.
 
 ## Safe Sequence
 
-1. Promote memory/capability absorption gaps as read-only reports.
+1. Port remaining external release and hardening scripts as local-only status gates.
 2. Only run temp-workspace local tooling smokes after explicit operator approval.
 3. Defer credentialed/live smokes until explicit operator approval.
 

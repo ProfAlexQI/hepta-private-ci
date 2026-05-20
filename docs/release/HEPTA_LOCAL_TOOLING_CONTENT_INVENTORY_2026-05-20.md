@@ -28,9 +28,9 @@ sends.
 - filesystem touch enabled: `0`
 - network read enabled: `0`
 - tool invocation enabled: `0`
-- current `hepta-codex` scripts: `10`
-- current native gateway source commands: `57`
-- Control UI route parity after this slice: `57/57`, missing `0`
+- current `hepta-codex` scripts: `11`
+- current native gateway source commands: `58`
+- Control UI route parity after memory/capability absorption inventory continuation: `58/58`, missing `0`
 
 ## Files Covered
 
@@ -63,5 +63,5 @@ read/write, network read, and tool invocation gates disabled.
 
 ## Safe Next Slice
 
-Promote memory/capability absorption gaps as read-only reports before any live
+Port remaining external release and hardening scripts as local-only status gates before any live
 process, filesystem, network, or tool-invocation smoke.
