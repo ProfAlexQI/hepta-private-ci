@@ -20,12 +20,26 @@ Final Control UI continuation build:
 - installed sha256: `55b08659d5d301ceb9fb6c33562330fde2482bd901eed6af4916ead73ae8c284`
 - binary sha match: `true`
 
+Browser visual smoke continuation build:
+
+- source workset: browser visual smoke script plus merge-completion API blocker
+  refresh after `e86d170 docs: record Hepta merge completion UI install`
+- release sha256: `833819d99190d9a62212237626ad5c96f491e0221571e46d81b2975e316a4844`
+- installed sha256: `833819d99190d9a62212237626ad5c96f491e0221571e46d81b2975e316a4844`
+- binary sha match: `true`
+
 Backups created before replacement:
 
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093102`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093113`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-control-ui-merge-completion-20260520-095847`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-gateway-index-merge-completion-20260520-101433`
+- `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-browser-visual-smoke-20260520-110537`
+
+Launchd plist backup created before the browser visual smoke continuation
+replacement:
+
+- `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-browser-visual-smoke-20260520-110537.plist`
 
 The first backup was created during a no-op install attempt that used the wrong
 release path (`target/release/hepta`). The installed SHA did not change during
@@ -43,6 +57,11 @@ binary with `codex-rs/target/release/hepta`.
 - `active_service_coexistence_percent=88`
 - `production_replacement_percent=68`
 - `native_gateway_source_command_count=52`
+- `current_hepta_codex_script_total=5`
+- `merge_completion_control_ui_surfaced=true`
+- `merge_completion_gateway_index_surfaced=true`
+- `browser_visual_smoke_ready=true`
+- `browser_visual_smoke_command=scripts/hepta-codex-browser-visual-smoke.sh`
 - `route_count=52`
 - `missing_route_count=0`
 - `telegram_live_send_enabled=false`
@@ -62,7 +81,12 @@ Expected blockers remain explicit:
 - `native_post_real_activation_not_operator_approved`
 - `old_hepta_cli_command_breadth_not_fully_migrated`
 - `old_hepta_release_external_scripts_not_fully_ported`
-- `browser_visual_e2e_not_run_in_this_audit`
+
+The earlier browser-visual audit blocker was closed by
+`scripts/hepta-codex-browser-visual-smoke.sh`, which captures desktop and mobile
+Chrome headless screenshots of the installed gateway index and checks
+`/api/hepta-merge-completion` remains route-ready with Telegram send and native
+POST real activation disabled.
 
 ## Route Parity
 
@@ -97,12 +121,19 @@ Pre-install gates:
 - `CARGO_INCREMENTAL=0 cargo build --release --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
 - `scripts/hepta-control-ui-smoke.sh`: passed after surfacing merge completion in the Rust/no-JS Control UI model
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway_readiness_exposes_pending_telegram_migration -- --nocapture`: passed after adding the gateway index completion card
+- `scripts/hepta-codex-browser-visual-smoke.sh`: passed; desktop and mobile
+  screenshot evidence written under a temporary directory outside the repo
 
 Post-install gates:
 
 - `scripts/hepta-codex-watchdog.sh`: passed
 - `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`: `3/3` samples passed
 - gateway index smoke: found `Merge completion`, `82 / 91 / 88 / 68`, and `/api/hepta-merge-completion`
+- browser visual smoke after final install:
+  `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
+  evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.XaOmH1`
+- live `/api/hepta-merge-completion` reports five current scripts, browser
+  visual smoke ready, and no `browser_visual_e2e_not_run_in_this_audit` blocker
 
 Known non-blocking warnings:
 

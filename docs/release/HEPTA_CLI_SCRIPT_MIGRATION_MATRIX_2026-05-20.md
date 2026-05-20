@@ -26,13 +26,14 @@ Current `hepta-codex`:
 - native gateway source commands: 52 after the merge-completion audit endpoint
   (`51` before this continuation slice)
 - scripts before this slice: 1
-- scripts after this slice: 4
+- scripts after this slice: 5
 
 New executable scripts added in this slice:
 
 - `scripts/hepta-codex-preflight.sh`
 - `scripts/hepta-codex-live-soak.sh`
 - `scripts/hepta-codex-watchdog.sh`
+- `scripts/hepta-codex-browser-visual-smoke.sh`
 
 Existing carried script:
 
@@ -45,6 +46,7 @@ Existing carried script:
 | `hepta-control-ui-smoke.sh` | carried and adapted | keep |
 | `hepta-v0.1-preflight.sh` | replaced by `hepta-codex-preflight.sh` | migrate as Codex package preflight |
 | `hepta-v0.1-soak.sh` | replaced by `hepta-codex-live-soak.sh` for active-service coexistence | migrate scoped soak |
+| Control UI browser/visual smoke | replaced by `hepta-codex-browser-visual-smoke.sh` for Chrome headless gateway-index screenshots | migrate scoped visual smoke |
 | `hepta-installed-live-watchdog*.sh` | replaced by `hepta-codex-watchdog.sh` for one-shot live status | migrate recurring service later |
 | `hepta-gateway-service*.sh` | covered by controlled install docs and launchd evidence | do not auto-install; keep manual/explicit |
 | `hepta-watchdog-service*.sh` | not ported as LaunchAgent manager | defer until recurring watchdog is requested |
@@ -146,6 +148,23 @@ Checks:
 - native POST stores valid/capacity OK
 - operator security in expected coexistence `attention` mode
 
+### `hepta-codex-browser-visual-smoke.sh`
+
+Purpose: repeat the browser-visible merge-completion check without invoking
+Telegram, native POST real handlers, providers, or model calls.
+
+Checks:
+
+- gateway index contains `Merge completion`
+- gateway index contains `82 / 91 / 88 / 68`
+- gateway index links `/api/hepta-merge-completion`
+- `/api/hepta-merge-completion` remains route-ready and side-effect disabled
+- Chrome headless captures desktop and mobile PNG screenshots
+- screenshot dimensions and minimum byte size are validated
+
+The screenshots are written under a temporary directory by default, outside the
+repo working tree.
+
 ### `hepta-codex-watchdog.sh`
 
 Purpose: one-shot installed-service watchdog suitable for manual run or later
@@ -166,12 +185,13 @@ delivery state.
 
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 4/20 by count, and more
-importantly turns the three most useful old operational intents into
+This slice improves script parity from 1/20 to 5/20 by count, and more
+importantly turns four useful old operational intents into
 `hepta-codex`-native commands:
 
 - preflight
 - live soak
 - installed/live watchdog
+- browser visual smoke
 
 It does not close the old CLI breadth gap. That remains the next major track.

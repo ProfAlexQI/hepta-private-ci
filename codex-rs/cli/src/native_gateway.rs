@@ -1219,7 +1219,7 @@ fn native_gateway_json(
             "Native redacted events/activity surfaces",
             "Hepta merge and functional completion audit surface",
         ],
-        next_migration_slice: "promote merge-completion findings into Control UI and keep Telegram owner handoff explicit",
+        next_migration_slice: "keep merge-completion UI/browser smoke green and keep Telegram owner handoff explicit",
     })
 }
 
@@ -3462,6 +3462,10 @@ struct HeptaMergeCompletionResponse {
     implemented_route_count: usize,
     missing_route_count: usize,
     old_cli_script_migration_matrix_ready: bool,
+    merge_completion_control_ui_surfaced: bool,
+    merge_completion_gateway_index_surfaced: bool,
+    browser_visual_smoke_ready: bool,
+    browser_visual_smoke_command: &'static str,
     production_owner_handoff_required: bool,
     telegram_live_send_enabled: bool,
     native_post_real_activation_enabled: bool,
@@ -3504,8 +3508,8 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
         active_service_coexistence_percent: 88,
         production_replacement_percent: 68,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 4,
-        carried_or_adapted_script_count: 4,
+        current_hepta_codex_script_total: 5,
+        carried_or_adapted_script_count: 5,
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
         native_gateway_source_command_count: 52,
@@ -3514,6 +3518,10 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
         implemented_route_count: route_matrix.implemented_route_count,
         missing_route_count: route_matrix.missing_route_count,
         old_cli_script_migration_matrix_ready: true,
+        merge_completion_control_ui_surfaced: true,
+        merge_completion_gateway_index_surfaced: true,
+        browser_visual_smoke_ready: true,
+        browser_visual_smoke_command: "scripts/hepta-codex-browser-visual-smoke.sh",
         production_owner_handoff_required: true,
         telegram_live_send_enabled: false,
         native_post_real_activation_enabled: false,
@@ -3525,12 +3533,11 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
             "native_post_real_activation_not_operator_approved",
             "old_hepta_cli_command_breadth_not_fully_migrated",
             "old_hepta_release_external_scripts_not_fully_ported",
-            "browser_visual_e2e_not_run_in_this_audit",
         ],
         next_actions: &[
-            "promote this merge-completion report into Control UI",
             "continue read-only old CLI command migration inventory",
-            "keep preflight, soak, and watchdog gates green",
+            "keep browser visual smoke, preflight, soak, and watchdog gates green",
+            "prepare but do not execute controlled Telegram owner handoff",
             "only perform Telegram owner handoff after explicit operator approval",
         ],
         side_effects: HeptaMergeCompletionSideEffects {
@@ -5189,12 +5196,19 @@ mod tests {
         assert_eq!(value["active_service_coexistence_percent"], 88);
         assert_eq!(value["production_replacement_percent"], 68);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 4);
+        assert_eq!(value["current_hepta_codex_script_total"], 5);
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
         assert_eq!(value["native_gateway_source_command_count"], 52);
         assert_eq!(value["route_matrix_ready"], true);
         assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["merge_completion_control_ui_surfaced"], true);
+        assert_eq!(value["merge_completion_gateway_index_surfaced"], true);
+        assert_eq!(value["browser_visual_smoke_ready"], true);
+        assert_eq!(
+            value["browser_visual_smoke_command"],
+            "scripts/hepta-codex-browser-visual-smoke.sh"
+        );
         assert!(
             value["route_count"].as_u64().expect("route count") >= 52,
             "merge-completion route should be included in parity count"
@@ -5215,6 +5229,17 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(blockers.contains(&"telegram_owner_handoff_not_requested"));
         assert!(blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
+        assert!(!blockers.contains(&"browser_visual_e2e_not_run_in_this_audit"));
+        let next_actions = value["next_actions"]
+            .as_array()
+            .expect("next actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            next_actions
+                .contains(&"keep browser visual smoke, preflight, soak, and watchdog gates green")
+        );
     }
 
     #[test]

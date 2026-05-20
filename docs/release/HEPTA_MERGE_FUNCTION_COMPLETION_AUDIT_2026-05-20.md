@@ -27,12 +27,16 @@ poll-send, and real POST mutation activation.
 
 - repo: `/Users/qianqi/.openclaw/workspace/hepta-codex`
 - branch: `main`
-- HEAD: `8e5db3d docs: record Hepta POST handler canaries`
-- working tree: clean
+- baseline HEAD before merge-completion UI continuation:
+  `8e5db3d docs: record Hepta POST handler canaries`
+- latest installed source baseline before browser visual smoke continuation:
+  `e86d170 docs: record Hepta merge completion UI install`
 - installed service: `ai.hepta.gateway`
 - live URL: `http://127.0.0.1:7373`
-- release binary sha256: `8aa6dd230a83054eb8eba528635cc8346e2e1d337fd91c8b941bb04dea8af333`
-- installed binary sha256: `8aa6dd230a83054eb8eba528635cc8346e2e1d337fd91c8b941bb04dea8af333`
+- release binary sha256 after browser visual smoke continuation:
+  `833819d99190d9a62212237626ad5c96f491e0221571e46d81b2975e316a4844`
+- installed binary sha256 after browser visual smoke continuation:
+  `833819d99190d9a62212237626ad5c96f491e0221571e46d81b2975e316a4844`
 
 ## Merge Coverage
 
@@ -73,8 +77,8 @@ native gateway surface and delegates significant native POST logic to
 Live route parity reports:
 
 - route status: `ready`
-- route count: `51`
-- implemented route count: `51`
+- route count: `52`
+- implemented route count: `52`
 - missing route count: `0`
 
 ### Control UI
@@ -84,7 +88,7 @@ The Hepta Control UI package is present under `apps/hepta-control-ui`.
 Current audited shape:
 
 - file count: `14`
-- route parity: `51/51`
+- route parity: `52/52`
 - smoke script: `scripts/hepta-control-ui-smoke.sh`
 - smoke status: passed
 
@@ -143,12 +147,13 @@ though the first executable migration slice now exists in
 `HEPTA_CLI_SCRIPT_MIGRATION_MATRIX_2026-05-20.md`:
 
 - old standalone scripts: 20
-- current `hepta-codex` scripts: 4
+- current `hepta-codex` scripts: 5
 - carried/adapted scripts:
   - `hepta-control-ui-smoke.sh`
   - `hepta-codex-preflight.sh`
   - `hepta-codex-live-soak.sh`
   - `hepta-codex-watchdog.sh`
+  - `hepta-codex-browser-visual-smoke.sh`
 
 This is the largest merge-completion gap. The underlying core/library reports
 are mostly present, but the old CLI/script operational breadth is not surfaced
@@ -161,7 +166,7 @@ as a complete command-compatible layer in the Codex fork.
 Live endpoint audit at `http://127.0.0.1:7373`:
 
 - `/health`: `ready`
-- `/api/control-ui-route-parity`: `ready`, `51/51`, missing `0`
+- `/api/control-ui-route-parity`: `ready`, `52/52`, missing `0`
 - `/api/gateway-runtime`: `ready`
 - `/api/gateway-dispatch`: `ready`, side-effect free
 - `/api/operator-security`: `attention`, mode `legacy_owner_coexistence_ready`
@@ -246,6 +251,9 @@ Fresh audit gates passed:
 - `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml`
 - `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture`: 52 passed
 - `cargo build --release --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
+- `scripts/hepta-codex-browser-visual-smoke.sh`: passed; captured
+  desktop/mobile Chrome headless screenshots under
+  `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.0Wv1pC`
 - `git diff --check`
 
 Known non-blocking warnings:
@@ -259,13 +267,13 @@ Known non-blocking warnings:
 | Area | Completion | Evidence | Residual gap |
 | --- | ---: | --- | --- |
 | Hepta core/runtime crate absorption | 95% | all six crates in workspace, tests/check pass | old `hepta-cli` not absorbed as a crate |
-| Gateway/API route parity | 100% for current matrix | 51/51 live route parity | old CLI/API breadth not fully represented |
-| Control UI | 95% | smoke passed, 51/51 route parity | browser visual/e2e not run in this audit |
+| Gateway/API route parity | 100% for current matrix | 52/52 live route parity | old CLI/API breadth not fully represented |
+| Control UI | 96% | smoke passed, browser visual smoke passed, 52/52 route parity | full historical browser suite not ported |
 | Native POST | 80% | 3/3 handlers implemented and dry-run canaries passed | active real mutations still gated off |
 | Telegram | 65% | owner guard, poll loop status, readiness reports, tests | live owner handoff/poll/send/soak not performed |
 | Hepta Native app | 75% | source imported, resources tracked, check + 52 tests pass | not packaged/installed/live |
-| Old automation scripts | 30% | current repo has 4 scripts versus 20 old scripts, including preflight/soak/watchdog | most standalone ops/release/external gates not ported |
-| Old Hepta CLI command breadth | 45% | core libraries absorbed, 51 gateway routes exposed | many specialized `*_ops.rs` modules not surfaced |
+| Old automation scripts | 35% | current repo has 5 scripts versus 20 old scripts, including preflight/soak/watchdog/browser visual smoke | most standalone ops/release/external gates not ported |
+| Old Hepta CLI command breadth | 45% | core libraries absorbed, 52 gateway routes exposed | many specialized `*_ops.rs` modules not surfaced |
 | Installed local coexistence | 88% | binary installed, live health ready, owner safe | production replacement intentionally blocked |
 
 ## Findings
