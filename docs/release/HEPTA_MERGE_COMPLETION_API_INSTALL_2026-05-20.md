@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: install and live verification for `/api/hepta-merge-completion` and follow-on safe inventory routes
-Status: installed; live route parity updated to `58/58`; external mutation gates remain closed
+Status: installed; live route parity updated to `59/59`; external mutation gates remain closed
 
 ## Installed Build
 
@@ -95,6 +95,30 @@ Memory/capability absorption gap inventory continuation:
 - script count after install: `11`
 - native gateway source command count after install: `58`
 
+Release/hardening status gate continuation:
+
+- source workset: `/api/hepta-release-hardening-status-gate`,
+  `scripts/hepta-codex-release-hardening-status-gate.sh`, and status gate docs
+- source commit: `e3c25ac feat: add Hepta release hardening status gate`
+- release sha256: `6e594511129eb3ac6b5332685d9162799ec619769b217a00098f36d11883c42f`
+- installed sha256: `6e594511129eb3ac6b5332685d9162799ec619769b217a00098f36d11883c42f`
+- binary sha match: `true`
+- live route parity after install: `59/59`
+- script count after install: `12`
+- native gateway source command count after install: `59`
+- release/hardening status gate count: `12`
+- local status gate ready count: `12`
+- live execution enabled count: `0`
+- external-production gate count: `3`
+- launchd mutation required count: `3`
+- filesystem artifact write required count: `2`
+- operator approval required count: `12`
+- side-effect gates: process spawn, filesystem read/write, release artifact
+  write, launchd mutation, watchdog service install, external network
+  read/send, provider/model invocation, credential reads, Telegram owner
+  handoff/read/send, native POST mutation, channel read/send, coding-agent
+  spawn, and gateway mutation all `false`
+
 Backups created before replacement:
 
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093102`
@@ -108,6 +132,7 @@ Backups created before replacement:
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-channel-adapter-status-inventory-20260520-141937`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-local-tooling-content-inventory-20260520-150740`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-memory-capability-inventory-20260520-155424`
+- `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-release-hardening-status-gate-20260520-165601`
 
 Launchd plist backup created before the browser visual smoke continuation
 replacement:
@@ -144,6 +169,11 @@ replacement:
 
 - `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-memory-capability-inventory-20260520-155424.plist`
 
+Launchd plist backup created before the release/hardening status gate
+continuation replacement:
+
+- `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-release-hardening-status-gate-20260520-165601.plist`
+
 The first backup was created during a no-op install attempt that used the wrong
 release path (`target/release/hepta`). The installed SHA did not change during
 that attempt. The second backup was created immediately before replacing the
@@ -159,13 +189,13 @@ binary with `codex-rs/target/release/hepta`.
 - `local_deterministic_function_percent=91`
 - `active_service_coexistence_percent=88`
 - `production_replacement_percent=68`
-- `native_gateway_source_command_count=58` after memory/capability absorption inventory continuation
-- `current_hepta_codex_script_total=11` after memory/capability absorption inventory continuation
+- `native_gateway_source_command_count=59` after release/hardening status gate continuation
+- `current_hepta_codex_script_total=12` after release/hardening status gate continuation
 - `merge_completion_control_ui_surfaced=true`
 - `merge_completion_gateway_index_surfaced=true`
 - `browser_visual_smoke_ready=true`
 - `browser_visual_smoke_command=scripts/hepta-codex-browser-visual-smoke.sh`
-- `route_count=58` after memory/capability absorption inventory continuation
+- `route_count=59` after release/hardening status gate continuation
 - `missing_route_count=0`
 - `telegram_live_send_enabled=false`
 - `native_post_real_activation_enabled=false`
@@ -198,8 +228,8 @@ The old CLI breadth inventory is now exposed by
 - `old_hepta_ops_file_count=65`
 - `old_hepta_rough_command_reference_count=574`
 - `old_hepta_script_total=20`
-- `current_hepta_codex_script_total=11`
-- `native_gateway_source_command_count=58`
+- `current_hepta_codex_script_total=12`
+- `native_gateway_source_command_count=59`
 - `ops_family_count=5`
 - `ops_file_family_covered_count=65`
 - `old_cli_command_breadth_fully_migrated=false`
@@ -215,8 +245,8 @@ The provider/search metadata inventory continuation adds
 - `adjacent_search_ops_file_count=3`
 - `provider_adapter_count=15`
 - `adjacent_search_adapter_count=3`
-- `current_hepta_codex_script_total=11`
-- `native_gateway_source_command_count=58`
+- `current_hepta_codex_script_total=12`
+- `native_gateway_source_command_count=59`
 - `provider_live_invocation_enabled=false`
 - `credentialed_smoke_performed=false`
 - provider invocation, credential reads, external network reads, model calls,
@@ -230,8 +260,8 @@ The runtime/session dry-run inventory continuation adds
 - `dry_run_surface_count=12`
 - `planner_ready_count=12`
 - `live_mutation_surface_count=0`
-- `current_hepta_codex_script_total=11`
-- `native_gateway_source_command_count=58`
+- `current_hepta_codex_script_total=12`
+- `native_gateway_source_command_count=59`
 - task registry mutation, session store mutation, gateway event enqueue, hook
   enqueue, process spawn, provider/model invocation, credential reads, external
   network/send, Telegram reads/sends, native POST mutation, and filesystem
@@ -245,8 +275,8 @@ The channel adapter disabled status inventory continuation adds
 - `adapter_count=13`
 - `disabled_status_ready_count=13`
 - `live_adapter_enabled_count=0`
-- `current_hepta_codex_script_total=11`
-- `native_gateway_source_command_count=58`
+- `current_hepta_codex_script_total=12`
+- `native_gateway_source_command_count=59`
 - live channel read, live channel send, Telegram owner handoff, credential
   reads, external network/send, voice calls, TTS playback, webhook delivery,
   file transfer, native POST mutation, and filesystem writes all `false`
@@ -262,8 +292,8 @@ The local tooling/content planning inventory continuation adds
 - `filesystem_touch_enabled_count=0`
 - `network_read_enabled_count=0`
 - `tool_invocation_enabled_count=0`
-- `current_hepta_codex_script_total=11`
-- `native_gateway_source_command_count=58`
+- `current_hepta_codex_script_total=12`
+- `native_gateway_source_command_count=59`
 - process spawn, filesystem read/write, network read, tool invocation,
   provider/model invocation, credential reads, channel read/send, gateway
   mutation, native POST mutation, and external send all `false`
@@ -277,21 +307,41 @@ The memory/capability absorption gap inventory continuation adds
 - `absorbed_or_represented_count=9`
 - `gap_report_ready_count=14`
 - `live_mutation_enabled_count=0`
-- `current_hepta_codex_script_total=11`
-- `native_gateway_source_command_count=58`
+- `current_hepta_codex_script_total=12`
+- `native_gateway_source_command_count=59`
 - memory store mutation, capability registry mutation, plugin registry
   mutation, coding-agent spawn, skill-workshop write, filesystem read/write,
   external network read, provider/model invocation, credential reads, channel
   read/send, native POST mutation, gateway mutation, and external send all
   `false`
 
+The release/hardening status gate continuation adds
+`/api/hepta-release-hardening-status-gate` and
+`scripts/hepta-codex-release-hardening-status-gate.sh`:
+
+- `old_release_hardening_script_family_count=12`
+- `status_gate_count=12`
+- `local_status_gate_ready_count=12`
+- `live_execution_enabled_count=0`
+- `external_production_gate_count=3`
+- `launchd_mutation_required_count=3`
+- `filesystem_artifact_write_required_count=2`
+- `operator_approval_required_count=12`
+- `current_hepta_codex_script_total=12`
+- `native_gateway_source_command_count=59`
+- process spawn, filesystem read/write, release artifact write, launchd
+  mutation, watchdog service install, external network read/send,
+  provider/model invocation, credential reads, Telegram owner handoff/read/send,
+  native POST mutation, channel read/send, coding-agent spawn, and gateway
+  mutation all `false`
+
 ## Route Parity
 
 `/api/control-ui-route-parity` after install:
 
 - `status=ready`
-- `route_count=58` after memory/capability absorption inventory continuation
-- `implemented_route_count=58` after memory/capability absorption inventory continuation
+- `route_count=59` after release/hardening status gate continuation
+- `implemented_route_count=59` after release/hardening status gate continuation
 - `missing_route_count=0`
 
 ## Safety Boundary
@@ -317,9 +367,10 @@ Pre-install gates:
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_channel_adapter_status_inventory -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_local_tooling_content_inventory -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_memory_capability_absorption_inventory -- --nocapture`
+- `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli native_gateway::tests::hepta_release_hardening_status_gate_endpoint_is_local_only -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta inventory -- --nocapture`
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta control_ui_route_parity_report_covers_old_hepta_routes -- --nocapture`
-- `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `62 passed`
+- `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `63 passed`
 - `HEPTA_CODEX_PREFLIGHT_RELEASE=0 scripts/hepta-codex-preflight.sh`
 - `CARGO_INCREMENTAL=0 cargo build --release --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
 - `scripts/hepta-control-ui-smoke.sh`: passed after surfacing merge completion in the Rust/no-JS Control UI model
@@ -346,13 +397,16 @@ Post-install gates:
 - `scripts/hepta-codex-memory-capability-inventory.sh`: passed,
   memory/capability, local tooling/content, channel adapter, runtime/session,
   provider, CLI, and merge-completion counts synchronized
+- `scripts/hepta-codex-release-hardening-status-gate.sh`: passed,
+  release/hardening, memory/capability, local tooling/content, channel adapter,
+  runtime/session, provider, CLI, and merge-completion counts synchronized
 - gateway index smoke: found `Merge completion`, `82 / 91 / 88 / 68`, and `/api/hepta-merge-completion`
 - browser visual smoke after final install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
   evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.Sq2URq`
-- live `/api/hepta-merge-completion` reports eleven current scripts after
-  memory/capability absorption inventory continuation, browser visual smoke
-  ready, route parity `58/58`, and no
+- live `/api/hepta-merge-completion` reports twelve current scripts after
+  release/hardening status gate continuation, browser visual smoke
+  ready, route parity `59/59`, and no
   `browser_visual_e2e_not_run_in_this_audit` blocker
 - provider metadata browser visual smoke after provider install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
@@ -384,6 +438,12 @@ Post-install gates:
 - short live soak after memory/capability install:
   `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`
   passed `3/3`
+- release/hardening browser visual smoke after install:
+  `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
+  evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.lk5VW6`
+- short live soak after release/hardening install:
+  `HEPTA_SOAK_ITERATIONS=3 HEPTA_SOAK_SLEEP_SECONDS=1 scripts/hepta-codex-live-soak.sh`
+  passed
 
 Known non-blocking warnings:
 
