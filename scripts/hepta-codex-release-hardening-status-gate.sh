@@ -17,8 +17,8 @@ jq -e '
   and .compatibility_mode == "native_release_hardening_status_gate_inventory"
   and .side_effect_free == true
   and .old_release_hardening_script_family_count == 12
-  and .current_hepta_codex_script_total == 12
-  and .native_gateway_source_command_count == 59
+  and .current_hepta_codex_script_total == 13
+  and .native_gateway_source_command_count == 60
   and .missing_route_count == 0
   and .status_gate_count == 12
   and .local_status_gate_ready_count == 12
@@ -59,8 +59,8 @@ jq -e '
 for payload in "$MEMORY_JSON" "$LOCAL_JSON" "$CHANNEL_JSON" "$RUNTIME_JSON" "$CLI_JSON" "$PROVIDER_JSON" "$MERGE_JSON"; do
   jq -e '
     .runtime == "hepta-codex"
-    and .current_hepta_codex_script_total == 12
-    and .native_gateway_source_command_count == 59
+    and .current_hepta_codex_script_total == 13
+    and .native_gateway_source_command_count == 60
     and .missing_route_count == 0
   ' <<<"$payload" >/dev/null
 done

@@ -75,9 +75,9 @@ The endpoint reports all of the following as disabled:
 
 ## Current Counts
 
-- current `hepta-codex` script total: `12`
-- native gateway source-command count: `59`
-- expected route parity after install: `59/59`
+- current `hepta-codex` script total: `13` after the provider/channel dry-run plan continuation
+- native gateway source-command count: `60` after the provider/channel dry-run plan continuation
+- expected route parity after install: `60/60` after the provider/channel dry-run plan continuation
 
 ## Remaining Boundary
 

@@ -76,6 +76,10 @@ const HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_ENDPOINT: &str =
     "/api/hepta-memory-capability-absorption-inventory";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
+const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
+    "/api/hepta-provider-channel-dry-run-plan";
+const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 13;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 60;
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -217,6 +221,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-release-hardening-status-gate --json",
         capability: "hepta-release-hardening-status-gate",
         side_effect_boundary: "read-only release/hardening script status gate inventory",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT,
+        source_command: "/hepta-provider-channel-dry-run-plan --json",
+        capability: "hepta-provider-channel-dry-run-plan",
+        side_effect_boundary: "read-only provider/channel/runtime dry-run plan",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -844,6 +855,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_release_hardening_status_gate_report()),
                 );
             }
+            HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_provider_channel_dry_run_plan_report()),
+                );
+            }
             "/api/operator-snapshot" => {
                 return (
                     "200 OK",
@@ -1231,6 +1249,7 @@ fn index_html(
         <p><code>/api/hepta-local-tooling-content-inventory</code> maps canvas, diffs, filesystem, process, local content, search, readability, wiki, and tool invocation surfaces as local plans only.</p>
         <p><code>/api/hepta-memory-capability-absorption-inventory</code> exposes memory, capability, plugin, coding-agent, search-provider, and skill-workshop gaps as read-only absorption status.</p>
         <p><code>/api/hepta-release-hardening-status-gate</code> keeps remaining release, external-production, launchd, ops, and hardening script families visible as local-only status gates.</p>
+        <p><code>/api/hepta-provider-channel-dry-run-plan</code> promotes provider, search, channel, and runtime/session gaps into deterministic dry-run plan contracts without credentials, external calls, delivery, or store mutation.</p>
       </section>
       <section class="panel">
         <p>Readiness payload:</p>
@@ -4047,6 +4066,82 @@ struct HeptaReleaseHardeningStatusGateSideEffects {
     gateway_mutation_performed: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct HeptaProviderChannelDryRunPlanResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    dry_run_plan_doc: &'static str,
+    current_hepta_codex_script_total: usize,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    missing_route_count: usize,
+    plan_family_count: usize,
+    covered_old_ops_file_count: usize,
+    covered_provider_ops_file_count: usize,
+    covered_search_ops_file_count: usize,
+    covered_channel_ops_file_count: usize,
+    covered_runtime_ops_file_count: usize,
+    dry_run_plan_ready_count: usize,
+    isolated_fixture_contract_count: usize,
+    live_invocation_enabled_count: usize,
+    credential_read_required_count: usize,
+    operator_approval_required_count: usize,
+    provider_prompt_execution_enabled: bool,
+    search_network_query_enabled: bool,
+    channel_delivery_enabled: bool,
+    runtime_store_mutation_enabled: bool,
+    isolated_fixture_materialized: bool,
+    dry_run_plan_ready: bool,
+    script_inventory_script: &'static str,
+    dry_run_families: &'static [HeptaProviderChannelDryRunFamily],
+    next_slices: &'static [&'static str],
+    blockers: &'static [&'static str],
+    side_effects: HeptaProviderChannelDryRunPlanSideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaProviderChannelDryRunFamily {
+    name: &'static str,
+    family: &'static str,
+    covered_old_ops_file_count: usize,
+    representative_surfaces: &'static [&'static str],
+    dry_run_plan_mode: &'static str,
+    isolated_fixture_contract: &'static str,
+    dry_run_plan_ready: bool,
+    live_invocation_enabled: bool,
+    credential_read_required: bool,
+    operator_approval_required: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaProviderChannelDryRunPlanSideEffects {
+    provider_invoked: bool,
+    model_invoked: bool,
+    credential_read: bool,
+    external_network_read: bool,
+    search_query_performed: bool,
+    channel_read_performed: bool,
+    channel_send_performed: bool,
+    telegram_owner_handoff_performed: bool,
+    telegram_read_performed: bool,
+    telegram_send_performed: bool,
+    process_spawned: bool,
+    filesystem_read: bool,
+    filesystem_written: bool,
+    task_registry_mutated: bool,
+    session_store_mutated: bool,
+    gateway_event_enqueued: bool,
+    native_post_mutation_performed: bool,
+    gateway_mutation_performed: bool,
+    external_send_performed: bool,
+}
+
 const HEPTA_CLI_OPS_FAMILIES: &[HeptaCliOpsFamily] = &[
     HeptaCliOpsFamily {
         name: "provider_metadata_bridges",
@@ -4937,6 +5032,177 @@ const HEPTA_RELEASE_HARDENING_STATUS_GATES: &[HeptaReleaseHardeningStatusGate] =
     },
 ];
 
+const HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES: &[HeptaProviderChannelDryRunFamily] = &[
+    HeptaProviderChannelDryRunFamily {
+        name: "provider-prompt-plan",
+        family: "provider_metadata_bridges",
+        covered_old_ops_file_count: 12,
+        representative_surfaces: &[
+            "anthropic",
+            "deepinfra",
+            "google-vertex",
+            "mistral",
+            "openai",
+            "openrouter",
+            "xai",
+        ],
+        dry_run_plan_mode: "credentialless_request_envelope_and_response_shape_plan",
+        isolated_fixture_contract: "synthetic_prompt_fixture_without_provider_call",
+        dry_run_plan_ready: true,
+        live_invocation_enabled: false,
+        credential_read_required: false,
+        operator_approval_required: true,
+    },
+    HeptaProviderChannelDryRunFamily {
+        name: "local-provider-registry-plan",
+        family: "provider_metadata_bridges",
+        covered_old_ops_file_count: 3,
+        representative_surfaces: &["native-model-provider", "ollama", "provider-registration"],
+        dry_run_plan_mode: "local_registry_contract_plan_without_daemon_or_registry_mutation",
+        isolated_fixture_contract: "synthetic_provider_catalog_fixture_without_model_load",
+        dry_run_plan_ready: true,
+        live_invocation_enabled: false,
+        credential_read_required: false,
+        operator_approval_required: true,
+    },
+    HeptaProviderChannelDryRunFamily {
+        name: "search-readability-plan",
+        family: "adjacent_search_metadata",
+        covered_old_ops_file_count: 3,
+        representative_surfaces: &["native-search-provider", "search-tools", "web-readability"],
+        dry_run_plan_mode: "offline_query_and_extraction_contract_without_network_fetch",
+        isolated_fixture_contract: "static_html_and_query_fixture_without_external_read",
+        dry_run_plan_ready: true,
+        live_invocation_enabled: false,
+        credential_read_required: false,
+        operator_approval_required: true,
+    },
+    HeptaProviderChannelDryRunFamily {
+        name: "channel-delivery-plan",
+        family: "channel_runtime_adapters",
+        covered_old_ops_file_count: 13,
+        representative_surfaces: &[
+            "discord",
+            "feishu",
+            "google-chat",
+            "imessage",
+            "message-gateway",
+            "telegram",
+            "webhooks",
+        ],
+        dry_run_plan_mode: "recipient_policy_and_delivery_envelope_plan_without_connector_call",
+        isolated_fixture_contract: "synthetic_channel_message_fixture_without_read_or_send",
+        dry_run_plan_ready: true,
+        live_invocation_enabled: false,
+        credential_read_required: false,
+        operator_approval_required: true,
+    },
+    HeptaProviderChannelDryRunFamily {
+        name: "runtime-session-plan",
+        family: "runtime_ops_admin",
+        covered_old_ops_file_count: 12,
+        representative_surfaces: &[
+            "gateway-admin",
+            "heartbeat",
+            "runtime-event",
+            "session-orchestration",
+            "task-provenance",
+            "thread-binding",
+        ],
+        dry_run_plan_mode: "event_task_session_plan_without_queue_or_store_mutation",
+        isolated_fixture_contract: "synthetic_runtime_event_fixture_without_registry_write",
+        dry_run_plan_ready: true,
+        live_invocation_enabled: false,
+        credential_read_required: false,
+        operator_approval_required: true,
+    },
+];
+
+fn hepta_provider_channel_dry_run_plan_report() -> HeptaProviderChannelDryRunPlanResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaProviderChannelDryRunPlanResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "attention",
+        source_command: "/hepta-provider-channel-dry-run-plan --json",
+        native_route: true,
+        compatibility_mode: "native_provider_channel_runtime_dry_run_plan",
+        side_effect_free: true,
+        audit_date: "2026-05-20",
+        dry_run_plan_doc: "docs/release/HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_2026-05-20.md",
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        plan_family_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES.len(),
+        covered_old_ops_file_count: 43,
+        covered_provider_ops_file_count: 15,
+        covered_search_ops_file_count: 3,
+        covered_channel_ops_file_count: 13,
+        covered_runtime_ops_file_count: 12,
+        dry_run_plan_ready_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES
+            .iter()
+            .filter(|family| family.dry_run_plan_ready)
+            .count(),
+        isolated_fixture_contract_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES.len(),
+        live_invocation_enabled_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES
+            .iter()
+            .filter(|family| family.live_invocation_enabled)
+            .count(),
+        credential_read_required_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES
+            .iter()
+            .filter(|family| family.credential_read_required)
+            .count(),
+        operator_approval_required_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES
+            .iter()
+            .filter(|family| family.operator_approval_required)
+            .count(),
+        provider_prompt_execution_enabled: false,
+        search_network_query_enabled: false,
+        channel_delivery_enabled: false,
+        runtime_store_mutation_enabled: false,
+        isolated_fixture_materialized: false,
+        dry_run_plan_ready: true,
+        script_inventory_script: "scripts/hepta-codex-provider-channel-dry-run-plan.sh",
+        dry_run_families: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES,
+        next_slices: &[
+            "expand individual old CLI shims only as no-side-effect dry-run contracts",
+            "keep provider prompts, channel delivery, and runtime store mutation blocked until scoped approval",
+            "continue live install verification after each local-only route addition",
+        ],
+        blockers: &[
+            "provider_prompt_execution_not_operator_approved",
+            "provider_credentials_not_read_by_dry_run_plan",
+            "search_live_network_query_not_operator_approved",
+            "channel_delivery_not_operator_approved",
+            "runtime_store_mutation_not_operator_approved",
+            "isolated_fixture_materialization_not_requested",
+            "old_cli_invocation_compatibility_not_claimed",
+        ],
+        side_effects: HeptaProviderChannelDryRunPlanSideEffects {
+            provider_invoked: false,
+            model_invoked: false,
+            credential_read: false,
+            external_network_read: false,
+            search_query_performed: false,
+            channel_read_performed: false,
+            channel_send_performed: false,
+            telegram_owner_handoff_performed: false,
+            telegram_read_performed: false,
+            telegram_send_performed: false,
+            process_spawned: false,
+            filesystem_read: false,
+            filesystem_written: false,
+            task_registry_mutated: false,
+            session_store_mutated: false,
+            gateway_event_enqueued: false,
+            native_post_mutation_performed: false,
+            gateway_mutation_performed: false,
+            external_send_performed: false,
+        },
+    }
+}
+
 fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
     HeptaChannelAdapterStatusInventoryResponse {
@@ -4950,8 +5216,8 @@ fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusI
         audit_date: "2026-05-20",
         channel_inventory_doc: "docs/release/HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_2026-05-20.md",
         old_channel_ops_file_count: 13,
-        current_hepta_codex_script_total: 12,
-        native_gateway_source_command_count: 59,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         adapter_count: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES.len(),
@@ -5015,8 +5281,8 @@ fn hepta_local_tooling_content_inventory_report() -> HeptaLocalToolingContentInv
         audit_date: "2026-05-20",
         local_tooling_inventory_doc: "docs/release/HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_2026-05-20.md",
         old_local_tooling_ops_file_count: 11,
-        current_hepta_codex_script_total: 12,
-        native_gateway_source_command_count: 59,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         surface_count: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES.len(),
@@ -5094,8 +5360,8 @@ fn hepta_memory_capability_absorption_inventory_report()
         audit_date: "2026-05-20",
         memory_capability_inventory_doc: "docs/release/HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_2026-05-20.md",
         old_memory_capability_ops_file_count: 14,
-        current_hepta_codex_script_total: 12,
-        native_gateway_source_command_count: 59,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         surface_count: HEPTA_MEMORY_CAPABILITY_ABSORPTION_SURFACES.len(),
@@ -5169,8 +5435,8 @@ fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGa
         audit_date: "2026-05-20",
         release_hardening_doc: "docs/release/HEPTA_RELEASE_HARDENING_STATUS_GATE_2026-05-20.md",
         old_release_hardening_script_family_count: HEPTA_RELEASE_HARDENING_STATUS_GATES.len(),
-        current_hepta_codex_script_total: 12,
-        native_gateway_source_command_count: 59,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         status_gate_count: HEPTA_RELEASE_HARDENING_STATUS_GATES.len(),
@@ -5259,8 +5525,8 @@ fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRun
         audit_date: "2026-05-20",
         runtime_inventory_doc: "docs/release/HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_2026-05-20.md",
         old_runtime_ops_file_count: 12,
-        current_hepta_codex_script_total: 12,
-        native_gateway_source_command_count: 59,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         dry_run_surface_count: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES.len(),
@@ -5326,8 +5592,8 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         provider_inventory_doc: "docs/release/HEPTA_PROVIDER_METADATA_INVENTORY_2026-05-20.md",
         old_provider_ops_file_count: 15,
         adjacent_search_ops_file_count: 3,
-        current_hepta_codex_script_total: 12,
-        native_gateway_source_command_count: 59,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         provider_adapter_count: HEPTA_PROVIDER_METADATA_ADAPTERS.len(),
@@ -5380,8 +5646,8 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 12,
-        native_gateway_source_command_count: 59,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         ops_family_count: HEPTA_CLI_OPS_FAMILIES.len(),
@@ -5438,11 +5704,11 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
         active_service_coexistence_percent: 88,
         production_replacement_percent: 68,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 12,
-        carried_or_adapted_script_count: 12,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        carried_or_adapted_script_count: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
-        native_gateway_source_command_count: 59,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_matrix_ready: route_matrix.ready,
         route_count: route_matrix.route_count,
         implemented_route_count: route_matrix.implemented_route_count,
@@ -7112,6 +7378,7 @@ mod tests {
             routes.contains(&"GET /api/hepta-memory-capability-absorption-inventory".to_string())
         );
         assert!(routes.contains(&"GET /api/hepta-release-hardening-status-gate".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-provider-channel-dry-run-plan".to_string()));
     }
 
     #[test]
@@ -7135,10 +7402,16 @@ mod tests {
         assert_eq!(value["active_service_coexistence_percent"], 88);
         assert_eq!(value["production_replacement_percent"], 68);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 12);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
-        assert_eq!(value["native_gateway_source_command_count"], 59);
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
         assert_eq!(value["route_matrix_ready"], true);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["merge_completion_control_ui_surfaced"], true);
@@ -7208,8 +7481,14 @@ mod tests {
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 12);
-        assert_eq!(value["native_gateway_source_command_count"], 59);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["ops_family_count"], 5);
         assert_eq!(value["ops_file_family_covered_count"], 65);
@@ -7272,8 +7551,14 @@ mod tests {
         );
         assert_eq!(value["old_provider_ops_file_count"], 15);
         assert_eq!(value["adjacent_search_ops_file_count"], 3);
-        assert_eq!(value["current_hepta_codex_script_total"], 12);
-        assert_eq!(value["native_gateway_source_command_count"], 59);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["provider_adapter_count"], 15);
         assert_eq!(value["adjacent_search_adapter_count"], 3);
@@ -7335,8 +7620,14 @@ mod tests {
             "native_runtime_session_dry_run_inventory"
         );
         assert_eq!(value["old_runtime_ops_file_count"], 12);
-        assert_eq!(value["current_hepta_codex_script_total"], 12);
-        assert_eq!(value["native_gateway_source_command_count"], 59);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["dry_run_surface_count"], 12);
         assert_eq!(value["covered_old_ops_file_count"], 12);
@@ -7411,8 +7702,14 @@ mod tests {
             "native_channel_adapter_disabled_status_inventory"
         );
         assert_eq!(value["old_channel_ops_file_count"], 13);
-        assert_eq!(value["current_hepta_codex_script_total"], 12);
-        assert_eq!(value["native_gateway_source_command_count"], 59);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["adapter_count"], 13);
         assert_eq!(value["disabled_status_ready_count"], 13);
@@ -7490,8 +7787,14 @@ mod tests {
             "native_local_tooling_content_planning_inventory"
         );
         assert_eq!(value["old_local_tooling_ops_file_count"], 11);
-        assert_eq!(value["current_hepta_codex_script_total"], 12);
-        assert_eq!(value["native_gateway_source_command_count"], 59);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["surface_count"], 11);
         assert_eq!(value["planner_ready_count"], 11);
@@ -7570,8 +7873,14 @@ mod tests {
             "native_memory_capability_absorption_gap_inventory"
         );
         assert_eq!(value["old_memory_capability_ops_file_count"], 14);
-        assert_eq!(value["current_hepta_codex_script_total"], 12);
-        assert_eq!(value["native_gateway_source_command_count"], 59);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["surface_count"], 14);
         assert_eq!(value["absorbed_or_represented_count"], 9);
@@ -7652,8 +7961,14 @@ mod tests {
             "native_release_hardening_status_gate_inventory"
         );
         assert_eq!(value["old_release_hardening_script_family_count"], 12);
-        assert_eq!(value["current_hepta_codex_script_total"], 12);
-        assert_eq!(value["native_gateway_source_command_count"], 59);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["status_gate_count"], 12);
         assert_eq!(value["local_status_gate_ready_count"], 12);
@@ -7717,6 +8032,98 @@ mod tests {
         assert!(blockers.contains(&"external_production_gate_not_operator_approved"));
         assert!(blockers.contains(&"launchd_service_mutation_not_operator_approved"));
         assert!(blockers.contains(&"autonomous_subagent_spawn_not_operator_approved"));
+    }
+
+    #[test]
+    fn hepta_provider_channel_dry_run_plan_endpoint_is_side_effect_free() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("provider channel dry run plan json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-provider-channel-dry-run-plan --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_provider_channel_runtime_dry_run_plan"
+        );
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["plan_family_count"], 5);
+        assert_eq!(value["covered_old_ops_file_count"], 43);
+        assert_eq!(value["covered_provider_ops_file_count"], 15);
+        assert_eq!(value["covered_search_ops_file_count"], 3);
+        assert_eq!(value["covered_channel_ops_file_count"], 13);
+        assert_eq!(value["covered_runtime_ops_file_count"], 12);
+        assert_eq!(value["dry_run_plan_ready_count"], 5);
+        assert_eq!(value["isolated_fixture_contract_count"], 5);
+        assert_eq!(value["live_invocation_enabled_count"], 0);
+        assert_eq!(value["credential_read_required_count"], 0);
+        assert_eq!(value["operator_approval_required_count"], 5);
+        assert_eq!(value["provider_prompt_execution_enabled"], false);
+        assert_eq!(value["search_network_query_enabled"], false);
+        assert_eq!(value["channel_delivery_enabled"], false);
+        assert_eq!(value["runtime_store_mutation_enabled"], false);
+        assert_eq!(value["isolated_fixture_materialized"], false);
+        assert_eq!(value["dry_run_plan_ready"], true);
+        assert_eq!(
+            value["script_inventory_script"],
+            "scripts/hepta-codex-provider-channel-dry-run-plan.sh"
+        );
+        let families = value["dry_run_families"]
+            .as_array()
+            .expect("dry run families");
+        assert_eq!(families.len(), 5);
+        assert_eq!(families[0]["name"], "provider-prompt-plan");
+        assert_eq!(families[2]["name"], "search-readability-plan");
+        assert_eq!(families[3]["name"], "channel-delivery-plan");
+        assert_eq!(families[4]["name"], "runtime-session-plan");
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["external_network_read"], false);
+        assert_eq!(value["side_effects"]["search_query_performed"], false);
+        assert_eq!(value["side_effects"]["channel_read_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(
+            value["side_effects"]["telegram_owner_handoff_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["telegram_read_performed"], false);
+        assert_eq!(value["side_effects"]["telegram_send_performed"], false);
+        assert_eq!(value["side_effects"]["process_spawned"], false);
+        assert_eq!(value["side_effects"]["filesystem_read"], false);
+        assert_eq!(value["side_effects"]["filesystem_written"], false);
+        assert_eq!(value["side_effects"]["task_registry_mutated"], false);
+        assert_eq!(value["side_effects"]["session_store_mutated"], false);
+        assert_eq!(value["side_effects"]["gateway_event_enqueued"], false);
+        assert_eq!(
+            value["side_effects"]["native_post_mutation_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["gateway_mutation_performed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
     }
 
     #[test]

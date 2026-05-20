@@ -23,14 +23,15 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 59 after the release/hardening status gate
-  (`58` after the memory/capability absorption inventory endpoint; `57`
+- native gateway source commands: 60 after the provider/channel dry-run plan
+  (`59` after the release/hardening status gate; `58` after the
+  memory/capability absorption inventory endpoint; `57`
   after the local tooling/content inventory endpoint; `56` after the channel
   adapter status inventory endpoint; `55` after the runtime/session dry-run
   inventory endpoint; `54` after the provider metadata inventory endpoint;
   `53` after the CLI command inventory endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 12
+- scripts after this slice: 13
 
 New executable scripts added in this slice:
 
@@ -45,6 +46,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-local-tooling-content-inventory.sh`
 - `scripts/hepta-codex-memory-capability-inventory.sh`
 - `scripts/hepta-codex-release-hardening-status-gate.sh`
+- `scripts/hepta-codex-provider-channel-dry-run-plan.sh`
 
 Existing carried script:
 
@@ -215,8 +217,8 @@ Checks:
 - old standalone `*_ops.rs` count remains `65`
 - old rough command reference count remains `574`
 - old standalone script count remains `20`
-- current `hepta-codex` script count is `12`
-- native gateway source-command count is `59`
+- current `hepta-codex` script count is `13`
+- native gateway source-command count is `60`
 - CLI ops families cover all `65` old ops files
 - merge-completion and CLI inventory reports agree on route/script counts
 - provider invocation, credential reads, Telegram reads/sends, native POST
@@ -231,8 +233,8 @@ Checks:
 
 - old provider ops file count remains `15`
 - adjacent search/readability ops file count remains `3`
-- current `hepta-codex` script count is `12`
-- native gateway source-command count is `59`
+- current `hepta-codex` script count is `13`
+- native gateway source-command count is `60`
 - provider adapter count is `15`
 - adjacent search adapter count is `3`
 - provider live invocation and credentialed smoke remain disabled
@@ -250,8 +252,8 @@ exposed by `/api/hepta-runtime-session-dry-run-inventory`.
 Checks:
 
 - old runtime/admin ops file count remains `12`
-- current `hepta-codex` script count is `12`
-- native gateway source-command count is `59`
+- current `hepta-codex` script count is `13`
+- native gateway source-command count is `60`
 - dry-run surface count is `12`
 - planner-ready count is `12`
 - live mutation surface count is `0`
@@ -269,8 +271,8 @@ exposed by `/api/hepta-channel-adapter-status-inventory`.
 Checks:
 
 - old channel/runtime adapter ops file count remains `13`
-- current `hepta-codex` script count is `12`
-- native gateway source-command count is `59`
+- current `hepta-codex` script count is `13`
+- native gateway source-command count is `60`
 - adapter count is `13`
 - disabled status ready count is `13`
 - live adapter enabled count is `0`
@@ -290,8 +292,8 @@ Purpose: validate the planning-only local tooling/content inventory exposed by
 Checks:
 
 - old local tooling/content ops file count remains `11`
-- current `hepta-codex` script count is `12`
-- native gateway source-command count is `59`
+- current `hepta-codex` script count is `13`
+- native gateway source-command count is `60`
 - local tooling/content surface count is `11`
 - planner-ready count is `11`
 - live process execution, filesystem touch, network read, and tool invocation
@@ -310,8 +312,8 @@ exposed by `/api/hepta-memory-capability-absorption-inventory`.
 Checks:
 
 - old memory/capability/absorption ops file count remains `14`
-- current `hepta-codex` script count is `12`
-- native gateway source-command count is `59`
+- current `hepta-codex` script count is `13`
+- native gateway source-command count is `60`
 - surface count is `14`
 - absorbed or represented surface count is `9`
 - gap-report-ready count is `14`
@@ -333,8 +335,8 @@ Purpose: validate the local-only release/hardening status gate exposed by
 Checks:
 
 - remaining old release/hardening script family count is `12`
-- current `hepta-codex` script count is `12`
-- native gateway source-command count is `59`
+- current `hepta-codex` script count is `13`
+- native gateway source-command count is `60`
 - status gate count is `12`
 - local status gate ready count is `12`
 - live execution enabled count is `0`
@@ -354,10 +356,33 @@ Checks:
   runtime/session, CLI inventory, provider inventory, and merge-completion
   reports agree on route/script counts
 
+### `hepta-codex-provider-channel-dry-run-plan.sh`
+
+Purpose: validate the local-only provider/channel/runtime dry-run plan exposed
+by `/api/hepta-provider-channel-dry-run-plan`.
+
+Checks:
+
+- current `hepta-codex` script count is `13`
+- native gateway source-command count is `60`
+- `5/5` dry-run families are ready
+- covered unique old ops file count is `43`
+- provider/search/channel/runtime coverage is `15/3/13/12`
+- live invocation, credential reads, provider prompt execution, search network
+  query, channel delivery, runtime store mutation, and fixture materialization
+  remain disabled
+- provider/model invocation, credential reads, external network/search,
+  channel read/send, Telegram owner handoff/read/send, process spawn,
+  filesystem read/write, task/session store mutation, gateway event enqueue,
+  native POST mutation, gateway mutation, and external send remain disabled
+- provider/channel dry-run plan, release/hardening, memory/capability, local
+  tooling/content, channel adapter, runtime/session, CLI inventory, provider
+  inventory, and merge-completion reports agree on route/script counts
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 12/20 by count, and more
-importantly turns ten useful old operational intents into
+This slice improves script parity from 1/20 to 13/20 by count, and more
+importantly turns twelve useful old operational intents into
 `hepta-codex`-native commands:
 
 - preflight
@@ -371,6 +396,7 @@ importantly turns ten useful old operational intents into
 - local tooling/content planning inventory
 - memory/capability absorption gap inventory
 - release/hardening status gate
+- provider/channel/runtime dry-run plan
 
 It does not close the old CLI breadth gap, but it turns that gap and the first
 provider/search/runtime-session/channel/local-tooling/memory-capability
