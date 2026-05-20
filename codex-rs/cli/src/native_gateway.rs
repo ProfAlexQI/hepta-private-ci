@@ -64,6 +64,7 @@ const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
 const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
 const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
 const HEPTA_MERGE_COMPLETION_ENDPOINT: &str = "/api/hepta-merge-completion";
+const HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT: &str = "/api/hepta-cli-command-inventory";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -156,6 +157,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-merge-completion --json",
         capability: "hepta-merge-completion",
         side_effect_boundary: "read-only merge and functional completion audit",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT,
+        source_command: "/hepta-cli-command-inventory --json",
+        capability: "hepta-cli-command-inventory",
+        side_effect_boundary: "read-only old Hepta CLI command breadth inventory",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -734,6 +742,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_merge_completion_report()),
                 );
             }
+            HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_cli_command_inventory_report()),
+                );
+            }
             "/api/operator-snapshot" => {
                 return (
                     "200 OK",
@@ -1114,6 +1129,7 @@ fn index_html(
       </section>
       <section class="panel">
         <p><code>/api/hepta-merge-completion</code> exposes the current merge/function completion audit, route parity, and remaining gated blockers without reading Telegram, sending messages, or enabling native POST real handlers.</p>
+        <p><code>/api/hepta-cli-command-inventory</code> exposes the old standalone Hepta CLI breadth inventory as a read-only migration map.</p>
       </section>
       <section class="panel">
         <p>Readiness payload:</p>
@@ -1218,8 +1234,9 @@ fn native_gateway_json(
             "Native redacted task artifact surfaces",
             "Native redacted events/activity surfaces",
             "Hepta merge and functional completion audit surface",
+            "Hepta CLI command breadth read-only inventory",
         ],
-        next_migration_slice: "keep merge-completion UI/browser smoke green and keep Telegram owner handoff explicit",
+        next_migration_slice: "port old Hepta CLI command breadth as read-only or dry-run slices before any live handoff",
     })
 }
 
@@ -3487,6 +3504,221 @@ struct HeptaMergeCompletionSideEffects {
     filesystem_written: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct HeptaCliCommandInventoryResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    migration_matrix_doc: &'static str,
+    command_inventory_doc: &'static str,
+    old_hepta_ops_file_count: usize,
+    old_hepta_rough_command_reference_count: usize,
+    old_hepta_script_total: usize,
+    current_hepta_codex_script_total: usize,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    missing_route_count: usize,
+    ops_family_count: usize,
+    ops_file_family_covered_count: usize,
+    absorbed_core_crate_count: usize,
+    old_cli_command_breadth_fully_migrated: bool,
+    safe_read_only_inventory_ready: bool,
+    script_inventory_script: &'static str,
+    ops_families: &'static [HeptaCliOpsFamily],
+    next_slices: &'static [&'static str],
+    blockers: &'static [&'static str],
+    side_effects: HeptaCliCommandInventorySideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaCliOpsFamily {
+    name: &'static str,
+    old_ops_file_count: usize,
+    representative_ops_files: &'static [&'static str],
+    migration_status: &'static str,
+    safe_next_mode: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaCliCommandInventorySideEffects {
+    provider_invoked: bool,
+    credential_read: bool,
+    external_network_read: bool,
+    external_send_performed: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    native_post_mutation_performed: bool,
+    filesystem_written: bool,
+}
+
+const HEPTA_CLI_OPS_FAMILIES: &[HeptaCliOpsFamily] = &[
+    HeptaCliOpsFamily {
+        name: "provider_metadata_bridges",
+        old_ops_file_count: 15,
+        representative_ops_files: &[
+            "anthropic_ops.rs",
+            "deepinfra_ops.rs",
+            "google_antigravity_ops.rs",
+            "google_gemini_cli_ops.rs",
+            "google_ops.rs",
+            "google_vertex_ops.rs",
+            "media_generation_ops.rs",
+            "mistral_ops.rs",
+            "native_model_provider_ops.rs",
+            "ollama_ops.rs",
+            "openai_codex_ops.rs",
+            "openai_ops.rs",
+            "openrouter_ops.rs",
+            "provider_registration_ops.rs",
+            "xai_ops.rs",
+        ],
+        migration_status: "not_bulk_enabled",
+        safe_next_mode: "read_only_metadata_report",
+    },
+    HeptaCliOpsFamily {
+        name: "channel_runtime_adapters",
+        old_ops_file_count: 13,
+        representative_ops_files: &[
+            "bonjour_ops.rs",
+            "discord_ops.rs",
+            "feishu_ops.rs",
+            "file_transfer_ops.rs",
+            "google_meet_ops.rs",
+            "googlechat_ops.rs",
+            "imessage_ops.rs",
+            "message_ops.rs",
+            "native_channel_metadata_ops.rs",
+            "telegram_ops.rs",
+            "tts_local_cli_ops.rs",
+            "voice_call_ops.rs",
+            "webhooks_ops.rs",
+        ],
+        migration_status: "live_gated_or_deferred",
+        safe_next_mode: "disabled_status_or_dry_run_plan",
+    },
+    HeptaCliOpsFamily {
+        name: "runtime_ops_admin",
+        old_ops_file_count: 12,
+        representative_ops_files: &[
+            "commitment_ops.rs",
+            "diagnostics_otel_ops.rs",
+            "diagnostics_prometheus_ops.rs",
+            "gateway_ops.rs",
+            "heartbeat_ops.rs",
+            "operator_admin_ops.rs",
+            "runtime_control_ops.rs",
+            "runtime_event_ops.rs",
+            "session_orchestration_ops.rs",
+            "task_provenance_ops.rs",
+            "thread_binding_ops.rs",
+            "update_plan_ops.rs",
+        ],
+        migration_status: "partially_represented_by_native_gateway",
+        safe_next_mode: "local_dry_run_planner",
+    },
+    HeptaCliOpsFamily {
+        name: "local_tooling_content",
+        old_ops_file_count: 11,
+        representative_ops_files: &[
+            "canvas_ops.rs",
+            "device_control_ops.rs",
+            "diffs_ops.rs",
+            "document_extract_ops.rs",
+            "filesystem_ops.rs",
+            "local_content_ops.rs",
+            "process_execution_ops.rs",
+            "search_tools_ops.rs",
+            "tools_invoke_ops.rs",
+            "web_readability_ops.rs",
+            "wiki_tools_ops.rs",
+        ],
+        migration_status: "not_first_class_as_legacy_commands",
+        safe_next_mode: "read_only_inventory_then_temp_workspace_smoke",
+    },
+    HeptaCliOpsFamily {
+        name: "memory_capability_absorption",
+        old_ops_file_count: 14,
+        representative_ops_files: &[
+            "capability_surface_ops.rs",
+            "hepta_p0_absorption_ops.rs",
+            "hepta_p1_absorption_ops.rs",
+            "hepta_runtime_absorption_ops.rs",
+            "memory_rem_ops.rs",
+            "memory_system_ops.rs",
+            "memory_tools_ops.rs",
+            "native_coding_agent_ops.rs",
+            "native_plugin_metadata_ops.rs",
+            "native_residual_runtime_ops.rs",
+            "native_search_provider_ops.rs",
+            "plugin_migration_ops.rs",
+            "runtime_capability_matrix_ops.rs",
+            "skill_workshop_ops.rs",
+        ],
+        migration_status: "partially_absorbed_as_library_reports",
+        safe_next_mode: "read_only_gap_report",
+    },
+];
+
+fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaCliCommandInventoryResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "attention",
+        source_command: "/hepta-cli-command-inventory --json",
+        native_route: true,
+        compatibility_mode: "native_cli_command_breadth_inventory",
+        side_effect_free: true,
+        audit_date: "2026-05-20",
+        migration_matrix_doc: "docs/release/HEPTA_CLI_SCRIPT_MIGRATION_MATRIX_2026-05-20.md",
+        command_inventory_doc: "docs/release/HEPTA_CLI_COMMAND_BREADTH_INVENTORY_2026-05-20.md",
+        old_hepta_ops_file_count: 65,
+        old_hepta_rough_command_reference_count: 574,
+        old_hepta_script_total: 20,
+        current_hepta_codex_script_total: 6,
+        native_gateway_source_command_count: 53,
+        route_count: route_matrix.route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        ops_family_count: HEPTA_CLI_OPS_FAMILIES.len(),
+        ops_file_family_covered_count: 65,
+        absorbed_core_crate_count: 6,
+        old_cli_command_breadth_fully_migrated: false,
+        safe_read_only_inventory_ready: true,
+        script_inventory_script: "scripts/hepta-codex-cli-command-inventory.sh",
+        ops_families: HEPTA_CLI_OPS_FAMILIES,
+        next_slices: &[
+            "port provider/search metadata bridges as read-only reports",
+            "port runtime-event/task/session surfaces as local dry-run planners",
+            "port channel adapters only as disabled live-gated status reports",
+            "defer credentialed/live smokes until explicit operator approval",
+        ],
+        blockers: &[
+            "old_hepta_cli_command_breadth_not_fully_migrated",
+            "credentialed_provider_surfaces_not_live_smoked",
+            "channel_adapters_not_owner_handoff_approved",
+            "old_cli_invocation_compatibility_not_claimed",
+            "old_hepta_release_external_scripts_not_fully_ported",
+        ],
+        side_effects: HeptaCliCommandInventorySideEffects {
+            provider_invoked: false,
+            credential_read: false,
+            external_network_read: false,
+            external_send_performed: false,
+            gateway_mutation_performed: false,
+            telegram_read_performed: false,
+            message_sent: false,
+            native_post_mutation_performed: false,
+            filesystem_written: false,
+        },
+    }
+}
+
 fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
     let route_matrix = control_ui_route_parity_report();
     HeptaMergeCompletionResponse {
@@ -3508,11 +3740,11 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
         active_service_coexistence_percent: 88,
         production_replacement_percent: 68,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 5,
-        carried_or_adapted_script_count: 5,
+        current_hepta_codex_script_total: 6,
+        carried_or_adapted_script_count: 6,
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
-        native_gateway_source_command_count: 52,
+        native_gateway_source_command_count: 53,
         route_matrix_ready: route_matrix.ready,
         route_count: route_matrix.route_count,
         implemented_route_count: route_matrix.implemented_route_count,
@@ -3535,7 +3767,7 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
             "old_hepta_release_external_scripts_not_fully_ported",
         ],
         next_actions: &[
-            "continue read-only old CLI command migration inventory",
+            "use /api/hepta-cli-command-inventory to drive read-only CLI migration slices",
             "keep browser visual smoke, preflight, soak, and watchdog gates green",
             "prepare but do not execute controlled Telegram owner handoff",
             "only perform Telegram owner handoff after explicit operator approval",
@@ -5173,6 +5405,7 @@ mod tests {
         assert!(routes.contains(&"GET /api/telegram-production-readiness".to_string()));
         assert!(routes.contains(&"GET /api/telegram-delivery-ledger".to_string()));
         assert!(routes.contains(&"GET /api/hepta-merge-completion".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-cli-command-inventory".to_string()));
     }
 
     #[test]
@@ -5196,10 +5429,10 @@ mod tests {
         assert_eq!(value["active_service_coexistence_percent"], 88);
         assert_eq!(value["production_replacement_percent"], 68);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 5);
+        assert_eq!(value["current_hepta_codex_script_total"], 6);
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
-        assert_eq!(value["native_gateway_source_command_count"], 52);
+        assert_eq!(value["native_gateway_source_command_count"], 53);
         assert_eq!(value["route_matrix_ready"], true);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["merge_completion_control_ui_surfaced"], true);
@@ -5210,7 +5443,7 @@ mod tests {
             "scripts/hepta-codex-browser-visual-smoke.sh"
         );
         assert!(
-            value["route_count"].as_u64().expect("route count") >= 52,
+            value["route_count"].as_u64().expect("route count") >= 53,
             "merge-completion route should be included in parity count"
         );
         assert_eq!(value["production_owner_handoff_required"], true);
@@ -5240,6 +5473,69 @@ mod tests {
             next_actions
                 .contains(&"keep browser visual smoke, preflight, soak, and watchdog gates green")
         );
+    }
+
+    #[test]
+    fn hepta_cli_command_inventory_endpoint_returns_read_only_gap_report() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("cli command inventory json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-cli-command-inventory --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_cli_command_breadth_inventory"
+        );
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["old_hepta_ops_file_count"], 65);
+        assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
+        assert_eq!(value["old_hepta_script_total"], 20);
+        assert_eq!(value["current_hepta_codex_script_total"], 6);
+        assert_eq!(value["native_gateway_source_command_count"], 53);
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["ops_family_count"], 5);
+        assert_eq!(value["ops_file_family_covered_count"], 65);
+        assert_eq!(value["old_cli_command_breadth_fully_migrated"], false);
+        assert_eq!(value["safe_read_only_inventory_ready"], true);
+        assert_eq!(
+            value["script_inventory_script"],
+            "scripts/hepta-codex-cli-command-inventory.sh"
+        );
+        let families = value["ops_families"].as_array().expect("ops families");
+        assert_eq!(families.len(), 5);
+        assert_eq!(families[0]["name"], "provider_metadata_bridges");
+        assert_eq!(families[0]["old_ops_file_count"], 15);
+        assert_eq!(
+            value["side_effects"]["provider_invoked"], false,
+            "inventory must not invoke providers"
+        );
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["telegram_read_performed"], false);
+        assert_eq!(value["side_effects"]["message_sent"], false);
+        assert_eq!(
+            value["side_effects"]["native_post_mutation_performed"],
+            false
+        );
+        let blockers = value["blockers"]
+            .as_array()
+            .expect("blockers")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
+        assert!(blockers.contains(&"channel_adapters_not_owner_handoff_approved"));
     }
 
     #[test]

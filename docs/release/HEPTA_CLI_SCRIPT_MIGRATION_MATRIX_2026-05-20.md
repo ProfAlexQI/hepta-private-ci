@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: old standalone Hepta CLI/script surface versus current `hepta-codex`
-Status: first executable migration slice landed
+Status: first executable migration slice and CLI breadth inventory landed
 
 ## Why This Exists
 
@@ -23,10 +23,10 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 52 after the merge-completion audit endpoint
-  (`51` before this continuation slice)
+- native gateway source commands: 53 after the CLI command inventory endpoint
+  (`52` after the merge-completion audit endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 5
+- scripts after this slice: 6
 
 New executable scripts added in this slice:
 
@@ -34,6 +34,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-live-soak.sh`
 - `scripts/hepta-codex-watchdog.sh`
 - `scripts/hepta-codex-browser-visual-smoke.sh`
+- `scripts/hepta-codex-cli-command-inventory.sh`
 
 Existing carried script:
 
@@ -86,6 +87,7 @@ These are currently exposed as live API/source-command equivalents:
 - Telegram owner handoff / production readiness / delivery ledger
 - native POST readiness/stores/activation/gray-release/rollout
 - machine-readable merge/function completion audit
+- machine-readable CLI command breadth inventory
 - task/chat/approval dry-run and confirm-required plans
 - external agent benchmark
 
@@ -183,15 +185,36 @@ Checks:
 It intentionally does not mutate launchd, Telegram ownership, POST handlers, or
 delivery state.
 
+### `hepta-codex-cli-command-inventory.sh`
+
+Purpose: validate the read-only old CLI breadth inventory exposed by
+`/api/hepta-cli-command-inventory`.
+
+Checks:
+
+- old standalone `*_ops.rs` count remains `65`
+- old rough command reference count remains `574`
+- old standalone script count remains `20`
+- current `hepta-codex` script count is `6`
+- native gateway source-command count is `53`
+- CLI ops families cover all `65` old ops files
+- merge-completion and CLI inventory reports agree on route/script counts
+- provider invocation, credential reads, Telegram reads/sends, native POST
+  mutation, external network reads, and filesystem writes remain disabled
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 5/20 by count, and more
-importantly turns four useful old operational intents into
+This slice improves script parity from 1/20 to 6/20 by count, and more
+importantly turns five useful old operational intents into
 `hepta-codex`-native commands:
 
 - preflight
 - live soak
 - installed/live watchdog
 - browser visual smoke
+- CLI command breadth inventory
 
-It does not close the old CLI breadth gap. That remains the next major track.
+It does not close the old CLI breadth gap, but it turns that gap into a
+machine-readable route and script gate. The next track is porting individual old
+provider/search/runtime/channel command families as read-only reports or dry-run
+planners before any credentialed/live activation.
