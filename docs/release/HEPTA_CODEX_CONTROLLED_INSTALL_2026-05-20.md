@@ -48,7 +48,9 @@ the same controlled coexistence service first to `route_count=52`, then to
 `route_count=54` with `/api/hepta-provider-metadata-inventory`, and now to
 `route_count=55` with `/api/hepta-runtime-session-dry-run-inventory`,
 `route_count=56` with `/api/hepta-channel-adapter-status-inventory`, and now
-to `route_count=57` with `/api/hepta-local-tooling-content-inventory`; see
+to `route_count=57` with `/api/hepta-local-tooling-content-inventory`, and now
+to `route_count=58` with
+`/api/hepta-memory-capability-absorption-inventory`; see
 `HEPTA_MERGE_COMPLETION_API_INSTALL_2026-05-20.md`.
 
 After the coexistence-status patch, `/api/operator-security` intentionally remains
