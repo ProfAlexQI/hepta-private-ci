@@ -1110,6 +1110,10 @@ fn index_html(
         <div class="metric"><div class="label">Runtime</div><div class="value">hepta-codex</div></div>
         <div class="metric"><div class="label">Gateway</div><div class="value">ready</div></div>
         <div class="metric"><div class="label">Telegram</div><div class="value">{telegram_status}</div></div>
+        <div class="metric"><div class="label">Merge completion</div><div class="value">82 / 91 / 88 / 68</div></div>
+      </section>
+      <section class="panel">
+        <p><code>/api/hepta-merge-completion</code> exposes the current merge/function completion audit, route parity, and remaining gated blockers without reading Telegram, sending messages, or enabling native POST real handlers.</p>
       </section>
       <section class="panel">
         <p>Readiness payload:</p>
