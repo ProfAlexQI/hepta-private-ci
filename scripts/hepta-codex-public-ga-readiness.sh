@@ -8,6 +8,7 @@ MERGE_JSON="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 PLAN_JSON="$(curl -fsS "$BASE_URL/api/hepta-provider-channel-dry-run-plan")"
 RELEASE_JSON="$(curl -fsS "$BASE_URL/api/hepta-release-hardening-status-gate")"
 CLI_JSON="$(curl -fsS "$BASE_URL/api/hepta-cli-command-inventory")"
+NATIVE_PACKAGING_JSON="$(curl -fsS "$BASE_URL/api/hepta-native-packaging-gate")"
 OWNER_JSON="$(curl -fsS "$BASE_URL/api/telegram-owner-handoff")"
 POST_JSON="$(curl -fsS "$BASE_URL/api/native-post-activation-plan")"
 
@@ -16,8 +17,8 @@ jq -e '
   and .status == "blocked"
   and .compatibility_mode == "native_public_ga_readiness_gate"
   and .side_effect_free == true
-  and .current_hepta_codex_script_total == 14
-  and .native_gateway_source_command_count == 61
+  and .current_hepta_codex_script_total == 15
+  and .native_gateway_source_command_count == 62
   and .missing_route_count == 0
   and .local_reports_synchronized == true
   and .local_gate_matrix_ready == true
@@ -29,7 +30,7 @@ jq -e '
   and .credentialed_provider_smoke_ready == false
   and .channel_live_delivery_ready == false
   and .old_cli_command_breadth_fully_migrated == false
-  and .hepta_native_release_packaging_ready == false
+  and .hepta_native_release_packaging_ready == true
   and .side_effects.public_release_published == false
   and .side_effects.release_artifact_written == false
   and .side_effects.launchd_mutated == false
@@ -55,6 +56,7 @@ report="$(jq -n \
   --argjson plan "$PLAN_JSON" \
   --argjson release "$RELEASE_JSON" \
   --argjson cli "$CLI_JSON" \
+  --argjson native_packaging "$NATIVE_PACKAGING_JSON" \
   --argjson owner "$OWNER_JSON" \
   --argjson post "$POST_JSON" \
   '{
@@ -82,10 +84,13 @@ report="$(jq -n \
       and $ga.native_gateway_source_command_count == $release.native_gateway_source_command_count
       and $ga.current_hepta_codex_script_total == $cli.current_hepta_codex_script_total
       and $ga.native_gateway_source_command_count == $cli.native_gateway_source_command_count
+      and $ga.current_hepta_codex_script_total == $native_packaging.current_hepta_codex_script_total
+      and $ga.native_gateway_source_command_count == $native_packaging.native_gateway_source_command_count
       and $ga.missing_route_count == $merge.missing_route_count
       and $ga.missing_route_count == $plan.missing_route_count
       and $ga.missing_route_count == $release.missing_route_count
       and $ga.missing_route_count == $cli.missing_route_count
+      and $ga.missing_route_count == $native_packaging.missing_route_count
     ),
     expected_external_blockers:{
       active_owner:$owner.active_owner,
@@ -93,7 +98,9 @@ report="$(jq -n \
       native_post_activation_enabled:$post.activation_currently_enabled,
       native_post_single_handler_scope_ready:$post.single_handler_scope_ready,
       old_cli_command_breadth_fully_migrated:$cli.old_cli_command_breadth_fully_migrated,
-      release_script_execution_compatibility:$release.old_script_execution_compatibility_claimed
+      release_script_execution_compatibility:$release.old_script_execution_compatibility_claimed,
+      native_packaging_local_gate_ready:$native_packaging.local_packaging_gate_ready,
+      native_packaging_public_distribution_artifact_written:$native_packaging.public_distribution_artifact_written
     },
     side_effects:$ga.side_effects
   }')"

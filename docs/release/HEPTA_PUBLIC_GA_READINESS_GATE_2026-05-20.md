@@ -34,6 +34,7 @@ Local evidence currently synchronized by the gate:
 - memory/capability absorption inventory
 - release/hardening status gate
 - provider/channel/runtime dry-run plan
+- Hepta Native packaging gate
 - gateway replacement readiness
 - Telegram owner handoff guard
 - Telegram production readiness guard
@@ -48,7 +49,11 @@ Local evidence currently synchronized by the gate:
 - Old standalone Hepta CLI command breadth is not claimed fully migrated.
 - Old release/hardening script execution compatibility is not claimed.
 - Release artifact packing and external public release are not approved.
-- Hepta Native release packaging is not complete.
+
+Cleared locally after the follow-up native packaging gate:
+
+- Hepta Native source/package metadata/local smoke readiness is represented by
+  `/api/hepta-native-packaging-gate`.
 
 ## Verification
 
@@ -94,3 +99,21 @@ Safety state after install:
 - Hepta Telegram poll loop remains gated
 - native POST real activation remains disabled
 - old OpenClaw health remains live at `127.0.0.1:18789`
+
+## Follow-Up: Hepta Native Packaging Gate
+
+After the initial public GA readiness gate, the local Hepta Native packaging
+track was promoted into the live matrix:
+
+- endpoint: `/api/hepta-native-packaging-gate`
+- script: `scripts/hepta-codex-native-packaging-gate.sh`
+- local native package gate: `ready`
+- public distribution artifact written: `false`
+- signing/notarization/stapling: deferred
+- aggregate script count: `15`
+- aggregate source-command count: `62`
+- route parity: `62/62`
+- public GA blocker count: `10`
+
+This clears the local native packaging readiness blocker while keeping release
+artifact creation and external public release behind explicit approval.

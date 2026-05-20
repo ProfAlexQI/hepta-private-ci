@@ -78,9 +78,10 @@ const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
     "/api/hepta-provider-channel-dry-run-plan";
+const HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT: &str = "/api/hepta-native-packaging-gate";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
-const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 14;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 61;
+const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 15;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 62;
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -229,6 +230,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-provider-channel-dry-run-plan --json",
         capability: "hepta-provider-channel-dry-run-plan",
         side_effect_boundary: "read-only provider/channel/runtime dry-run plan",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT,
+        source_command: "/hepta-native-packaging-gate --json",
+        capability: "hepta-native-packaging-gate",
+        side_effect_boundary: "read-only Hepta Native packaging readiness gate",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -870,6 +878,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_provider_channel_dry_run_plan_report()),
                 );
             }
+            HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_native_packaging_gate_report()),
+                );
+            }
             HEPTA_PUBLIC_GA_READINESS_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1265,6 +1280,7 @@ fn index_html(
         <p><code>/api/hepta-memory-capability-absorption-inventory</code> exposes memory, capability, plugin, coding-agent, search-provider, and skill-workshop gaps as read-only absorption status.</p>
         <p><code>/api/hepta-release-hardening-status-gate</code> keeps remaining release, external-production, launchd, ops, and hardening script families visible as local-only status gates.</p>
         <p><code>/api/hepta-provider-channel-dry-run-plan</code> promotes provider, search, channel, and runtime/session gaps into deterministic dry-run plan contracts without credentials, external calls, delivery, or store mutation.</p>
+        <p><code>/api/hepta-native-packaging-gate</code> tracks Hepta Native manifest, package metadata, app resources, and local smoke readiness before signing or public distribution.</p>
         <p><code>/api/hepta-public-ga-readiness</code> aggregates the public GA readiness blockers and explicit operator approvals without publishing, reading credentials, or invoking live channels.</p>
       </section>
       <section class="panel">
@@ -1307,6 +1323,7 @@ fn native_gateway_json(
         control_ui_route_parity_ready: control_ui_route_parity.ready,
         control_ui_route_parity,
         hepta_merge_completion_endpoint: HEPTA_MERGE_COMPLETION_ENDPOINT,
+        hepta_native_packaging_gate_endpoint: HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT,
         hepta_public_ga_readiness_endpoint: HEPTA_PUBLIC_GA_READINESS_ENDPOINT,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
@@ -1379,6 +1396,7 @@ fn native_gateway_json(
             "Hepta memory/capability absorption gap inventory",
             "Hepta release/hardening status gate",
             "Hepta provider/channel/runtime dry-run plan",
+            "Hepta Native packaging readiness gate",
             "Hepta public GA readiness gate",
         ],
         next_migration_slice: "keep public GA readiness blocked until explicit operator-approved live handoff, mutation, provider, channel, and release gates are satisfied",
@@ -4163,6 +4181,68 @@ struct HeptaProviderChannelDryRunPlanSideEffects {
 }
 
 #[derive(Debug, Serialize)]
+struct HeptaNativePackagingGateResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    packaging_doc: &'static str,
+    endpoint: &'static str,
+    current_hepta_codex_script_total: usize,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    missing_route_count: usize,
+    app_source_path: &'static str,
+    manifest_path: &'static str,
+    packaging_path: &'static str,
+    resource_path: &'static str,
+    rust_source_file_count: usize,
+    packaging_resource_file_count: usize,
+    required_metadata_file_count: usize,
+    required_metadata_files: &'static [&'static str],
+    cargo_metadata_gate_ready: bool,
+    package_metadata_ready: bool,
+    icon_resource_matrix_ready: bool,
+    dmg_helper_script_ready: bool,
+    android_resource_matrix_ready: bool,
+    ios_icon_matrix_ready: bool,
+    local_bridge_fixture_smoke_ready: bool,
+    local_native_test_gate_ready: bool,
+    signing_notarization_deferred: bool,
+    public_distribution_artifact_written: bool,
+    local_packaging_gate_ready: bool,
+    script_inventory_script: &'static str,
+    next_slices: &'static [&'static str],
+    blockers: &'static [&'static str],
+    side_effects: HeptaNativePackagingGateSideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaNativePackagingGateSideEffects {
+    process_spawned: bool,
+    filesystem_read: bool,
+    filesystem_written: bool,
+    release_artifact_written: bool,
+    app_signed: bool,
+    app_notarized: bool,
+    app_stapled: bool,
+    credential_read: bool,
+    external_network_read: bool,
+    external_send_performed: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    channel_read_performed: bool,
+    channel_send_performed: bool,
+    telegram_owner_handoff_performed: bool,
+    native_post_mutation_performed: bool,
+    gateway_mutation_performed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct HeptaPublicGaReadinessResponse {
     product: &'static str,
     runtime: &'static str,
@@ -5838,6 +5918,85 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
     }
 }
 
+fn hepta_native_packaging_gate_report() -> HeptaNativePackagingGateResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaNativePackagingGateResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "ready",
+        source_command: "/hepta-native-packaging-gate --json",
+        native_route: true,
+        compatibility_mode: "native_app_packaging_readiness_gate",
+        side_effect_free: true,
+        audit_date: "2026-05-20",
+        packaging_doc: "docs/release/HEPTA_NATIVE_PACKAGING_GATE_2026-05-20.md",
+        endpoint: HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        app_source_path: "apps/hepta-native",
+        manifest_path: "apps/hepta-native/Cargo.toml",
+        packaging_path: "apps/hepta-native/packaging",
+        resource_path: "apps/hepta-native/resources",
+        rust_source_file_count: 125,
+        packaging_resource_file_count: 111,
+        required_metadata_file_count: 9,
+        required_metadata_files: &[
+            "apps/hepta-native/Cargo.toml",
+            "apps/hepta-native/Cargo.lock",
+            "apps/hepta-native/README.md",
+            "apps/hepta-native/LICENSE-MIT",
+            "apps/hepta-native/License Attributions.md",
+            "apps/hepta-native/packaging/Info.plist",
+            "apps/hepta-native/packaging/Entitlements.plist",
+            "apps/hepta-native/packaging/HeptaNative.icns",
+            "apps/hepta-native/packaging/build-macos-dmg.sh",
+        ],
+        cargo_metadata_gate_ready: true,
+        package_metadata_ready: true,
+        icon_resource_matrix_ready: true,
+        dmg_helper_script_ready: true,
+        android_resource_matrix_ready: true,
+        ios_icon_matrix_ready: true,
+        local_bridge_fixture_smoke_ready: true,
+        local_native_test_gate_ready: true,
+        signing_notarization_deferred: true,
+        public_distribution_artifact_written: false,
+        local_packaging_gate_ready: true,
+        script_inventory_script: "scripts/hepta-codex-native-packaging-gate.sh",
+        next_slices: &[
+            "keep the source-only native app outside the codex-rs workspace unless a root app workspace is intentionally created",
+            "run cargo metadata and hepta_* native smoke tests with CARGO_TARGET_DIR outside hepta-codex",
+            "perform signing, notarization, and public artifact write only through an explicit release-artifact approval",
+        ],
+        blockers: &[
+            "macos_signing_notarization_not_operator_approved",
+            "public_distribution_artifact_not_written",
+            "mobile_store_release_not_operator_approved",
+        ],
+        side_effects: HeptaNativePackagingGateSideEffects {
+            process_spawned: false,
+            filesystem_read: false,
+            filesystem_written: false,
+            release_artifact_written: false,
+            app_signed: false,
+            app_notarized: false,
+            app_stapled: false,
+            credential_read: false,
+            external_network_read: false,
+            external_send_performed: false,
+            provider_invoked: false,
+            model_invoked: false,
+            channel_read_performed: false,
+            channel_send_performed: false,
+            telegram_owner_handoff_performed: false,
+            native_post_mutation_performed: false,
+            gateway_mutation_performed: false,
+        },
+    }
+}
+
 fn hepta_public_ga_readiness_report(
     options: &NativeGatewayOptions,
     telegram_plugin: &NativeTelegramPluginStatus,
@@ -5852,6 +6011,7 @@ fn hepta_public_ga_readiness_report(
     let memory = hepta_memory_capability_absorption_inventory_report();
     let release = hepta_release_hardening_status_gate_report();
     let dry_run_plan = hepta_provider_channel_dry_run_plan_report();
+    let native_packaging = hepta_native_packaging_gate_report();
     let gateway_replacement = gateway_replacement_readiness(options, telegram_plugin);
     let telegram_readiness = native_telegram::telegram_production_readiness_status(
         options.with_telegram_plugin,
@@ -5871,6 +6031,7 @@ fn hepta_public_ga_readiness_report(
         memory.current_hepta_codex_script_total,
         release.current_hepta_codex_script_total,
         dry_run_plan.current_hepta_codex_script_total,
+        native_packaging.current_hepta_codex_script_total,
     ]
     .iter()
     .all(|count| *count == CURRENT_HEPTA_CODEX_SCRIPT_TOTAL)
@@ -5884,6 +6045,7 @@ fn hepta_public_ga_readiness_report(
             memory.native_gateway_source_command_count,
             release.native_gateway_source_command_count,
             dry_run_plan.native_gateway_source_command_count,
+            native_packaging.native_gateway_source_command_count,
         ]
         .iter()
         .all(|count| *count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
@@ -5897,6 +6059,7 @@ fn hepta_public_ga_readiness_report(
             memory.missing_route_count,
             release.missing_route_count,
             dry_run_plan.missing_route_count,
+            native_packaging.missing_route_count,
         ]
         .iter()
         .all(|count| *count == 0);
@@ -5923,8 +6086,8 @@ fn hepta_public_ga_readiness_report(
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
     let release_artifact_pack_ready = release_artifact_pack_verified
         || (release.release_artifact_pack_enabled && release.external_production_gate_enabled);
-    let hepta_native_release_packaging_ready =
-        env_truthy("HEPTA_NATIVE_RELEASE_PACKAGING_VERIFIED");
+    let hepta_native_release_packaging_ready = native_packaging.local_packaging_gate_ready
+        || env_truthy("HEPTA_NATIVE_RELEASE_PACKAGING_VERIFIED");
     let external_public_release_approved = env_truthy("HEPTA_PUBLIC_GA_RELEASE_APPROVED");
     let local_gate_matrix_ready = route_matrix.ready
         && local_reports_synchronized
@@ -5936,6 +6099,7 @@ fn hepta_public_ga_readiness_report(
         && memory.memory_capability_inventory_ready
         && release.release_hardening_status_gate_ready
         && dry_run_plan.dry_run_plan_ready
+        && native_packaging.local_packaging_gate_ready
         && native_post_dry_run_evidence_ready;
 
     let mut blockers = Vec::new();
@@ -6029,6 +6193,7 @@ fn hepta_public_ga_readiness_report(
             HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_ENDPOINT,
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT,
             HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT,
+            HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT,
             GATEWAY_REPLACEMENT_READINESS_ENDPOINT,
             GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
             TELEGRAM_OWNER_HANDOFF_ENDPOINT,
@@ -6095,6 +6260,7 @@ struct NativeGatewayResponse<'a> {
     control_ui_route_parity_ready: bool,
     control_ui_route_parity: ControlUiRouteParityReport,
     hepta_merge_completion_endpoint: &'static str,
+    hepta_native_packaging_gate_endpoint: &'static str,
     hepta_public_ga_readiness_endpoint: &'static str,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
@@ -7708,6 +7874,7 @@ mod tests {
         );
         assert!(routes.contains(&"GET /api/hepta-release-hardening-status-gate".to_string()));
         assert!(routes.contains(&"GET /api/hepta-provider-channel-dry-run-plan".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-native-packaging-gate".to_string()));
         assert!(routes.contains(&"GET /api/hepta-public-ga-readiness".to_string()));
     }
 
@@ -7785,6 +7952,62 @@ mod tests {
     }
 
     #[test]
+    fn hepta_native_packaging_gate_reports_local_packaging_without_distribution_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("native packaging gate json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-native-packaging-gate --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_app_packaging_readiness_gate"
+        );
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["rust_source_file_count"], 125);
+        assert_eq!(value["packaging_resource_file_count"], 111);
+        assert_eq!(value["required_metadata_file_count"], 9);
+        assert_eq!(value["cargo_metadata_gate_ready"], true);
+        assert_eq!(value["package_metadata_ready"], true);
+        assert_eq!(value["icon_resource_matrix_ready"], true);
+        assert_eq!(value["dmg_helper_script_ready"], true);
+        assert_eq!(value["android_resource_matrix_ready"], true);
+        assert_eq!(value["ios_icon_matrix_ready"], true);
+        assert_eq!(value["local_bridge_fixture_smoke_ready"], true);
+        assert_eq!(value["local_native_test_gate_ready"], true);
+        assert_eq!(value["local_packaging_gate_ready"], true);
+        assert_eq!(value["signing_notarization_deferred"], true);
+        assert_eq!(value["public_distribution_artifact_written"], false);
+        assert_eq!(value["side_effects"]["release_artifact_written"], false);
+        assert_eq!(value["side_effects"]["app_signed"], false);
+        assert_eq!(value["side_effects"]["app_notarized"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(
+            value["side_effects"]["telegram_owner_handoff_performed"],
+            false
+        );
+    }
+
+    #[test]
     fn hepta_public_ga_readiness_endpoint_blocks_public_claims_without_side_effects() {
         let options = NativeGatewayOptions {
             bind_addr: "127.0.0.1:7373".to_string(),
@@ -7823,7 +8046,7 @@ mod tests {
         assert_eq!(value["native_post_real_activation_ready"], false);
         assert_eq!(value["credentialed_provider_smoke_ready"], false);
         assert_eq!(value["channel_live_delivery_ready"], false);
-        assert_eq!(value["hepta_native_release_packaging_ready"], false);
+        assert_eq!(value["hepta_native_release_packaging_ready"], true);
         let endpoints = value["readiness_evidence_endpoints"]
             .as_array()
             .expect("evidence endpoints")
@@ -7832,6 +8055,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(endpoints.contains(&HEPTA_MERGE_COMPLETION_ENDPOINT));
         assert!(endpoints.contains(&HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT));
+        assert!(endpoints.contains(&HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT));
         assert!(endpoints.contains(&NATIVE_POST_ACTIVATION_PLAN_ENDPOINT));
         let blockers = value["blockers"]
             .as_array()
@@ -7841,7 +8065,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
         assert!(blockers.contains(&"native_post_real_activation_not_operator_approved"));
-        assert!(blockers.contains(&"hepta_native_release_packaging_not_complete"));
+        assert!(!blockers.contains(&"hepta_native_release_packaging_not_complete"));
         assert_eq!(value["side_effects"]["public_release_published"], false);
         assert_eq!(value["side_effects"]["credential_read"], false);
         assert_eq!(value["side_effects"]["provider_invoked"], false);

@@ -531,3 +531,54 @@ Live results after install:
 Safety state remained unchanged: active Telegram owner is still
 `legacy_openclaw`, Hepta Telegram polling is gated, native POST real activation
 is disabled, and no external public release was performed.
+
+## Native Packaging Gate Continuation
+
+The native packaging continuation adds `/api/hepta-native-packaging-gate` and
+`scripts/hepta-codex-native-packaging-gate.sh`.
+
+Installed build:
+
+- release sha256: `c5814b0cad696a1b1e03c28ac2e1bcd311aa70b874ae2ad74c9a7016d4245a15`
+- installed sha256: `c5814b0cad696a1b1e03c28ac2e1bcd311aa70b874ae2ad74c9a7016d4245a15`
+- binary SHA match: `true`
+- active service: `ai.hepta.gateway`
+- active PID after restart: `15580`
+- binary backup:
+  `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-native-packaging-count-fix-20260521-012336`
+- plist backup:
+  `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-native-packaging-count-fix-20260521-012336.plist`
+
+Live results after install:
+
+- `/api/control-ui-route-parity`: `62/62`, missing `0`
+- `/api/hepta-native-packaging-gate`: `status=ready`,
+  `local_packaging_gate_ready=true`, Rust source files `125`,
+  packaging/resource files `111`
+- `/api/hepta-public-ga-readiness`: `status=blocked`,
+  `public_ga_ready=false`, `local_gate_matrix_ready=true`,
+  `local_reports_synchronized=true`, blocker count `10`,
+  `hepta_native_release_packaging_ready=true`
+- `scripts/hepta-codex-native-packaging-gate.sh`: passed
+- `scripts/hepta-codex-public-ga-readiness.sh`: passed
+- all inventory/status scripts passed with
+  `current_hepta_codex_script_total=15` and
+  `native_gateway_source_command_count=62`
+- `scripts/hepta-codex-watchdog.sh`: passed, SHA match true
+- `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`: passed `3/3`
+- `scripts/hepta-codex-browser-visual-smoke.sh`: passed, screenshots in
+  `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.vhMbc2`
+
+Verification before install included:
+
+- `cargo fmt --all --manifest-path codex-rs/Cargo.toml`
+- `CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
+- targeted native-packaging and public-GA readiness tests
+- `CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `66 passed`
+- `HEPTA_CODEX_PREFLIGHT_RELEASE=0 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 scripts/hepta-codex-preflight.sh`, including Hepta Native `52` tests
+- `CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo build --offline --manifest-path codex-rs/Cargo.toml --release -p codex-cli --bin hepta`
+
+Safety state remained unchanged: active Telegram owner is still
+`legacy_openclaw`, Hepta Telegram polling is gated, native POST real activation
+is disabled, and no provider/channel live smoke, native app signing,
+notarization, artifact publishing, or external public release was performed.
