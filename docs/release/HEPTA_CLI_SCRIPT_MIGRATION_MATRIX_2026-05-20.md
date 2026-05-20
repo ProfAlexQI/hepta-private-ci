@@ -23,10 +23,10 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 56 after the channel adapter status inventory endpoint
-  (`55` after the runtime/session dry-run inventory endpoint; `54` after the provider metadata inventory endpoint; `53` after the CLI command inventory endpoint)
+- native gateway source commands: 57 after the local tooling/content inventory endpoint
+  (`56` after the channel adapter status inventory endpoint; `55` after the runtime/session dry-run inventory endpoint; `54` after the provider metadata inventory endpoint; `53` after the CLI command inventory endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 9
+- scripts after this slice: 10
 
 New executable scripts added in this slice:
 
@@ -38,6 +38,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-provider-metadata-inventory.sh`
 - `scripts/hepta-codex-runtime-session-dry-run-inventory.sh`
 - `scripts/hepta-codex-channel-adapter-status-inventory.sh`
+- `scripts/hepta-codex-local-tooling-content-inventory.sh`
 
 Existing carried script:
 
@@ -66,6 +67,7 @@ Existing carried script:
 | `hepta-autonomous-coding-subagent-gate.sh` | not ported | defer until old worker command surface is intentionally re-exposed |
 | Runtime/session dry-run inventory | replaced by `hepta-codex-runtime-session-dry-run-inventory.sh` for 12 old runtime/admin ops files | migrate as side-effect-free dry-run inventory |
 | Channel adapter status inventory | replaced by `hepta-codex-channel-adapter-status-inventory.sh` for 13 old channel/runtime adapter ops files | migrate as disabled/live-gated status inventory |
+| Local tooling/content inventory | replaced by `hepta-codex-local-tooling-content-inventory.sh` for 11 old canvas/diff/filesystem/process/search/tool/wiki ops files | migrate as planning-only inventory |
 
 ## CLI Ops Migration Matrix
 
@@ -96,6 +98,7 @@ These are currently exposed as live API/source-command equivalents:
 - machine-readable provider/search metadata inventory
 - machine-readable runtime/task/session dry-run inventory
 - machine-readable channel adapter disabled status inventory
+- machine-readable local tooling/content planning inventory
 - task/chat/approval dry-run and confirm-required plans
 - external agent benchmark
 
@@ -203,8 +206,8 @@ Checks:
 - old standalone `*_ops.rs` count remains `65`
 - old rough command reference count remains `574`
 - old standalone script count remains `20`
-- current `hepta-codex` script count is `9`
-- native gateway source-command count is `56`
+- current `hepta-codex` script count is `10`
+- native gateway source-command count is `57`
 - CLI ops families cover all `65` old ops files
 - merge-completion and CLI inventory reports agree on route/script counts
 - provider invocation, credential reads, Telegram reads/sends, native POST
@@ -219,8 +222,8 @@ Checks:
 
 - old provider ops file count remains `15`
 - adjacent search/readability ops file count remains `3`
-- current `hepta-codex` script count is `9`
-- native gateway source-command count is `56`
+- current `hepta-codex` script count is `10`
+- native gateway source-command count is `57`
 - provider adapter count is `15`
 - adjacent search adapter count is `3`
 - provider live invocation and credentialed smoke remain disabled
@@ -238,8 +241,8 @@ exposed by `/api/hepta-runtime-session-dry-run-inventory`.
 Checks:
 
 - old runtime/admin ops file count remains `12`
-- current `hepta-codex` script count is `9`
-- native gateway source-command count is `56`
+- current `hepta-codex` script count is `10`
+- native gateway source-command count is `57`
 - dry-run surface count is `12`
 - planner-ready count is `12`
 - live mutation surface count is `0`
@@ -257,8 +260,8 @@ exposed by `/api/hepta-channel-adapter-status-inventory`.
 Checks:
 
 - old channel/runtime adapter ops file count remains `13`
-- current `hepta-codex` script count is `9`
-- native gateway source-command count is `56`
+- current `hepta-codex` script count is `10`
+- native gateway source-command count is `57`
 - adapter count is `13`
 - disabled status ready count is `13`
 - live adapter enabled count is `0`
@@ -270,10 +273,30 @@ Checks:
 - channel, runtime/session, CLI inventory, provider inventory, and
   merge-completion reports agree on route/script counts
 
+### `hepta-codex-local-tooling-content-inventory.sh`
+
+Purpose: validate the planning-only local tooling/content inventory exposed by
+`/api/hepta-local-tooling-content-inventory`.
+
+Checks:
+
+- old local tooling/content ops file count remains `11`
+- current `hepta-codex` script count is `10`
+- native gateway source-command count is `57`
+- local tooling/content surface count is `11`
+- planner-ready count is `11`
+- live process execution, filesystem touch, network read, and tool invocation
+  counts remain `0`
+- process spawn, filesystem read/write, external network read, tool invocation,
+  provider/model invocation, credential reads, channel read/send, native POST
+  mutation, gateway mutation, and external send remain disabled
+- local tooling/content, channel adapter, runtime/session, CLI inventory,
+  provider inventory, and merge-completion reports agree on route/script counts
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 9/20 by count, and more
-importantly turns six useful old operational intents into
+This slice improves script parity from 1/20 to 10/20 by count, and more
+importantly turns nine useful old operational intents into
 `hepta-codex`-native commands:
 
 - preflight
@@ -284,9 +307,10 @@ importantly turns six useful old operational intents into
 - provider/search metadata inventory
 - runtime/task/session dry-run inventory
 - channel adapter disabled status inventory
+- local tooling/content planning inventory
 
 It does not close the old CLI breadth gap, but it turns that gap and the first
-provider/search/runtime-session/channel families into machine-readable route and
-script gates. The next track is inventorying local tooling/content surfaces
-before any process, filesystem, network, file-transfer, or channel-delivery
-smoke.
+provider/search/runtime-session/channel/local-tooling families into
+machine-readable route and script gates. The next track is promoting
+memory/capability absorption gaps as read-only reports before any live process,
+filesystem, network, file-transfer, or channel-delivery smoke.

@@ -70,6 +70,8 @@ const HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_ENDPOINT: &str =
     "/api/hepta-runtime-session-dry-run-inventory";
 const HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT: &str =
     "/api/hepta-channel-adapter-status-inventory";
+const HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_ENDPOINT: &str =
+    "/api/hepta-local-tooling-content-inventory";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -190,6 +192,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-channel-adapter-status-inventory --json",
         capability: "hepta-channel-adapter-status-inventory",
         side_effect_boundary: "read-only channel adapter disabled/live-gated status inventory",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_ENDPOINT,
+        source_command: "/hepta-local-tooling-content-inventory --json",
+        capability: "hepta-local-tooling-content-inventory",
+        side_effect_boundary: "read-only local tooling/content planning inventory",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -796,6 +805,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_channel_adapter_status_inventory_report()),
                 );
             }
+            HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_local_tooling_content_inventory_report()),
+                );
+            }
             "/api/operator-snapshot" => {
                 return (
                     "200 OK",
@@ -1180,6 +1196,7 @@ fn index_html(
         <p><code>/api/hepta-provider-metadata-inventory</code> narrows the provider/search bridge slice to metadata-only status without reading credentials or invoking providers.</p>
         <p><code>/api/hepta-runtime-session-dry-run-inventory</code> covers runtime-event, task, session, gateway, diagnostics, and admin ops as local dry-run migration plans without mutating registries or enqueuing gateway events.</p>
         <p><code>/api/hepta-channel-adapter-status-inventory</code> keeps Discord, Feishu, iMessage, Telegram, voice, webhook, and file-transfer adapters visible only as disabled/live-gated status entries.</p>
+        <p><code>/api/hepta-local-tooling-content-inventory</code> maps canvas, diffs, filesystem, process, local content, search, readability, wiki, and tool invocation surfaces as local plans only.</p>
       </section>
       <section class="panel">
         <p>Readiness payload:</p>
@@ -1288,8 +1305,9 @@ fn native_gateway_json(
             "Hepta provider/search metadata inventory",
             "Hepta runtime/task/session dry-run inventory",
             "Hepta channel adapter disabled status inventory",
+            "Hepta local tooling/content planning inventory",
         ],
-        next_migration_slice: "inventory local tooling/content surfaces before process, filesystem, or network smokes",
+        next_migration_slice: "promote memory/capability absorption gaps as read-only reports before any live process, filesystem, or network smokes",
     })
 }
 
@@ -3787,6 +3805,72 @@ struct HeptaChannelAdapterStatusInventorySideEffects {
     filesystem_written: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct HeptaLocalToolingContentInventoryResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    local_tooling_inventory_doc: &'static str,
+    old_local_tooling_ops_file_count: usize,
+    current_hepta_codex_script_total: usize,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    missing_route_count: usize,
+    surface_count: usize,
+    planner_ready_count: usize,
+    live_process_enabled_count: usize,
+    filesystem_touch_enabled_count: usize,
+    network_read_enabled_count: usize,
+    tool_invocation_enabled_count: usize,
+    local_tooling_inventory_ready: bool,
+    old_cli_invocation_compatibility_claimed: bool,
+    process_execution_enabled: bool,
+    filesystem_read_enabled: bool,
+    filesystem_write_enabled: bool,
+    network_read_enabled: bool,
+    tool_invocation_enabled: bool,
+    script_inventory_script: &'static str,
+    local_tooling_surfaces: &'static [HeptaLocalToolingContentSurface],
+    next_slices: &'static [&'static str],
+    blockers: &'static [&'static str],
+    side_effects: HeptaLocalToolingContentInventorySideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaLocalToolingContentSurface {
+    name: &'static str,
+    old_ops_file: &'static str,
+    migration_status: &'static str,
+    safe_next_mode: &'static str,
+    planner_ready: bool,
+    process_execution_enabled: bool,
+    filesystem_touch_enabled: bool,
+    network_read_enabled: bool,
+    tool_invocation_enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaLocalToolingContentInventorySideEffects {
+    process_spawned: bool,
+    filesystem_read: bool,
+    filesystem_written: bool,
+    external_network_read: bool,
+    tool_invoked: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    credential_read: bool,
+    channel_read_performed: bool,
+    channel_send_performed: bool,
+    gateway_mutation_performed: bool,
+    native_post_mutation_performed: bool,
+    external_send_performed: bool,
+}
+
 const HEPTA_CLI_OPS_FAMILIES: &[HeptaCliOpsFamily] = &[
     HeptaCliOpsFamily {
         name: "provider_metadata_bridges",
@@ -3868,8 +3952,8 @@ const HEPTA_CLI_OPS_FAMILIES: &[HeptaCliOpsFamily] = &[
             "web_readability_ops.rs",
             "wiki_tools_ops.rs",
         ],
-        migration_status: "not_first_class_as_legacy_commands",
-        safe_next_mode: "read_only_inventory_then_temp_workspace_smoke",
+        migration_status: "local_planning_inventory_landed",
+        safe_next_mode: "operator_approved_temp_workspace_smoke",
     },
     HeptaCliOpsFamily {
         name: "memory_capability_absorption",
@@ -4277,6 +4361,130 @@ const HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES: &[HeptaChannelAdapterStatus] = &[
     },
 ];
 
+const HEPTA_LOCAL_TOOLING_CONTENT_SURFACES: &[HeptaLocalToolingContentSurface] = &[
+    HeptaLocalToolingContentSurface {
+        name: "canvas",
+        old_ops_file: "canvas_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "canvas_host_status_without_navigation_or_render_mutation",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "device-control",
+        old_ops_file: "device_control_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "device_capability_status_without_device_command",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "diffs",
+        old_ops_file: "diffs_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "diff_contract_report_without_patch_apply",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "document-extract",
+        old_ops_file: "document_extract_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "extractor_capability_plan_without_file_read",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "filesystem",
+        old_ops_file: "filesystem_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "filesystem_contract_plan_without_read_or_write",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "local-content",
+        old_ops_file: "local_content_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "redacted_content_plan_without_content_read",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "process-execution",
+        old_ops_file: "process_execution_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "process_contract_report_without_spawn",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "search-tools",
+        old_ops_file: "search_tools_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "search_tool_catalog_without_query_or_network_fetch",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "tools-invoke",
+        old_ops_file: "tools_invoke_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "tool_invocation_contract_without_calling_tools",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "web-readability",
+        old_ops_file: "web_readability_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "readability_contract_without_url_fetch",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+    HeptaLocalToolingContentSurface {
+        name: "wiki-tools",
+        old_ops_file: "wiki_tools_ops.rs",
+        migration_status: "local_planning_inventory_only",
+        safe_next_mode: "wiki_contract_without_workspace_or_network_read",
+        planner_ready: true,
+        process_execution_enabled: false,
+        filesystem_touch_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+    },
+];
+
 fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
     HeptaChannelAdapterStatusInventoryResponse {
@@ -4290,8 +4498,8 @@ fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusI
         audit_date: "2026-05-20",
         channel_inventory_doc: "docs/release/HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_2026-05-20.md",
         old_channel_ops_file_count: 13,
-        current_hepta_codex_script_total: 9,
-        native_gateway_source_command_count: 56,
+        current_hepta_codex_script_total: 10,
+        native_gateway_source_command_count: 57,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         adapter_count: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES.len(),
@@ -4311,7 +4519,7 @@ fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusI
         script_inventory_script: "scripts/hepta-codex-channel-adapter-status-inventory.sh",
         channel_adapters: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES,
         next_slices: &[
-            "inventory local tooling/content surfaces before process or filesystem smokes",
+            "use local tooling/content inventory as the next no-side-effect planning slice",
             "keep Telegram owner handoff as separate explicit operator approval",
             "defer all channel live reads and sends until connector-specific approval",
         ],
@@ -4342,6 +4550,84 @@ fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusI
     }
 }
 
+fn hepta_local_tooling_content_inventory_report() -> HeptaLocalToolingContentInventoryResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaLocalToolingContentInventoryResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "attention",
+        source_command: "/hepta-local-tooling-content-inventory --json",
+        native_route: true,
+        compatibility_mode: "native_local_tooling_content_planning_inventory",
+        side_effect_free: true,
+        audit_date: "2026-05-20",
+        local_tooling_inventory_doc: "docs/release/HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_2026-05-20.md",
+        old_local_tooling_ops_file_count: 11,
+        current_hepta_codex_script_total: 10,
+        native_gateway_source_command_count: 57,
+        route_count: route_matrix.route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        surface_count: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES.len(),
+        planner_ready_count: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES
+            .iter()
+            .filter(|surface| surface.planner_ready)
+            .count(),
+        live_process_enabled_count: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES
+            .iter()
+            .filter(|surface| surface.process_execution_enabled)
+            .count(),
+        filesystem_touch_enabled_count: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES
+            .iter()
+            .filter(|surface| surface.filesystem_touch_enabled)
+            .count(),
+        network_read_enabled_count: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES
+            .iter()
+            .filter(|surface| surface.network_read_enabled)
+            .count(),
+        tool_invocation_enabled_count: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES
+            .iter()
+            .filter(|surface| surface.tool_invocation_enabled)
+            .count(),
+        local_tooling_inventory_ready: true,
+        old_cli_invocation_compatibility_claimed: false,
+        process_execution_enabled: false,
+        filesystem_read_enabled: false,
+        filesystem_write_enabled: false,
+        network_read_enabled: false,
+        tool_invocation_enabled: false,
+        script_inventory_script: "scripts/hepta-codex-local-tooling-content-inventory.sh",
+        local_tooling_surfaces: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES,
+        next_slices: &[
+            "promote memory/capability absorption gaps as read-only reports",
+            "require operator approval before temp workspace process or filesystem smokes",
+            "keep network fetches and tool invocation disabled until explicit scoped approval",
+        ],
+        blockers: &[
+            "process_execution_not_operator_approved",
+            "filesystem_read_not_operator_approved",
+            "filesystem_write_not_operator_approved",
+            "network_fetch_not_operator_approved",
+            "tool_invocation_not_operator_approved",
+            "old_local_tooling_cli_invocation_compatibility_not_claimed",
+        ],
+        side_effects: HeptaLocalToolingContentInventorySideEffects {
+            process_spawned: false,
+            filesystem_read: false,
+            filesystem_written: false,
+            external_network_read: false,
+            tool_invoked: false,
+            provider_invoked: false,
+            model_invoked: false,
+            credential_read: false,
+            channel_read_performed: false,
+            channel_send_performed: false,
+            gateway_mutation_performed: false,
+            native_post_mutation_performed: false,
+            external_send_performed: false,
+        },
+    }
+}
+
 fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRunInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
     HeptaRuntimeSessionDryRunInventoryResponse {
@@ -4355,8 +4641,8 @@ fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRun
         audit_date: "2026-05-20",
         runtime_inventory_doc: "docs/release/HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_2026-05-20.md",
         old_runtime_ops_file_count: 12,
-        current_hepta_codex_script_total: 9,
-        native_gateway_source_command_count: 56,
+        current_hepta_codex_script_total: 10,
+        native_gateway_source_command_count: 57,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         dry_run_surface_count: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES.len(),
@@ -4379,7 +4665,7 @@ fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRun
         dry_run_surfaces: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES,
         next_slices: &[
             "promote channel adapters only as disabled live-gated status reports",
-            "inventory local tooling/content surfaces before any process or filesystem mutation",
+            "use local tooling/content inventory for process/filesystem/network planning only",
             "keep old CLI invocation compatibility unclaimed until command shims are explicitly requested",
         ],
         blockers: &[
@@ -4422,8 +4708,8 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         provider_inventory_doc: "docs/release/HEPTA_PROVIDER_METADATA_INVENTORY_2026-05-20.md",
         old_provider_ops_file_count: 15,
         adjacent_search_ops_file_count: 3,
-        current_hepta_codex_script_total: 9,
-        native_gateway_source_command_count: 56,
+        current_hepta_codex_script_total: 10,
+        native_gateway_source_command_count: 57,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         provider_adapter_count: HEPTA_PROVIDER_METADATA_ADAPTERS.len(),
@@ -4435,7 +4721,7 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         provider_adapters: HEPTA_PROVIDER_METADATA_ADAPTERS,
         adjacent_search_adapters: HEPTA_ADJACENT_SEARCH_METADATA_ADAPTERS,
         next_slices: &[
-            "inventory local tooling/content surfaces before process or filesystem smokes",
+            "use local tooling/content inventory before process or filesystem smokes",
             "promote memory/capability absorption gaps as read-only reports",
             "keep provider prompt/API smokes blocked until explicit operator approval",
         ],
@@ -4476,8 +4762,8 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 9,
-        native_gateway_source_command_count: 56,
+        current_hepta_codex_script_total: 10,
+        native_gateway_source_command_count: 57,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         ops_family_count: HEPTA_CLI_OPS_FAMILIES.len(),
@@ -4488,7 +4774,7 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         script_inventory_script: "scripts/hepta-codex-cli-command-inventory.sh",
         ops_families: HEPTA_CLI_OPS_FAMILIES,
         next_slices: &[
-            "inventory local tooling/content surfaces before process or filesystem smokes",
+            "use local tooling/content inventory before process or filesystem smokes",
             "promote memory/capability absorption gaps as read-only reports",
             "defer credentialed/live smokes until explicit operator approval",
         ],
@@ -4534,11 +4820,11 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
         active_service_coexistence_percent: 88,
         production_replacement_percent: 68,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 9,
-        carried_or_adapted_script_count: 9,
+        current_hepta_codex_script_total: 10,
+        carried_or_adapted_script_count: 10,
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
-        native_gateway_source_command_count: 56,
+        native_gateway_source_command_count: 57,
         route_matrix_ready: route_matrix.ready,
         route_count: route_matrix.route_count,
         implemented_route_count: route_matrix.implemented_route_count,
@@ -4561,7 +4847,7 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
             "old_hepta_release_external_scripts_not_fully_ported",
         ],
         next_actions: &[
-            "continue local tooling and content inventory migration",
+            "continue memory/capability absorption gap inventory migration",
             "keep browser visual smoke, preflight, soak, and watchdog gates green",
             "prepare but do not execute controlled Telegram owner handoff",
             "only perform Telegram owner handoff after explicit operator approval",
@@ -6203,6 +6489,7 @@ mod tests {
         assert!(routes.contains(&"GET /api/hepta-provider-metadata-inventory".to_string()));
         assert!(routes.contains(&"GET /api/hepta-runtime-session-dry-run-inventory".to_string()));
         assert!(routes.contains(&"GET /api/hepta-channel-adapter-status-inventory".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-local-tooling-content-inventory".to_string()));
     }
 
     #[test]
@@ -6226,10 +6513,10 @@ mod tests {
         assert_eq!(value["active_service_coexistence_percent"], 88);
         assert_eq!(value["production_replacement_percent"], 68);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 9);
+        assert_eq!(value["current_hepta_codex_script_total"], 10);
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
-        assert_eq!(value["native_gateway_source_command_count"], 56);
+        assert_eq!(value["native_gateway_source_command_count"], 57);
         assert_eq!(value["route_matrix_ready"], true);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["merge_completion_control_ui_surfaced"], true);
@@ -6240,7 +6527,7 @@ mod tests {
             "scripts/hepta-codex-browser-visual-smoke.sh"
         );
         assert!(
-            value["route_count"].as_u64().expect("route count") >= 56,
+            value["route_count"].as_u64().expect("route count") >= 57,
             "merge-completion route should be included in parity count"
         );
         assert_eq!(value["production_owner_handoff_required"], true);
@@ -6299,8 +6586,8 @@ mod tests {
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 9);
-        assert_eq!(value["native_gateway_source_command_count"], 56);
+        assert_eq!(value["current_hepta_codex_script_total"], 10);
+        assert_eq!(value["native_gateway_source_command_count"], 57);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["ops_family_count"], 5);
         assert_eq!(value["ops_file_family_covered_count"], 65);
@@ -6363,8 +6650,8 @@ mod tests {
         );
         assert_eq!(value["old_provider_ops_file_count"], 15);
         assert_eq!(value["adjacent_search_ops_file_count"], 3);
-        assert_eq!(value["current_hepta_codex_script_total"], 9);
-        assert_eq!(value["native_gateway_source_command_count"], 56);
+        assert_eq!(value["current_hepta_codex_script_total"], 10);
+        assert_eq!(value["native_gateway_source_command_count"], 57);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["provider_adapter_count"], 15);
         assert_eq!(value["adjacent_search_adapter_count"], 3);
@@ -6426,8 +6713,8 @@ mod tests {
             "native_runtime_session_dry_run_inventory"
         );
         assert_eq!(value["old_runtime_ops_file_count"], 12);
-        assert_eq!(value["current_hepta_codex_script_total"], 9);
-        assert_eq!(value["native_gateway_source_command_count"], 56);
+        assert_eq!(value["current_hepta_codex_script_total"], 10);
+        assert_eq!(value["native_gateway_source_command_count"], 57);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["dry_run_surface_count"], 12);
         assert_eq!(value["covered_old_ops_file_count"], 12);
@@ -6502,8 +6789,8 @@ mod tests {
             "native_channel_adapter_disabled_status_inventory"
         );
         assert_eq!(value["old_channel_ops_file_count"], 13);
-        assert_eq!(value["current_hepta_codex_script_total"], 9);
-        assert_eq!(value["native_gateway_source_command_count"], 56);
+        assert_eq!(value["current_hepta_codex_script_total"], 10);
+        assert_eq!(value["native_gateway_source_command_count"], 57);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["adapter_count"], 13);
         assert_eq!(value["disabled_status_ready_count"], 13);
@@ -6552,6 +6839,86 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(blockers.contains(&"channel_live_read_not_operator_approved"));
         assert!(blockers.contains(&"telegram_owner_handoff_not_requested"));
+    }
+
+    #[test]
+    fn hepta_local_tooling_content_inventory_endpoint_is_plan_only() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("local tooling content inventory json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-local-tooling-content-inventory --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_local_tooling_content_planning_inventory"
+        );
+        assert_eq!(value["old_local_tooling_ops_file_count"], 11);
+        assert_eq!(value["current_hepta_codex_script_total"], 10);
+        assert_eq!(value["native_gateway_source_command_count"], 57);
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["surface_count"], 11);
+        assert_eq!(value["planner_ready_count"], 11);
+        assert_eq!(value["live_process_enabled_count"], 0);
+        assert_eq!(value["filesystem_touch_enabled_count"], 0);
+        assert_eq!(value["network_read_enabled_count"], 0);
+        assert_eq!(value["tool_invocation_enabled_count"], 0);
+        assert_eq!(value["local_tooling_inventory_ready"], true);
+        assert_eq!(value["old_cli_invocation_compatibility_claimed"], false);
+        assert_eq!(value["process_execution_enabled"], false);
+        assert_eq!(value["filesystem_read_enabled"], false);
+        assert_eq!(value["filesystem_write_enabled"], false);
+        assert_eq!(value["network_read_enabled"], false);
+        assert_eq!(value["tool_invocation_enabled"], false);
+        assert_eq!(
+            value["script_inventory_script"],
+            "scripts/hepta-codex-local-tooling-content-inventory.sh"
+        );
+        let surfaces = value["local_tooling_surfaces"]
+            .as_array()
+            .expect("local tooling surfaces");
+        assert_eq!(surfaces.len(), 11);
+        assert_eq!(surfaces[0]["name"], "canvas");
+        assert_eq!(surfaces[4]["name"], "filesystem");
+        assert_eq!(surfaces[6]["name"], "process-execution");
+        assert_eq!(surfaces[10]["name"], "wiki-tools");
+        assert_eq!(value["side_effects"]["process_spawned"], false);
+        assert_eq!(value["side_effects"]["filesystem_read"], false);
+        assert_eq!(value["side_effects"]["filesystem_written"], false);
+        assert_eq!(value["side_effects"]["external_network_read"], false);
+        assert_eq!(value["side_effects"]["tool_invoked"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["channel_read_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(
+            value["side_effects"]["native_post_mutation_performed"],
+            false
+        );
+        let blockers = value["blockers"]
+            .as_array()
+            .expect("blockers")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blockers.contains(&"process_execution_not_operator_approved"));
+        assert!(blockers.contains(&"filesystem_write_not_operator_approved"));
+        assert!(blockers.contains(&"tool_invocation_not_operator_approved"));
     }
 
     #[test]

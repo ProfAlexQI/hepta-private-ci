@@ -25,9 +25,9 @@ files.
 - channel adapters inventoried: `13`
 - disabled status entries ready: `13`
 - live adapters enabled: `0`
-- current `hepta-codex` scripts: `9`
-- current native gateway source commands: `56`
-- Control UI route parity after this slice: `56/56`, missing `0`
+- current `hepta-codex` scripts: `10`
+- current native gateway source commands: `57`
+- Control UI route parity after this slice: `57/57`, missing `0`
 
 ## Files Covered
 
@@ -62,6 +62,6 @@ explicit operator handoff request exists.
 
 ## Safe Next Slice
 
-Inventory local tooling/content surfaces before any process execution,
-filesystem mutation, network read, file transfer, channel delivery, or webhook
-smoke.
+Promote memory/capability absorption gaps as read-only reports before any
+process execution, filesystem mutation, network read, file transfer, channel
+delivery, or webhook smoke.

@@ -88,7 +88,7 @@ The Hepta Control UI package is present under `apps/hepta-control-ui`.
 Current audited shape:
 
 - file count: `14`
-- route parity: `56/56` after the channel adapter status continuation
+- route parity: `57/57` after the local tooling/content inventory continuation
 - smoke script: `scripts/hepta-control-ui-smoke.sh`
 - smoke status: passed
 
@@ -131,12 +131,13 @@ Post-audit continuation added a machine-readable native endpoint:
   invoking models, reading Telegram, sending messages, mutating Gateway state,
   or enabling native POST real handlers.
 
-This has since expanded the source route matrix to `56` routes after the
-provider metadata, runtime/session dry-run, and channel adapter status
-continuation slices. The previous merge-completion API install reached `52/52`; later slices added
+This has since expanded the source route matrix to `57` routes after the
+provider metadata, runtime/session dry-run, channel adapter status, and local
+tooling/content continuation slices. The previous merge-completion API install reached `52/52`; later slices added
 `/api/hepta-cli-command-inventory`, `/api/hepta-provider-metadata-inventory`,
 `/api/hepta-runtime-session-dry-run-inventory`, and
-`/api/hepta-channel-adapter-status-inventory`.
+`/api/hepta-channel-adapter-status-inventory`,
+`/api/hepta-local-tooling-content-inventory`.
 
 ### What Is Not Fully Merged
 
@@ -150,7 +151,7 @@ though the first executable migration slice now exists in
 `HEPTA_CLI_SCRIPT_MIGRATION_MATRIX_2026-05-20.md`:
 
 - old standalone scripts: 20
-- current `hepta-codex` scripts: 9
+- current `hepta-codex` scripts: 10
 - carried/adapted scripts:
   - `hepta-control-ui-smoke.sh`
   - `hepta-codex-preflight.sh`
@@ -161,6 +162,7 @@ though the first executable migration slice now exists in
   - `hepta-codex-provider-metadata-inventory.sh`
   - `hepta-codex-runtime-session-dry-run-inventory.sh`
   - `hepta-codex-channel-adapter-status-inventory.sh`
+  - `hepta-codex-local-tooling-content-inventory.sh`
 
 This is the largest merge-completion gap. The underlying core/library reports
 are mostly present, but the old CLI/script operational breadth is not surfaced
@@ -173,8 +175,8 @@ as a complete command-compatible layer in the Codex fork.
 Live endpoint audit at `http://127.0.0.1:7373`:
 
 - `/health`: `ready`
-- `/api/control-ui-route-parity`: `ready`, `56/56`, missing `0` after the
-  channel adapter status continuation
+- `/api/control-ui-route-parity`: `ready`, `57/57`, missing `0` after the
+  local tooling/content inventory continuation
 - `/api/gateway-runtime`: `ready`
 - `/api/gateway-dispatch`: `ready`, side-effect free
 - `/api/operator-security`: `attention`, mode `legacy_owner_coexistence_ready`
@@ -275,13 +277,13 @@ Known non-blocking warnings:
 | Area | Completion | Evidence | Residual gap |
 | --- | ---: | --- | --- |
 | Hepta core/runtime crate absorption | 95% | all six crates in workspace, tests/check pass | old `hepta-cli` not absorbed as a crate |
-| Gateway/API route parity | 100% for current matrix | 56/56 route parity after channel adapter status continuation | old CLI/API breadth not fully represented |
-| Control UI | 96% | smoke passed, browser visual smoke passed, 56/56 route parity after channel adapter status continuation | full historical browser suite not ported |
+| Gateway/API route parity | 100% for current matrix | 57/57 route parity after local tooling/content inventory continuation | old CLI/API breadth not fully represented |
+| Control UI | 96% | smoke passed, browser visual smoke passed, 57/57 route parity after local tooling/content inventory continuation | full historical browser suite not ported |
 | Native POST | 80% | 3/3 handlers implemented and dry-run canaries passed | active real mutations still gated off |
 | Telegram | 65% | owner guard, poll loop status, readiness reports, tests | live owner handoff/poll/send/soak not performed |
 | Hepta Native app | 75% | source imported, resources tracked, check + 52 tests pass | not packaged/installed/live |
-| Old automation scripts | 45% | current repo has 9 scripts versus 20 old scripts, including preflight/soak/watchdog/browser visual smoke and four inventories | most standalone ops/release/external gates not ported |
-| Old Hepta CLI command breadth | 53% | core libraries absorbed, 56 gateway routes exposed, read-only CLI/provider/runtime-session/channel inventories added | many specialized `*_ops.rs` modules not surfaced |
+| Old automation scripts | 50% | current repo has 10 scripts versus 20 old scripts, including preflight/soak/watchdog/browser visual smoke and five inventories | most standalone ops/release/external gates not ported |
+| Old Hepta CLI command breadth | 55% | core libraries absorbed, 57 gateway routes exposed, read-only CLI/provider/runtime-session/channel/local-tooling inventories added | many specialized `*_ops.rs` modules not surfaced |
 | Installed local coexistence | 88% | binary installed, live health ready, owner safe | production replacement intentionally blocked |
 
 ## Findings
