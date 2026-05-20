@@ -63,6 +63,7 @@ const DEFAULT_TELEGRAM_POLL_MS: u64 = 1500;
 const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
 const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
 const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
+const HEPTA_MERGE_COMPLETION_ENDPOINT: &str = "/api/hepta-merge-completion";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -148,6 +149,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/operator-security --json",
         capability: "operator-security",
         side_effect_boundary: "read-only security guard matrix",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MERGE_COMPLETION_ENDPOINT,
+        source_command: "/hepta-merge-completion --json",
+        capability: "hepta-merge-completion",
+        side_effect_boundary: "read-only merge and functional completion audit",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -719,6 +727,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&control_ui_route_parity_report()),
                 );
             }
+            HEPTA_MERGE_COMPLETION_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_merge_completion_report()),
+                );
+            }
             "/api/operator-snapshot" => {
                 return (
                     "200 OK",
@@ -1135,6 +1150,7 @@ fn native_gateway_json(
         control_ui_route_parity_endpoint: CONTROL_UI_ROUTE_PARITY_ENDPOINT,
         control_ui_route_parity_ready: control_ui_route_parity.ready,
         control_ui_route_parity,
+        hepta_merge_completion_endpoint: HEPTA_MERGE_COMPLETION_ENDPOINT,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
         telegram_plugin_native_supervisor_ready: telegram_plugin.in_process_supervisor_ready,
@@ -1197,8 +1213,9 @@ fn native_gateway_json(
             "Native redacted transcript preview/search",
             "Native redacted task artifact surfaces",
             "Native redacted events/activity surfaces",
+            "Hepta merge and functional completion audit surface",
         ],
-        next_migration_slice: "promote approvals, policy, and config surfaces with redacted local-only inventory",
+        next_migration_slice: "promote merge-completion findings into Control UI and keep Telegram owner handoff explicit",
     })
 }
 
@@ -3412,6 +3429,119 @@ struct HealthResponse {
 }
 
 #[derive(Debug, Serialize)]
+struct HeptaMergeCompletionResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    audit_doc: &'static str,
+    migration_matrix_doc: &'static str,
+    audit_commit: &'static str,
+    migration_gates_commit: &'static str,
+    readiness_class: &'static str,
+    source_package_merge_percent: u8,
+    local_deterministic_function_percent: u8,
+    active_service_coexistence_percent: u8,
+    production_replacement_percent: u8,
+    old_hepta_script_total: usize,
+    current_hepta_codex_script_total: usize,
+    carried_or_adapted_script_count: usize,
+    old_hepta_ops_file_count: usize,
+    old_hepta_rough_command_reference_count: usize,
+    native_gateway_source_command_count: usize,
+    route_matrix_ready: bool,
+    route_count: usize,
+    implemented_route_count: usize,
+    missing_route_count: usize,
+    old_cli_script_migration_matrix_ready: bool,
+    production_owner_handoff_required: bool,
+    telegram_live_send_enabled: bool,
+    native_post_real_activation_enabled: bool,
+    public_ga_claimed: bool,
+    safe_continue_internal_work: bool,
+    blockers: &'static [&'static str],
+    next_actions: &'static [&'static str],
+    side_effects: HeptaMergeCompletionSideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaMergeCompletionSideEffects {
+    model_invoked: bool,
+    external_side_effects: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    native_post_mutation_performed: bool,
+    filesystem_written: bool,
+}
+
+fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaMergeCompletionResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "attention",
+        source_command: "/hepta-merge-completion --json",
+        native_route: true,
+        compatibility_mode: "native_merge_completion_audit",
+        side_effect_free: true,
+        audit_date: "2026-05-20",
+        audit_doc: "docs/release/HEPTA_MERGE_FUNCTION_COMPLETION_AUDIT_2026-05-20.md",
+        migration_matrix_doc: "docs/release/HEPTA_CLI_SCRIPT_MIGRATION_MATRIX_2026-05-20.md",
+        audit_commit: "252a109 docs: audit Hepta merge completion",
+        migration_gates_commit: "01c7477 ops: add Hepta Codex migration gates",
+        readiness_class: "controlled_coexistence_not_production_replacement",
+        source_package_merge_percent: 82,
+        local_deterministic_function_percent: 91,
+        active_service_coexistence_percent: 88,
+        production_replacement_percent: 68,
+        old_hepta_script_total: 20,
+        current_hepta_codex_script_total: 4,
+        carried_or_adapted_script_count: 4,
+        old_hepta_ops_file_count: 65,
+        old_hepta_rough_command_reference_count: 574,
+        native_gateway_source_command_count: 52,
+        route_matrix_ready: route_matrix.ready,
+        route_count: route_matrix.route_count,
+        implemented_route_count: route_matrix.implemented_route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        old_cli_script_migration_matrix_ready: true,
+        production_owner_handoff_required: true,
+        telegram_live_send_enabled: false,
+        native_post_real_activation_enabled: false,
+        public_ga_claimed: false,
+        safe_continue_internal_work: true,
+        blockers: &[
+            "telegram_owner_handoff_not_requested",
+            "live_poll_send_not_operator_approved",
+            "native_post_real_activation_not_operator_approved",
+            "old_hepta_cli_command_breadth_not_fully_migrated",
+            "old_hepta_release_external_scripts_not_fully_ported",
+            "browser_visual_e2e_not_run_in_this_audit",
+        ],
+        next_actions: &[
+            "promote this merge-completion report into Control UI",
+            "continue read-only old CLI command migration inventory",
+            "keep preflight, soak, and watchdog gates green",
+            "only perform Telegram owner handoff after explicit operator approval",
+        ],
+        side_effects: HeptaMergeCompletionSideEffects {
+            model_invoked: false,
+            external_side_effects: false,
+            gateway_mutation_performed: false,
+            telegram_read_performed: false,
+            message_sent: false,
+            native_post_mutation_performed: false,
+            filesystem_written: false,
+        },
+    }
+}
+
+#[derive(Debug, Serialize)]
 struct NativeGatewayResponse<'a> {
     product: &'static str,
     runtime: &'static str,
@@ -3429,6 +3559,7 @@ struct NativeGatewayResponse<'a> {
     control_ui_route_parity_endpoint: &'static str,
     control_ui_route_parity_ready: bool,
     control_ui_route_parity: ControlUiRouteParityReport,
+    hepta_merge_completion_endpoint: &'static str,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
     telegram_plugin_native_supervisor_ready: bool,
@@ -5030,6 +5161,56 @@ mod tests {
         assert!(routes.contains(&"GET /api/external-agent-benchmark".to_string()));
         assert!(routes.contains(&"GET /api/telegram-production-readiness".to_string()));
         assert!(routes.contains(&"GET /api/telegram-delivery-ledger".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-merge-completion".to_string()));
+    }
+
+    #[test]
+    fn hepta_merge_completion_endpoint_returns_machine_readable_audit() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", HEPTA_MERGE_COMPLETION_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect("merge completion json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["source_command"], "/hepta-merge-completion --json");
+        assert_eq!(value["compatibility_mode"], "native_merge_completion_audit");
+        assert_eq!(value["source_package_merge_percent"], 82);
+        assert_eq!(value["local_deterministic_function_percent"], 91);
+        assert_eq!(value["active_service_coexistence_percent"], 88);
+        assert_eq!(value["production_replacement_percent"], 68);
+        assert_eq!(value["old_hepta_script_total"], 20);
+        assert_eq!(value["current_hepta_codex_script_total"], 4);
+        assert_eq!(value["old_hepta_ops_file_count"], 65);
+        assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
+        assert_eq!(value["native_gateway_source_command_count"], 52);
+        assert_eq!(value["route_matrix_ready"], true);
+        assert_eq!(value["missing_route_count"], 0);
+        assert!(
+            value["route_count"].as_u64().expect("route count") >= 52,
+            "merge-completion route should be included in parity count"
+        );
+        assert_eq!(value["production_owner_handoff_required"], true);
+        assert_eq!(value["telegram_live_send_enabled"], false);
+        assert_eq!(value["native_post_real_activation_enabled"], false);
+        assert_eq!(value["public_ga_claimed"], false);
+        assert_eq!(value["safe_continue_internal_work"], true);
+        assert_eq!(value["side_effects"]["external_side_effects"], false);
+        assert_eq!(value["side_effects"]["telegram_read_performed"], false);
+        assert_eq!(value["side_effects"]["message_sent"], false);
+        let blockers = value["blockers"]
+            .as_array()
+            .expect("blockers")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blockers.contains(&"telegram_owner_handoff_not_requested"));
+        assert!(blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
     }
 
     #[test]

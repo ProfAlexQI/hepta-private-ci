@@ -23,7 +23,8 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 51
+- native gateway source commands: 52 after the merge-completion audit endpoint
+  (`51` before this continuation slice)
 - scripts before this slice: 1
 - scripts after this slice: 4
 
@@ -82,6 +83,7 @@ These are currently exposed as live API/source-command equivalents:
 - gateway runtime/dispatch/ledger/dead-letter
 - Telegram owner handoff / production readiness / delivery ledger
 - native POST readiness/stores/activation/gray-release/rollout
+- machine-readable merge/function completion audit
 - task/chat/approval dry-run and confirm-required plans
 - external agent benchmark
 
@@ -173,4 +175,3 @@ importantly turns the three most useful old operational intents into
 - installed/live watchdog
 
 It does not close the old CLI breadth gap. That remains the next major track.
-

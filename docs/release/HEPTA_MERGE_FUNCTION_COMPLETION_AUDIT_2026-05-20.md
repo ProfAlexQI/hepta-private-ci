@@ -116,6 +116,20 @@ Current release documentation covers:
 - this merge/function completion audit
 - CLI/script migration matrix
 
+Post-audit continuation added a machine-readable native endpoint:
+
+- `/api/hepta-merge-completion`
+- source command label: `/hepta-merge-completion --json`
+- compatibility mode: `native_merge_completion_audit`
+- purpose: expose the completion percentages, script/CLI migration counts,
+  route parity, blockers, and safe-next-action list to watchdogs/UI without
+  invoking models, reading Telegram, sending messages, mutating Gateway state,
+  or enabling native POST real handlers.
+
+This increments the source route matrix to `52` routes after the continuation
+slice. The live installed service still reports the previously audited `51`
+routes until the new binary is built and installed.
+
 ### What Is Not Fully Merged
 
 The old standalone Hepta `crates/hepta-cli` command surface has not been
