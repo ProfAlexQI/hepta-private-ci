@@ -13,8 +13,8 @@ jq -e '
   and .compatibility_mode == "native_runtime_session_dry_run_inventory"
   and .side_effect_free == true
   and .old_runtime_ops_file_count == 12
-  and .current_hepta_codex_script_total == 13
-  and .native_gateway_source_command_count == 60
+  and .current_hepta_codex_script_total == 14
+  and .native_gateway_source_command_count == 61
   and .missing_route_count == 0
   and .dry_run_surface_count == 12
   and .covered_old_ops_file_count == 12
@@ -44,15 +44,15 @@ jq -e '
 
 jq -e '
   .runtime == "hepta-codex"
-  and .current_hepta_codex_script_total == 13
-  and .native_gateway_source_command_count == 60
+  and .current_hepta_codex_script_total == 14
+  and .native_gateway_source_command_count == 61
   and .missing_route_count == 0
 ' <<<"$CLI_JSON" >/dev/null
 
 jq -e '
   .runtime == "hepta-codex"
-  and .current_hepta_codex_script_total == 13
-  and .native_gateway_source_command_count == 60
+  and .current_hepta_codex_script_total == 14
+  and .native_gateway_source_command_count == 61
   and .missing_route_count == 0
   and .provider_live_invocation_enabled == false
   and .credentialed_smoke_performed == false
@@ -60,8 +60,8 @@ jq -e '
 
 jq -e '
   .runtime == "hepta-codex"
-  and .current_hepta_codex_script_total == 13
-  and .native_gateway_source_command_count == 60
+  and .current_hepta_codex_script_total == 14
+  and .native_gateway_source_command_count == 61
   and .route_matrix_ready == true
   and .missing_route_count == 0
   and .telegram_live_send_enabled == false

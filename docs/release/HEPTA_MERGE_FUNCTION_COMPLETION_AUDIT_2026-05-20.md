@@ -17,13 +17,15 @@ Weighted completion estimate from this audit:
 - Production replacement completion: 68%
 - Public/externally credentialed GA completion: not claimed
 
-2026-05-20 22:xx refresh: this document was re-audited against the current
-installed `hepta-codex` service at `main@8537122`. The live route matrix is now
-`60/60`, current `hepta-codex` scripts are `13`, native gateway source command
-count is `60`, and the release/installed binary SHA is
-`a6a72e499f39cd94e80df66f6e50e9e3d2146dc7edf8be9335d9611909fcfa18`.
-Where older sections below mention `52/52` or `58/58`, the current refresh
-supersedes them with `60/60`.
+2026-05-20 22:xx refresh: this document was re-audited against the installed
+`hepta-codex` service at `main@8537122`.
+
+2026-05-21 00:1x refresh: the public GA readiness gate was added and installed.
+The live route matrix is now `61/61`, current `hepta-codex` scripts are `14`,
+native gateway source command count is `61`, and the release/installed binary
+SHA is `944b3d6006894bbd6cf0ca4e4eb51b392de655f70f8befd8d2537dd6b69a7a53`.
+Where older sections below mention `52/52`, `58/58`, or `60/60`, the current
+refresh supersedes them with `61/61`.
 
 The highest-confidence completed areas are the Rust runtime crates, Codex native
 gateway entrypoint, Control UI route matrix, native POST dry-run handler harness,
@@ -360,18 +362,21 @@ work is not random bug fixing; it is three explicit productization tracks:
 
 Current repo/service truth:
 
-- `hepta-codex`: clean `main@8537122 docs: record Hepta provider channel dry-run install`
+- `hepta-codex`: public-GA-readiness workset installed from local source;
+  commit pending at this audit refresh
 - standalone `Hepta`: clean `main@25f14b5 fix: direct codex fork plan away from bridge`
 - active LaunchAgent: `ai.hepta.gateway`, running
   `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex` on
   `http://127.0.0.1:7373`
 - release binary SHA and installed binary SHA match:
-  `a6a72e499f39cd94e80df66f6e50e9e3d2146dc7edf8be9335d9611909fcfa18`
+  `944b3d6006894bbd6cf0ca4e4eb51b392de655f70f8befd8d2537dd6b69a7a53`
 
 Live endpoint spot checks:
 
 - `/health`: `ready`
-- `/api/control-ui-route-parity`: `60/60`, missing `0`
+- `/api/control-ui-route-parity`: `61/61`, missing `0`
+- `/api/hepta-public-ga-readiness`: `blocked`, `public_ga_ready=false`,
+  local gate matrix ready, reports synchronized, blocker count `11`
 - `/api/hepta-merge-completion`: `attention`, expected blockers are Telegram
   owner handoff not requested, live poll/send not approved, native POST real
   activation not approved, old CLI breadth not fully migrated, and old release

@@ -17,8 +17,8 @@ jq -e '
   and .status == "attention"
   and .compatibility_mode == "native_provider_channel_runtime_dry_run_plan"
   and .side_effect_free == true
-  and .current_hepta_codex_script_total == 13
-  and .native_gateway_source_command_count == 60
+  and .current_hepta_codex_script_total == 14
+  and .native_gateway_source_command_count == 61
   and .missing_route_count == 0
   and .plan_family_count == 5
   and .covered_old_ops_file_count == 43
@@ -61,8 +61,8 @@ jq -e '
 for payload in "$RELEASE_JSON" "$MEMORY_JSON" "$LOCAL_JSON" "$CHANNEL_JSON" "$RUNTIME_JSON" "$CLI_JSON" "$PROVIDER_JSON" "$MERGE_JSON"; do
   jq -e '
     .runtime == "hepta-codex"
-    and .current_hepta_codex_script_total == 13
-    and .native_gateway_source_command_count == 60
+    and .current_hepta_codex_script_total == 14
+    and .native_gateway_source_command_count == 61
     and .missing_route_count == 0
   ' <<<"$payload" >/dev/null
 done

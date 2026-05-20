@@ -496,3 +496,38 @@ Known non-blocking warnings:
 - stable `rustfmt` still warns that `imports_granularity = Item` is nightly-only
 - Makepad metadata still reports a duplicate `bitflags` package and chooses the
   non-vulkan path
+
+## Public GA Readiness Gate Continuation
+
+The public GA readiness continuation adds
+`/api/hepta-public-ga-readiness` and
+`scripts/hepta-codex-public-ga-readiness.sh`.
+
+Installed build:
+
+- release sha256: `944b3d6006894bbd6cf0ca4e4eb51b392de655f70f8befd8d2537dd6b69a7a53`
+- installed sha256: `944b3d6006894bbd6cf0ca4e4eb51b392de655f70f8befd8d2537dd6b69a7a53`
+- binary SHA match: `true`
+- binary backup:
+  `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-public-ga-readiness-20260521-001359`
+- plist backup:
+  `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-public-ga-readiness-20260521-001359.plist`
+
+Live results after install:
+
+- `/api/control-ui-route-parity`: `61/61`, missing `0`
+- `/api/hepta-public-ga-readiness`: `status=blocked`,
+  `public_ga_ready=false`, `local_gate_matrix_ready=true`,
+  `local_reports_synchronized=true`, blocker count `11`
+- `scripts/hepta-codex-public-ga-readiness.sh`: passed
+- all inventory/status scripts passed with
+  `current_hepta_codex_script_total=14` and
+  `native_gateway_source_command_count=61`
+- `scripts/hepta-codex-watchdog.sh`: passed, SHA match true
+- `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`: passed `3/3`
+- `scripts/hepta-codex-browser-visual-smoke.sh`: passed, screenshots in
+  `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.AbyfwW`
+
+Safety state remained unchanged: active Telegram owner is still
+`legacy_openclaw`, Hepta Telegram polling is gated, native POST real activation
+is disabled, and no external public release was performed.
