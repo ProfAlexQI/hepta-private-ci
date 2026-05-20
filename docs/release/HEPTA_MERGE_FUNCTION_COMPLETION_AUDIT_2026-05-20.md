@@ -115,6 +115,7 @@ Current release documentation covers:
 - native POST handler canaries
 - this merge/function completion audit
 - CLI/script migration matrix
+- merge-completion API install evidence
 
 Post-audit continuation added a machine-readable native endpoint:
 
@@ -127,8 +128,8 @@ Post-audit continuation added a machine-readable native endpoint:
   or enabling native POST real handlers.
 
 This increments the source route matrix to `52` routes after the continuation
-slice. The live installed service still reports the previously audited `51`
-routes until the new binary is built and installed.
+slice. It was subsequently built and installed; see
+`HEPTA_MERGE_COMPLETION_API_INSTALL_2026-05-20.md` for live `52/52` evidence.
 
 ### What Is Not Fully Merged
 

@@ -42,6 +42,11 @@ Active service checks after replacement:
 - `/api/control-ui-route-parity`: ready, `route_count=51`, `missing_route_count=0`
 - old OpenClaw `/health`: live
 
+Continuation note: the later merge-completion API install upgraded the same
+controlled coexistence service to `route_count=52` and added
+`/api/hepta-merge-completion`; see
+`HEPTA_MERGE_COMPLETION_API_INSTALL_2026-05-20.md`.
+
 After the coexistence-status patch, `/api/operator-security` intentionally remains
 `status=attention` while reporting:
 
