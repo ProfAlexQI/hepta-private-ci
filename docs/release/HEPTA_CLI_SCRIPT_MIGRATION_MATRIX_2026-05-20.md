@@ -23,8 +23,9 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 63 after the legacy compatibility closure gate
-  (`62` after the Hepta Native packaging gate; `61` after the public GA readiness gate; `60` after the provider/channel
+- native gateway source commands: 64 after the public GA operator approval packet
+  (`63` after the legacy compatibility closure gate; `62` after the Hepta
+  Native packaging gate; `61` after the public GA readiness gate; `60` after the provider/channel
   dry-run plan; `59` after the release/hardening status gate; `58` after the
   memory/capability absorption inventory endpoint; `57`
   after the local tooling/content inventory endpoint; `56` after the channel
@@ -32,7 +33,7 @@ Current `hepta-codex`:
   inventory endpoint; `54` after the provider metadata inventory endpoint;
   `53` after the CLI command inventory endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 16
+- scripts after this slice: 17
 
 New executable scripts added in this slice:
 
@@ -51,6 +52,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-public-ga-readiness.sh`
 - `scripts/hepta-codex-native-packaging-gate.sh`
 - `scripts/hepta-codex-legacy-compatibility-closure.sh`
+- `scripts/hepta-codex-public-ga-operator-approval-packet.sh`
 
 Existing carried script:
 
@@ -226,8 +228,8 @@ Checks:
 - old standalone `*_ops.rs` count remains `65`
 - old rough command reference count remains `574`
 - old standalone script count remains `20`
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - CLI ops families cover all `65` old ops files
 - merge-completion and CLI inventory reports agree on route/script counts
 - provider invocation, credential reads, Telegram reads/sends, native POST
@@ -242,8 +244,8 @@ Checks:
 
 - old provider ops file count remains `15`
 - adjacent search/readability ops file count remains `3`
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - provider adapter count is `15`
 - adjacent search adapter count is `3`
 - provider live invocation and credentialed smoke remain disabled
@@ -261,8 +263,8 @@ exposed by `/api/hepta-runtime-session-dry-run-inventory`.
 Checks:
 
 - old runtime/admin ops file count remains `12`
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - dry-run surface count is `12`
 - planner-ready count is `12`
 - live mutation surface count is `0`
@@ -280,8 +282,8 @@ exposed by `/api/hepta-channel-adapter-status-inventory`.
 Checks:
 
 - old channel/runtime adapter ops file count remains `13`
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - adapter count is `13`
 - disabled status ready count is `13`
 - live adapter enabled count is `0`
@@ -301,8 +303,8 @@ Purpose: validate the planning-only local tooling/content inventory exposed by
 Checks:
 
 - old local tooling/content ops file count remains `11`
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - local tooling/content surface count is `11`
 - planner-ready count is `11`
 - live process execution, filesystem touch, network read, and tool invocation
@@ -321,8 +323,8 @@ exposed by `/api/hepta-memory-capability-absorption-inventory`.
 Checks:
 
 - old memory/capability/absorption ops file count remains `14`
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - surface count is `14`
 - absorbed or represented surface count is `9`
 - gap-report-ready count is `14`
@@ -344,8 +346,8 @@ Purpose: validate the local-only release/hardening status gate exposed by
 Checks:
 
 - remaining old release/hardening script family count is `12`
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - status gate count is `12`
 - local status gate ready count is `12`
 - live execution enabled count is `0`
@@ -372,8 +374,8 @@ by `/api/hepta-provider-channel-dry-run-plan`.
 
 Checks:
 
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - `5/5` dry-run families are ready
 - covered unique old ops file count is `43`
 - provider/search/channel/runtime coverage is `15/3/13/12`
@@ -395,8 +397,8 @@ Purpose: validate the aggregate public GA readiness gate exposed by
 
 Checks:
 
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - local gate matrix and supporting reports are synchronized
 - public GA is still blocked until explicit operator-approved live/external
   gates are satisfied
@@ -411,8 +413,8 @@ Purpose: validate the local Hepta Native packaging readiness gate exposed by
 
 Checks:
 
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - `apps/hepta-native` source, manifest, lockfile, attribution docs, package
   metadata, macOS plist/entitlements, icon asset, and DMG helper are present
 - packaging/resource count is `111`; Rust source count is `125`
@@ -431,8 +433,8 @@ Purpose: validate the old CLI/script family compatibility closure exposed by
 
 Checks:
 
-- current `hepta-codex` script count is `16`
-- native gateway source-command count is `63`
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
 - old Hepta ops file count is `65`
 - rough old command reference count is `574`
 - old script family count is `20`
@@ -448,9 +450,28 @@ Checks:
   handoff/read/send, native POST mutation, gateway mutation, and external send
   remain disabled
 
+### `hepta-codex-public-ga-operator-approval-packet.sh`
+
+Purpose: validate the plan-only public GA operator approval packet exposed by
+`/api/hepta-public-ga-operator-approval-packet`.
+
+Checks:
+
+- current `hepta-codex` script count is `17`
+- native gateway source-command count is `64`
+- the packet is `ready` while `public_ga_ready=false`
+- required operator approval count is `8`
+- remaining public GA blockers match the explicit approval-bound actions
+- safe default mode is `plan_only_no_live_mutation`
+- irreversible actions are blocked by default
+- release publishing, artifact writing, launchd mutation, credential reads,
+  provider/model invocation, channel delivery, Telegram handoff/read/send,
+  native POST mutation, process spawn, filesystem read/write, gateway mutation,
+  external network read, and external send remain disabled
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 16/20 by count, and more
+This slice improves script parity from 1/20 to 17/20 by count, and more
 importantly turns twelve useful old operational intents into
 `hepta-codex`-native commands:
 
@@ -469,6 +490,7 @@ importantly turns twelve useful old operational intents into
 - public GA readiness gate
 - Hepta Native packaging readiness gate
 - legacy CLI/script compatibility closure gate
+- public GA operator approval packet
 
 It closes the broad old CLI breadth and release/hardening script compatibility
 gaps as local route/script/status coverage. That is intentionally narrower than

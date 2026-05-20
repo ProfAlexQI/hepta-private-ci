@@ -35,6 +35,7 @@ Local evidence currently synchronized by the gate:
 - release/hardening status gate
 - provider/channel/runtime dry-run plan
 - Hepta Native packaging gate
+- public GA operator approval packet
 - gateway replacement readiness
 - Telegram owner handoff guard
 - Telegram production readiness guard
@@ -170,3 +171,52 @@ Safety state after install:
 - native POST real activation remains disabled
 - no provider/channel credentialed live smoke, native app signing,
   notarization, artifact publishing, or external public release was performed
+
+## Follow-Up: Public GA Operator Approval Packet
+
+After the legacy compatibility closure, the remaining public GA blockers were
+turned into an explicit plan-only approval packet:
+
+- endpoint: `/api/hepta-public-ga-operator-approval-packet`
+- script: `scripts/hepta-codex-public-ga-operator-approval-packet.sh`
+- safe default mode: `plan_only_no_live_mutation`
+- required operator approval count: `8`
+- aggregate script count: `17`
+- aggregate source-command count: `64`
+
+This does not reduce the remaining blocker count by itself. It makes the
+approval order and rollback anchors machine-readable while continuing to block
+gateway replacement, Telegram handoff/live soak, native POST real mutation,
+credentialed provider/channel smoke, release artifact packing, and external
+public release until explicit approval.
+
+Installed after the operator approval packet release build:
+
+- release sha256: `6de62f43ac4d3432207441bb85bf1713118a0bade42cdb2a3da25ac85fb9d96e`
+- installed sha256: `6de62f43ac4d3432207441bb85bf1713118a0bade42cdb2a3da25ac85fb9d96e`
+- binary SHA match: `true`
+- active service: `ai.hepta.gateway`
+- active PID after restart: `25970`
+- binary backup:
+  `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-public-ga-operator-approval-packet-20260521-023824`
+- plist backup:
+  `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-public-ga-operator-approval-packet-20260521-023824.plist`
+
+Live checks after install:
+
+- `/api/control-ui-route-parity`: `64/64`, missing `0`
+- `/api/hepta-public-ga-operator-approval-packet`: `status=ready`,
+  `approval_packet_ready=true`, required approvals `8`
+- `/api/hepta-public-ga-readiness`: `status=blocked`,
+  `public_ga_ready=false`, `local_gate_matrix_ready=true`,
+  `local_reports_synchronized=true`, blocker count `8`
+- `scripts/hepta-codex-public-ga-operator-approval-packet.sh`: passed
+- `scripts/hepta-codex-public-ga-readiness.sh`: passed
+- all inventory/status scripts passed at `current_hepta_codex_script_total=17`
+  and `native_gateway_source_command_count=64`
+- `scripts/hepta-codex-watchdog.sh`: passed, release/installed SHA match true
+- `HEPTA_CODEX_SOAK_SAMPLES=12 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=5 scripts/hepta-codex-live-soak.sh`: passed `12/12`
+- `scripts/hepta-codex-browser-visual-smoke.sh`: passed, screenshots in
+  `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.PkGkb0`
+- `HEPTA_CODEX_PREFLIGHT_RELEASE=0 scripts/hepta-codex-preflight.sh`: passed,
+  including Hepta Native `52` tests

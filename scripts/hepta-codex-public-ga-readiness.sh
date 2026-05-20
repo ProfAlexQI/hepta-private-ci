@@ -18,8 +18,8 @@ jq -e '
   and .status == "blocked"
   and .compatibility_mode == "native_public_ga_readiness_gate"
   and .side_effect_free == true
-  and .current_hepta_codex_script_total == 16
-  and .native_gateway_source_command_count == 63
+  and .current_hepta_codex_script_total == 17
+  and .native_gateway_source_command_count == 64
   and .missing_route_count == 0
   and .local_reports_synchronized == true
   and .local_gate_matrix_ready == true
