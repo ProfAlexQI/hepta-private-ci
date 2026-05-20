@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: install and live verification for `/api/hepta-merge-completion` and follow-on safe inventory routes
-Status: installed; live route parity updated to `59/59`; external mutation gates remain closed
+Status: installed; live route parity updated to `60/60`; external mutation gates remain closed
 
 ## Installed Build
 
@@ -119,6 +119,29 @@ Release/hardening status gate continuation:
   handoff/read/send, native POST mutation, channel read/send, coding-agent
   spawn, and gateway mutation all `false`
 
+Provider/channel/runtime dry-run plan continuation:
+
+- source workset: `/api/hepta-provider-channel-dry-run-plan`,
+  `scripts/hepta-codex-provider-channel-dry-run-plan.sh`, and dry-run plan docs
+- source commit: `0334ac2 feat: add Hepta provider channel dry-run plan`
+- release sha256: `a6a72e499f39cd94e80df66f6e50e9e3d2146dc7edf8be9335d9611909fcfa18`
+- installed sha256: `a6a72e499f39cd94e80df66f6e50e9e3d2146dc7edf8be9335d9611909fcfa18`
+- binary sha match: `true`
+- live route parity after install: `60/60`
+- script count after install: `13`
+- native gateway source command count after install: `60`
+- dry-run family count: `5`
+- unique covered old ops file count: `43`
+- provider/search/channel/runtime coverage: `15/3/13/12`
+- dry-run plan ready count: `5`
+- isolated fixture contract count: `5`
+- live invocation enabled count: `0`
+- credential-read-required count: `0`
+- side-effect gates: provider/model invocation, credential reads, external
+  network/search, channel read/send, Telegram owner handoff/read/send, process
+  spawn, filesystem read/write, task/session store mutation, gateway event
+  enqueue, native POST mutation, gateway mutation, and external send all `false`
+
 Backups created before replacement:
 
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093102`
@@ -128,6 +151,8 @@ Backups created before replacement:
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-browser-visual-smoke-20260520-110537`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-cli-command-inventory-20260520-115611`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-provider-metadata-inventory-20260520-124444`
+- `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-provider-channel-dry-run-plan-20260520-174908`
+- `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-provider-channel-dry-run-plan-20260520-174908.plist`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-runtime-session-dry-run-inventory-20260520-133107`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-channel-adapter-status-inventory-20260520-141937`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-local-tooling-content-inventory-20260520-150740`
@@ -189,13 +214,13 @@ binary with `codex-rs/target/release/hepta`.
 - `local_deterministic_function_percent=91`
 - `active_service_coexistence_percent=88`
 - `production_replacement_percent=68`
-- `native_gateway_source_command_count=59` after release/hardening status gate continuation
-- `current_hepta_codex_script_total=12` after release/hardening status gate continuation
+- `native_gateway_source_command_count=60` after provider/channel dry-run plan continuation
+- `current_hepta_codex_script_total=13` after provider/channel dry-run plan continuation
 - `merge_completion_control_ui_surfaced=true`
 - `merge_completion_gateway_index_surfaced=true`
 - `browser_visual_smoke_ready=true`
 - `browser_visual_smoke_command=scripts/hepta-codex-browser-visual-smoke.sh`
-- `route_count=59` after release/hardening status gate continuation
+- `route_count=60` after provider/channel dry-run plan continuation
 - `missing_route_count=0`
 - `telegram_live_send_enabled=false`
 - `native_post_real_activation_enabled=false`
@@ -335,13 +360,34 @@ The release/hardening status gate continuation adds
   native POST mutation, channel read/send, coding-agent spawn, and gateway
   mutation all `false`
 
+The provider/channel/runtime dry-run plan continuation adds
+`/api/hepta-provider-channel-dry-run-plan` and
+`scripts/hepta-codex-provider-channel-dry-run-plan.sh`:
+
+- `plan_family_count=5`
+- `covered_old_ops_file_count=43`
+- `covered_provider_ops_file_count=15`
+- `covered_search_ops_file_count=3`
+- `covered_channel_ops_file_count=13`
+- `covered_runtime_ops_file_count=12`
+- `dry_run_plan_ready_count=5`
+- `isolated_fixture_contract_count=5`
+- `live_invocation_enabled_count=0`
+- `credential_read_required_count=0`
+- `current_hepta_codex_script_total=13`
+- `native_gateway_source_command_count=60`
+- provider/model invocation, credential reads, external network/search,
+  channel read/send, Telegram owner handoff/read/send, process spawn,
+  filesystem read/write, task/session store mutation, gateway event enqueue,
+  native POST mutation, gateway mutation, and external send all `false`
+
 ## Route Parity
 
 `/api/control-ui-route-parity` after install:
 
 - `status=ready`
-- `route_count=59` after release/hardening status gate continuation
-- `implemented_route_count=59` after release/hardening status gate continuation
+- `route_count=60` after provider/channel dry-run plan continuation
+- `implemented_route_count=60` after provider/channel dry-run plan continuation
 - `missing_route_count=0`
 
 ## Safety Boundary
@@ -403,10 +449,10 @@ Post-install gates:
 - gateway index smoke: found `Merge completion`, `82 / 91 / 88 / 68`, and `/api/hepta-merge-completion`
 - browser visual smoke after final install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
-  evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.Sq2URq`
-- live `/api/hepta-merge-completion` reports twelve current scripts after
-  release/hardening status gate continuation, browser visual smoke
-  ready, route parity `59/59`, and no
+  evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.MNEhKs`
+- live `/api/hepta-merge-completion` reports thirteen current scripts after
+  provider/channel dry-run plan continuation, browser visual smoke
+  ready, route parity `60/60`, and no
   `browser_visual_e2e_not_run_in_this_audit` blocker
 - provider metadata browser visual smoke after provider install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
