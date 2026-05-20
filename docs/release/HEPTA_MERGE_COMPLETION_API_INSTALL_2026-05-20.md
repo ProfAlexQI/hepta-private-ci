@@ -13,10 +13,19 @@ Status: installed; live route parity updated to `52/52`; external mutation gates
 - installed sha256: `0fd4ed1d158dbf73e361ccb8975e0c580d4b482a2b754674d4ddcbfceb7ebb70`
 - binary sha match: `true`
 
+Final Control UI continuation build:
+
+- source commit: `12a3a46 feat: show merge completion on gateway index`
+- release sha256: `55b08659d5d301ceb9fb6c33562330fde2482bd901eed6af4916ead73ae8c284`
+- installed sha256: `55b08659d5d301ceb9fb6c33562330fde2482bd901eed6af4916ead73ae8c284`
+- binary sha match: `true`
+
 Backups created before replacement:
 
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093102`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093113`
+- `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-control-ui-merge-completion-20260520-095847`
+- `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-gateway-index-merge-completion-20260520-101433`
 
 The first backup was created during a no-op install attempt that used the wrong
 release path (`target/release/hepta`). The installed SHA did not change during
@@ -39,6 +48,12 @@ binary with `codex-rs/target/release/hepta`.
 - `telegram_live_send_enabled=false`
 - `native_post_real_activation_enabled=false`
 - `public_ga_claimed=false`
+
+The gateway index page now also exposes the completion signal directly:
+
+- label: `Merge completion`
+- value: `82 / 91 / 88 / 68`
+- explanatory endpoint text includes `/api/hepta-merge-completion`
 
 Expected blockers remain explicit:
 
@@ -80,15 +95,17 @@ Pre-install gates:
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `56 passed`
 - `HEPTA_CODEX_PREFLIGHT_RELEASE=0 scripts/hepta-codex-preflight.sh`
 - `CARGO_INCREMENTAL=0 cargo build --release --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
+- `scripts/hepta-control-ui-smoke.sh`: passed after surfacing merge completion in the Rust/no-JS Control UI model
+- `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway_readiness_exposes_pending_telegram_migration -- --nocapture`: passed after adding the gateway index completion card
 
 Post-install gates:
 
 - `scripts/hepta-codex-watchdog.sh`: passed
 - `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`: `3/3` samples passed
+- gateway index smoke: found `Merge completion`, `82 / 91 / 88 / 68`, and `/api/hepta-merge-completion`
 
 Known non-blocking warnings:
 
 - stable `rustfmt` still warns that `imports_granularity = Item` is nightly-only
 - Makepad metadata still reports a duplicate `bitflags` package and chooses the
   non-vulkan path
-
