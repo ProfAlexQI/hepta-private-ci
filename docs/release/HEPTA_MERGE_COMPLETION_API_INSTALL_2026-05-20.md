@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: install and live verification for `/api/hepta-merge-completion` and follow-on safe inventory routes
-Status: installed; live route parity updated to `54/54`; external mutation gates remain closed
+Status: installed; live route parity updated to `55/55`; external mutation gates remain closed
 
 ## Installed Build
 
@@ -48,6 +48,17 @@ Provider metadata inventory continuation:
 - live route parity after install: `54/54`
 - script count after install: `7`
 
+Runtime/session dry-run inventory continuation:
+
+- source workset: `/api/hepta-runtime-session-dry-run-inventory`,
+  `scripts/hepta-codex-runtime-session-dry-run-inventory.sh`, and inventory docs
+- source commit: `cfb4c5f feat: add Hepta runtime dry-run inventory`
+- release sha256: `480a40c62d05d821d6aa774240ec97cfe1db4b46865ddab922f4b7be4deba9f2`
+- installed sha256: `480a40c62d05d821d6aa774240ec97cfe1db4b46865ddab922f4b7be4deba9f2`
+- binary sha match: `true`
+- live route parity after install: `55/55`
+- script count after install: `8`
+
 Backups created before replacement:
 
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093102`
@@ -57,6 +68,7 @@ Backups created before replacement:
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-browser-visual-smoke-20260520-110537`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-cli-command-inventory-20260520-115611`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-provider-metadata-inventory-20260520-124444`
+- `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-runtime-session-dry-run-inventory-20260520-133107`
 
 Launchd plist backup created before the browser visual smoke continuation
 replacement:
@@ -73,6 +85,11 @@ replacement:
 
 - `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-provider-metadata-inventory-20260520-124444.plist`
 
+Launchd plist backup created before the runtime/session dry-run inventory
+continuation replacement:
+
+- `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-runtime-session-dry-run-inventory-20260520-133107.plist`
+
 The first backup was created during a no-op install attempt that used the wrong
 release path (`target/release/hepta`). The installed SHA did not change during
 that attempt. The second backup was created immediately before replacing the
@@ -88,13 +105,13 @@ binary with `codex-rs/target/release/hepta`.
 - `local_deterministic_function_percent=91`
 - `active_service_coexistence_percent=88`
 - `production_replacement_percent=68`
-- `native_gateway_source_command_count=54` after provider metadata continuation
-- `current_hepta_codex_script_total=7` after provider metadata continuation
+- `native_gateway_source_command_count=55` after runtime/session dry-run continuation
+- `current_hepta_codex_script_total=8` after runtime/session dry-run continuation
 - `merge_completion_control_ui_surfaced=true`
 - `merge_completion_gateway_index_surfaced=true`
 - `browser_visual_smoke_ready=true`
 - `browser_visual_smoke_command=scripts/hepta-codex-browser-visual-smoke.sh`
-- `route_count=54` after provider metadata continuation
+- `route_count=55` after runtime/session dry-run continuation
 - `missing_route_count=0`
 - `telegram_live_send_enabled=false`
 - `native_post_real_activation_enabled=false`
@@ -127,8 +144,8 @@ The old CLI breadth inventory is now exposed by
 - `old_hepta_ops_file_count=65`
 - `old_hepta_rough_command_reference_count=574`
 - `old_hepta_script_total=20`
-- `current_hepta_codex_script_total=7`
-- `native_gateway_source_command_count=54`
+- `current_hepta_codex_script_total=8`
+- `native_gateway_source_command_count=55`
 - `ops_family_count=5`
 - `ops_file_family_covered_count=65`
 - `old_cli_command_breadth_fully_migrated=false`
@@ -144,20 +161,35 @@ The provider/search metadata inventory continuation adds
 - `adjacent_search_ops_file_count=3`
 - `provider_adapter_count=15`
 - `adjacent_search_adapter_count=3`
-- `current_hepta_codex_script_total=7`
-- `native_gateway_source_command_count=54`
+- `current_hepta_codex_script_total=8`
+- `native_gateway_source_command_count=55`
 - `provider_live_invocation_enabled=false`
 - `credentialed_smoke_performed=false`
 - provider invocation, credential reads, external network reads, model calls,
   Telegram reads/sends, native POST mutation, and filesystem writes all `false`
+
+The runtime/session dry-run inventory continuation adds
+`/api/hepta-runtime-session-dry-run-inventory` and
+`scripts/hepta-codex-runtime-session-dry-run-inventory.sh`:
+
+- `old_runtime_ops_file_count=12`
+- `dry_run_surface_count=12`
+- `planner_ready_count=12`
+- `live_mutation_surface_count=0`
+- `current_hepta_codex_script_total=8`
+- `native_gateway_source_command_count=55`
+- task registry mutation, session store mutation, gateway event enqueue, hook
+  enqueue, process spawn, provider/model invocation, credential reads, external
+  network/send, Telegram reads/sends, native POST mutation, and filesystem
+  writes all `false`
 
 ## Route Parity
 
 `/api/control-ui-route-parity` after install:
 
 - `status=ready`
-- `route_count=54` after provider metadata continuation
-- `implemented_route_count=54` after provider metadata continuation
+- `route_count=55` after runtime/session dry-run continuation
+- `implemented_route_count=55` after runtime/session dry-run continuation
 - `missing_route_count=0`
 
 ## Safety Boundary
@@ -179,8 +211,10 @@ Pre-install gates:
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_merge_completion_endpoint_returns_machine_readable_audit -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_cli_command_inventory -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_provider_metadata_inventory -- --nocapture`
+- `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_runtime_session_dry_run_inventory -- --nocapture`
+- `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta inventory -- --nocapture`
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta control_ui_route_parity_report_covers_old_hepta_routes -- --nocapture`
-- `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `57 passed`
+- `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `59 passed`
 - `HEPTA_CODEX_PREFLIGHT_RELEASE=0 scripts/hepta-codex-preflight.sh`
 - `CARGO_INCREMENTAL=0 cargo build --release --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
 - `scripts/hepta-control-ui-smoke.sh`: passed after surfacing merge completion in the Rust/no-JS Control UI model
@@ -196,18 +230,25 @@ Post-install gates:
   CLI inventory counts synchronized
 - `scripts/hepta-codex-provider-metadata-inventory.sh`: passed, provider, CLI,
   and merge-completion counts synchronized
+- `scripts/hepta-codex-runtime-session-dry-run-inventory.sh`: passed,
+  runtime/session, provider, CLI, and merge-completion counts synchronized
 - gateway index smoke: found `Merge completion`, `82 / 91 / 88 / 68`, and `/api/hepta-merge-completion`
 - browser visual smoke after final install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
   evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.Sq2URq`
-- live `/api/hepta-merge-completion` reports seven current scripts after
-  provider metadata continuation, browser visual smoke ready, route parity
-  `54/54`, and no
-  `browser_visual_e2e_not_run_in_this_audit` blocker
+- live `/api/hepta-merge-completion` reports eight current scripts after
+  runtime/session dry-run continuation, browser visual smoke ready, route
+  parity `55/55`, and no `browser_visual_e2e_not_run_in_this_audit` blocker
 - provider metadata browser visual smoke after provider install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
   evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.pXuv34`
 - short live soak after provider install:
+  `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`
+  passed `3/3`
+- runtime/session browser visual smoke after install:
+  `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
+  evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.ufsv9m`
+- short live soak after runtime/session install:
   `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`
   passed `3/3`
 
