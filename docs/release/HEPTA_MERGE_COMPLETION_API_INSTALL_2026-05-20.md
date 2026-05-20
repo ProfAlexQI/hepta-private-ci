@@ -2,7 +2,7 @@
 
 Date: 2026-05-20
 Scope: install and live verification for `/api/hepta-merge-completion` and follow-on safe inventory routes
-Status: installed; live route parity updated to `55/55`; external mutation gates remain closed
+Status: installed; live route parity updated to `56/56`; external mutation gates remain closed
 
 ## Installed Build
 
@@ -59,6 +59,18 @@ Runtime/session dry-run inventory continuation:
 - live route parity after install: `55/55`
 - script count after install: `8`
 
+Channel adapter disabled status inventory continuation:
+
+- source workset: `/api/hepta-channel-adapter-status-inventory`,
+  `scripts/hepta-codex-channel-adapter-status-inventory.sh`, and inventory docs
+- source commit: `acc3c49 feat: add Hepta channel status inventory`
+- release sha256: `9bf2d1163e636f37e8802cb75d4f05e5282c87576aee200d80d60ad59fdc9cec`
+- installed sha256: `9bf2d1163e636f37e8802cb75d4f05e5282c87576aee200d80d60ad59fdc9cec`
+- binary sha match: `true`
+- live route parity after install: `56/56`
+- script count after install: `9`
+- native gateway source command count after install: `56`
+
 Backups created before replacement:
 
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-merge-completion-api-20260520-093102`
@@ -69,6 +81,7 @@ Backups created before replacement:
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-cli-command-inventory-20260520-115611`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-provider-metadata-inventory-20260520-124444`
 - `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-runtime-session-dry-run-inventory-20260520-133107`
+- `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-channel-adapter-status-inventory-20260520-141937`
 
 Launchd plist backup created before the browser visual smoke continuation
 replacement:
@@ -90,6 +103,11 @@ continuation replacement:
 
 - `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-runtime-session-dry-run-inventory-20260520-133107.plist`
 
+Launchd plist backup created before the channel adapter status inventory
+continuation replacement:
+
+- `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-channel-adapter-status-inventory-20260520-141937.plist`
+
 The first backup was created during a no-op install attempt that used the wrong
 release path (`target/release/hepta`). The installed SHA did not change during
 that attempt. The second backup was created immediately before replacing the
@@ -105,13 +123,13 @@ binary with `codex-rs/target/release/hepta`.
 - `local_deterministic_function_percent=91`
 - `active_service_coexistence_percent=88`
 - `production_replacement_percent=68`
-- `native_gateway_source_command_count=55` after runtime/session dry-run continuation
-- `current_hepta_codex_script_total=8` after runtime/session dry-run continuation
+- `native_gateway_source_command_count=56` after channel adapter status inventory continuation
+- `current_hepta_codex_script_total=9` after channel adapter status inventory continuation
 - `merge_completion_control_ui_surfaced=true`
 - `merge_completion_gateway_index_surfaced=true`
 - `browser_visual_smoke_ready=true`
 - `browser_visual_smoke_command=scripts/hepta-codex-browser-visual-smoke.sh`
-- `route_count=55` after runtime/session dry-run continuation
+- `route_count=56` after channel adapter status inventory continuation
 - `missing_route_count=0`
 - `telegram_live_send_enabled=false`
 - `native_post_real_activation_enabled=false`
@@ -144,8 +162,8 @@ The old CLI breadth inventory is now exposed by
 - `old_hepta_ops_file_count=65`
 - `old_hepta_rough_command_reference_count=574`
 - `old_hepta_script_total=20`
-- `current_hepta_codex_script_total=8`
-- `native_gateway_source_command_count=55`
+- `current_hepta_codex_script_total=9`
+- `native_gateway_source_command_count=56`
 - `ops_family_count=5`
 - `ops_file_family_covered_count=65`
 - `old_cli_command_breadth_fully_migrated=false`
@@ -161,8 +179,8 @@ The provider/search metadata inventory continuation adds
 - `adjacent_search_ops_file_count=3`
 - `provider_adapter_count=15`
 - `adjacent_search_adapter_count=3`
-- `current_hepta_codex_script_total=8`
-- `native_gateway_source_command_count=55`
+- `current_hepta_codex_script_total=9`
+- `native_gateway_source_command_count=56`
 - `provider_live_invocation_enabled=false`
 - `credentialed_smoke_performed=false`
 - provider invocation, credential reads, external network reads, model calls,
@@ -176,20 +194,34 @@ The runtime/session dry-run inventory continuation adds
 - `dry_run_surface_count=12`
 - `planner_ready_count=12`
 - `live_mutation_surface_count=0`
-- `current_hepta_codex_script_total=8`
-- `native_gateway_source_command_count=55`
+- `current_hepta_codex_script_total=9`
+- `native_gateway_source_command_count=56`
 - task registry mutation, session store mutation, gateway event enqueue, hook
   enqueue, process spawn, provider/model invocation, credential reads, external
   network/send, Telegram reads/sends, native POST mutation, and filesystem
   writes all `false`
+
+The channel adapter disabled status inventory continuation adds
+`/api/hepta-channel-adapter-status-inventory` and
+`scripts/hepta-codex-channel-adapter-status-inventory.sh`:
+
+- `old_channel_ops_file_count=13`
+- `adapter_count=13`
+- `disabled_status_ready_count=13`
+- `live_adapter_enabled_count=0`
+- `current_hepta_codex_script_total=9`
+- `native_gateway_source_command_count=56`
+- live channel read, live channel send, Telegram owner handoff, credential
+  reads, external network/send, voice calls, TTS playback, webhook delivery,
+  file transfer, native POST mutation, and filesystem writes all `false`
 
 ## Route Parity
 
 `/api/control-ui-route-parity` after install:
 
 - `status=ready`
-- `route_count=55` after runtime/session dry-run continuation
-- `implemented_route_count=55` after runtime/session dry-run continuation
+- `route_count=56` after channel adapter status inventory continuation
+- `implemented_route_count=56` after channel adapter status inventory continuation
 - `missing_route_count=0`
 
 ## Safety Boundary
@@ -212,9 +244,10 @@ Pre-install gates:
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_cli_command_inventory -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_provider_metadata_inventory -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_runtime_session_dry_run_inventory -- --nocapture`
+- `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta hepta_channel_adapter_status_inventory -- --nocapture`
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta inventory -- --nocapture`
 - `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta control_ui_route_parity_report_covers_old_hepta_routes -- --nocapture`
-- `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `59 passed`
+- `cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`: `60 passed`
 - `HEPTA_CODEX_PREFLIGHT_RELEASE=0 scripts/hepta-codex-preflight.sh`
 - `CARGO_INCREMENTAL=0 cargo build --release --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
 - `scripts/hepta-control-ui-smoke.sh`: passed after surfacing merge completion in the Rust/no-JS Control UI model
@@ -232,13 +265,17 @@ Post-install gates:
   and merge-completion counts synchronized
 - `scripts/hepta-codex-runtime-session-dry-run-inventory.sh`: passed,
   runtime/session, provider, CLI, and merge-completion counts synchronized
+- `scripts/hepta-codex-channel-adapter-status-inventory.sh`: passed,
+  channel adapter, runtime/session, provider, CLI, and merge-completion counts
+  synchronized
 - gateway index smoke: found `Merge completion`, `82 / 91 / 88 / 68`, and `/api/hepta-merge-completion`
 - browser visual smoke after final install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
   evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.Sq2URq`
-- live `/api/hepta-merge-completion` reports eight current scripts after
-  runtime/session dry-run continuation, browser visual smoke ready, route
-  parity `55/55`, and no `browser_visual_e2e_not_run_in_this_audit` blocker
+- live `/api/hepta-merge-completion` reports nine current scripts after
+  channel adapter status inventory continuation, browser visual smoke ready,
+  route parity `56/56`, and no `browser_visual_e2e_not_run_in_this_audit`
+  blocker
 - provider metadata browser visual smoke after provider install:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
   evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.pXuv34`
@@ -249,6 +286,12 @@ Post-install gates:
   `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
   evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.ufsv9m`
 - short live soak after runtime/session install:
+  `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`
+  passed `3/3`
+- channel adapter browser visual smoke after install:
+  `scripts/hepta-codex-browser-visual-smoke.sh` passed and wrote screenshot
+  evidence under `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.mJTOvv`
+- short live soak after channel adapter install:
   `HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh`
   passed `3/3`
 
