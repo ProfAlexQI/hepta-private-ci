@@ -220,3 +220,30 @@ Live checks after install:
   `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.PkGkb0`
 - `HEPTA_CODEX_PREFLIGHT_RELEASE=0 scripts/hepta-codex-preflight.sh`: passed,
   including Hepta Native `52` tests
+
+## Follow-Up: Operator-Approved Evidence Flags
+
+After the operator approval packet, the readiness gate was extended so completed
+live evidence can be reflected without weakening the safe default state.
+
+Default behavior remains unchanged: all new flags are absent/false unless an
+operator-approved smoke or release action has actually completed.
+
+New evidence flags:
+
+- `HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED=1` clears the provider/search live
+  smoke blocker only after redacted credentialed smoke evidence exists.
+- `HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED=1` clears channel read/send delivery
+  readiness after selected channel delivery evidence exists.
+- `HEPTA_CHANNEL_LIVE_READ_VERIFIED=1` and
+  `HEPTA_CHANNEL_LIVE_SEND_VERIFIED=1` can represent read/send evidence
+  separately.
+- `HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED=1` now also reflects through the
+  release/hardening status gate, not only the aggregate public GA report.
+- `HEPTA_PUBLIC_GA_RELEASE_APPROVED=1` reflects an explicit external public
+  release approval in the release/hardening status gate.
+
+These flags do not execute the smokes themselves and do not read credentials,
+send channel messages, mutate LaunchAgents, or publish a release from the
+readiness endpoint. They only make completed evidence visible to the aggregate
+GA gate.

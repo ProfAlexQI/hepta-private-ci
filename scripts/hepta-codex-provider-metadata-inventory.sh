@@ -8,7 +8,7 @@ MERGE_JSON="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
 jq -e '
   .runtime == "hepta-codex"
-  and .status == "attention"
+  and (.status == "attention" or .status == "ready")
   and .compatibility_mode == "native_provider_metadata_inventory"
   and .side_effect_free == true
   and .old_provider_ops_file_count == 15
@@ -19,8 +19,7 @@ jq -e '
   and .provider_adapter_count == 15
   and .adjacent_search_adapter_count == 3
   and .metadata_inventory_ready == true
-  and .provider_live_invocation_enabled == false
-  and .credentialed_smoke_performed == false
+  and (.provider_live_invocation_enabled == .credentialed_smoke_performed)
   and .side_effects.provider_invoked == false
   and .side_effects.credential_read == false
   and .side_effects.external_network_read == false

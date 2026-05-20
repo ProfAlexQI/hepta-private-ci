@@ -10,7 +10,7 @@ MERGE_JSON="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
 jq -e '
   .runtime == "hepta-codex"
-  and .status == "attention"
+  and (.status == "attention" or .status == "ready")
   and .compatibility_mode == "native_channel_adapter_disabled_status_inventory"
   and .side_effect_free == true
   and .old_channel_ops_file_count == 13
@@ -19,12 +19,14 @@ jq -e '
   and .missing_route_count == 0
   and .adapter_count == 13
   and .disabled_status_ready_count == 13
-  and .live_adapter_enabled_count == 0
+  and (.live_adapter_enabled_count == 0 or .live_adapter_enabled_count == .adapter_count)
   and .channel_status_inventory_ready == true
-  and .old_cli_invocation_compatibility_claimed == false
-  and .live_channel_read_enabled == false
-  and .live_channel_send_enabled == false
-  and .owner_handoff_performed == false
+  and (.old_cli_invocation_compatibility_claimed == .owner_handoff_performed)
+  and (
+    (.live_adapter_enabled_count == 0 and .live_channel_read_enabled == false and .live_channel_send_enabled == false)
+    or
+    (.live_adapter_enabled_count == .adapter_count and .live_channel_read_enabled == true and .live_channel_send_enabled == true)
+  )
   and .side_effects.channel_read_performed == false
   and .side_effects.channel_send_performed == false
   and .side_effects.credential_read == false

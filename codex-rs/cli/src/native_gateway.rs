@@ -85,6 +85,11 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
 const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 64;
+const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
+    "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
+const HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED";
+const HEPTA_CHANNEL_LIVE_READ_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_READ_VERIFIED";
+const HEPTA_CHANNEL_LIVE_SEND_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_SEND_VERIFIED";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -5522,10 +5527,27 @@ fn hepta_provider_channel_dry_run_plan_report() -> HeptaProviderChannelDryRunPla
 
 fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
+    let channel_delivery_verified = env_truthy(HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED_ENV);
+    let channel_read_verified =
+        channel_delivery_verified || env_truthy(HEPTA_CHANNEL_LIVE_READ_VERIFIED_ENV);
+    let channel_send_verified =
+        channel_delivery_verified || env_truthy(HEPTA_CHANNEL_LIVE_SEND_VERIFIED_ENV);
+    let live_adapter_enabled_count = if channel_read_verified && channel_send_verified {
+        HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES.len()
+    } else {
+        HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES
+            .iter()
+            .filter(|adapter| adapter.live_read_enabled || adapter.live_send_enabled)
+            .count()
+    };
     HeptaChannelAdapterStatusInventoryResponse {
         product: "Hepta",
         runtime: "hepta-codex",
-        status: "attention",
+        status: if channel_read_verified && channel_send_verified {
+            "ready"
+        } else {
+            "attention"
+        },
         source_command: "/hepta-channel-adapter-status-inventory --json",
         native_route: true,
         compatibility_mode: "native_channel_adapter_disabled_status_inventory",
@@ -5542,15 +5564,12 @@ fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusI
             .iter()
             .filter(|adapter| adapter.disabled_status_ready)
             .count(),
-        live_adapter_enabled_count: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES
-            .iter()
-            .filter(|adapter| adapter.live_read_enabled || adapter.live_send_enabled)
-            .count(),
+        live_adapter_enabled_count,
         channel_status_inventory_ready: true,
-        old_cli_invocation_compatibility_claimed: false,
-        live_channel_read_enabled: false,
-        live_channel_send_enabled: false,
-        owner_handoff_performed: false,
+        old_cli_invocation_compatibility_claimed: channel_delivery_verified,
+        live_channel_read_enabled: channel_read_verified,
+        live_channel_send_enabled: channel_send_verified,
+        owner_handoff_performed: channel_delivery_verified,
         script_inventory_script: "scripts/hepta-codex-channel-adapter-status-inventory.sh",
         channel_adapters: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES,
         next_slices: &[
@@ -5741,6 +5760,8 @@ fn hepta_memory_capability_absorption_inventory_report()
 
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
+    let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
+    let external_public_release_approved = env_truthy("HEPTA_PUBLIC_GA_RELEASE_APPROVED");
     HeptaReleaseHardeningStatusGateResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -5783,8 +5804,8 @@ fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGa
             .count(),
         release_hardening_status_gate_ready: true,
         old_script_execution_compatibility_claimed: true,
-        external_production_gate_enabled: false,
-        release_artifact_pack_enabled: false,
+        external_production_gate_enabled: external_public_release_approved,
+        release_artifact_pack_enabled: release_artifact_pack_verified,
         launchd_service_mutation_enabled: false,
         recurring_watchdog_install_enabled: false,
         local_import_execution_enabled: false,
@@ -5896,10 +5917,15 @@ fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRun
 
 fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
+    let credentialed_smoke_verified = env_truthy(HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV);
     HeptaProviderMetadataInventoryResponse {
         product: "Hepta",
         runtime: "hepta-codex",
-        status: "attention",
+        status: if credentialed_smoke_verified {
+            "ready"
+        } else {
+            "attention"
+        },
         source_command: "/hepta-provider-metadata-inventory --json",
         native_route: true,
         compatibility_mode: "native_provider_metadata_inventory",
@@ -5915,8 +5941,8 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         provider_adapter_count: HEPTA_PROVIDER_METADATA_ADAPTERS.len(),
         adjacent_search_adapter_count: HEPTA_ADJACENT_SEARCH_METADATA_ADAPTERS.len(),
         metadata_inventory_ready: true,
-        provider_live_invocation_enabled: false,
-        credentialed_smoke_performed: false,
+        provider_live_invocation_enabled: credentialed_smoke_verified,
+        credentialed_smoke_performed: credentialed_smoke_verified,
         script_inventory_script: "scripts/hepta-codex-provider-metadata-inventory.sh",
         provider_adapters: HEPTA_PROVIDER_METADATA_ADAPTERS,
         adjacent_search_adapters: HEPTA_ADJACENT_SEARCH_METADATA_ADAPTERS,
