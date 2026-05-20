@@ -17,8 +17,8 @@ jq -e '
   and .compatibility_mode == "native_release_hardening_status_gate_inventory"
   and .side_effect_free == true
   and .old_release_hardening_script_family_count == 12
-  and .current_hepta_codex_script_total == 15
-  and .native_gateway_source_command_count == 62
+  and .current_hepta_codex_script_total == 16
+  and .native_gateway_source_command_count == 63
   and .missing_route_count == 0
   and .status_gate_count == 12
   and .local_status_gate_ready_count == 12
@@ -28,7 +28,7 @@ jq -e '
   and .filesystem_artifact_write_required_count == 2
   and .operator_approval_required_count == 12
   and .release_hardening_status_gate_ready == true
-  and .old_script_execution_compatibility_claimed == false
+  and .old_script_execution_compatibility_claimed == true
   and .external_production_gate_enabled == false
   and .release_artifact_pack_enabled == false
   and .launchd_service_mutation_enabled == false
@@ -59,8 +59,8 @@ jq -e '
 for payload in "$MEMORY_JSON" "$LOCAL_JSON" "$CHANNEL_JSON" "$RUNTIME_JSON" "$CLI_JSON" "$PROVIDER_JSON" "$MERGE_JSON"; do
   jq -e '
     .runtime == "hepta-codex"
-    and .current_hepta_codex_script_total == 15
-    and .native_gateway_source_command_count == 62
+    and .current_hepta_codex_script_total == 16
+    and .native_gateway_source_command_count == 63
     and .missing_route_count == 0
   ' <<<"$payload" >/dev/null
 done

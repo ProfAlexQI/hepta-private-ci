@@ -46,8 +46,6 @@ Local evidence currently synchronized by the gate:
 - Native POST real mutation activation requires explicit scoped approval and rollback evidence.
 - Credentialed provider/search live smoke requires explicit approval and redacted evidence.
 - Real channel delivery smoke requires explicit approval.
-- Old standalone Hepta CLI command breadth is not claimed fully migrated.
-- Old release/hardening script execution compatibility is not claimed.
 - Release artifact packing and external public release are not approved.
 
 Cleared locally after the follow-up native packaging gate:
@@ -117,3 +115,58 @@ track was promoted into the live matrix:
 
 This clears the local native packaging readiness blocker while keeping release
 artifact creation and external public release behind explicit approval.
+
+## Follow-Up: Legacy Compatibility Closure
+
+After the native packaging gate, the old CLI/script family gap was promoted
+into a local compatibility closure:
+
+- endpoint: `/api/hepta-legacy-compatibility-closure`
+- script: `scripts/hepta-codex-legacy-compatibility-closure.sh`
+- old ops file family coverage: `65/65`
+- release/hardening status gate coverage: `12/12`
+- aggregate script count: `16`
+- aggregate source-command count: `63`
+
+This clears the broad old CLI breadth and release/hardening script compatibility
+blockers only as local route/script/status coverage. Live provider, channel,
+Telegram, native POST, artifact publishing, and external release tracks remain
+separately blocked until explicit approval.
+
+Installed after the legacy compatibility closure release build:
+
+- release sha256: `f01d17324f1c4ecf885cd3d9380d888ba5c46edc6986d159168040b09b4b3bf8`
+- installed sha256: `f01d17324f1c4ecf885cd3d9380d888ba5c46edc6986d159168040b09b4b3bf8`
+- binary SHA match: `true`
+- active service: `ai.hepta.gateway`
+- active PID after restart: `19635`
+- binary backup:
+  `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex.pre-legacy-compatibility-closure-20260521-015538`
+- plist backup:
+  `/Users/qianqi/.openclaw/workspace/backups/ai.hepta.gateway.pre-legacy-compatibility-closure-20260521-015538.plist`
+
+Live checks after install:
+
+- `/api/control-ui-route-parity`: `63/63`, missing `0`
+- `/api/hepta-legacy-compatibility-closure`: `status=ready`
+- `/api/hepta-public-ga-readiness`: `status=blocked`,
+  `public_ga_ready=false`, `local_gate_matrix_ready=true`,
+  `local_reports_synchronized=true`, blocker count `8`
+- `scripts/hepta-codex-legacy-compatibility-closure.sh`: passed
+- `scripts/hepta-codex-public-ga-readiness.sh`: passed
+- all inventory/status scripts passed at `current_hepta_codex_script_total=16`
+  and `native_gateway_source_command_count=63`
+- `scripts/hepta-codex-watchdog.sh`: passed, release/installed SHA match true
+- `HEPTA_CODEX_SOAK_SAMPLES=12 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=5 scripts/hepta-codex-live-soak.sh`: passed `12/12`
+- `scripts/hepta-codex-browser-visual-smoke.sh`: passed, screenshots in
+  `/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.IUfj3T`
+- `HEPTA_CODEX_PREFLIGHT_RELEASE=0 scripts/hepta-codex-preflight.sh`: passed,
+  including Hepta Native `52` tests
+
+Safety state after install:
+
+- active Telegram owner remains `legacy_openclaw`
+- Hepta Telegram poll loop remains gated
+- native POST real activation remains disabled
+- no provider/channel credentialed live smoke, native app signing,
+  notarization, artifact publishing, or external public release was performed

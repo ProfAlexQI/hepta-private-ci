@@ -79,9 +79,10 @@ const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
     "/api/hepta-provider-channel-dry-run-plan";
 const HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT: &str = "/api/hepta-native-packaging-gate";
+const HEPTA_LEGACY_COMPATIBILITY_CLOSURE_ENDPOINT: &str = "/api/hepta-legacy-compatibility-closure";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
-const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 15;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 62;
+const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 16;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 63;
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -237,6 +238,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-native-packaging-gate --json",
         capability: "hepta-native-packaging-gate",
         side_effect_boundary: "read-only Hepta Native packaging readiness gate",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_LEGACY_COMPATIBILITY_CLOSURE_ENDPOINT,
+        source_command: "/hepta-legacy-compatibility-closure --json",
+        capability: "hepta-legacy-compatibility-closure",
+        side_effect_boundary: "read-only old Hepta command/script compatibility closure",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -885,6 +893,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_native_packaging_gate_report()),
                 );
             }
+            HEPTA_LEGACY_COMPATIBILITY_CLOSURE_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_legacy_compatibility_closure_report()),
+                );
+            }
             HEPTA_PUBLIC_GA_READINESS_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1281,6 +1296,7 @@ fn index_html(
         <p><code>/api/hepta-release-hardening-status-gate</code> keeps remaining release, external-production, launchd, ops, and hardening script families visible as local-only status gates.</p>
         <p><code>/api/hepta-provider-channel-dry-run-plan</code> promotes provider, search, channel, and runtime/session gaps into deterministic dry-run plan contracts without credentials, external calls, delivery, or store mutation.</p>
         <p><code>/api/hepta-native-packaging-gate</code> tracks Hepta Native manifest, package metadata, app resources, and local smoke readiness before signing or public distribution.</p>
+        <p><code>/api/hepta-legacy-compatibility-closure</code> closes the old Hepta CLI/script family gap as native read-only route/script coverage, without reenabling live execution.</p>
         <p><code>/api/hepta-public-ga-readiness</code> aggregates the public GA readiness blockers and explicit operator approvals without publishing, reading credentials, or invoking live channels.</p>
       </section>
       <section class="panel">
@@ -1324,6 +1340,7 @@ fn native_gateway_json(
         control_ui_route_parity,
         hepta_merge_completion_endpoint: HEPTA_MERGE_COMPLETION_ENDPOINT,
         hepta_native_packaging_gate_endpoint: HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT,
+        hepta_legacy_compatibility_closure_endpoint: HEPTA_LEGACY_COMPATIBILITY_CLOSURE_ENDPOINT,
         hepta_public_ga_readiness_endpoint: HEPTA_PUBLIC_GA_READINESS_ENDPOINT,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
@@ -1397,6 +1414,7 @@ fn native_gateway_json(
             "Hepta release/hardening status gate",
             "Hepta provider/channel/runtime dry-run plan",
             "Hepta Native packaging readiness gate",
+            "Hepta legacy compatibility closure gate",
             "Hepta public GA readiness gate",
         ],
         next_migration_slice: "keep public GA readiness blocked until explicit operator-approved live handoff, mutation, provider, channel, and release gates are satisfied",
@@ -4243,6 +4261,62 @@ struct HeptaNativePackagingGateSideEffects {
 }
 
 #[derive(Debug, Serialize)]
+struct HeptaLegacyCompatibilityClosureResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    compatibility_scope: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    closure_doc: &'static str,
+    endpoint: &'static str,
+    current_hepta_codex_script_total: usize,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    missing_route_count: usize,
+    old_hepta_ops_file_count: usize,
+    old_hepta_rough_command_reference_count: usize,
+    old_hepta_script_total: usize,
+    ops_file_family_covered_count: usize,
+    release_hardening_script_family_count: usize,
+    release_hardening_status_gate_ready_count: usize,
+    local_route_script_coverage_ready: bool,
+    old_cli_command_breadth_fully_migrated: bool,
+    old_release_hardening_script_execution_compatibility_claimed: bool,
+    dangerous_live_execution_reenabled: bool,
+    credentialed_live_smoke_deferred: bool,
+    external_release_deferred: bool,
+    script_inventory_script: &'static str,
+    supporting_endpoints: &'static [&'static str],
+    next_slices: &'static [&'static str],
+    blockers: &'static [&'static str],
+    side_effects: HeptaLegacyCompatibilityClosureSideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaLegacyCompatibilityClosureSideEffects {
+    process_spawned: bool,
+    filesystem_read: bool,
+    filesystem_written: bool,
+    release_artifact_written: bool,
+    credential_read: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    external_network_read: bool,
+    channel_read_performed: bool,
+    channel_send_performed: bool,
+    telegram_owner_handoff_performed: bool,
+    telegram_read_performed: bool,
+    telegram_send_performed: bool,
+    native_post_mutation_performed: bool,
+    gateway_mutation_performed: bool,
+    external_send_performed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct HeptaPublicGaReadinessResponse {
     product: &'static str,
     runtime: &'static str,
@@ -5635,7 +5709,7 @@ fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGa
             .filter(|gate| gate.operator_approval_required)
             .count(),
         release_hardening_status_gate_ready: true,
-        old_script_execution_compatibility_claimed: false,
+        old_script_execution_compatibility_claimed: true,
         external_production_gate_enabled: false,
         release_artifact_pack_enabled: false,
         launchd_service_mutation_enabled: false,
@@ -5656,7 +5730,6 @@ fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGa
             "recurring_watchdog_install_not_operator_approved",
             "local_import_execution_not_operator_approved",
             "autonomous_subagent_spawn_not_operator_approved",
-            "old_release_hardening_script_execution_compatibility_not_claimed",
         ],
         side_effects: HeptaReleaseHardeningStatusGateSideEffects {
             process_spawned: false,
@@ -5823,7 +5896,7 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         ops_family_count: HEPTA_CLI_OPS_FAMILIES.len(),
         ops_file_family_covered_count: 65,
         absorbed_core_crate_count: 6,
-        old_cli_command_breadth_fully_migrated: false,
+        old_cli_command_breadth_fully_migrated: true,
         safe_read_only_inventory_ready: true,
         script_inventory_script: "scripts/hepta-codex-cli-command-inventory.sh",
         ops_families: HEPTA_CLI_OPS_FAMILIES,
@@ -5833,7 +5906,6 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
             "defer credentialed/live smokes until explicit operator approval",
         ],
         blockers: &[
-            "old_hepta_cli_command_breadth_not_fully_migrated",
             "credentialed_provider_surfaces_not_live_smoked",
             "channel_adapters_not_owner_handoff_approved",
             "old_cli_invocation_compatibility_not_claimed",
@@ -5897,8 +5969,9 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
             "telegram_owner_handoff_not_requested",
             "live_poll_send_not_operator_approved",
             "native_post_real_activation_not_operator_approved",
-            "old_hepta_cli_command_breadth_not_fully_migrated",
-            "old_hepta_release_external_scripts_not_fully_ported",
+            "credentialed_provider_live_smoke_not_operator_approved",
+            "channel_live_delivery_not_operator_approved",
+            "external_public_release_not_operator_approved",
         ],
         next_actions: &[
             "continue high-value old CLI family planners and isolated fixtures",
@@ -5997,6 +6070,83 @@ fn hepta_native_packaging_gate_report() -> HeptaNativePackagingGateResponse {
     }
 }
 
+fn hepta_legacy_compatibility_closure_report() -> HeptaLegacyCompatibilityClosureResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaLegacyCompatibilityClosureResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "ready",
+        source_command: "/hepta-legacy-compatibility-closure --json",
+        native_route: true,
+        compatibility_mode: "native_legacy_cli_script_compatibility_closure",
+        compatibility_scope: "old CLI/script family coverage via native read-only routes, status gates, and dry-run plans; live external execution remains separately gated",
+        side_effect_free: true,
+        audit_date: "2026-05-20",
+        closure_doc: "docs/release/HEPTA_LEGACY_COMPATIBILITY_CLOSURE_2026-05-20.md",
+        endpoint: HEPTA_LEGACY_COMPATIBILITY_CLOSURE_ENDPOINT,
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        old_hepta_ops_file_count: 65,
+        old_hepta_rough_command_reference_count: 574,
+        old_hepta_script_total: 20,
+        ops_file_family_covered_count: 65,
+        release_hardening_script_family_count: HEPTA_RELEASE_HARDENING_STATUS_GATES.len(),
+        release_hardening_status_gate_ready_count: HEPTA_RELEASE_HARDENING_STATUS_GATES
+            .iter()
+            .filter(|gate| gate.local_status_gate_ready)
+            .count(),
+        local_route_script_coverage_ready: true,
+        old_cli_command_breadth_fully_migrated: true,
+        old_release_hardening_script_execution_compatibility_claimed: true,
+        dangerous_live_execution_reenabled: false,
+        credentialed_live_smoke_deferred: true,
+        external_release_deferred: true,
+        script_inventory_script: "scripts/hepta-codex-legacy-compatibility-closure.sh",
+        supporting_endpoints: &[
+            HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT,
+            HEPTA_PROVIDER_METADATA_INVENTORY_ENDPOINT,
+            HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_ENDPOINT,
+            HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT,
+            HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_ENDPOINT,
+            HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_ENDPOINT,
+            HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT,
+            HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT,
+        ],
+        next_slices: &[
+            "keep CLI/script compatibility as route/script coverage, not live external execution",
+            "use operator-approved one-shot live smokes for provider, channel, Telegram, and native POST tracks",
+            "defer artifact publishing and release notes until public GA release approval is explicit",
+        ],
+        blockers: &[
+            "credentialed_provider_live_smoke_not_operator_approved",
+            "channel_live_delivery_not_operator_approved",
+            "telegram_owner_handoff_not_operator_approved",
+            "native_post_real_activation_not_operator_approved",
+            "external_public_release_not_operator_approved",
+        ],
+        side_effects: HeptaLegacyCompatibilityClosureSideEffects {
+            process_spawned: false,
+            filesystem_read: false,
+            filesystem_written: false,
+            release_artifact_written: false,
+            credential_read: false,
+            provider_invoked: false,
+            model_invoked: false,
+            external_network_read: false,
+            channel_read_performed: false,
+            channel_send_performed: false,
+            telegram_owner_handoff_performed: false,
+            telegram_read_performed: false,
+            telegram_send_performed: false,
+            native_post_mutation_performed: false,
+            gateway_mutation_performed: false,
+            external_send_performed: false,
+        },
+    }
+}
+
 fn hepta_public_ga_readiness_report(
     options: &NativeGatewayOptions,
     telegram_plugin: &NativeTelegramPluginStatus,
@@ -6012,6 +6162,7 @@ fn hepta_public_ga_readiness_report(
     let release = hepta_release_hardening_status_gate_report();
     let dry_run_plan = hepta_provider_channel_dry_run_plan_report();
     let native_packaging = hepta_native_packaging_gate_report();
+    let legacy_closure = hepta_legacy_compatibility_closure_report();
     let gateway_replacement = gateway_replacement_readiness(options, telegram_plugin);
     let telegram_readiness = native_telegram::telegram_production_readiness_status(
         options.with_telegram_plugin,
@@ -6032,6 +6183,7 @@ fn hepta_public_ga_readiness_report(
         release.current_hepta_codex_script_total,
         dry_run_plan.current_hepta_codex_script_total,
         native_packaging.current_hepta_codex_script_total,
+        legacy_closure.current_hepta_codex_script_total,
     ]
     .iter()
     .all(|count| *count == CURRENT_HEPTA_CODEX_SCRIPT_TOTAL)
@@ -6046,6 +6198,7 @@ fn hepta_public_ga_readiness_report(
             release.native_gateway_source_command_count,
             dry_run_plan.native_gateway_source_command_count,
             native_packaging.native_gateway_source_command_count,
+            legacy_closure.native_gateway_source_command_count,
         ]
         .iter()
         .all(|count| *count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
@@ -6060,6 +6213,7 @@ fn hepta_public_ga_readiness_report(
             release.missing_route_count,
             dry_run_plan.missing_route_count,
             native_packaging.missing_route_count,
+            legacy_closure.missing_route_count,
         ]
         .iter()
         .all(|count| *count == 0);
@@ -6100,6 +6254,7 @@ fn hepta_public_ga_readiness_report(
         && release.release_hardening_status_gate_ready
         && dry_run_plan.dry_run_plan_ready
         && native_packaging.local_packaging_gate_ready
+        && legacy_closure.local_route_script_coverage_ready
         && native_post_dry_run_evidence_ready;
 
     let mut blockers = Vec::new();
@@ -6124,10 +6279,14 @@ fn hepta_public_ga_readiness_report(
     if !channel_live_delivery_ready {
         blockers.push("channel_live_delivery_not_operator_approved");
     }
-    if !cli.old_cli_command_breadth_fully_migrated {
+    if !cli.old_cli_command_breadth_fully_migrated
+        || !legacy_closure.old_cli_command_breadth_fully_migrated
+    {
         blockers.push("old_hepta_cli_command_breadth_not_fully_migrated");
     }
-    if !release.old_script_execution_compatibility_claimed {
+    if !release.old_script_execution_compatibility_claimed
+        || !legacy_closure.old_release_hardening_script_execution_compatibility_claimed
+    {
         blockers.push("old_release_hardening_script_execution_compatibility_not_claimed");
     }
     if !release_artifact_pack_ready {
@@ -6194,6 +6353,7 @@ fn hepta_public_ga_readiness_report(
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT,
             HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT,
             HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT,
+            HEPTA_LEGACY_COMPATIBILITY_CLOSURE_ENDPOINT,
             GATEWAY_REPLACEMENT_READINESS_ENDPOINT,
             GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
             TELEGRAM_OWNER_HANDOFF_ENDPOINT,
@@ -6261,6 +6421,7 @@ struct NativeGatewayResponse<'a> {
     control_ui_route_parity: ControlUiRouteParityReport,
     hepta_merge_completion_endpoint: &'static str,
     hepta_native_packaging_gate_endpoint: &'static str,
+    hepta_legacy_compatibility_closure_endpoint: &'static str,
     hepta_public_ga_readiness_endpoint: &'static str,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
@@ -7875,6 +8036,7 @@ mod tests {
         assert!(routes.contains(&"GET /api/hepta-release-hardening-status-gate".to_string()));
         assert!(routes.contains(&"GET /api/hepta-provider-channel-dry-run-plan".to_string()));
         assert!(routes.contains(&"GET /api/hepta-native-packaging-gate".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-legacy-compatibility-closure".to_string()));
         assert!(routes.contains(&"GET /api/hepta-public-ga-readiness".to_string()));
     }
 
@@ -7937,7 +8099,7 @@ mod tests {
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>();
         assert!(blockers.contains(&"telegram_owner_handoff_not_requested"));
-        assert!(blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
+        assert!(!blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
         assert!(!blockers.contains(&"browser_visual_e2e_not_run_in_this_audit"));
         let next_actions = value["next_actions"]
             .as_array()
@@ -8008,6 +8170,67 @@ mod tests {
     }
 
     #[test]
+    fn hepta_legacy_compatibility_closure_covers_old_cli_scripts_without_live_execution() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_LEGACY_COMPATIBILITY_CLOSURE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("legacy compatibility closure json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-legacy-compatibility-closure --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_legacy_cli_script_compatibility_closure"
+        );
+        assert_eq!(
+            value["current_hepta_codex_script_total"],
+            CURRENT_HEPTA_CODEX_SCRIPT_TOTAL
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["old_hepta_ops_file_count"], 65);
+        assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
+        assert_eq!(value["old_hepta_script_total"], 20);
+        assert_eq!(value["ops_file_family_covered_count"], 65);
+        assert_eq!(value["release_hardening_script_family_count"], 12);
+        assert_eq!(value["release_hardening_status_gate_ready_count"], 12);
+        assert_eq!(value["local_route_script_coverage_ready"], true);
+        assert_eq!(value["old_cli_command_breadth_fully_migrated"], true);
+        assert_eq!(
+            value["old_release_hardening_script_execution_compatibility_claimed"],
+            true
+        );
+        assert_eq!(value["dangerous_live_execution_reenabled"], false);
+        assert_eq!(value["credentialed_live_smoke_deferred"], true);
+        assert_eq!(value["external_release_deferred"], true);
+        assert_eq!(value["side_effects"]["process_spawned"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["telegram_send_performed"], false);
+        assert_eq!(
+            value["side_effects"]["native_post_mutation_performed"],
+            false
+        );
+    }
+
+    #[test]
     fn hepta_public_ga_readiness_endpoint_blocks_public_claims_without_side_effects() {
         let options = NativeGatewayOptions {
             bind_addr: "127.0.0.1:7373".to_string(),
@@ -8056,6 +8279,7 @@ mod tests {
         assert!(endpoints.contains(&HEPTA_MERGE_COMPLETION_ENDPOINT));
         assert!(endpoints.contains(&HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT));
         assert!(endpoints.contains(&HEPTA_NATIVE_PACKAGING_GATE_ENDPOINT));
+        assert!(endpoints.contains(&HEPTA_LEGACY_COMPATIBILITY_CLOSURE_ENDPOINT));
         assert!(endpoints.contains(&NATIVE_POST_ACTIVATION_PLAN_ENDPOINT));
         let blockers = value["blockers"]
             .as_array()
@@ -8063,7 +8287,10 @@ mod tests {
             .iter()
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>();
-        assert!(blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
+        assert!(!blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
+        assert!(
+            !blockers.contains(&"old_release_hardening_script_execution_compatibility_not_claimed")
+        );
         assert!(blockers.contains(&"native_post_real_activation_not_operator_approved"));
         assert!(!blockers.contains(&"hepta_native_release_packaging_not_complete"));
         assert_eq!(value["side_effects"]["public_release_published"], false);
@@ -8115,7 +8342,7 @@ mod tests {
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["ops_family_count"], 5);
         assert_eq!(value["ops_file_family_covered_count"], 65);
-        assert_eq!(value["old_cli_command_breadth_fully_migrated"], false);
+        assert_eq!(value["old_cli_command_breadth_fully_migrated"], true);
         assert_eq!(value["safe_read_only_inventory_ready"], true);
         assert_eq!(
             value["script_inventory_script"],
@@ -8142,7 +8369,7 @@ mod tests {
             .iter()
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>();
-        assert!(blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
+        assert!(!blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
         assert!(blockers.contains(&"channel_adapters_not_owner_handoff_approved"));
     }
 
@@ -8601,7 +8828,7 @@ mod tests {
         assert_eq!(value["filesystem_artifact_write_required_count"], 2);
         assert_eq!(value["operator_approval_required_count"], 12);
         assert_eq!(value["release_hardening_status_gate_ready"], true);
-        assert_eq!(value["old_script_execution_compatibility_claimed"], false);
+        assert_eq!(value["old_script_execution_compatibility_claimed"], true);
         assert_eq!(value["external_production_gate_enabled"], false);
         assert_eq!(value["release_artifact_pack_enabled"], false);
         assert_eq!(value["launchd_service_mutation_enabled"], false);

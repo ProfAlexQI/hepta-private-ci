@@ -15,8 +15,8 @@ jq -e '
   and .status == "ready"
   and .compatibility_mode == "native_app_packaging_readiness_gate"
   and .side_effect_free == true
-  and .current_hepta_codex_script_total == 15
-  and .native_gateway_source_command_count == 62
+  and .current_hepta_codex_script_total == 16
+  and .native_gateway_source_command_count == 63
   and .missing_route_count == 0
   and .rust_source_file_count == 125
   and .packaging_resource_file_count == 111

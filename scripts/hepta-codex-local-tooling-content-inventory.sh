@@ -15,8 +15,8 @@ jq -e '
   and .compatibility_mode == "native_local_tooling_content_planning_inventory"
   and .side_effect_free == true
   and .old_local_tooling_ops_file_count == 11
-  and .current_hepta_codex_script_total == 15
-  and .native_gateway_source_command_count == 62
+  and .current_hepta_codex_script_total == 16
+  and .native_gateway_source_command_count == 63
   and .missing_route_count == 0
   and .surface_count == 11
   and .planner_ready_count == 11
@@ -49,8 +49,8 @@ jq -e '
 for payload in "$CHANNEL_JSON" "$RUNTIME_JSON" "$CLI_JSON" "$PROVIDER_JSON" "$MERGE_JSON"; do
   jq -e '
     .runtime == "hepta-codex"
-    and .current_hepta_codex_script_total == 15
-    and .native_gateway_source_command_count == 62
+    and .current_hepta_codex_script_total == 16
+    and .native_gateway_source_command_count == 63
     and .missing_route_count == 0
   ' <<<"$payload" >/dev/null
 done

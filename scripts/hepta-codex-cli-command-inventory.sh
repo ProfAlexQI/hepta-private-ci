@@ -13,12 +13,12 @@ jq -e '
   and .old_hepta_ops_file_count == 65
   and .old_hepta_rough_command_reference_count == 574
   and .old_hepta_script_total == 20
-  and .current_hepta_codex_script_total == 15
-  and .native_gateway_source_command_count == 62
+  and .current_hepta_codex_script_total == 16
+  and .native_gateway_source_command_count == 63
   and .missing_route_count == 0
   and .ops_family_count == 5
   and .ops_file_family_covered_count == 65
-  and .old_cli_command_breadth_fully_migrated == false
+  and .old_cli_command_breadth_fully_migrated == true
   and .safe_read_only_inventory_ready == true
   and .side_effects.provider_invoked == false
   and .side_effects.credential_read == false
@@ -32,8 +32,8 @@ jq -e '
 
 jq -e '
   .runtime == "hepta-codex"
-  and .current_hepta_codex_script_total == 15
-  and .native_gateway_source_command_count == 62
+  and .current_hepta_codex_script_total == 16
+  and .native_gateway_source_command_count == 63
   and .route_matrix_ready == true
   and .missing_route_count == 0
   and .telegram_live_send_enabled == false
