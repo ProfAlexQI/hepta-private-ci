@@ -7,7 +7,7 @@
     "status": { "const": "complete" },
     "screen_count": { "type": "number", "minimum": 25 },
     "implemented_screen_count": { "type": "number", "minimum": 25 },
-    "command_binding_count": { "type": "number", "minimum": 50 },
+    "command_binding_count": { "type": "number", "minimum": 51 },
     "assets": { "type": "array", "minItems": 4 },
     "screens": { "type": "array", "minItems": 25 }
   }

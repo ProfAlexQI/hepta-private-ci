@@ -52,6 +52,11 @@ renderOperatorSecurity
 /api/operator-security
 operatorSecurity
 all_operator_security_lanes_100
+renderMergeCompletion
+/api/hepta-merge-completion
+mergeCompletion
+source_package_merge_percent
+production_replacement_percent
 POST /api/runtime/operator
 Confirm-gated runtime kill/steer dry-run evidence
 renderTaskPublisher
@@ -3094,6 +3099,7 @@ pub fn control_ui_screens() -> Vec<ControlUiScreen> {
             &[
                 "/ops-status --json",
                 "/api/ops-status",
+                "/api/hepta-merge-completion",
                 "scripts/hepta-installed-live-watchdog-recurring.sh",
                 "scripts/hepta-gateway-service.sh",
             ],
@@ -3108,7 +3114,11 @@ pub fn control_ui_screens() -> Vec<ControlUiScreen> {
             "readiness",
             "Readiness",
             "#readiness",
-            &["/external-readiness --json", "/production-surface --json"],
+            &[
+                "/external-readiness --json",
+                "/production-surface --json",
+                "/api/hepta-merge-completion",
+            ],
             &["Gate matrix", "Blocker list", "Manifest health"],
         ),
         screen(
@@ -3120,6 +3130,7 @@ pub fn control_ui_screens() -> Vec<ControlUiScreen> {
                 "/native-capabilities --json",
                 "/external-readiness --json",
                 "/control-ui --json",
+                "/api/hepta-merge-completion",
             ],
             &[
                 "Completion dimensions",
@@ -3224,6 +3235,7 @@ pub fn control_ui_frontend_manifest() -> ControlUiFrontendManifest {
             "uiContractAudit",
             "operatorSnapshot",
             "operatorSecurity",
+            "mergeCompletion",
             "externalAgentBenchmark",
             "uiActionPlan",
             "cron",
@@ -3277,6 +3289,7 @@ pub fn control_ui_frontend_manifest() -> ControlUiFrontendManifest {
                     "gatewayDispatch",
                     "operatorSnapshot",
                     "operatorSecurity",
+                    "mergeCompletion",
                     "uiActionPlan",
                     "configSurface",
                 ],
@@ -3319,9 +3332,14 @@ pub fn control_ui_frontend_manifest() -> ControlUiFrontendManifest {
             fetch_plan("approvals", &["approvals", "policy"]),
             fetch_plan(
                 "readiness",
-                &["readiness", "parity", "externalAgentBenchmark"],
+                &[
+                    "readiness",
+                    "parity",
+                    "externalAgentBenchmark",
+                    "mergeCompletion",
+                ],
             ),
-            fetch_plan("parity", &["parity", "readiness"]),
+            fetch_plan("parity", &["parity", "readiness", "mergeCompletion"]),
             fetch_plan(
                 "external-agent-benchmark",
                 &["externalAgentBenchmark", "readiness"],
@@ -3573,6 +3591,11 @@ pub fn control_ui_command_bindings() -> Vec<ControlUiCommandBinding> {
             "production-parity",
             "/production-parity --json",
             &["dashboard", "parity", "runbook"],
+        ),
+        binding(
+            "hepta-merge-completion",
+            "/hepta-merge-completion --json",
+            &["ops", "readiness", "parity", "commands"],
         ),
         binding(
             "external-agent-benchmark",
@@ -3994,7 +4017,7 @@ mod tests {
         assert_eq!(report.screen_coverage_percent, 100);
         assert_eq!(report.asset_count, 4);
         assert_eq!(report.asset_coverage_percent, 100);
-        assert_eq!(report.command_binding_count, 50);
+        assert_eq!(report.command_binding_count, 51);
         assert_eq!(report.interaction_capability_count, 30);
         assert_eq!(report.implemented_interaction_capability_count, 30);
         assert_eq!(report.live_operator_surface_percent, 100);

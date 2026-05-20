@@ -19,6 +19,8 @@ Hepta Control UI is a dependency-free, static-first local frontend for Hepta's R
 - Mobile layers: Chats → Thread → Room.
 - reply-mode selector supports direct, parallel, consensus, roundtable, and debate flows.
 - Command index carries deep operator/developer surfaces without crowding the primary chat UI.
+- Merge completion audit is exposed as a read-only Control UI data source via
+  `/api/hepta-merge-completion` and `/hepta-merge-completion --json`.
 
 ## Safety model
 

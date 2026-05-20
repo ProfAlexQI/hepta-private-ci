@@ -38,6 +38,7 @@
   "roomTaskActionPlan": { "task_id": "task-golden-001", "action": "apply-patches", "confirmation_gate": "Golden dry-run review gate", "mapped_command": "HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo run --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta -- /apply-task-patches <task_id> --dry-run --json" },
   "endpointHealth": [
     { "path": "/api/tasks", "ok": true, "status": 200, "detail": "golden ready", "latency_ms": 42 },
-    { "path": "/api/events-report", "ok": true, "status": 200, "detail": "golden events", "latency_ms": 24 }
+    { "path": "/api/events-report", "ok": true, "status": 200, "detail": "golden events", "latency_ms": 24 },
+    { "path": "/api/hepta-merge-completion", "ok": true, "status": 200, "detail": "merge completion ready", "latency_ms": 18 }
   ]
 }
