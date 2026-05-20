@@ -114,6 +114,7 @@ Current release documentation covers:
 - controlled install
 - native POST handler canaries
 - this merge/function completion audit
+- CLI/script migration matrix
 
 ### What Is Not Fully Merged
 
@@ -122,11 +123,17 @@ absorbed as a first-class crate in `hepta-codex`. The old repo still has many
 specialized CLI ops modules, including provider, plugin migration, runtime
 event, channel, media, device, memory, diagnostics, and tool surfaces.
 
-The old standalone Hepta automation script set is also not fully carried over:
+The old standalone Hepta automation script set is also not fully carried over,
+though the first executable migration slice now exists in
+`HEPTA_CLI_SCRIPT_MIGRATION_MATRIX_2026-05-20.md`:
 
 - old standalone scripts: 20
-- current `hepta-codex` scripts: 1
-- carried script: `hepta-control-ui-smoke.sh`
+- current `hepta-codex` scripts: 4
+- carried/adapted scripts:
+  - `hepta-control-ui-smoke.sh`
+  - `hepta-codex-preflight.sh`
+  - `hepta-codex-live-soak.sh`
+  - `hepta-codex-watchdog.sh`
 
 This is the largest merge-completion gap. The underlying core/library reports
 are mostly present, but the old CLI/script operational breadth is not surfaced
@@ -242,7 +249,7 @@ Known non-blocking warnings:
 | Native POST | 80% | 3/3 handlers implemented and dry-run canaries passed | active real mutations still gated off |
 | Telegram | 65% | owner guard, poll loop status, readiness reports, tests | live owner handoff/poll/send/soak not performed |
 | Hepta Native app | 75% | source imported, resources tracked, check + 52 tests pass | not packaged/installed/live |
-| Old automation scripts | 20% | current repo has 1 script versus 20 old scripts | most standalone ops gates not ported |
+| Old automation scripts | 30% | current repo has 4 scripts versus 20 old scripts, including preflight/soak/watchdog | most standalone ops/release/external gates not ported |
 | Old Hepta CLI command breadth | 45% | core libraries absorbed, 51 gateway routes exposed | many specialized `*_ops.rs` modules not surfaced |
 | Installed local coexistence | 88% | binary installed, live health ready, owner safe | production replacement intentionally blocked |
 
@@ -305,4 +312,3 @@ work is not random bug fixing; it is three explicit productization tracks:
    live poll/model/send soak.
 3. Promote native POST and Hepta Native from dry-run/source-tested to explicitly
    approved production activation/release.
-

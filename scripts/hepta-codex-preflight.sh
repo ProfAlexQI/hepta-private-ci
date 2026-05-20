@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+MANIFEST="${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}"
+NATIVE_MANIFEST="${HEPTA_NATIVE_MANIFEST:-apps/hepta-native/Cargo.toml}"
+NATIVE_TARGET_DIR="${HEPTA_NATIVE_TARGET_DIR:-/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target}"
+RUN_NATIVE="${HEPTA_CODEX_PREFLIGHT_NATIVE:-1}"
+RUN_RELEASE="${HEPTA_CODEX_PREFLIGHT_RELEASE:-0}"
+
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+
+echo "[hepta-codex-preflight] metadata"
+cargo metadata --offline --manifest-path "$MANIFEST" --no-deps --format-version 1 >/tmp/hepta-codex-preflight-metadata.json
+
+echo "[hepta-codex-preflight] fmt"
+cargo fmt --all --manifest-path "$MANIFEST" -- --check
+
+echo "[hepta-codex-preflight] cargo check"
+cargo check --offline --manifest-path "$MANIFEST" -q \
+  -p hepta-core \
+  -p hepta-intelligence \
+  -p hepta-memory \
+  -p hepta-plugins \
+  -p hepta-runtime \
+  -p hepta-gateway \
+  -p codex-cli --bin hepta
+
+echo "[hepta-codex-preflight] hepta-gateway tests"
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
+
+echo "[hepta-codex-preflight] codex-cli native tests"
+cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta native_gateway -- --nocapture
+cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta native_telegram -- --nocapture
+cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta native_post -- --nocapture
+
+echo "[hepta-codex-preflight] control-ui smoke"
+CARGO_NET_OFFLINE=true scripts/hepta-control-ui-smoke.sh
+
+if [[ "$RUN_NATIVE" == "1" ]]; then
+  echo "[hepta-codex-preflight] native app metadata/check/tests"
+  cargo metadata --offline --manifest-path "$NATIVE_MANIFEST" --no-deps --format-version 1 >/tmp/hepta-native-preflight-metadata.json
+  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" cargo check --manifest-path "$NATIVE_MANIFEST"
+  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" cargo test --manifest-path "$NATIVE_MANIFEST" hepta_ -- --nocapture
+else
+  echo "[hepta-codex-preflight] native app gates skipped (HEPTA_CODEX_PREFLIGHT_NATIVE=$RUN_NATIVE)"
+fi
+
+if [[ "$RUN_RELEASE" == "1" ]]; then
+  echo "[hepta-codex-preflight] release build"
+  cargo build --release --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta
+else
+  echo "[hepta-codex-preflight] release build skipped (set HEPTA_CODEX_PREFLIGHT_RELEASE=1)"
+fi
+
+echo "[hepta-codex-preflight] whitespace/status"
+git diff --check
+git status -sb
+
+echo "Hepta Codex preflight passed"
