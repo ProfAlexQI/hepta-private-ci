@@ -23,10 +23,10 @@ Old standalone Hepta:
 
 Current `hepta-codex`:
 
-- native gateway source commands: 55 after the runtime/session dry-run inventory endpoint
-  (`54` after the provider metadata inventory endpoint; `53` after the CLI command inventory endpoint)
+- native gateway source commands: 56 after the channel adapter status inventory endpoint
+  (`55` after the runtime/session dry-run inventory endpoint; `54` after the provider metadata inventory endpoint; `53` after the CLI command inventory endpoint)
 - scripts before this slice: 1
-- scripts after this slice: 8
+- scripts after this slice: 9
 
 New executable scripts added in this slice:
 
@@ -37,6 +37,7 @@ New executable scripts added in this slice:
 - `scripts/hepta-codex-cli-command-inventory.sh`
 - `scripts/hepta-codex-provider-metadata-inventory.sh`
 - `scripts/hepta-codex-runtime-session-dry-run-inventory.sh`
+- `scripts/hepta-codex-channel-adapter-status-inventory.sh`
 
 Existing carried script:
 
@@ -64,6 +65,7 @@ Existing carried script:
 | `hepta-onboard-daemon-wizard-parity-gate.sh` | not ported | defer |
 | `hepta-autonomous-coding-subagent-gate.sh` | not ported | defer until old worker command surface is intentionally re-exposed |
 | Runtime/session dry-run inventory | replaced by `hepta-codex-runtime-session-dry-run-inventory.sh` for 12 old runtime/admin ops files | migrate as side-effect-free dry-run inventory |
+| Channel adapter status inventory | replaced by `hepta-codex-channel-adapter-status-inventory.sh` for 13 old channel/runtime adapter ops files | migrate as disabled/live-gated status inventory |
 
 ## CLI Ops Migration Matrix
 
@@ -93,6 +95,7 @@ These are currently exposed as live API/source-command equivalents:
 - machine-readable CLI command breadth inventory
 - machine-readable provider/search metadata inventory
 - machine-readable runtime/task/session dry-run inventory
+- machine-readable channel adapter disabled status inventory
 - task/chat/approval dry-run and confirm-required plans
 - external agent benchmark
 
@@ -200,8 +203,8 @@ Checks:
 - old standalone `*_ops.rs` count remains `65`
 - old rough command reference count remains `574`
 - old standalone script count remains `20`
-- current `hepta-codex` script count is `8`
-- native gateway source-command count is `55`
+- current `hepta-codex` script count is `9`
+- native gateway source-command count is `56`
 - CLI ops families cover all `65` old ops files
 - merge-completion and CLI inventory reports agree on route/script counts
 - provider invocation, credential reads, Telegram reads/sends, native POST
@@ -216,8 +219,8 @@ Checks:
 
 - old provider ops file count remains `15`
 - adjacent search/readability ops file count remains `3`
-- current `hepta-codex` script count is `8`
-- native gateway source-command count is `55`
+- current `hepta-codex` script count is `9`
+- native gateway source-command count is `56`
 - provider adapter count is `15`
 - adjacent search adapter count is `3`
 - provider live invocation and credentialed smoke remain disabled
@@ -235,8 +238,8 @@ exposed by `/api/hepta-runtime-session-dry-run-inventory`.
 Checks:
 
 - old runtime/admin ops file count remains `12`
-- current `hepta-codex` script count is `8`
-- native gateway source-command count is `55`
+- current `hepta-codex` script count is `9`
+- native gateway source-command count is `56`
 - dry-run surface count is `12`
 - planner-ready count is `12`
 - live mutation surface count is `0`
@@ -246,9 +249,30 @@ Checks:
 - runtime/session, CLI inventory, provider inventory, and merge-completion
   reports agree on route/script counts
 
+### `hepta-codex-channel-adapter-status-inventory.sh`
+
+Purpose: validate the disabled/live-gated channel adapter status inventory
+exposed by `/api/hepta-channel-adapter-status-inventory`.
+
+Checks:
+
+- old channel/runtime adapter ops file count remains `13`
+- current `hepta-codex` script count is `9`
+- native gateway source-command count is `56`
+- adapter count is `13`
+- disabled status ready count is `13`
+- live adapter enabled count is `0`
+- channel live read/send and Telegram owner handoff remain disabled
+- connector credentials are not read
+- channel delivery, external network reads/sends, voice calls, TTS playback,
+  webhook delivery, file transfer, native POST mutation, and filesystem writes
+  remain disabled
+- channel, runtime/session, CLI inventory, provider inventory, and
+  merge-completion reports agree on route/script counts
+
 ## Updated Completion Impact
 
-This slice improves script parity from 1/20 to 8/20 by count, and more
+This slice improves script parity from 1/20 to 9/20 by count, and more
 importantly turns six useful old operational intents into
 `hepta-codex`-native commands:
 
@@ -259,8 +283,10 @@ importantly turns six useful old operational intents into
 - CLI command breadth inventory
 - provider/search metadata inventory
 - runtime/task/session dry-run inventory
+- channel adapter disabled status inventory
 
 It does not close the old CLI breadth gap, but it turns that gap and the first
-provider/search/runtime-session families into machine-readable route and script
-gates. The next track is porting channel adapters as disabled live-gated status
-reports before any credentialed/live activation.
+provider/search/runtime-session/channel families into machine-readable route and
+script gates. The next track is inventorying local tooling/content surfaces
+before any process, filesystem, network, file-transfer, or channel-delivery
+smoke.

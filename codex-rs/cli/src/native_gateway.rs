@@ -68,6 +68,8 @@ const HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT: &str = "/api/hepta-cli-command-inven
 const HEPTA_PROVIDER_METADATA_INVENTORY_ENDPOINT: &str = "/api/hepta-provider-metadata-inventory";
 const HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_ENDPOINT: &str =
     "/api/hepta-runtime-session-dry-run-inventory";
+const HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT: &str =
+    "/api/hepta-channel-adapter-status-inventory";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -181,6 +183,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-runtime-session-dry-run-inventory --json",
         capability: "hepta-runtime-session-dry-run-inventory",
         side_effect_boundary: "read-only runtime/task/session dry-run migration inventory",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT,
+        source_command: "/hepta-channel-adapter-status-inventory --json",
+        capability: "hepta-channel-adapter-status-inventory",
+        side_effect_boundary: "read-only channel adapter disabled/live-gated status inventory",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -780,6 +789,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_runtime_session_dry_run_inventory_report()),
                 );
             }
+            HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_channel_adapter_status_inventory_report()),
+                );
+            }
             "/api/operator-snapshot" => {
                 return (
                     "200 OK",
@@ -1163,6 +1179,7 @@ fn index_html(
         <p><code>/api/hepta-cli-command-inventory</code> exposes the old standalone Hepta CLI breadth inventory as a read-only migration map.</p>
         <p><code>/api/hepta-provider-metadata-inventory</code> narrows the provider/search bridge slice to metadata-only status without reading credentials or invoking providers.</p>
         <p><code>/api/hepta-runtime-session-dry-run-inventory</code> covers runtime-event, task, session, gateway, diagnostics, and admin ops as local dry-run migration plans without mutating registries or enqueuing gateway events.</p>
+        <p><code>/api/hepta-channel-adapter-status-inventory</code> keeps Discord, Feishu, iMessage, Telegram, voice, webhook, and file-transfer adapters visible only as disabled/live-gated status entries.</p>
       </section>
       <section class="panel">
         <p>Readiness payload:</p>
@@ -1270,8 +1287,9 @@ fn native_gateway_json(
             "Hepta CLI command breadth read-only inventory",
             "Hepta provider/search metadata inventory",
             "Hepta runtime/task/session dry-run inventory",
+            "Hepta channel adapter disabled status inventory",
         ],
-        next_migration_slice: "port channel adapters as disabled live-gated status reports before any live handoff",
+        next_migration_slice: "inventory local tooling/content surfaces before process, filesystem, or network smokes",
     })
 }
 
@@ -3707,6 +3725,68 @@ struct HeptaRuntimeSessionDryRunInventorySideEffects {
     filesystem_written: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct HeptaChannelAdapterStatusInventoryResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    channel_inventory_doc: &'static str,
+    old_channel_ops_file_count: usize,
+    current_hepta_codex_script_total: usize,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    missing_route_count: usize,
+    adapter_count: usize,
+    disabled_status_ready_count: usize,
+    live_adapter_enabled_count: usize,
+    channel_status_inventory_ready: bool,
+    old_cli_invocation_compatibility_claimed: bool,
+    live_channel_read_enabled: bool,
+    live_channel_send_enabled: bool,
+    owner_handoff_performed: bool,
+    script_inventory_script: &'static str,
+    channel_adapters: &'static [HeptaChannelAdapterStatus],
+    next_slices: &'static [&'static str],
+    blockers: &'static [&'static str],
+    side_effects: HeptaChannelAdapterStatusInventorySideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaChannelAdapterStatus {
+    name: &'static str,
+    old_ops_file: &'static str,
+    migration_status: &'static str,
+    safe_next_mode: &'static str,
+    disabled_status_ready: bool,
+    live_read_enabled: bool,
+    live_send_enabled: bool,
+    credential_read_performed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaChannelAdapterStatusInventorySideEffects {
+    channel_read_performed: bool,
+    channel_send_performed: bool,
+    credential_read: bool,
+    external_network_read: bool,
+    external_send_performed: bool,
+    gateway_mutation_performed: bool,
+    telegram_owner_handoff_performed: bool,
+    telegram_read_performed: bool,
+    telegram_send_performed: bool,
+    voice_call_performed: bool,
+    tts_audio_played: bool,
+    webhook_delivered: bool,
+    file_transfer_performed: bool,
+    native_post_mutation_performed: bool,
+    filesystem_written: bool,
+}
+
 const HEPTA_CLI_OPS_FAMILIES: &[HeptaCliOpsFamily] = &[
     HeptaCliOpsFamily {
         name: "provider_metadata_bridges",
@@ -3749,8 +3829,8 @@ const HEPTA_CLI_OPS_FAMILIES: &[HeptaCliOpsFamily] = &[
             "voice_call_ops.rs",
             "webhooks_ops.rs",
         ],
-        migration_status: "live_gated_or_deferred",
-        safe_next_mode: "disabled_status_or_dry_run_plan",
+        migration_status: "disabled_status_inventory_landed",
+        safe_next_mode: "explicit_operator_approval_before_live_adapter_smoke",
     },
     HeptaCliOpsFamily {
         name: "runtime_ops_admin",
@@ -4064,6 +4144,204 @@ const HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES: &[HeptaRuntimeSessionDryRunSurface
     },
 ];
 
+const HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES: &[HeptaChannelAdapterStatus] = &[
+    HeptaChannelAdapterStatus {
+        name: "bonjour",
+        old_ops_file: "bonjour_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "local_discovery_status_without_network_scan",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "discord",
+        old_ops_file: "discord_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "redacted_connector_status_without_gateway_read_or_send",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "feishu",
+        old_ops_file: "feishu_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "connector_status_without_token_or_api_call",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "file-transfer",
+        old_ops_file: "file_transfer_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "transfer_plan_without_file_or_channel_write",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "google-meet",
+        old_ops_file: "google_meet_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "meeting_status_without_calendar_or_meet_api_call",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "google-chat",
+        old_ops_file: "googlechat_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "chat_connector_status_without_workspace_api_call",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "imessage",
+        old_ops_file: "imessage_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "local_macos_capability_status_without_messages_send",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "message-gateway",
+        old_ops_file: "message_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "message_dispatch_plan_without_delivery",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "native-channel-metadata",
+        old_ops_file: "native_channel_metadata_ops.rs",
+        migration_status: "metadata_status_inventory_only",
+        safe_next_mode: "channel_metadata_report_without_connector_reads",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "telegram",
+        old_ops_file: "telegram_ops.rs",
+        migration_status: "partially_absorbed_with_live_owner_gates",
+        safe_next_mode: "owner_handoff_plan_without_live_poll_or_send",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "tts-local-cli",
+        old_ops_file: "tts_local_cli_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "tts_plan_without_audio_playback_or_file_write",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "voice-call",
+        old_ops_file: "voice_call_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "voice_call_plan_without_call_setup",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+    HeptaChannelAdapterStatus {
+        name: "webhooks",
+        old_ops_file: "webhooks_ops.rs",
+        migration_status: "disabled_status_inventory_only",
+        safe_next_mode: "webhook_plan_without_http_delivery",
+        disabled_status_ready: true,
+        live_read_enabled: false,
+        live_send_enabled: false,
+        credential_read_performed: false,
+    },
+];
+
+fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusInventoryResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaChannelAdapterStatusInventoryResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "attention",
+        source_command: "/hepta-channel-adapter-status-inventory --json",
+        native_route: true,
+        compatibility_mode: "native_channel_adapter_disabled_status_inventory",
+        side_effect_free: true,
+        audit_date: "2026-05-20",
+        channel_inventory_doc: "docs/release/HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_2026-05-20.md",
+        old_channel_ops_file_count: 13,
+        current_hepta_codex_script_total: 9,
+        native_gateway_source_command_count: 56,
+        route_count: route_matrix.route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        adapter_count: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES.len(),
+        disabled_status_ready_count: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES
+            .iter()
+            .filter(|adapter| adapter.disabled_status_ready)
+            .count(),
+        live_adapter_enabled_count: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES
+            .iter()
+            .filter(|adapter| adapter.live_read_enabled || adapter.live_send_enabled)
+            .count(),
+        channel_status_inventory_ready: true,
+        old_cli_invocation_compatibility_claimed: false,
+        live_channel_read_enabled: false,
+        live_channel_send_enabled: false,
+        owner_handoff_performed: false,
+        script_inventory_script: "scripts/hepta-codex-channel-adapter-status-inventory.sh",
+        channel_adapters: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES,
+        next_slices: &[
+            "inventory local tooling/content surfaces before process or filesystem smokes",
+            "keep Telegram owner handoff as separate explicit operator approval",
+            "defer all channel live reads and sends until connector-specific approval",
+        ],
+        blockers: &[
+            "channel_live_read_not_operator_approved",
+            "channel_live_send_not_operator_approved",
+            "telegram_owner_handoff_not_requested",
+            "channel_credentials_not_read_by_inventory",
+            "old_channel_cli_invocation_compatibility_not_claimed",
+        ],
+        side_effects: HeptaChannelAdapterStatusInventorySideEffects {
+            channel_read_performed: false,
+            channel_send_performed: false,
+            credential_read: false,
+            external_network_read: false,
+            external_send_performed: false,
+            gateway_mutation_performed: false,
+            telegram_owner_handoff_performed: false,
+            telegram_read_performed: false,
+            telegram_send_performed: false,
+            voice_call_performed: false,
+            tts_audio_played: false,
+            webhook_delivered: false,
+            file_transfer_performed: false,
+            native_post_mutation_performed: false,
+            filesystem_written: false,
+        },
+    }
+}
+
 fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRunInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
     HeptaRuntimeSessionDryRunInventoryResponse {
@@ -4077,8 +4355,8 @@ fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRun
         audit_date: "2026-05-20",
         runtime_inventory_doc: "docs/release/HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_2026-05-20.md",
         old_runtime_ops_file_count: 12,
-        current_hepta_codex_script_total: 8,
-        native_gateway_source_command_count: 55,
+        current_hepta_codex_script_total: 9,
+        native_gateway_source_command_count: 56,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         dry_run_surface_count: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES.len(),
@@ -4144,8 +4422,8 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         provider_inventory_doc: "docs/release/HEPTA_PROVIDER_METADATA_INVENTORY_2026-05-20.md",
         old_provider_ops_file_count: 15,
         adjacent_search_ops_file_count: 3,
-        current_hepta_codex_script_total: 8,
-        native_gateway_source_command_count: 55,
+        current_hepta_codex_script_total: 9,
+        native_gateway_source_command_count: 56,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         provider_adapter_count: HEPTA_PROVIDER_METADATA_ADAPTERS.len(),
@@ -4157,8 +4435,8 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         provider_adapters: HEPTA_PROVIDER_METADATA_ADAPTERS,
         adjacent_search_adapters: HEPTA_ADJACENT_SEARCH_METADATA_ADAPTERS,
         next_slices: &[
-            "promote channel adapters only as disabled live-gated status reports",
             "inventory local tooling/content surfaces before process or filesystem smokes",
+            "promote memory/capability absorption gaps as read-only reports",
             "keep provider prompt/API smokes blocked until explicit operator approval",
         ],
         blockers: &[
@@ -4198,8 +4476,8 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 8,
-        native_gateway_source_command_count: 55,
+        current_hepta_codex_script_total: 9,
+        native_gateway_source_command_count: 56,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
         ops_family_count: HEPTA_CLI_OPS_FAMILIES.len(),
@@ -4210,8 +4488,8 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         script_inventory_script: "scripts/hepta-codex-cli-command-inventory.sh",
         ops_families: HEPTA_CLI_OPS_FAMILIES,
         next_slices: &[
-            "port channel adapters only as disabled live-gated status reports",
             "inventory local tooling/content surfaces before process or filesystem smokes",
+            "promote memory/capability absorption gaps as read-only reports",
             "defer credentialed/live smokes until explicit operator approval",
         ],
         blockers: &[
@@ -4256,11 +4534,11 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
         active_service_coexistence_percent: 88,
         production_replacement_percent: 68,
         old_hepta_script_total: 20,
-        current_hepta_codex_script_total: 8,
-        carried_or_adapted_script_count: 8,
+        current_hepta_codex_script_total: 9,
+        carried_or_adapted_script_count: 9,
         old_hepta_ops_file_count: 65,
         old_hepta_rough_command_reference_count: 574,
-        native_gateway_source_command_count: 55,
+        native_gateway_source_command_count: 56,
         route_matrix_ready: route_matrix.ready,
         route_count: route_matrix.route_count,
         implemented_route_count: route_matrix.implemented_route_count,
@@ -4283,7 +4561,7 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
             "old_hepta_release_external_scripts_not_fully_ported",
         ],
         next_actions: &[
-            "continue channel adapter disabled status migration",
+            "continue local tooling and content inventory migration",
             "keep browser visual smoke, preflight, soak, and watchdog gates green",
             "prepare but do not execute controlled Telegram owner handoff",
             "only perform Telegram owner handoff after explicit operator approval",
@@ -5924,6 +6202,7 @@ mod tests {
         assert!(routes.contains(&"GET /api/hepta-cli-command-inventory".to_string()));
         assert!(routes.contains(&"GET /api/hepta-provider-metadata-inventory".to_string()));
         assert!(routes.contains(&"GET /api/hepta-runtime-session-dry-run-inventory".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-channel-adapter-status-inventory".to_string()));
     }
 
     #[test]
@@ -5947,10 +6226,10 @@ mod tests {
         assert_eq!(value["active_service_coexistence_percent"], 88);
         assert_eq!(value["production_replacement_percent"], 68);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 8);
+        assert_eq!(value["current_hepta_codex_script_total"], 9);
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
-        assert_eq!(value["native_gateway_source_command_count"], 55);
+        assert_eq!(value["native_gateway_source_command_count"], 56);
         assert_eq!(value["route_matrix_ready"], true);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["merge_completion_control_ui_surfaced"], true);
@@ -5961,7 +6240,7 @@ mod tests {
             "scripts/hepta-codex-browser-visual-smoke.sh"
         );
         assert!(
-            value["route_count"].as_u64().expect("route count") >= 55,
+            value["route_count"].as_u64().expect("route count") >= 56,
             "merge-completion route should be included in parity count"
         );
         assert_eq!(value["production_owner_handoff_required"], true);
@@ -6020,8 +6299,8 @@ mod tests {
         assert_eq!(value["old_hepta_ops_file_count"], 65);
         assert_eq!(value["old_hepta_rough_command_reference_count"], 574);
         assert_eq!(value["old_hepta_script_total"], 20);
-        assert_eq!(value["current_hepta_codex_script_total"], 8);
-        assert_eq!(value["native_gateway_source_command_count"], 55);
+        assert_eq!(value["current_hepta_codex_script_total"], 9);
+        assert_eq!(value["native_gateway_source_command_count"], 56);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["ops_family_count"], 5);
         assert_eq!(value["ops_file_family_covered_count"], 65);
@@ -6084,8 +6363,8 @@ mod tests {
         );
         assert_eq!(value["old_provider_ops_file_count"], 15);
         assert_eq!(value["adjacent_search_ops_file_count"], 3);
-        assert_eq!(value["current_hepta_codex_script_total"], 8);
-        assert_eq!(value["native_gateway_source_command_count"], 55);
+        assert_eq!(value["current_hepta_codex_script_total"], 9);
+        assert_eq!(value["native_gateway_source_command_count"], 56);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["provider_adapter_count"], 15);
         assert_eq!(value["adjacent_search_adapter_count"], 3);
@@ -6147,8 +6426,8 @@ mod tests {
             "native_runtime_session_dry_run_inventory"
         );
         assert_eq!(value["old_runtime_ops_file_count"], 12);
-        assert_eq!(value["current_hepta_codex_script_total"], 8);
-        assert_eq!(value["native_gateway_source_command_count"], 55);
+        assert_eq!(value["current_hepta_codex_script_total"], 9);
+        assert_eq!(value["native_gateway_source_command_count"], 56);
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["dry_run_surface_count"], 12);
         assert_eq!(value["covered_old_ops_file_count"], 12);
@@ -6194,6 +6473,85 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(blockers.contains(&"task_registry_live_mutation_not_operator_approved"));
         assert!(blockers.contains(&"gateway_event_enqueue_not_operator_approved"));
+    }
+
+    #[test]
+    fn hepta_channel_adapter_status_inventory_endpoint_is_disabled_and_gated() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("channel adapter inventory json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-channel-adapter-status-inventory --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_channel_adapter_disabled_status_inventory"
+        );
+        assert_eq!(value["old_channel_ops_file_count"], 13);
+        assert_eq!(value["current_hepta_codex_script_total"], 9);
+        assert_eq!(value["native_gateway_source_command_count"], 56);
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["adapter_count"], 13);
+        assert_eq!(value["disabled_status_ready_count"], 13);
+        assert_eq!(value["live_adapter_enabled_count"], 0);
+        assert_eq!(value["channel_status_inventory_ready"], true);
+        assert_eq!(value["old_cli_invocation_compatibility_claimed"], false);
+        assert_eq!(value["live_channel_read_enabled"], false);
+        assert_eq!(value["live_channel_send_enabled"], false);
+        assert_eq!(value["owner_handoff_performed"], false);
+        assert_eq!(
+            value["script_inventory_script"],
+            "scripts/hepta-codex-channel-adapter-status-inventory.sh"
+        );
+        let adapters = value["channel_adapters"]
+            .as_array()
+            .expect("channel adapters");
+        assert_eq!(adapters.len(), 13);
+        assert_eq!(adapters[1]["name"], "discord");
+        assert_eq!(adapters[9]["name"], "telegram");
+        assert_eq!(adapters[12]["name"], "webhooks");
+        assert_eq!(value["side_effects"]["channel_read_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["external_network_read"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(
+            value["side_effects"]["telegram_owner_handoff_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["telegram_read_performed"], false);
+        assert_eq!(value["side_effects"]["telegram_send_performed"], false);
+        assert_eq!(value["side_effects"]["voice_call_performed"], false);
+        assert_eq!(value["side_effects"]["tts_audio_played"], false);
+        assert_eq!(value["side_effects"]["webhook_delivered"], false);
+        assert_eq!(value["side_effects"]["file_transfer_performed"], false);
+        assert_eq!(
+            value["side_effects"]["native_post_mutation_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["filesystem_written"], false);
+        let blockers = value["blockers"]
+            .as_array()
+            .expect("blockers")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blockers.contains(&"channel_live_read_not_operator_approved"));
+        assert!(blockers.contains(&"telegram_owner_handoff_not_requested"));
     }
 
     #[test]

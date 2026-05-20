@@ -25,9 +25,9 @@ messages, activate native POST real handlers, push telemetry, or write files.
 - dry-run surfaces exposed: `12`
 - planner-ready surfaces: `12`
 - live mutation surfaces enabled: `0`
-- current `hepta-codex` scripts: `8`
-- current native gateway source commands: `55`
-- Control UI route parity after this slice: `55/55`, missing `0`
+- current `hepta-codex` scripts: `9`
+- current native gateway source commands: `56`
+- Control UI route parity after channel adapter status continuation: `56/56`, missing `0`
 
 ## Files Covered
 
@@ -61,6 +61,6 @@ effects remain blocked until an explicit operator request exists.
 
 ## Safe Next Slice
 
-Continue with channel adapters as disabled live-gated status reports. After
-that, inventory local tooling/content surfaces before any process execution,
-filesystem mutation, network read, or channel delivery smoke.
+Continue with local tooling/content inventory before any process execution,
+filesystem mutation, network read, file transfer, channel delivery, or webhook
+smoke.
