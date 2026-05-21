@@ -25,13 +25,19 @@ use hepta_runtime::{
     native_telegram_receive_limit_policy, native_telegram_soak_max_attention_count_policy,
     native_telegram_soak_max_observed_age_ms_policy,
     native_telegram_soak_min_poll_iterations_policy, native_telegram_system_time_unix_ms,
-    plan_hepta_kernel_telegram_session_bridge,
+    plan_hepta_kernel_telegram_session_bridge, plan_native_telegram_drain_once_shell_readiness,
+    plan_native_telegram_receive_once_shell_readiness,
 };
 
 pub use hepta_runtime::{
     NativeTelegramPollLoopStatus, NativeTelegramPollLoopStatusInput,
     NativeTelegramProductionGuardPolicyInput, NativeTelegramProductionGuardStatus,
     NativeTelegramProductionGuardStatusInput,
+};
+
+pub use hepta_runtime::{
+    NativeTelegramDrainOnceShellReadinessInput, NativeTelegramDrainOnceShellReadinessPlan,
+    NativeTelegramReceiveOnceShellReadinessInput, NativeTelegramReceiveOnceShellReadinessPlan,
 };
 
 pub use hepta_runtime::{
@@ -185,21 +191,6 @@ pub struct NativeTelegramReceiveOnceErrorInput {
     pub cursor_plan: NativeTelegramCursorPlan,
     pub get_updates_offset: Option<i64>,
     pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NativeTelegramReceiveOnceShellReadinessInput<'a> {
-    pub token_error: Option<&'a str>,
-    pub cursor_file_present: bool,
-    pub cursor_parse_ok: bool,
-    pub cursor_error: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NativeTelegramReceiveOnceShellReadinessPlan {
-    pub status: &'static str,
-    pub error: Option<String>,
-    pub may_call_bot_api: bool,
 }
 
 impl NativeTelegramReceiveOnceStatus {
@@ -387,32 +378,7 @@ pub fn plan_telegram_receive_once_preflight_status(
 pub fn plan_telegram_receive_once_shell_readiness(
     input: NativeTelegramReceiveOnceShellReadinessInput<'_>,
 ) -> NativeTelegramReceiveOnceShellReadinessPlan {
-    if let Some(token_error) = input.token_error {
-        return NativeTelegramReceiveOnceShellReadinessPlan {
-            status: "attention",
-            error: Some(telegram_redact_token_like_text(token_error)),
-            may_call_bot_api: false,
-        };
-    }
-
-    if input.cursor_file_present && !input.cursor_parse_ok {
-        return NativeTelegramReceiveOnceShellReadinessPlan {
-            status: "attention",
-            error: Some(
-                input
-                    .cursor_error
-                    .map(ToOwned::to_owned)
-                    .unwrap_or_else(|| "Telegram cursor state is not readable".to_string()),
-            ),
-            may_call_bot_api: false,
-        };
-    }
-
-    NativeTelegramReceiveOnceShellReadinessPlan {
-        status: "planned",
-        error: None,
-        may_call_bot_api: true,
-    }
+    plan_native_telegram_receive_once_shell_readiness(input)
 }
 
 pub fn build_telegram_receive_once_status_from_api_result(
@@ -1210,22 +1176,6 @@ pub struct NativeTelegramDrainOnceApiResultPlan {
     pub invocation_request: NativeTelegramModelInvocationRequestPlan,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct NativeTelegramDrainOnceShellReadinessInput<'a> {
-    pub cursor_file_present: bool,
-    pub cursor_parse_ok: bool,
-    pub cursor_error: Option<&'a str>,
-    pub config_ready: bool,
-    pub token_error: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NativeTelegramDrainOnceShellReadinessPlan {
-    pub status: &'static str,
-    pub error: Option<String>,
-    pub may_call_bot_api: bool,
-}
-
 pub fn plan_telegram_drain_once_preflight(
     input: NativeTelegramDrainOncePreflightInput<'_>,
 ) -> NativeTelegramDrainOncePreflightPlan {
@@ -1328,40 +1278,7 @@ pub fn plan_telegram_drain_once_preflight(
 pub fn plan_telegram_drain_once_shell_readiness(
     input: NativeTelegramDrainOnceShellReadinessInput<'_>,
 ) -> NativeTelegramDrainOnceShellReadinessPlan {
-    if input.cursor_file_present && !input.cursor_parse_ok {
-        return NativeTelegramDrainOnceShellReadinessPlan {
-            status: "attention",
-            error: Some(
-                input
-                    .cursor_error
-                    .map(ToOwned::to_owned)
-                    .unwrap_or_else(|| "Telegram cursor state is not readable".to_string()),
-            ),
-            may_call_bot_api: false,
-        };
-    }
-
-    if !input.config_ready {
-        return NativeTelegramDrainOnceShellReadinessPlan {
-            status: "attention",
-            error: Some("Telegram config, token shape, or binding is not ready".to_string()),
-            may_call_bot_api: false,
-        };
-    }
-
-    if let Some(token_error) = input.token_error {
-        return NativeTelegramDrainOnceShellReadinessPlan {
-            status: "attention",
-            error: Some(telegram_redact_token_like_text(token_error)),
-            may_call_bot_api: false,
-        };
-    }
-
-    NativeTelegramDrainOnceShellReadinessPlan {
-        status: "planned",
-        error: None,
-        may_call_bot_api: true,
-    }
+    plan_native_telegram_drain_once_shell_readiness(input)
 }
 
 pub fn plan_telegram_drain_once_api_result(

@@ -414,6 +414,37 @@ pub struct HeptaKernelTelegramSendPlan {
     pub raw_token_exposed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramReceiveOnceShellReadinessInput<'a> {
+    pub token_error: Option<&'a str>,
+    pub cursor_file_present: bool,
+    pub cursor_parse_ok: bool,
+    pub cursor_error: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramReceiveOnceShellReadinessPlan {
+    pub status: &'static str,
+    pub error: Option<String>,
+    pub may_call_bot_api: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramDrainOnceShellReadinessInput<'a> {
+    pub cursor_file_present: bool,
+    pub cursor_parse_ok: bool,
+    pub cursor_error: Option<&'a str>,
+    pub config_ready: bool,
+    pub token_error: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramDrainOnceShellReadinessPlan {
+    pub status: &'static str,
+    pub error: Option<String>,
+    pub may_call_bot_api: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelTelegramConfigStatus {
     pub config_path: Option<String>,
@@ -1213,6 +1244,76 @@ impl HeptaKernelTelegramSendPlan {
             raw_message_id_exposed: false,
             raw_token_exposed: false,
         }
+    }
+}
+
+pub fn plan_hepta_kernel_telegram_receive_once_shell_readiness(
+    input: HeptaKernelTelegramReceiveOnceShellReadinessInput<'_>,
+) -> HeptaKernelTelegramReceiveOnceShellReadinessPlan {
+    if let Some(token_error) = input.token_error {
+        return HeptaKernelTelegramReceiveOnceShellReadinessPlan {
+            status: "attention",
+            error: Some(redact_hepta_kernel_telegram_token_like_text(token_error)),
+            may_call_bot_api: false,
+        };
+    }
+
+    if input.cursor_file_present && !input.cursor_parse_ok {
+        return HeptaKernelTelegramReceiveOnceShellReadinessPlan {
+            status: "attention",
+            error: Some(
+                input
+                    .cursor_error
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| "Telegram cursor state is not readable".to_string()),
+            ),
+            may_call_bot_api: false,
+        };
+    }
+
+    HeptaKernelTelegramReceiveOnceShellReadinessPlan {
+        status: "planned",
+        error: None,
+        may_call_bot_api: true,
+    }
+}
+
+pub fn plan_hepta_kernel_telegram_drain_once_shell_readiness(
+    input: HeptaKernelTelegramDrainOnceShellReadinessInput<'_>,
+) -> HeptaKernelTelegramDrainOnceShellReadinessPlan {
+    if input.cursor_file_present && !input.cursor_parse_ok {
+        return HeptaKernelTelegramDrainOnceShellReadinessPlan {
+            status: "attention",
+            error: Some(
+                input
+                    .cursor_error
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| "Telegram cursor state is not readable".to_string()),
+            ),
+            may_call_bot_api: false,
+        };
+    }
+
+    if !input.config_ready {
+        return HeptaKernelTelegramDrainOnceShellReadinessPlan {
+            status: "attention",
+            error: Some("Telegram config, token shape, or binding is not ready".to_string()),
+            may_call_bot_api: false,
+        };
+    }
+
+    if let Some(token_error) = input.token_error {
+        return HeptaKernelTelegramDrainOnceShellReadinessPlan {
+            status: "attention",
+            error: Some(redact_hepta_kernel_telegram_token_like_text(token_error)),
+            may_call_bot_api: false,
+        };
+    }
+
+    HeptaKernelTelegramDrainOnceShellReadinessPlan {
+        status: "planned",
+        error: None,
+        may_call_bot_api: true,
     }
 }
 
@@ -3650,6 +3751,114 @@ mod tests {
         assert!(!ready_send.raw_chat_id_exposed);
         assert!(!ready_send.raw_message_id_exposed);
         assert!(!ready_send.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_telegram_receive_shell_readiness_redacts_and_blocks_before_bot_api() {
+        let token_block = plan_hepta_kernel_telegram_receive_once_shell_readiness(
+            HeptaKernelTelegramReceiveOnceShellReadinessInput {
+                token_error: Some("bad token 123456789:abcdefghijklmnopqrstuvwxyz"),
+                cursor_file_present: false,
+                cursor_parse_ok: true,
+                cursor_error: None,
+            },
+        );
+
+        assert_eq!(token_block.status, "attention");
+        assert!(!token_block.may_call_bot_api);
+        let error = token_block.error.expect("redacted token error");
+        assert!(error.contains("[redacted-telegram-token]"));
+        assert!(!error.contains("abcdefghijklmnopqrstuvwxyz"));
+
+        let cursor_block = plan_hepta_kernel_telegram_receive_once_shell_readiness(
+            HeptaKernelTelegramReceiveOnceShellReadinessInput {
+                token_error: None,
+                cursor_file_present: true,
+                cursor_parse_ok: false,
+                cursor_error: None,
+            },
+        );
+        assert_eq!(cursor_block.status, "attention");
+        assert!(!cursor_block.may_call_bot_api);
+        assert_eq!(
+            cursor_block.error.as_deref(),
+            Some("Telegram cursor state is not readable")
+        );
+
+        let ready = plan_hepta_kernel_telegram_receive_once_shell_readiness(
+            HeptaKernelTelegramReceiveOnceShellReadinessInput {
+                token_error: None,
+                cursor_file_present: true,
+                cursor_parse_ok: true,
+                cursor_error: None,
+            },
+        );
+        assert_eq!(ready.status, "planned");
+        assert!(ready.error.is_none());
+        assert!(ready.may_call_bot_api);
+    }
+
+    #[test]
+    fn kernel_telegram_drain_shell_readiness_preserves_failure_order() {
+        let cursor_block = plan_hepta_kernel_telegram_drain_once_shell_readiness(
+            HeptaKernelTelegramDrainOnceShellReadinessInput {
+                cursor_file_present: true,
+                cursor_parse_ok: false,
+                cursor_error: Some("cursor JSON is malformed"),
+                config_ready: false,
+                token_error: Some("bad token 123456789:abcdefghijklmnopqrstuvwxyz"),
+            },
+        );
+        assert_eq!(cursor_block.status, "attention");
+        assert!(!cursor_block.may_call_bot_api);
+        assert_eq!(
+            cursor_block.error.as_deref(),
+            Some("cursor JSON is malformed")
+        );
+
+        let config_block = plan_hepta_kernel_telegram_drain_once_shell_readiness(
+            HeptaKernelTelegramDrainOnceShellReadinessInput {
+                cursor_file_present: false,
+                cursor_parse_ok: true,
+                cursor_error: None,
+                config_ready: false,
+                token_error: Some("bad token 123456789:abcdefghijklmnopqrstuvwxyz"),
+            },
+        );
+        assert_eq!(config_block.status, "attention");
+        assert!(!config_block.may_call_bot_api);
+        assert_eq!(
+            config_block.error.as_deref(),
+            Some("Telegram config, token shape, or binding is not ready")
+        );
+
+        let token_block = plan_hepta_kernel_telegram_drain_once_shell_readiness(
+            HeptaKernelTelegramDrainOnceShellReadinessInput {
+                cursor_file_present: false,
+                cursor_parse_ok: true,
+                cursor_error: None,
+                config_ready: true,
+                token_error: Some("bad token 123456789:abcdefghijklmnopqrstuvwxyz"),
+            },
+        );
+        assert_eq!(token_block.status, "attention");
+        assert!(!token_block.may_call_bot_api);
+        let error = token_block.error.expect("redacted token error");
+        assert!(error.contains("[redacted-telegram-token]"));
+        assert!(!error.contains("abcdefghijklmnopqrstuvwxyz"));
+
+        let ready = plan_hepta_kernel_telegram_drain_once_shell_readiness(
+            HeptaKernelTelegramDrainOnceShellReadinessInput {
+                cursor_file_present: true,
+                cursor_parse_ok: true,
+                cursor_error: None,
+                config_ready: true,
+                token_error: None,
+            },
+        );
+        assert_eq!(ready.status, "planned");
+        assert!(ready.error.is_none());
+        assert!(ready.may_call_bot_api);
     }
 
     #[test]

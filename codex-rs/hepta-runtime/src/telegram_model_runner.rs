@@ -21,20 +21,23 @@ pub use hepta_kernel::{
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
     HeptaKernelTelegramConfigMetadata, HeptaKernelTelegramConfigStatus,
     HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramCursorPlan,
-    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDuplicateDecision,
+    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDrainOnceShellReadinessInput,
+    HeptaKernelTelegramDrainOnceShellReadinessPlan, HeptaKernelTelegramDuplicateDecision,
     HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
     HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
     HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
     HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramPollLoopStatus,
     HeptaKernelTelegramPollLoopStatusInput, HeptaKernelTelegramProductionGuardPolicyInput,
     HeptaKernelTelegramProductionGuardStatus, HeptaKernelTelegramProductionGuardStatusInput,
-    HeptaKernelTelegramReplyTargetMaterial, HeptaKernelTelegramRunnerInvocationOutcome,
-    HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSendExecutionReport,
-    HeptaKernelTelegramSendPlan, HeptaKernelTelegramSendRequestPlan,
-    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTelegramTokenObservation,
-    HeptaKernelTelegramTokenObservationInput, HeptaKernelTelegramTransportPlan,
-    HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
-    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+    HeptaKernelTelegramReceiveOnceShellReadinessInput,
+    HeptaKernelTelegramReceiveOnceShellReadinessPlan, HeptaKernelTelegramReplyTargetMaterial,
+    HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
+    HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendPlan,
+    HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
+    HeptaKernelTelegramTokenObservation, HeptaKernelTelegramTokenObservationInput,
+    HeptaKernelTelegramTransportPlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
+    HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
+    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
     MAX_TELEGRAM_READ_MAX_ATTEMPTS, MAX_TELEGRAM_READ_RETRY_BACKOFF_MS,
     MAX_TELEGRAM_SEND_MAX_ATTEMPTS, MAX_TELEGRAM_SEND_MIN_INTERVAL_MS,
     MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS, MAX_TELEGRAM_SOAK_MAX_ATTENTION,
@@ -81,6 +84,8 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_typing_keepalive_should_start,
     hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
     parse_hepta_kernel_mlx_model_ref, parse_hepta_kernel_telegram_cursor_next_update_offset,
+    plan_hepta_kernel_telegram_drain_once_shell_readiness,
+    plan_hepta_kernel_telegram_receive_once_shell_readiness,
     plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
     redact_hepta_kernel_telegram_runner_error, redact_hepta_kernel_telegram_token_like_text,
     resolve_hepta_kernel_telegram_secret_provider_path, select_hepta_kernel_telegram_runner,
@@ -104,6 +109,13 @@ pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
 pub type NativeTelegramTransportPlan = HeptaKernelTelegramTransportPlan;
 pub type NativeTelegramSendPlan = HeptaKernelTelegramSendPlan;
+pub type NativeTelegramReceiveOnceShellReadinessInput<'a> =
+    HeptaKernelTelegramReceiveOnceShellReadinessInput<'a>;
+pub type NativeTelegramReceiveOnceShellReadinessPlan =
+    HeptaKernelTelegramReceiveOnceShellReadinessPlan;
+pub type NativeTelegramDrainOnceShellReadinessInput<'a> =
+    HeptaKernelTelegramDrainOnceShellReadinessInput<'a>;
+pub type NativeTelegramDrainOnceShellReadinessPlan = HeptaKernelTelegramDrainOnceShellReadinessPlan;
 pub type NativeTelegramConfigStatus = HeptaKernelTelegramConfigStatus;
 pub type NativeTelegramConfigStatusInput = HeptaKernelTelegramConfigStatusInput;
 pub type NativeTelegramTokenObservationInput = HeptaKernelTelegramTokenObservationInput;
@@ -115,6 +127,18 @@ pub type NativeTelegramProductionGuardStatusInput = HeptaKernelTelegramProductio
 pub type NativeTelegramProductionGuardPolicyInput = HeptaKernelTelegramProductionGuardPolicyInput;
 pub type NativeTelegramPollLoopStatus = HeptaKernelTelegramPollLoopStatus;
 pub type NativeTelegramPollLoopStatusInput = HeptaKernelTelegramPollLoopStatusInput;
+
+pub fn plan_native_telegram_receive_once_shell_readiness(
+    input: NativeTelegramReceiveOnceShellReadinessInput<'_>,
+) -> NativeTelegramReceiveOnceShellReadinessPlan {
+    plan_hepta_kernel_telegram_receive_once_shell_readiness(input)
+}
+
+pub fn plan_native_telegram_drain_once_shell_readiness(
+    input: NativeTelegramDrainOnceShellReadinessInput<'_>,
+) -> NativeTelegramDrainOnceShellReadinessPlan {
+    plan_hepta_kernel_telegram_drain_once_shell_readiness(input)
+}
 
 pub fn invoke_native_telegram_model_runner_with_plan<M, I, C>(
     plan: &NativeTelegramModelRunnerPlan,
@@ -1015,6 +1039,36 @@ mod tests {
         assert!(!send_plan.raw_message_id_exposed);
         assert!(!send_plan.raw_token_exposed);
         assert!(!NativeTelegramSendPlan::disabled().send_plan_ready);
+    }
+
+    #[test]
+    fn telegram_shell_readiness_plans_delegate_to_kernel() {
+        let receive = plan_native_telegram_receive_once_shell_readiness(
+            NativeTelegramReceiveOnceShellReadinessInput {
+                token_error: Some("bad token 123456789:abcdefghijklmnopqrstuvwxyz"),
+                cursor_file_present: false,
+                cursor_parse_ok: true,
+                cursor_error: None,
+            },
+        );
+        assert_eq!(receive.status, "attention");
+        assert!(!receive.may_call_bot_api);
+        let error = receive.error.expect("redacted token error");
+        assert!(error.contains("[redacted-telegram-token]"));
+        assert!(!error.contains("abcdefghijklmnopqrstuvwxyz"));
+
+        let drain = plan_native_telegram_drain_once_shell_readiness(
+            NativeTelegramDrainOnceShellReadinessInput {
+                cursor_file_present: false,
+                cursor_parse_ok: true,
+                cursor_error: None,
+                config_ready: true,
+                token_error: None,
+            },
+        );
+        assert_eq!(drain.status, "planned");
+        assert!(drain.error.is_none());
+        assert!(drain.may_call_bot_api);
     }
 
     #[test]

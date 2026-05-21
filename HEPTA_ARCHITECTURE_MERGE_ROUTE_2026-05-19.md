@@ -318,6 +318,38 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
+### 07:4x Progress - Telegram Receive/Drain Shell Readiness Moved Into Hepta Kernel
+
+Continued the Telegram runtime ownership inversion after transport/send plans:
+
+1. Moved side-effect-free receive/drain shell-readiness DTOs and planners into
+   `hepta-kernel`:
+   `HeptaKernelTelegramReceiveOnceShellReadinessInput`,
+   `HeptaKernelTelegramReceiveOnceShellReadinessPlan`,
+   `HeptaKernelTelegramDrainOnceShellReadinessInput`, and
+   `HeptaKernelTelegramDrainOnceShellReadinessPlan`.
+2. Added runtime compatibility aliases and thin wrapper planners:
+   `plan_native_telegram_receive_once_shell_readiness` and
+   `plan_native_telegram_drain_once_shell_readiness`.
+3. Kept gateway/public compatibility names unchanged:
+   `plan_telegram_receive_once_shell_readiness` and
+   `plan_telegram_drain_once_shell_readiness`.
+4. Preserved the boundary: these planners only decide whether a later shell
+   may call the Bot API; they do not read config files, read token files, call
+   Telegram, spawn processes, write cursors, or mutate launchd state.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel kernel_telegram_receive_shell_readiness -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel kernel_telegram_drain_shell_readiness -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_shell_readiness_plans_delegate_to_kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib shell_readiness -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+HEPTA_CODEX_PREFLIGHT_RELEASE=0 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 scripts/hepta-codex-preflight.sh
+```
+
 ### 06:5x Progress - Telegram Transport/Send Plans Moved Into Hepta Kernel
 
 Continued after the cursor-plan kernel slice with another pure-plan ownership
