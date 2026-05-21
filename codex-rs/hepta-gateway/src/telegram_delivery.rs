@@ -5,8 +5,14 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const TELEGRAM_DELIVERY_STORE_IDENTIFIER: &str = "/store/delivery";
-pub const TELEGRAM_DELIVERY_MAX_RETRIES: u32 = 5;
+pub use hepta_runtime::{
+    HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES as TELEGRAM_DELIVERY_MAX_RETRIES,
+    HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER as TELEGRAM_DELIVERY_STORE_IDENTIFIER,
+};
+use hepta_runtime::{
+    native_telegram_delivery_backoff_ms, native_telegram_delivery_error_is_permanent,
+    native_telegram_delivery_lifecycle_record, redact_native_telegram_token_like_text,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NativeTelegramDeliveryLedgerStatus {
@@ -116,7 +122,7 @@ pub fn telegram_delivery_ledger_status_from_path(
         Ok(raw) => raw,
         Err(error) => {
             status.status = "attention";
-            status.error = Some(redact_token_like_text(&format!(
+            status.error = Some(redact_native_telegram_token_like_text(&format!(
                 "failed to read Telegram delivery ledger: {error}"
             )));
             return status;
@@ -256,72 +262,24 @@ pub fn telegram_delivery_lifecycle_record(
     provider_message_id_present: bool,
     error: Option<&str>,
 ) -> Value {
-    let acked = stage == "acked" && bot_api_ack == Some(true);
-    let failed = stage == "failed";
-    let permanent_error = failed && telegram_delivery_error_is_permanent(error);
-    let retry_scheduled = failed && !permanent_error;
-    let next_retry_count = if retry_scheduled { 1 } else { 0 };
-    serde_json::json!({
-        "schema_version": 1,
-        "store_identifier": TELEGRAM_DELIVERY_STORE_IDENTIFIER,
-        "entry_id": candidate_next_update_offset
-            .map(|offset| format!("telegram:next-offset:{offset}"))
-            .unwrap_or_else(|| "telegram:next-offset:missing".to_string()),
-        "idempotency_key": candidate_next_update_offset
-            .map(|offset| format!("telegram:next-offset:{offset}"))
-            .unwrap_or_else(|| "telegram:next-offset:missing".to_string()),
-        "stage": stage,
-        "created_unix_seconds": now_unix_ms() / 1_000,
-        "channel": "telegram",
-        "session_key_shape": "agent:main:telegram:[redacted]",
-        "payload_count": usize::from(model_output_present),
-        "payload_text_chunk_count": usize::from(model_output_present),
-        "payload_media_count": 0,
-        "payload_button_count": 0,
-        "content_logged": false,
-        "message_text_logged": false,
-        "raw_chat_id_logged": false,
-        "raw_message_id_logged": false,
-        "raw_token_logged": false,
-        "enqueue_before_provider_send": true,
-        "active_claim_required": true,
-        "active_claim_acquired": true,
-        "provider_send_attempted": provider_send_attempted,
-        "provider_message_id_present": provider_message_id_present,
-        "ack_after_provider_message_id": acked,
-        "acked": acked,
-        "failed": failed,
-        "retry_scheduled": retry_scheduled,
-        "next_retry_count": next_retry_count,
-        "next_retry_backoff_ms": retry_scheduled.then(|| telegram_delivery_backoff_ms(next_retry_count)),
-        "max_retries": TELEGRAM_DELIVERY_MAX_RETRIES,
-        "permanent_error_moved_to_failed": permanent_error,
-        "recovery_replay_supported": true,
-        "store_mutated": true,
-        "external_send_attempted": provider_send_attempted,
-        "error": error.map(redact_token_like_text),
-    })
+    native_telegram_delivery_lifecycle_record(
+        stage,
+        candidate_next_update_offset,
+        model_output_present,
+        provider_send_attempted,
+        bot_api_ack,
+        provider_message_id_present,
+        error,
+        now_unix_ms() / 1_000,
+    )
 }
 
 pub fn telegram_delivery_backoff_ms(next_retry_count: u32) -> u64 {
-    match next_retry_count {
-        0 => 0,
-        1 => 5_000,
-        2 => 25_000,
-        3 => 120_000,
-        _ => 600_000,
-    }
+    native_telegram_delivery_backoff_ms(next_retry_count)
 }
 
 pub fn telegram_delivery_error_is_permanent(error: Option<&str>) -> bool {
-    let Some(error) = error.map(str::to_ascii_lowercase) else {
-        return false;
-    };
-    error.contains("unauthorized")
-        || error.contains("forbidden")
-        || error.contains("bot was blocked")
-        || error.contains("chat not found")
-        || error.contains("bad request")
+    native_telegram_delivery_error_is_permanent(error)
 }
 
 fn file_modified_unix_ms(path: &Path) -> Option<u64> {
@@ -337,34 +295,6 @@ fn now_unix_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
         .unwrap_or(0)
-}
-
-fn redact_token_like_text(text: &str) -> String {
-    text.split_whitespace()
-        .map(|part| {
-            let trimmed = part.trim_matches(|ch: char| {
-                !ch.is_ascii_alphanumeric() && ch != ':' && ch != '_' && ch != '-'
-            });
-            if token_shape_ok(trimmed) {
-                "[redacted-telegram-token]".to_string()
-            } else {
-                part.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn token_shape_ok(value: &str) -> bool {
-    let Some((bot_id, secret)) = value.split_once(':') else {
-        return false;
-    };
-    bot_id.len() >= 6
-        && bot_id.chars().all(|ch| ch.is_ascii_digit())
-        && secret.len() >= 20
-        && secret
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
 }
 
 #[cfg(test)]

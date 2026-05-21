@@ -38,6 +38,8 @@ pub const HEPTA_IN_PROCESS_EXEC_RUNNER_KIND: &str = "hepta_in_process_exec_runne
 pub const HEPTA_EXEC_CHILD_RUNNER_KIND: &str = "hepta_exec_child_runner";
 pub const HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE: &str =
     "本地模型这次响应超时或失败了。我已先收下这条消息，避免反复重试；请稍后再发一条继续。";
+pub const HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER: &str = "/store/delivery";
+pub const HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES: u32 = 5;
 pub const DEFAULT_TELEGRAM_SOAK_MIN_POLLS: u64 = 3;
 pub const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
 pub const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 0;
@@ -1359,6 +1361,85 @@ pub fn hepta_kernel_telegram_send_rate_limit_sleep_for(
         .unwrap_or_default()
 }
 
+pub fn hepta_kernel_telegram_delivery_lifecycle_record(
+    stage: &'static str,
+    candidate_next_update_offset: Option<i64>,
+    model_output_present: bool,
+    provider_send_attempted: bool,
+    bot_api_ack: Option<bool>,
+    provider_message_id_present: bool,
+    error: Option<&str>,
+    created_unix_seconds: u64,
+) -> Value {
+    let acked = stage == "acked" && bot_api_ack == Some(true);
+    let failed = stage == "failed";
+    let permanent_error = failed && hepta_kernel_telegram_delivery_error_is_permanent(error);
+    let retry_scheduled = failed && !permanent_error;
+    let next_retry_count = if retry_scheduled { 1 } else { 0 };
+    let idempotency_key = candidate_next_update_offset
+        .map(|offset| format!("telegram:next-offset:{offset}"))
+        .unwrap_or_else(|| "telegram:next-offset:missing".to_string());
+
+    json!({
+        "schema_version": 1,
+        "store_identifier": HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER,
+        "entry_id": idempotency_key,
+        "idempotency_key": idempotency_key,
+        "stage": stage,
+        "created_unix_seconds": created_unix_seconds,
+        "channel": "telegram",
+        "session_key_shape": "agent:main:telegram:[redacted]",
+        "payload_count": usize::from(model_output_present),
+        "payload_text_chunk_count": usize::from(model_output_present),
+        "payload_media_count": 0,
+        "payload_button_count": 0,
+        "content_logged": false,
+        "message_text_logged": false,
+        "raw_chat_id_logged": false,
+        "raw_message_id_logged": false,
+        "raw_token_logged": false,
+        "enqueue_before_provider_send": true,
+        "active_claim_required": true,
+        "active_claim_acquired": true,
+        "provider_send_attempted": provider_send_attempted,
+        "provider_message_id_present": provider_message_id_present,
+        "ack_after_provider_message_id": acked,
+        "acked": acked,
+        "failed": failed,
+        "retry_scheduled": retry_scheduled,
+        "next_retry_count": next_retry_count,
+        "next_retry_backoff_ms": retry_scheduled
+            .then(|| hepta_kernel_telegram_delivery_backoff_ms(next_retry_count)),
+        "max_retries": HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES,
+        "permanent_error_moved_to_failed": permanent_error,
+        "recovery_replay_supported": true,
+        "store_mutated": true,
+        "external_send_attempted": provider_send_attempted,
+        "error": error.map(redact_hepta_kernel_telegram_token_like_text),
+    })
+}
+
+pub fn hepta_kernel_telegram_delivery_backoff_ms(next_retry_count: u32) -> u64 {
+    match next_retry_count {
+        0 => 0,
+        1 => 5_000,
+        2 => 25_000,
+        3 => 120_000,
+        _ => 600_000,
+    }
+}
+
+pub fn hepta_kernel_telegram_delivery_error_is_permanent(error: Option<&str>) -> bool {
+    let Some(error) = error.map(str::to_ascii_lowercase) else {
+        return false;
+    };
+    error.contains("unauthorized")
+        || error.contains("forbidden")
+        || error.contains("bot was blocked")
+        || error.contains("chat not found")
+        || error.contains("bad request")
+}
+
 pub fn hepta_kernel_telegram_bot_token_shape_ok(token: &str) -> bool {
     let Some((bot_id, secret)) = token.split_once(':') else {
         return false;
@@ -2494,6 +2575,64 @@ mod tests {
         assert!(hepta_kernel_telegram_send_should_retry(1, 2, transient));
         assert!(!hepta_kernel_telegram_send_should_retry(2, 2, transient));
         assert!(!hepta_kernel_telegram_send_should_retry(1, 2, auth_error));
+    }
+
+    #[test]
+    fn kernel_telegram_delivery_lifecycle_policy_redacts_and_classifies_retry() {
+        let record = hepta_kernel_telegram_delivery_lifecycle_record(
+            "failed",
+            Some(42),
+            true,
+            true,
+            Some(false),
+            false,
+            Some("transient token=123456789:abcdefghijklmnopqrstuvwxyz timeout"),
+            1_777_777,
+        );
+
+        assert_eq!(
+            record["store_identifier"],
+            HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER
+        );
+        assert_eq!(record["entry_id"], "telegram:next-offset:42");
+        assert_eq!(record["idempotency_key"], "telegram:next-offset:42");
+        assert_eq!(record["created_unix_seconds"], 1_777_777);
+        assert_eq!(record["payload_count"], 1);
+        assert_eq!(record["payload_text_chunk_count"], 1);
+        assert_eq!(record["failed"], true);
+        assert_eq!(record["acked"], false);
+        assert_eq!(record["retry_scheduled"], true);
+        assert_eq!(record["next_retry_count"], 1);
+        assert_eq!(record["next_retry_backoff_ms"], 5_000);
+        assert_eq!(
+            record["max_retries"],
+            HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES
+        );
+        assert_eq!(record["raw_chat_id_logged"], false);
+        assert_eq!(record["raw_message_id_logged"], false);
+        assert_eq!(record["raw_token_logged"], false);
+        assert_eq!(
+            record["error"],
+            "transient [redacted-telegram-token] timeout"
+        );
+    }
+
+    #[test]
+    fn kernel_telegram_delivery_error_classification_and_backoff_are_stable() {
+        assert!(hepta_kernel_telegram_delivery_error_is_permanent(Some(
+            "Forbidden: bot was blocked by the user"
+        )));
+        assert!(hepta_kernel_telegram_delivery_error_is_permanent(Some(
+            "Bad Request: chat not found"
+        )));
+        assert!(!hepta_kernel_telegram_delivery_error_is_permanent(Some(
+            "Too Many Requests: retry after 1"
+        )));
+        assert_eq!(hepta_kernel_telegram_delivery_backoff_ms(0), 0);
+        assert_eq!(hepta_kernel_telegram_delivery_backoff_ms(1), 5_000);
+        assert_eq!(hepta_kernel_telegram_delivery_backoff_ms(2), 25_000);
+        assert_eq!(hepta_kernel_telegram_delivery_backoff_ms(3), 120_000);
+        assert_eq!(hepta_kernel_telegram_delivery_backoff_ms(4), 600_000);
     }
 
     #[test]

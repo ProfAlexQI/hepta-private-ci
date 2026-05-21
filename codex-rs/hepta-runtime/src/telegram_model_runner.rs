@@ -13,6 +13,7 @@ pub use hepta_kernel::{
     DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
     DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
     HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES as TELEGRAM_ALLOWED_UPDATES,
+    HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES, HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER,
     HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES as TELEGRAM_DRAIN_ONCE_STAGES,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
@@ -35,7 +36,9 @@ pub use hepta_kernel::{
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_drain_execution_plan,
+    hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_delivery_backoff_ms,
+    hepta_kernel_telegram_delivery_error_is_permanent,
+    hepta_kernel_telegram_delivery_lifecycle_record, hepta_kernel_telegram_drain_execution_plan,
     hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_drain_first_missing_gate,
     hepta_kernel_telegram_drain_status_probe_executes_pipeline,
     hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_error_is_transient,
@@ -379,6 +382,36 @@ pub fn native_telegram_send_rate_limit_sleep_for(
     min_interval: Duration,
 ) -> Duration {
     hepta_kernel_telegram_send_rate_limit_sleep_for(last_elapsed, min_interval)
+}
+
+pub fn native_telegram_delivery_lifecycle_record(
+    stage: &'static str,
+    candidate_next_update_offset: Option<i64>,
+    model_output_present: bool,
+    provider_send_attempted: bool,
+    bot_api_ack: Option<bool>,
+    provider_message_id_present: bool,
+    error: Option<&str>,
+    created_unix_seconds: u64,
+) -> Value {
+    hepta_kernel_telegram_delivery_lifecycle_record(
+        stage,
+        candidate_next_update_offset,
+        model_output_present,
+        provider_send_attempted,
+        bot_api_ack,
+        provider_message_id_present,
+        error,
+        created_unix_seconds,
+    )
+}
+
+pub fn native_telegram_delivery_backoff_ms(next_retry_count: u32) -> u64 {
+    hepta_kernel_telegram_delivery_backoff_ms(next_retry_count)
+}
+
+pub fn native_telegram_delivery_error_is_permanent(error: Option<&str>) -> bool {
+    hepta_kernel_telegram_delivery_error_is_permanent(error)
 }
 
 pub fn native_telegram_bot_token_shape_ok(token: &str) -> bool {
@@ -869,6 +902,43 @@ mod tests {
         assert!(native_telegram_send_should_retry(1, 2, transient));
         assert!(!native_telegram_send_should_retry(2, 2, transient));
         assert!(!native_telegram_send_should_retry(1, 2, auth_error));
+    }
+
+    #[test]
+    fn telegram_delivery_lifecycle_policy_delegates_to_kernel() {
+        assert_eq!(
+            HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER,
+            "/store/delivery"
+        );
+        assert_eq!(HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES, 5);
+
+        let record = native_telegram_delivery_lifecycle_record(
+            "failed",
+            Some(42),
+            true,
+            true,
+            Some(false),
+            false,
+            Some("transient token=123456789:abcdefghijklmnopqrstuvwxyz timeout"),
+            1_777_777,
+        );
+
+        assert_eq!(record["store_identifier"], "/store/delivery");
+        assert_eq!(record["entry_id"], "telegram:next-offset:42");
+        assert_eq!(record["created_unix_seconds"], 1_777_777);
+        assert_eq!(record["retry_scheduled"], true);
+        assert_eq!(record["next_retry_backoff_ms"], 5_000);
+        assert_eq!(
+            record["error"],
+            "transient [redacted-telegram-token] timeout"
+        );
+        assert!(native_telegram_delivery_error_is_permanent(Some(
+            "Forbidden: bot was blocked by the user"
+        )));
+        assert!(!native_telegram_delivery_error_is_permanent(Some(
+            "Too Many Requests"
+        )));
+        assert_eq!(native_telegram_delivery_backoff_ms(4), 600_000);
     }
 
     #[test]
