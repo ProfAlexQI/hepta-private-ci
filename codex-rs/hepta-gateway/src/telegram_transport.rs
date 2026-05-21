@@ -24,7 +24,8 @@ use hepta_runtime::{
     native_telegram_send_error_is_transient, native_telegram_send_max_attempts_policy,
     native_telegram_send_message_request_body, native_telegram_send_min_interval_policy,
     native_telegram_send_rate_limit_sleep_for, native_telegram_send_retry_backoff_policy,
-    native_telegram_send_should_retry, native_telegram_typing_keepalive_interval_policy,
+    native_telegram_send_should_retry, native_telegram_transport_plan_for_config_status,
+    native_telegram_typing_keepalive_interval_policy,
     native_telegram_typing_keepalive_should_start, redact_native_telegram_token_like_text,
 };
 
@@ -57,11 +58,7 @@ impl Drop for TelegramTypingKeepalive {
 pub fn telegram_transport_plan_for_config_status(
     config: &NativeTelegramConfigStatus,
 ) -> NativeTelegramTransportPlan {
-    NativeTelegramTransportPlan::for_config_state(
-        config.enabled,
-        config.token_shape_ok,
-        config.binding_ready,
-    )
+    native_telegram_transport_plan_for_config_status(config)
 }
 
 #[derive(Debug, Clone, Copy)]

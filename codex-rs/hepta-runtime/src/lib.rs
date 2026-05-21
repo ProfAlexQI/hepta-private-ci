@@ -268,6 +268,7 @@ pub use telegram_model_runner::{
     native_telegram_send_should_retry, native_telegram_soak_max_attention_count_policy,
     native_telegram_soak_max_observed_age_ms_policy,
     native_telegram_soak_min_poll_iterations_policy, native_telegram_system_time_unix_ms,
+    native_telegram_transport_plan_for_config_status,
     native_telegram_typing_keepalive_interval_policy,
     native_telegram_typing_keepalive_should_start, native_telegram_update_already_drained,
     parse_native_telegram_cursor_next_update_offset, parse_native_telegram_env_truthy_value,

@@ -318,6 +318,30 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
+### 07:5x Progress - Telegram Transport Config Plan Moved Into Hepta Kernel
+
+Continued immediately after the shell-readiness slice:
+
+1. Moved the pure config-to-transport-plan decision into `hepta-kernel` as
+   `hepta_kernel_telegram_transport_plan_for_config_status`.
+2. Added the runtime compatibility wrapper
+   `native_telegram_transport_plan_for_config_status`.
+3. Kept the existing gateway API name
+   `telegram_transport_plan_for_config_status` as a thin compatibility wrapper.
+4. Preserved the boundary: the kernel reads only an already-built config status
+   struct and does not read config files, read token files, call Telegram, or
+   mutate runtime state.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel kernel_telegram_transport_and_send_plans_are_side_effect_free -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_transport_and_send_plans_alias_kernel_contracts -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib transport_plan_for_config_status_requires_enabled_token_and_binding -- --nocapture
+HEPTA_CODEX_PREFLIGHT_RELEASE=0 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 scripts/hepta-codex-preflight.sh
+```
+
 ### 07:4x Progress - Telegram Receive/Drain Shell Readiness Moved Into Hepta Kernel
 
 Continued the Telegram runtime ownership inversion after transport/send plans:

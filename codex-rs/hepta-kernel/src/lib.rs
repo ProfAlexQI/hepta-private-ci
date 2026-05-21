@@ -1201,6 +1201,16 @@ impl HeptaKernelTelegramTransportPlan {
     }
 }
 
+pub fn hepta_kernel_telegram_transport_plan_for_config_status(
+    config: &HeptaKernelTelegramConfigStatus,
+) -> HeptaKernelTelegramTransportPlan {
+    HeptaKernelTelegramTransportPlan::for_config_state(
+        config.enabled,
+        config.token_shape_ok,
+        config.binding_ready,
+    )
+}
+
 impl HeptaKernelTelegramSendPlan {
     pub fn disabled() -> Self {
         Self {
@@ -3733,6 +3743,28 @@ mod tests {
         assert!(!ready_transport.raw_token_exposed);
         assert!(
             !HeptaKernelTelegramTransportPlan::for_config_state(true, true, false)
+                .bot_api_transport_plan_ready
+        );
+        let ready_config =
+            build_hepta_kernel_telegram_config_status(HeptaKernelTelegramConfigStatusInput {
+                config_path: Some("private/config/openclaw.json".to_string()),
+                config_found: true,
+                enabled: true,
+                dm_policy: "allowlist".to_string(),
+                group_policy: "allowlist".to_string(),
+                allow_from_count: 1,
+                group_count: 1,
+                token_source: "secret_file",
+                token_secret_ref_present: true,
+                token_secret_provider: Some("telegram".to_string()),
+                token_secret_id_present: true,
+                token_file_present: true,
+                token_file_mode_0600: true,
+                token_shape_ok: true,
+                error: None,
+            });
+        assert!(
+            hepta_kernel_telegram_transport_plan_for_config_status(&ready_config)
                 .bot_api_transport_plan_ready
         );
 

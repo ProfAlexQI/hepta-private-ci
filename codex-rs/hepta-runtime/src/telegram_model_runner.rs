@@ -80,6 +80,7 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_soak_max_observed_age_ms_policy,
     hepta_kernel_telegram_soak_min_poll_iterations_policy,
     hepta_kernel_telegram_system_time_unix_ms, hepta_kernel_telegram_token_observation,
+    hepta_kernel_telegram_transport_plan_for_config_status,
     hepta_kernel_telegram_typing_keepalive_interval_policy,
     hepta_kernel_telegram_typing_keepalive_should_start,
     hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
@@ -138,6 +139,12 @@ pub fn plan_native_telegram_drain_once_shell_readiness(
     input: NativeTelegramDrainOnceShellReadinessInput<'_>,
 ) -> NativeTelegramDrainOnceShellReadinessPlan {
     plan_hepta_kernel_telegram_drain_once_shell_readiness(input)
+}
+
+pub fn native_telegram_transport_plan_for_config_status(
+    config: &NativeTelegramConfigStatus,
+) -> NativeTelegramTransportPlan {
+    hepta_kernel_telegram_transport_plan_for_config_status(config)
 }
 
 pub fn invoke_native_telegram_model_runner_with_plan<M, I, C>(
@@ -1039,6 +1046,27 @@ mod tests {
         assert!(!send_plan.raw_message_id_exposed);
         assert!(!send_plan.raw_token_exposed);
         assert!(!NativeTelegramSendPlan::disabled().send_plan_ready);
+
+        let config = build_native_telegram_config_status(NativeTelegramConfigStatusInput {
+            config_path: Some("private/config/openclaw.json".to_string()),
+            config_found: true,
+            enabled: true,
+            dm_policy: "allowlist".to_string(),
+            group_policy: "allowlist".to_string(),
+            allow_from_count: 1,
+            group_count: 1,
+            token_source: "secret_file",
+            token_secret_ref_present: true,
+            token_secret_provider: Some("telegram".to_string()),
+            token_secret_id_present: true,
+            token_file_present: true,
+            token_file_mode_0600: true,
+            token_shape_ok: true,
+            error: None,
+        });
+        assert!(
+            native_telegram_transport_plan_for_config_status(&config).bot_api_transport_plan_ready
+        );
     }
 
     #[test]
