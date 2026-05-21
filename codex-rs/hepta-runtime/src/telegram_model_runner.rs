@@ -7,20 +7,19 @@ use serde_json::Value;
 
 pub use hepta_kernel::{
     CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
-    HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
-    HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine,
+    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
+    HEPTA_KERNEL_TELEGRAM_RUNNER_KIND, HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine,
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
     HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
-    MAX_TELEGRAM_MLX_MAX_TOKENS, classify_hepta_kernel_telegram_runner_error,
-    extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_prompt, invoke_hepta_kernel_telegram_runner_with_plan,
-    parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_turn,
-    redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
+    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
+    classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
+    extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
+    hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
+    hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_prompt,
+    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
+    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
+    select_hepta_kernel_telegram_runner,
 };
-
-pub const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
-pub const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
-pub const MIN_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 1_000;
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
 pub type NativeTelegramModelRunnerInvocationOutcome = HeptaKernelTelegramRunnerInvocationOutcome;
@@ -111,35 +110,15 @@ pub fn extract_native_telegram_openai_chat_completion_text(body: &Value) -> Resu
 }
 
 pub fn native_telegram_exec_child_args(last_message_path: &Path, prompt: &str) -> Vec<String> {
-    vec![
-        "-c".to_string(),
-        "approval_policy=\"never\"".to_string(),
-        "exec".to_string(),
-        "--skip-git-repo-check".to_string(),
-        "--ephemeral".to_string(),
-        "--ignore-rules".to_string(),
-        "--sandbox".to_string(),
-        "read-only".to_string(),
-        "--output-last-message".to_string(),
-        last_message_path.to_string_lossy().to_string(),
-        prompt.to_string(),
-    ]
+    hepta_kernel_exec_child_args(last_message_path.to_string_lossy().as_ref(), prompt)
 }
 
 pub fn native_telegram_model_timeout(value_ms: Option<u64>) -> Duration {
-    let millis = value_ms
-        .map(|value| value.clamp(MIN_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_MODEL_TIMEOUT_MS))
-        .unwrap_or(DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS);
-    Duration::from_millis(millis)
+    hepta_kernel_telegram_model_timeout(value_ms)
 }
 
 pub fn extract_native_telegram_exec_child_final_message(output: &str) -> Result<String, String> {
-    let message = output.trim();
-    if message.is_empty() {
-        Err("gated Hepta exec runner produced an empty final message".to_string())
-    } else {
-        Ok(message.to_string())
-    }
+    extract_hepta_kernel_exec_child_final_message(output)
 }
 
 pub fn wait_for_native_telegram_model_child(
@@ -169,17 +148,7 @@ pub fn wait_for_native_telegram_model_child(
 }
 
 pub fn native_telegram_exec_child_status_error(status: ExitStatus) -> Option<String> {
-    if status.success() {
-        None
-    } else {
-        Some(format!(
-            "gated Hepta exec runner exited with status {}",
-            status
-                .code()
-                .map(|code| code.to_string())
-                .unwrap_or_else(|| "signal".to_string())
-        ))
-    }
+    hepta_kernel_exec_child_status_error(status.success(), status.code())
 }
 
 #[cfg(test)]

@@ -7172,7 +7172,6 @@ dependencies = [
 name = "hepta-kernel"
 version = "0.0.0"
 dependencies = [
- "codex-core",
  "hepta-core",
  "hepta-intelligence",
  "hepta-memory",

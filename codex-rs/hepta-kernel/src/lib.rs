@@ -7,16 +7,23 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::time::Duration;
 
 pub const HEPTA_KERNEL_CONTRACT: &str = "hepta-kernel-v1";
 pub const HEPTA_KERNEL_OWNER: &str = "hepta-kernel";
 pub const CODEX_ENGINE_ID: &str = "codex-engine";
+pub const CODEX_TOOL_MENTION_SIGIL: char = '$';
+pub const CODEX_PLUGIN_MENTION_SIGIL: char = '@';
+pub const CODEX_AGENTS_MD_FILENAME: &str = "AGENTS.md";
 pub const HEPTA_KERNEL_TELEGRAM_RUNNER_KIND: &str = "hepta_kernel_session_runner";
 pub const HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY: &str =
     "gated in-process Hepta kernel turn runner with Codex as an internal execution engine";
 pub const DEFAULT_TELEGRAM_MLX_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 pub const DEFAULT_TELEGRAM_MLX_MAX_TOKENS: u64 = 512;
 pub const MAX_TELEGRAM_MLX_MAX_TOKENS: u64 = 4096;
+pub const DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 120_000;
+pub const MAX_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 600_000;
+pub const MIN_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 1_000;
 pub const MLX_LOCAL_CHAT_COMPLETIONS_RUNNER_KIND: &str = "mlx_local_chat_completions";
 pub const HEPTA_IN_PROCESS_EXEC_RUNNER_KIND: &str = "hepta_in_process_exec_runner";
 pub const HEPTA_EXEC_CHILD_RUNNER_KIND: &str = "hepta_exec_child_runner";
@@ -435,6 +442,57 @@ pub fn clamp_hepta_kernel_mlx_max_tokens(value: Option<u64>) -> u64 {
         .unwrap_or(DEFAULT_TELEGRAM_MLX_MAX_TOKENS)
 }
 
+pub fn hepta_kernel_telegram_model_timeout_ms(value_ms: Option<u64>) -> u64 {
+    value_ms
+        .map(|value| value.clamp(MIN_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_MODEL_TIMEOUT_MS))
+        .unwrap_or(DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS)
+}
+
+pub fn hepta_kernel_telegram_model_timeout(value_ms: Option<u64>) -> Duration {
+    Duration::from_millis(hepta_kernel_telegram_model_timeout_ms(value_ms))
+}
+
+pub fn hepta_kernel_exec_child_args(last_message_path: &str, prompt: &str) -> Vec<String> {
+    vec![
+        "-c".to_string(),
+        "approval_policy=\"never\"".to_string(),
+        "exec".to_string(),
+        "--skip-git-repo-check".to_string(),
+        "--ephemeral".to_string(),
+        "--ignore-rules".to_string(),
+        "--sandbox".to_string(),
+        "read-only".to_string(),
+        "--output-last-message".to_string(),
+        last_message_path.to_string(),
+        prompt.to_string(),
+    ]
+}
+
+pub fn extract_hepta_kernel_exec_child_final_message(output: &str) -> Result<String, String> {
+    let message = output.trim();
+    if message.is_empty() {
+        Err("gated Hepta exec runner produced an empty final message".to_string())
+    } else {
+        Ok(message.to_string())
+    }
+}
+
+pub fn hepta_kernel_exec_child_status_error(
+    status_success: bool,
+    exit_code: Option<i32>,
+) -> Option<String> {
+    if status_success {
+        None
+    } else {
+        Some(format!(
+            "gated Hepta exec runner exited with status {}",
+            exit_code
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "signal".to_string())
+        ))
+    }
+}
+
 fn sanitize_hepta_kernel_mlx_base_url(value: Option<&str>) -> String {
     value
         .map(str::trim)
@@ -502,9 +560,9 @@ pub fn plan_hepta_kernel_turn(
         hepta_owns_turn_loop: true,
         hepta_intelligence_context: input.hepta_intelligence_context,
         plugin_capability_context: input.plugin_capability_context,
-        codex_tool_mention_sigil: codex_core::TOOL_MENTION_SIGIL,
-        codex_plugin_mention_sigil: codex_core::PLUGIN_TEXT_MENTION_SIGIL,
-        agents_md_filename: codex_core::DEFAULT_AGENTS_MD_FILENAME,
+        codex_tool_mention_sigil: CODEX_TOOL_MENTION_SIGIL,
+        codex_plugin_mention_sigil: CODEX_PLUGIN_MENTION_SIGIL,
+        agents_md_filename: CODEX_AGENTS_MD_FILENAME,
         stages,
         prompt: build_hepta_kernel_prompt(&input, user_message),
         raw_prompt_text_exposed: false,
@@ -751,6 +809,78 @@ mod tests {
             extract_hepta_kernel_openai_chat_completion_text(&missing)
                 .expect_err("empty text rejected")
                 .contains("did not include text")
+        );
+    }
+
+    #[test]
+    fn kernel_model_timeout_policy_clamps_and_defaults() {
+        assert_eq!(
+            hepta_kernel_telegram_model_timeout(None),
+            Duration::from_millis(DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS)
+        );
+        assert_eq!(
+            hepta_kernel_telegram_model_timeout(Some(1)),
+            Duration::from_millis(MIN_TELEGRAM_MODEL_TIMEOUT_MS)
+        );
+        assert_eq!(
+            hepta_kernel_telegram_model_timeout(Some(999_999_999)),
+            Duration::from_millis(MAX_TELEGRAM_MODEL_TIMEOUT_MS)
+        );
+        assert_eq!(hepta_kernel_telegram_model_timeout_ms(Some(2_500)), 2_500);
+    }
+
+    #[test]
+    fn kernel_exec_child_args_are_ephemeral_read_only_and_capture_last_message() {
+        let args =
+            hepta_kernel_exec_child_args("/tmp/hepta-telegram-last-message.txt", "private prompt");
+
+        assert_eq!(args[0], "-c");
+        assert_eq!(args[1], "approval_policy=\"never\"");
+        assert_eq!(args[2], "exec");
+        assert!(args.contains(&"--skip-git-repo-check".to_string()));
+        assert!(args.contains(&"--ephemeral".to_string()));
+        assert!(args.contains(&"--ignore-rules".to_string()));
+        assert_eq!(
+            args.windows(2)
+                .find(|pair| pair[0] == "--sandbox")
+                .map(|pair| pair[1].as_str()),
+            Some("read-only")
+        );
+        assert_eq!(
+            args.windows(2)
+                .find(|pair| pair[0] == "--output-last-message")
+                .map(|pair| pair[1].as_str()),
+            Some("/tmp/hepta-telegram-last-message.txt")
+        );
+        assert_eq!(args.last().map(String::as_str), Some("private prompt"));
+    }
+
+    #[test]
+    fn kernel_exec_child_final_message_extractor_trims_and_rejects_empty() {
+        assert_eq!(
+            extract_hepta_kernel_exec_child_final_message("  final answer \n")
+                .expect("final message"),
+            "final answer"
+        );
+        assert!(
+            extract_hepta_kernel_exec_child_final_message(" \n\t ")
+                .expect_err("empty output rejected")
+                .contains("empty final message")
+        );
+    }
+
+    #[test]
+    fn kernel_exec_child_status_policy_reports_exit_code_or_signal() {
+        assert_eq!(hepta_kernel_exec_child_status_error(true, Some(0)), None);
+        assert!(
+            hepta_kernel_exec_child_status_error(false, Some(7))
+                .expect("nonzero status")
+                .contains("7")
+        );
+        assert!(
+            hepta_kernel_exec_child_status_error(false, None)
+                .expect("signal status")
+                .contains("signal")
         );
     }
 }

@@ -215,13 +215,19 @@ Lane C has started with a real gateway crate boundary:
   `mlx-local`, in-process, and child-process runners, including MLX model-ref
   parsing, local MLX base URL sanitization, max-token clamping, and the
   process-spawn vs local-network distinction.
-- Telegram MLX/child-runner execution helper policy also moved to
-  `hepta-runtime::telegram_model_runner`: OpenAI-compatible MLX request body
+- Telegram MLX/child-runner execution helper policy first moved to
+  `hepta-runtime::telegram_model_runner`, and the pure kernel-owned portion has
+  now moved further into `hepta-kernel`: OpenAI-compatible MLX request body
   shape, response text extraction, child-runner argument planning, model
-  timeout clamping, final-message extraction, child-process wait/kill loop,
-  and child exit-status formatting are now runtime-owned. `codex-cli` still
-  reads env vars and performs the actual MLX HTTP request / in-process runner /
-  child-process spawn.
+  timeout clamping, final-message extraction, and child exit-status formatting
+  are kernel-owned policy. `hepta-runtime` keeps compatibility facades and the
+  concrete child wait/kill helper; `codex-cli` still reads env vars and
+  performs the actual MLX HTTP request / in-process runner / child-process
+  spawn.
+- `hepta-kernel` no longer depends on the full `codex-core` crate just to carry
+  static Codex engine constants. It keeps the tool/plugin sigils and
+  `AGENTS.md` filename as local kernel contract constants, which avoids pulling
+  Codex websocket/provider dependencies into the native app package graph.
 - Concrete Telegram model runner invocation facade and model-error
   classification/redaction also moved to
   `hepta-runtime::telegram_model_runner`. Runtime now owns
