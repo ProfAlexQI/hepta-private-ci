@@ -3493,7 +3493,7 @@ fn gateway_replacement_readiness(
     let model_runner_plan = native_telegram::telegram_model_runner_plan();
     let in_process_model_runner_ready =
         env_truthy(native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV);
-    let codex_core_model_runner_ready = env_truthy(native_telegram::TELEGRAM_CODEX_CORE_RUNNER_ENV);
+    let hepta_kernel_model_runner_ready = native_telegram::telegram_hepta_kernel_runner_enabled();
     let telegram_model_runner_plan_ready = model_runner_plan.runner_plan_ready;
     let side_effect_free = true;
 
@@ -3567,11 +3567,11 @@ fn gateway_replacement_readiness(
         },
         NativeGatewayReplacementCheck {
             name: "telegram_hepta_kernel_runner_context_ready",
-            ready: !codex_core_model_runner_ready
+            ready: !hepta_kernel_model_runner_ready
                 || (model_runner_plan.codex_core_runner_enabled
                     && model_runner_plan.hepta_intelligence_context_injected
                     && model_runner_plan.plugin_capability_context_injected),
-            detail: "when HEPTA_NATIVE_TELEGRAM_CODEX_CORE_RUNNER is enabled for compatibility, Telegram model turns must route through the Hepta kernel with Hepta intelligence and plugin/MCP capability context before using Codex as an internal engine",
+            detail: "when HEPTA_NATIVE_TELEGRAM_HEPTA_KERNEL_RUNNER is enabled, Telegram model turns must route through the Hepta kernel with Hepta intelligence and plugin/MCP capability context before using Codex as an internal engine; the old CODEX_CORE runner env is compatibility-only",
         },
         NativeGatewayReplacementCheck {
             name: "release_build_verified",
@@ -3644,9 +3644,9 @@ fn gateway_replacement_readiness(
                 env: native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV,
                 enabled: in_process_model_runner_ready,
             },
-            codex_core_model_runner: NativeGatewayReplacementGate {
-                env: native_telegram::TELEGRAM_CODEX_CORE_RUNNER_ENV,
-                enabled: codex_core_model_runner_ready,
+            hepta_kernel_model_runner: NativeGatewayReplacementGate {
+                env: native_telegram::TELEGRAM_HEPTA_KERNEL_RUNNER_ENV,
+                enabled: hepta_kernel_model_runner_ready,
             },
             release_build_verified: NativeGatewayReplacementGate {
                 env: RELEASE_BUILD_VERIFIED_ENV,
@@ -3737,8 +3737,8 @@ fn gateway_live_activation_plan(
                 purpose: "use library-backed in-process runner instead of child exec fallback",
             },
             NativeGatewayLiveActivationEnv {
-                env: native_telegram::TELEGRAM_CODEX_CORE_RUNNER_ENV,
-                enabled: env_truthy(native_telegram::TELEGRAM_CODEX_CORE_RUNNER_ENV),
+                env: native_telegram::TELEGRAM_HEPTA_KERNEL_RUNNER_ENV,
+                enabled: native_telegram::telegram_hepta_kernel_runner_enabled(),
                 purpose: "force Telegram model turns through Hepta kernel with Hepta intelligence and plugin/MCP capability context before using Codex as an internal engine",
             },
             NativeGatewayLiveActivationEnv {
@@ -7798,7 +7798,7 @@ struct NativeGatewayReplacementEnvGates {
     send: NativeGatewayReplacementGate,
     poll_loop: NativeGatewayReplacementGate,
     in_process_model_runner: NativeGatewayReplacementGate,
-    codex_core_model_runner: NativeGatewayReplacementGate,
+    hepta_kernel_model_runner: NativeGatewayReplacementGate,
     release_build_verified: NativeGatewayReplacementGate,
     control_ui_parity_verified: NativeGatewayReplacementGate,
 }

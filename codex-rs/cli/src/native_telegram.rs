@@ -81,6 +81,10 @@ pub(crate) const TELEGRAM_POLL_LOOP_ENV: &str = "HEPTA_NATIVE_TELEGRAM_POLL_LOOP
 pub(crate) const TELEGRAM_DELIVERY_APPROVED_ENV: &str = "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED";
 pub(crate) const TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER";
+pub(crate) const TELEGRAM_HEPTA_KERNEL_RUNNER_ENV: &str =
+    "HEPTA_NATIVE_TELEGRAM_HEPTA_KERNEL_RUNNER";
+// Legacy compatibility: old installs used this name before the Hepta kernel
+// boundary made Codex an internal engine rather than the product runner.
 pub(crate) const TELEGRAM_CODEX_CORE_RUNNER_ENV: &str = "HEPTA_NATIVE_TELEGRAM_CODEX_CORE_RUNNER";
 const TELEGRAM_HEPTA_INTELLIGENCE_CONTEXT_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_HEPTA_INTELLIGENCE_CONTEXT";
@@ -993,7 +997,7 @@ pub(crate) fn telegram_model_runner_plan() -> NativeTelegramModelRunnerPlan {
         mlx_base_url.as_deref(),
         mlx_max_tokens,
         telegram_in_process_model_runner_enabled(),
-        telegram_codex_core_runner_enabled(),
+        telegram_hepta_kernel_runner_enabled(),
     )
 }
 
@@ -1093,8 +1097,8 @@ fn telegram_in_process_model_runner_enabled() -> bool {
     env_truthy(TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV)
 }
 
-fn telegram_codex_core_runner_enabled() -> bool {
-    env_truthy(TELEGRAM_CODEX_CORE_RUNNER_ENV)
+pub(crate) fn telegram_hepta_kernel_runner_enabled() -> bool {
+    env_truthy(TELEGRAM_HEPTA_KERNEL_RUNNER_ENV) || env_truthy(TELEGRAM_CODEX_CORE_RUNNER_ENV)
 }
 
 fn telegram_hepta_intelligence_context_enabled() -> bool {
