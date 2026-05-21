@@ -130,6 +130,13 @@ pub struct HeptaKernelTelegramSessionBridgePlan {
     pub raw_message_id_exposed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramDrainFinalStatusPlan {
+    pub status: &'static str,
+    pub error: Option<String>,
+    pub local_process_spawned: bool,
+}
+
 impl HeptaKernelTelegramRunnerInvocationOutcome {
     pub fn into_result(self) -> Result<String, String> {
         self.model_output.ok_or_else(|| {
@@ -576,6 +583,35 @@ pub fn hepta_kernel_telegram_model_failure_fallback_allowed(
         && status == "attention"
         && reply_target_present
         && candidate_next_update_offset_present
+}
+
+pub fn hepta_kernel_telegram_drain_final_status(
+    model_session_runner_invoked: bool,
+    model_runner_process_spawned_by_status: bool,
+    send_status: &str,
+    send_error: Option<&str>,
+    model_status: &str,
+    model_error: Option<&str>,
+    previous_status: &'static str,
+    previous_error: Option<&str>,
+) -> HeptaKernelTelegramDrainFinalStatusPlan {
+    let local_process_spawned =
+        model_session_runner_invoked && model_runner_process_spawned_by_status;
+    let (status, error) = if send_status == "delivered" {
+        ("drained", None)
+    } else if send_status == "attention" {
+        ("attention", send_error.map(ToOwned::to_owned))
+    } else if model_status == "attention" {
+        ("attention", model_error.map(ToOwned::to_owned))
+    } else {
+        (previous_status, previous_error.map(ToOwned::to_owned))
+    };
+
+    HeptaKernelTelegramDrainFinalStatusPlan {
+        status,
+        error,
+        local_process_spawned,
+    }
 }
 
 fn sanitize_hepta_kernel_mlx_base_url(value: Option<&str>) -> String {
@@ -1059,5 +1095,64 @@ mod tests {
             HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE
                 .contains("本地模型这次响应超时或失败了")
         );
+    }
+
+    #[test]
+    fn kernel_drain_final_status_prefers_delivery_then_model_then_previous() {
+        let delivered = hepta_kernel_telegram_drain_final_status(
+            true,
+            true,
+            "delivered",
+            Some("ignored-send-error"),
+            "attention",
+            Some("ignored-model-error"),
+            "planned",
+            Some("ignored-previous-error"),
+        );
+        assert_eq!(delivered.status, "drained");
+        assert_eq!(delivered.error, None);
+        assert!(delivered.local_process_spawned);
+
+        let send_attention = hepta_kernel_telegram_drain_final_status(
+            false,
+            true,
+            "attention",
+            Some("send failed"),
+            "completed",
+            None,
+            "planned",
+            None,
+        );
+        assert_eq!(send_attention.status, "attention");
+        assert_eq!(send_attention.error.as_deref(), Some("send failed"));
+        assert!(!send_attention.local_process_spawned);
+
+        let model_attention = hepta_kernel_telegram_drain_final_status(
+            true,
+            false,
+            "gated",
+            None,
+            "attention",
+            Some("model failed"),
+            "planned",
+            None,
+        );
+        assert_eq!(model_attention.status, "attention");
+        assert_eq!(model_attention.error.as_deref(), Some("model failed"));
+        assert!(!model_attention.local_process_spawned);
+
+        let previous = hepta_kernel_telegram_drain_final_status(
+            false,
+            false,
+            "gated",
+            None,
+            "skipped",
+            None,
+            "planned",
+            Some("previous error"),
+        );
+        assert_eq!(previous.status, "planned");
+        assert_eq!(previous.error.as_deref(), Some("previous error"));
+        assert!(!previous.local_process_spawned);
     }
 }

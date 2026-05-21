@@ -347,6 +347,34 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 git diff --check
 ```
 
+### 20:2x Progress - Telegram Drain Final Status Policy Moved Into Hepta Kernel
+
+Continued with another pure policy extraction:
+
+1. Added kernel-owned drain final status planning:
+   `HeptaKernelTelegramDrainFinalStatusPlan` and
+   `hepta_kernel_telegram_drain_final_status(...)`.
+2. Kept runtime compatibility via `NativeTelegramDrainFinalStatusPlan` and
+   `native_telegram_drain_final_status(...)`.
+3. Gateway `finalize_telegram_drain_pipeline_status(...)` now delegates the
+   delivered/attention/previous status choice and local-process marker to the
+   kernel, while retaining the concrete pipeline outcome assembly in gateway.
+4. Send execution, cursor writes, model execution, Telegram API calls, and
+   process waits remain outside `hepta-kernel`.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+git diff --check
+```
+
 Observed test totals:
 
 - `hepta-core`: 200 passed.

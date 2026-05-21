@@ -17,8 +17,8 @@ use hepta_runtime::redact_native_telegram_model_runner_error;
 
 pub use hepta_runtime::{
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE as NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE,
-    NativeTelegramSessionBridgePlan, native_telegram_model_failure_fallback_allowed,
-    native_telegram_model_failure_fallback_message,
+    NativeTelegramSessionBridgePlan, native_telegram_drain_final_status,
+    native_telegram_model_failure_fallback_allowed, native_telegram_model_failure_fallback_message,
 };
 
 #[derive(Debug, Clone)]
@@ -72,23 +72,23 @@ pub fn finalize_telegram_drain_pipeline_status(
     previous_status: &'static str,
     previous_error: Option<String>,
 ) -> NativeTelegramDrainPipelineFinalStatus {
-    if outcome.model_execution.session_runner_invoked && model_runner_process_spawned_by_status {
+    let final_status = native_telegram_drain_final_status(
+        outcome.model_execution.session_runner_invoked,
+        model_runner_process_spawned_by_status,
+        outcome.send_execution.status,
+        outcome.send_execution.error.as_deref(),
+        outcome.model_execution.status,
+        outcome.model_execution.error.as_deref(),
+        previous_status,
+        previous_error.as_deref(),
+    );
+    if final_status.local_process_spawned {
         outcome.model_execution.local_process_spawned = true;
     }
 
-    let (status, error) = if outcome.send_execution.status == "delivered" {
-        ("drained", None)
-    } else if outcome.send_execution.status == "attention" {
-        ("attention", outcome.send_execution.error.clone())
-    } else if outcome.model_execution.status == "attention" {
-        ("attention", outcome.model_execution.error.clone())
-    } else {
-        (previous_status, previous_error)
-    };
-
     NativeTelegramDrainPipelineFinalStatus {
-        status,
-        error,
+        status: final_status.status,
+        error: final_status.error,
         outcome,
     }
 }
