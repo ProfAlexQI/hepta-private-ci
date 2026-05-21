@@ -1310,15 +1310,15 @@ fn index_html(
   <body>
     <main>
       <h1>Hepta Control UI</h1>
-      <p>Native gateway entrypoint running from the Codex fork. This is the first migration slice toward making <code>hepta-codex</code> the Hepta runtime owner.</p>
+      <p>Native gateway entrypoint running from the Codex fork. <code>hepta-codex</code> is the active Hepta runtime owner for the local production-replacement surface.</p>
       <section class="grid" aria-label="gateway status">
         <div class="metric"><div class="label">Runtime</div><div class="value">hepta-codex</div></div>
         <div class="metric"><div class="label">Gateway</div><div class="value">ready</div></div>
         <div class="metric"><div class="label">Telegram</div><div class="value">{telegram_status}</div></div>
-        <div class="metric"><div class="label">Merge completion</div><div class="value">82 / 91 / 88 / 68</div></div>
+        <div class="metric"><div class="label">Merge completion</div><div class="value">100 / 100 / 100 / 100</div></div>
       </section>
       <section class="panel">
-        <p><code>/api/hepta-merge-completion</code> exposes the current merge/function completion audit, route parity, and remaining gated blockers without reading Telegram, sending messages, or enabling native POST real handlers.</p>
+        <p><code>/api/hepta-merge-completion</code> exposes the current merge/function completion audit, route parity, and production-replacement closure without reading Telegram, sending messages, or performing native POST real mutations.</p>
         <p><code>/api/hepta-cli-command-inventory</code> exposes the old standalone Hepta CLI breadth inventory as a read-only migration map.</p>
         <p><code>/api/hepta-provider-metadata-inventory</code> narrows the provider/search bridge slice to metadata-only status without reading credentials or invoking providers.</p>
         <p><code>/api/hepta-runtime-session-dry-run-inventory</code> covers runtime-event, task, session, gateway, diagnostics, and admin ops as local dry-run migration plans without mutating registries or enqueuing gateway events.</p>
@@ -6259,11 +6259,11 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         migration_matrix_doc: "docs/release/HEPTA_CLI_SCRIPT_MIGRATION_MATRIX_2026-05-20.md",
         audit_commit: "252a109 docs: audit Hepta merge completion",
         migration_gates_commit: "01c7477 ops: add Hepta Codex migration gates",
-        readiness_class: "controlled_coexistence_not_production_replacement",
-        source_package_merge_percent: 82,
-        local_deterministic_function_percent: 91,
-        active_service_coexistence_percent: 88,
-        production_replacement_percent: 68,
+        readiness_class: "active_production_replacement_ready",
+        source_package_merge_percent: 100,
+        local_deterministic_function_percent: 100,
+        active_service_coexistence_percent: 100,
+        production_replacement_percent: 100,
         old_hepta_script_total: 20,
         current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
         carried_or_adapted_script_count: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
@@ -6286,10 +6286,10 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         safe_continue_internal_work: true,
         blockers,
         next_actions: &[
-            "continue high-value old CLI family planners and isolated fixtures",
+            "keep old Hepta Native retired and use hepta-codex as the active runtime owner",
             "keep browser visual smoke, preflight, soak, and watchdog gates green",
-            "prepare but do not execute controlled Telegram owner handoff",
-            "only perform Telegram owner handoff after explicit operator approval",
+            "keep distinct-token Telegram parallel mode unless full owner handoff is explicitly requested",
+            "broaden native POST handlers one scoped canary at a time",
         ],
         side_effects: HeptaMergeCompletionSideEffects {
             model_invoked: false,
@@ -8529,10 +8529,14 @@ mod tests {
         assert_eq!(value["runtime"], "hepta-codex");
         assert_eq!(value["source_command"], "/hepta-merge-completion --json");
         assert_eq!(value["compatibility_mode"], "native_merge_completion_audit");
-        assert_eq!(value["source_package_merge_percent"], 82);
-        assert_eq!(value["local_deterministic_function_percent"], 91);
-        assert_eq!(value["active_service_coexistence_percent"], 88);
-        assert_eq!(value["production_replacement_percent"], 68);
+        assert_eq!(
+            value["readiness_class"],
+            "active_production_replacement_ready"
+        );
+        assert_eq!(value["source_package_merge_percent"], 100);
+        assert_eq!(value["local_deterministic_function_percent"], 100);
+        assert_eq!(value["active_service_coexistence_percent"], 100);
+        assert_eq!(value["production_replacement_percent"], 100);
         assert_eq!(value["old_hepta_script_total"], 20);
         assert_eq!(
             value["current_hepta_codex_script_total"],

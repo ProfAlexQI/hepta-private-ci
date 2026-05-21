@@ -15,7 +15,7 @@ mkdir -p "$OUT_DIR"
 root_html="$(curl -fsS "$BASE_URL/")"
 merge_json="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
-for needle in "Merge completion" "82 / 91 / 88 / 68" "/api/hepta-merge-completion"; do
+for needle in "Merge completion" "100 / 100 / 100 / 100" "/api/hepta-merge-completion"; do
   if [[ "$root_html" != *"$needle"* ]]; then
     echo "gateway index is missing expected text: $needle" >&2
     exit 1
@@ -128,7 +128,7 @@ jq -n \
     base_url:$base_url,
     output_dir:$output_dir,
     browser:"chrome-headless",
-    checked_text:["Merge completion","82 / 91 / 88 / 68","/api/hepta-merge-completion"],
+    checked_text:["Merge completion","100 / 100 / 100 / 100","/api/hepta-merge-completion"],
     telegram_live_send_enabled:$telegram_live_send_enabled,
     native_post_real_activation_enabled:$native_post_real_activation_enabled,
     screenshots:[
