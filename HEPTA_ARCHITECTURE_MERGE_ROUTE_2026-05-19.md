@@ -375,6 +375,35 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 git diff --check
 ```
 
+### 20:4x Progress - Telegram Send Delivery Request Policy Moved Into Hepta Kernel
+
+Continued with the next pure Telegram delivery-planning extraction:
+
+1. Added kernel-owned send delivery request/report planning:
+   `HeptaKernelTelegramSendRequestPlan` and
+   `HeptaKernelTelegramSendExecutionReport`.
+2. Kept runtime/gateway compatibility via
+   `NativeTelegramSendRequestPlan` and
+   `NativeTelegramSendExecutionReport`.
+3. `hepta-gateway::telegram_policy` now re-exports the runtime aliases instead
+   of owning the send request/report structs and constructors.
+4. Actual Bot API calls, delivery ledger writes, cursor commits, token
+   validation, retry/backoff loops, and network side effects remain in gateway
+   transport code behind the existing gates.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+git diff --check
+```
+
 Observed test totals:
 
 - `hepta-core`: 200 passed.

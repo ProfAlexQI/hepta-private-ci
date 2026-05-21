@@ -137,6 +137,51 @@ pub struct HeptaKernelTelegramDrainFinalStatusPlan {
     pub local_process_spawned: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramSendRequestPlan {
+    pub request_builder_ready: bool,
+    pub model_output_present: bool,
+    pub reply_target_available: bool,
+    pub candidate_next_update_offset: Option<i64>,
+    pub send_gate_env: &'static str,
+    pub send_gate_enabled: bool,
+    pub send_allowed: bool,
+    pub request_body_materialized_by_status: bool,
+    pub delivery_performed_by_status: bool,
+    pub cursor_commit_allowed_after_delivery: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+    pub raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramSendExecutionReport {
+    pub status: &'static str,
+    pub execution_ready: bool,
+    pub send_gate_env: &'static str,
+    pub send_gate_enabled: bool,
+    pub model_output_present: bool,
+    pub reply_target_available: bool,
+    pub candidate_next_update_offset: Option<i64>,
+    pub send_allowed: bool,
+    pub send_attempted: bool,
+    pub bot_api_ack: Option<bool>,
+    pub delivery_ledger_write_attempted: bool,
+    pub delivery_ledger_written_count: usize,
+    pub latest_delivery_ledger_stage: Option<String>,
+    pub cursor_commit_attempted: bool,
+    pub cursor_written: bool,
+    pub request_body_materialized_by_execution: bool,
+    pub external_network_write: bool,
+    pub external_send: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+    pub raw_token_exposed: bool,
+    pub error: Option<String>,
+}
+
 impl HeptaKernelTelegramRunnerInvocationOutcome {
     pub fn into_result(self) -> Result<String, String> {
         self.model_output.ok_or_else(|| {
@@ -223,6 +268,135 @@ impl HeptaKernelTelegramSessionBridgePlan {
             raw_chat_id_exposed: false,
             raw_sender_id_exposed: false,
             raw_message_id_exposed: false,
+        }
+    }
+}
+
+impl HeptaKernelTelegramSendRequestPlan {
+    pub fn disabled(send_gate_env: &'static str, send_gate_enabled: bool) -> Self {
+        Self {
+            request_builder_ready: false,
+            model_output_present: false,
+            reply_target_available: false,
+            candidate_next_update_offset: None,
+            send_gate_env,
+            send_gate_enabled,
+            send_allowed: false,
+            request_body_materialized_by_status: false,
+            delivery_performed_by_status: false,
+            cursor_commit_allowed_after_delivery: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+
+    pub fn from_model_output(
+        model_output: Option<&str>,
+        reply_target_available: bool,
+        candidate_next_update_offset: Option<i64>,
+        send_gate_env: &'static str,
+        send_gate_enabled: bool,
+    ) -> Self {
+        let model_output_present = model_output
+            .map(str::trim)
+            .map(|value| !value.is_empty())
+            .unwrap_or(false);
+        let send_allowed = send_gate_enabled
+            && model_output_present
+            && reply_target_available
+            && candidate_next_update_offset.is_some();
+        Self {
+            request_builder_ready: true,
+            model_output_present,
+            reply_target_available,
+            candidate_next_update_offset,
+            send_gate_env,
+            send_gate_enabled,
+            send_allowed,
+            request_body_materialized_by_status: false,
+            delivery_performed_by_status: false,
+            cursor_commit_allowed_after_delivery: send_allowed
+                && candidate_next_update_offset.is_some(),
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+}
+
+impl HeptaKernelTelegramSendExecutionReport {
+    pub fn disabled(send_gate_env: &'static str, send_gate_enabled: bool) -> Self {
+        Self {
+            status: "disabled",
+            execution_ready: false,
+            send_gate_env,
+            send_gate_enabled,
+            model_output_present: false,
+            reply_target_available: false,
+            candidate_next_update_offset: None,
+            send_allowed: false,
+            send_attempted: false,
+            bot_api_ack: None,
+            delivery_ledger_write_attempted: false,
+            delivery_ledger_written_count: 0,
+            latest_delivery_ledger_stage: None,
+            cursor_commit_attempted: false,
+            cursor_written: false,
+            request_body_materialized_by_execution: false,
+            external_network_write: false,
+            external_send: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+            error: None,
+        }
+    }
+
+    pub fn from_send_request(request: &HeptaKernelTelegramSendRequestPlan) -> Self {
+        let status = if !request.request_builder_ready {
+            "disabled"
+        } else if !request.send_gate_enabled {
+            "gated"
+        } else if !request.model_output_present {
+            "waiting_model_output"
+        } else if !request.reply_target_available {
+            "waiting_reply_target"
+        } else if request.candidate_next_update_offset.is_none() {
+            "waiting_cursor_offset"
+        } else if request.send_allowed {
+            "ready"
+        } else {
+            "attention"
+        };
+
+        Self {
+            status,
+            execution_ready: request.request_builder_ready,
+            send_gate_env: request.send_gate_env,
+            send_gate_enabled: request.send_gate_enabled,
+            model_output_present: request.model_output_present,
+            reply_target_available: request.reply_target_available,
+            candidate_next_update_offset: request.candidate_next_update_offset,
+            send_allowed: request.send_allowed,
+            send_attempted: false,
+            bot_api_ack: None,
+            delivery_ledger_write_attempted: false,
+            delivery_ledger_written_count: 0,
+            latest_delivery_ledger_stage: None,
+            cursor_commit_attempted: false,
+            cursor_written: false,
+            request_body_materialized_by_execution: false,
+            external_network_write: false,
+            external_send: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+            error: None,
         }
     }
 }
@@ -1154,5 +1328,86 @@ mod tests {
         assert_eq!(previous.status, "planned");
         assert_eq!(previous.error.as_deref(), Some("previous error"));
         assert!(!previous.local_process_spawned);
+    }
+
+    #[test]
+    fn kernel_send_request_and_execution_report_preserve_delivery_gates() {
+        let disabled =
+            HeptaKernelTelegramSendRequestPlan::disabled("HEPTA_NATIVE_TELEGRAM_SEND", false);
+        assert!(!disabled.request_builder_ready);
+        assert!(!disabled.send_allowed);
+        assert_eq!(
+            HeptaKernelTelegramSendExecutionReport::from_send_request(&disabled).status,
+            "disabled"
+        );
+
+        let gated = HeptaKernelTelegramSendRequestPlan::from_model_output(
+            Some("private model response text"),
+            true,
+            Some(43),
+            "HEPTA_NATIVE_TELEGRAM_SEND",
+            false,
+        );
+        assert!(gated.request_builder_ready);
+        assert!(gated.model_output_present);
+        assert!(gated.reply_target_available);
+        assert_eq!(gated.candidate_next_update_offset, Some(43));
+        assert!(!gated.request_body_materialized_by_status);
+        assert!(!gated.delivery_performed_by_status);
+        assert!(!gated.cursor_commit_allowed_after_delivery);
+        assert!(!gated.raw_response_text_exposed);
+        assert!(!gated.raw_chat_id_exposed);
+        assert!(!gated.raw_message_id_exposed);
+        assert!(!gated.raw_token_exposed);
+        assert!(!gated.send_allowed);
+        assert!(
+            !serde_json::to_string(&gated)
+                .expect("serialize")
+                .contains("private model response text")
+        );
+        assert_eq!(
+            HeptaKernelTelegramSendExecutionReport::from_send_request(&gated).status,
+            "gated"
+        );
+
+        let ready = HeptaKernelTelegramSendRequestPlan::from_model_output(
+            Some(" hello "),
+            true,
+            Some(43),
+            "HEPTA_NATIVE_TELEGRAM_SEND",
+            true,
+        );
+        assert!(ready.send_allowed);
+        assert!(ready.cursor_commit_allowed_after_delivery);
+        let report = HeptaKernelTelegramSendExecutionReport::from_send_request(&ready);
+        assert_eq!(report.status, "ready");
+        assert!(report.execution_ready);
+        assert!(!report.external_send);
+        assert!(!report.cursor_written);
+
+        let without_reply_target = HeptaKernelTelegramSendRequestPlan::from_model_output(
+            Some("private model response text"),
+            false,
+            Some(43),
+            "HEPTA_NATIVE_TELEGRAM_SEND",
+            true,
+        );
+        assert!(without_reply_target.model_output_present);
+        assert!(without_reply_target.send_gate_enabled);
+        assert!(!without_reply_target.reply_target_available);
+        assert!(!without_reply_target.send_allowed);
+        assert!(!without_reply_target.cursor_commit_allowed_after_delivery);
+
+        let without_offset = HeptaKernelTelegramSendRequestPlan::from_model_output(
+            Some("private model response text"),
+            true,
+            None,
+            "HEPTA_NATIVE_TELEGRAM_SEND",
+            true,
+        );
+        assert!(without_offset.model_output_present);
+        assert!(without_offset.reply_target_available);
+        assert!(!without_offset.send_allowed);
+        assert!(!without_offset.cursor_commit_allowed_after_delivery);
     }
 }

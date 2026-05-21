@@ -1,6 +1,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
+pub use hepta_runtime::{NativeTelegramSendExecutionReport, NativeTelegramSendRequestPlan};
+
 pub const TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
     "receive_getUpdates",
     "duplicate_suppression",
@@ -187,51 +189,6 @@ pub struct NativeTelegramModelTurnPlan {
     pub raw_chat_id_exposed: bool,
     pub raw_sender_id_exposed: bool,
     pub raw_message_id_exposed: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramSendRequestPlan {
-    pub request_builder_ready: bool,
-    pub model_output_present: bool,
-    pub reply_target_available: bool,
-    pub candidate_next_update_offset: Option<i64>,
-    pub send_gate_env: &'static str,
-    pub send_gate_enabled: bool,
-    pub send_allowed: bool,
-    pub request_body_materialized_by_status: bool,
-    pub delivery_performed_by_status: bool,
-    pub cursor_commit_allowed_after_delivery: bool,
-    pub raw_response_text_exposed: bool,
-    pub raw_chat_id_exposed: bool,
-    pub raw_message_id_exposed: bool,
-    pub raw_token_exposed: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramSendExecutionReport {
-    pub status: &'static str,
-    pub execution_ready: bool,
-    pub send_gate_env: &'static str,
-    pub send_gate_enabled: bool,
-    pub model_output_present: bool,
-    pub reply_target_available: bool,
-    pub candidate_next_update_offset: Option<i64>,
-    pub send_allowed: bool,
-    pub send_attempted: bool,
-    pub bot_api_ack: Option<bool>,
-    pub delivery_ledger_write_attempted: bool,
-    pub delivery_ledger_written_count: usize,
-    pub latest_delivery_ledger_stage: Option<String>,
-    pub cursor_commit_attempted: bool,
-    pub cursor_written: bool,
-    pub request_body_materialized_by_execution: bool,
-    pub external_network_write: bool,
-    pub external_send: bool,
-    pub raw_response_text_exposed: bool,
-    pub raw_chat_id_exposed: bool,
-    pub raw_message_id_exposed: bool,
-    pub raw_token_exposed: bool,
-    pub error: Option<String>,
 }
 
 impl NativeTelegramModelTurnPlan {
@@ -479,135 +436,6 @@ impl NativeTelegramModelExecutionReport {
             raw_chat_id_exposed: false,
             raw_sender_id_exposed: false,
             raw_message_id_exposed: false,
-            error: None,
-        }
-    }
-}
-
-impl NativeTelegramSendRequestPlan {
-    pub fn disabled(send_gate_env: &'static str, send_gate_enabled: bool) -> Self {
-        Self {
-            request_builder_ready: false,
-            model_output_present: false,
-            reply_target_available: false,
-            candidate_next_update_offset: None,
-            send_gate_env,
-            send_gate_enabled,
-            send_allowed: false,
-            request_body_materialized_by_status: false,
-            delivery_performed_by_status: false,
-            cursor_commit_allowed_after_delivery: false,
-            raw_response_text_exposed: false,
-            raw_chat_id_exposed: false,
-            raw_message_id_exposed: false,
-            raw_token_exposed: false,
-        }
-    }
-
-    pub fn from_model_output(
-        model_output: Option<&str>,
-        reply_target_available: bool,
-        candidate_next_update_offset: Option<i64>,
-        send_gate_env: &'static str,
-        send_gate_enabled: bool,
-    ) -> Self {
-        let model_output_present = model_output
-            .map(str::trim)
-            .map(|value| !value.is_empty())
-            .unwrap_or(false);
-        let send_allowed = send_gate_enabled
-            && model_output_present
-            && reply_target_available
-            && candidate_next_update_offset.is_some();
-        Self {
-            request_builder_ready: true,
-            model_output_present,
-            reply_target_available,
-            candidate_next_update_offset,
-            send_gate_env,
-            send_gate_enabled,
-            send_allowed,
-            request_body_materialized_by_status: false,
-            delivery_performed_by_status: false,
-            cursor_commit_allowed_after_delivery: send_allowed
-                && candidate_next_update_offset.is_some(),
-            raw_response_text_exposed: false,
-            raw_chat_id_exposed: false,
-            raw_message_id_exposed: false,
-            raw_token_exposed: false,
-        }
-    }
-}
-
-impl NativeTelegramSendExecutionReport {
-    pub fn disabled(send_gate_env: &'static str, send_gate_enabled: bool) -> Self {
-        Self {
-            status: "disabled",
-            execution_ready: false,
-            send_gate_env,
-            send_gate_enabled,
-            model_output_present: false,
-            reply_target_available: false,
-            candidate_next_update_offset: None,
-            send_allowed: false,
-            send_attempted: false,
-            bot_api_ack: None,
-            delivery_ledger_write_attempted: false,
-            delivery_ledger_written_count: 0,
-            latest_delivery_ledger_stage: None,
-            cursor_commit_attempted: false,
-            cursor_written: false,
-            request_body_materialized_by_execution: false,
-            external_network_write: false,
-            external_send: false,
-            raw_response_text_exposed: false,
-            raw_chat_id_exposed: false,
-            raw_message_id_exposed: false,
-            raw_token_exposed: false,
-            error: None,
-        }
-    }
-
-    pub fn from_send_request(request: &NativeTelegramSendRequestPlan) -> Self {
-        let status = if !request.request_builder_ready {
-            "disabled"
-        } else if !request.send_gate_enabled {
-            "gated"
-        } else if !request.model_output_present {
-            "waiting_model_output"
-        } else if !request.reply_target_available {
-            "waiting_reply_target"
-        } else if request.candidate_next_update_offset.is_none() {
-            "waiting_cursor_offset"
-        } else if request.send_allowed {
-            "ready"
-        } else {
-            "attention"
-        };
-
-        Self {
-            status,
-            execution_ready: request.request_builder_ready,
-            send_gate_env: request.send_gate_env,
-            send_gate_enabled: request.send_gate_enabled,
-            model_output_present: request.model_output_present,
-            reply_target_available: request.reply_target_available,
-            candidate_next_update_offset: request.candidate_next_update_offset,
-            send_allowed: request.send_allowed,
-            send_attempted: false,
-            bot_api_ack: None,
-            delivery_ledger_write_attempted: false,
-            delivery_ledger_written_count: 0,
-            latest_delivery_ledger_stage: None,
-            cursor_commit_attempted: false,
-            cursor_written: false,
-            request_body_materialized_by_execution: false,
-            external_network_write: false,
-            external_send: false,
-            raw_response_text_exposed: false,
-            raw_chat_id_exposed: false,
-            raw_message_id_exposed: false,
-            raw_token_exposed: false,
             error: None,
         }
     }

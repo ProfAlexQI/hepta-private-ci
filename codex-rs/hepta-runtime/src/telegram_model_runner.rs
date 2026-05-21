@@ -11,8 +11,9 @@ pub use hepta_kernel::{
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine,
     HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramRunnerInvocationOutcome,
-    HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSessionBridgePlan, HeptaKernelTurnChannel,
-    HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
+    HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSendExecutionReport,
+    HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
+    HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
     MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
@@ -28,6 +29,8 @@ pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
 pub type NativeTelegramModelRunnerInvocationOutcome = HeptaKernelTelegramRunnerInvocationOutcome;
 pub type NativeTelegramSessionBridgePlan = HeptaKernelTelegramSessionBridgePlan;
 pub type NativeTelegramDrainFinalStatusPlan = HeptaKernelTelegramDrainFinalStatusPlan;
+pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
+pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
 
 pub fn invoke_native_telegram_model_runner_with_plan<M, I, C>(
     plan: &NativeTelegramModelRunnerPlan,
