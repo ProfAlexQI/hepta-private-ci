@@ -377,6 +377,135 @@ pub struct HeptaKernelTelegramSendExecutionReport {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramConfigStatus {
+    pub config_path: Option<String>,
+    pub config_found: bool,
+    pub enabled: bool,
+    pub dm_policy: String,
+    pub group_policy: String,
+    pub allow_from_count: usize,
+    pub group_count: usize,
+    pub token_source: &'static str,
+    pub token_secret_ref_present: bool,
+    pub token_secret_provider: Option<String>,
+    pub token_secret_id_present: bool,
+    pub token_file_present: bool,
+    pub token_file_mode_0600: bool,
+    pub token_shape_ok: bool,
+    pub raw_token_exposed: bool,
+    pub binding_ready: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramConfigStatusInput {
+    pub config_path: Option<String>,
+    pub config_found: bool,
+    pub enabled: bool,
+    pub dm_policy: String,
+    pub group_policy: String,
+    pub allow_from_count: usize,
+    pub group_count: usize,
+    pub token_source: &'static str,
+    pub token_secret_ref_present: bool,
+    pub token_secret_provider: Option<String>,
+    pub token_secret_id_present: bool,
+    pub token_file_present: bool,
+    pub token_file_mode_0600: bool,
+    pub token_shape_ok: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelTelegramTokenObservationInput {
+    pub env_token_present: bool,
+    pub env_token_shape_ok: bool,
+    pub file_token_present: bool,
+    pub file_token_shape_ok: bool,
+    pub inline_token_present: bool,
+    pub inline_token_shape_ok: bool,
+    pub token_secret_ref_present: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelTelegramTokenObservation {
+    pub token_source: &'static str,
+    pub token_shape_ok: bool,
+}
+
+impl HeptaKernelTelegramConfigStatus {
+    pub fn disabled() -> Self {
+        Self {
+            config_path: None,
+            config_found: false,
+            enabled: false,
+            dm_policy: String::new(),
+            group_policy: String::new(),
+            allow_from_count: 0,
+            group_count: 0,
+            token_source: "disabled",
+            token_secret_ref_present: false,
+            token_secret_provider: None,
+            token_secret_id_present: false,
+            token_file_present: false,
+            token_file_mode_0600: false,
+            token_shape_ok: false,
+            raw_token_exposed: false,
+            binding_ready: false,
+            error: None,
+        }
+    }
+
+    pub fn missing(error: String) -> Self {
+        Self {
+            config_path: None,
+            config_found: false,
+            enabled: false,
+            dm_policy: String::new(),
+            group_policy: String::new(),
+            allow_from_count: 0,
+            group_count: 0,
+            token_source: "missing",
+            token_secret_ref_present: false,
+            token_secret_provider: None,
+            token_secret_id_present: false,
+            token_file_present: false,
+            token_file_mode_0600: false,
+            token_shape_ok: false,
+            raw_token_exposed: false,
+            binding_ready: false,
+            error: Some(error),
+        }
+    }
+
+    pub fn error(config_path: Option<String>, config_found: bool, error: String) -> Self {
+        Self {
+            config_path,
+            config_found,
+            enabled: false,
+            dm_policy: String::new(),
+            group_policy: String::new(),
+            allow_from_count: 0,
+            group_count: 0,
+            token_source: "error",
+            token_secret_ref_present: false,
+            token_secret_provider: None,
+            token_secret_id_present: false,
+            token_file_present: false,
+            token_file_mode_0600: false,
+            token_shape_ok: false,
+            raw_token_exposed: false,
+            binding_ready: false,
+            error: Some(error),
+        }
+    }
+
+    pub fn config_ready(&self) -> bool {
+        self.enabled && self.token_shape_ok && self.binding_ready
+    }
+}
+
 impl HeptaKernelTelegramRunnerInvocationOutcome {
     pub fn into_result(self) -> Result<String, String> {
         self.model_output.ok_or_else(|| {
@@ -1034,6 +1163,71 @@ pub fn hepta_kernel_telegram_env_truthy_value(raw: &str) -> bool {
 
 pub fn hepta_kernel_telegram_env_u64_value(raw: &str) -> Option<u64> {
     raw.trim().parse::<u64>().ok()
+}
+
+pub fn hepta_kernel_telegram_token_observation(
+    input: HeptaKernelTelegramTokenObservationInput,
+) -> HeptaKernelTelegramTokenObservation {
+    if input.env_token_present {
+        return HeptaKernelTelegramTokenObservation {
+            token_source: "env",
+            token_shape_ok: input.env_token_shape_ok,
+        };
+    }
+    if input.file_token_present {
+        return HeptaKernelTelegramTokenObservation {
+            token_source: "secret_file",
+            token_shape_ok: input.file_token_shape_ok,
+        };
+    }
+    if input.inline_token_present {
+        return HeptaKernelTelegramTokenObservation {
+            token_source: "inline_config",
+            token_shape_ok: input.inline_token_shape_ok,
+        };
+    }
+    if input.token_secret_ref_present {
+        return HeptaKernelTelegramTokenObservation {
+            token_source: "secret_file_missing",
+            token_shape_ok: false,
+        };
+    }
+    HeptaKernelTelegramTokenObservation {
+        token_source: "missing",
+        token_shape_ok: false,
+    }
+}
+
+pub fn build_hepta_kernel_telegram_config_status(
+    input: HeptaKernelTelegramConfigStatusInput,
+) -> HeptaKernelTelegramConfigStatus {
+    let dm_policy = input.dm_policy.trim().to_ascii_lowercase();
+    let group_policy = input.group_policy.trim().to_ascii_lowercase();
+    let binding_ready = input.enabled
+        && input.token_shape_ok
+        && (input.allow_from_count > 0
+            || input.group_count > 0
+            || matches!(dm_policy.as_str(), "allow" | "trusted" | "all"));
+
+    HeptaKernelTelegramConfigStatus {
+        config_path: input.config_path,
+        config_found: input.config_found,
+        enabled: input.enabled,
+        dm_policy,
+        group_policy,
+        allow_from_count: input.allow_from_count,
+        group_count: input.group_count,
+        token_source: input.token_source,
+        token_secret_ref_present: input.token_secret_ref_present,
+        token_secret_provider: input.token_secret_provider,
+        token_secret_id_present: input.token_secret_id_present,
+        token_file_present: input.token_file_present,
+        token_file_mode_0600: input.token_file_mode_0600,
+        token_shape_ok: input.token_shape_ok,
+        raw_token_exposed: false,
+        binding_ready,
+        error: input.error,
+    }
 }
 
 pub fn hepta_kernel_telegram_next_update_offset(update_id: i64) -> Option<i64> {
@@ -3215,6 +3409,106 @@ mod tests {
         assert_eq!(hepta_kernel_telegram_env_u64_value(" 42 "), Some(42));
         assert_eq!(hepta_kernel_telegram_env_u64_value("not-a-number"), None);
         assert_eq!(hepta_kernel_telegram_env_u64_value("-1"), None);
+    }
+
+    #[test]
+    fn kernel_telegram_config_status_derives_binding_without_exposing_tokens() {
+        let status =
+            build_hepta_kernel_telegram_config_status(HeptaKernelTelegramConfigStatusInput {
+                config_path: Some("private/config/openclaw.json".to_string()),
+                config_found: true,
+                enabled: true,
+                dm_policy: " Trusted ".to_string(),
+                group_policy: "Deny".to_string(),
+                allow_from_count: 1,
+                group_count: 0,
+                token_source: "secret_file",
+                token_secret_ref_present: true,
+                token_secret_provider: Some("telegram_bot".to_string()),
+                token_secret_id_present: true,
+                token_file_present: true,
+                token_file_mode_0600: true,
+                token_shape_ok: true,
+                error: None,
+            });
+
+        assert!(status.binding_ready);
+        assert!(status.config_ready());
+        assert_eq!(status.dm_policy, "trusted");
+        assert_eq!(status.group_policy, "deny");
+        assert!(!status.raw_token_exposed);
+
+        let missing = HeptaKernelTelegramConfigStatus::missing("missing config".to_string());
+        assert_eq!(missing.token_source, "missing");
+        assert_eq!(missing.error.as_deref(), Some("missing config"));
+        assert!(!missing.config_ready());
+    }
+
+    #[test]
+    fn kernel_telegram_config_status_requires_binding_scope() {
+        let status =
+            build_hepta_kernel_telegram_config_status(HeptaKernelTelegramConfigStatusInput {
+                config_path: Some("private/config/openclaw.json".to_string()),
+                config_found: true,
+                enabled: true,
+                dm_policy: "deny".to_string(),
+                group_policy: "deny".to_string(),
+                allow_from_count: 0,
+                group_count: 0,
+                token_source: "env",
+                token_secret_ref_present: false,
+                token_secret_provider: None,
+                token_secret_id_present: false,
+                token_file_present: false,
+                token_file_mode_0600: false,
+                token_shape_ok: true,
+                error: None,
+            });
+
+        assert!(!status.binding_ready);
+        assert!(!status.config_ready());
+    }
+
+    #[test]
+    fn kernel_telegram_token_observation_prefers_safe_sources() {
+        let env =
+            hepta_kernel_telegram_token_observation(HeptaKernelTelegramTokenObservationInput {
+                env_token_present: true,
+                env_token_shape_ok: true,
+                file_token_present: true,
+                file_token_shape_ok: true,
+                inline_token_present: true,
+                inline_token_shape_ok: true,
+                token_secret_ref_present: true,
+            });
+        assert_eq!(env.token_source, "env");
+        assert!(env.token_shape_ok);
+
+        let file =
+            hepta_kernel_telegram_token_observation(HeptaKernelTelegramTokenObservationInput {
+                env_token_present: false,
+                env_token_shape_ok: false,
+                file_token_present: true,
+                file_token_shape_ok: false,
+                inline_token_present: true,
+                inline_token_shape_ok: true,
+                token_secret_ref_present: true,
+            });
+        assert_eq!(file.token_source, "secret_file");
+        assert!(!file.token_shape_ok);
+
+        let secret_missing =
+            hepta_kernel_telegram_token_observation(HeptaKernelTelegramTokenObservationInput {
+                env_token_present: false,
+                env_token_shape_ok: false,
+                file_token_present: false,
+                file_token_shape_ok: false,
+                inline_token_present: false,
+                inline_token_shape_ok: false,
+                token_secret_ref_present: true,
+            });
+        assert_eq!(secret_missing.token_source, "secret_file_missing");
+        assert!(!secret_missing.token_shape_ok);
     }
 
     #[test]

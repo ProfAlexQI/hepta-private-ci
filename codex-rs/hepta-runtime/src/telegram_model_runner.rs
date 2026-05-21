@@ -19,6 +19,7 @@ pub use hepta_kernel::{
     HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
+    HeptaKernelTelegramConfigStatus, HeptaKernelTelegramConfigStatusInput,
     HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDuplicateDecision,
     HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
     HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
@@ -26,7 +27,8 @@ pub use hepta_kernel::{
     HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramReplyTargetMaterial,
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
     HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendRequestPlan,
-    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
+    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTelegramTokenObservation,
+    HeptaKernelTelegramTokenObservationInput, HeptaKernelTurnChannel, HeptaKernelTurnInput,
     HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
     MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
     MAX_TELEGRAM_READ_MAX_ATTEMPTS, MAX_TELEGRAM_READ_RETRY_BACKOFF_MS,
@@ -34,8 +36,9 @@ pub use hepta_kernel::{
     MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS, MAX_TELEGRAM_SOAK_MAX_ATTENTION,
     MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, MAX_TELEGRAM_SOAK_MIN_POLLS,
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
-    MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_gateway_gate_summary,
-    classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
+    MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
+    build_hepta_kernel_telegram_gateway_gate_summary, classify_hepta_kernel_telegram_runner_error,
+    extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
     hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_cursor_body,
@@ -66,7 +69,7 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_soak_max_attention_count_policy,
     hepta_kernel_telegram_soak_max_observed_age_ms_policy,
     hepta_kernel_telegram_soak_min_poll_iterations_policy,
-    hepta_kernel_telegram_system_time_unix_ms,
+    hepta_kernel_telegram_system_time_unix_ms, hepta_kernel_telegram_token_observation,
     hepta_kernel_telegram_typing_keepalive_interval_policy,
     hepta_kernel_telegram_typing_keepalive_should_start,
     hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
@@ -92,6 +95,10 @@ pub type NativeTelegramModelInvocationRequestPlan = HeptaKernelTelegramModelInvo
 pub type NativeTelegramModelExecutionReport = HeptaKernelTelegramModelExecutionReport;
 pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
+pub type NativeTelegramConfigStatus = HeptaKernelTelegramConfigStatus;
+pub type NativeTelegramConfigStatusInput = HeptaKernelTelegramConfigStatusInput;
+pub type NativeTelegramTokenObservationInput = HeptaKernelTelegramTokenObservationInput;
+pub type NativeTelegramTokenObservation = HeptaKernelTelegramTokenObservation;
 
 pub fn invoke_native_telegram_model_runner_with_plan<M, I, C>(
     plan: &NativeTelegramModelRunnerPlan,
@@ -243,6 +250,18 @@ pub fn parse_native_telegram_env_truthy_value(raw: &str) -> bool {
 
 pub fn parse_native_telegram_env_u64_value(raw: &str) -> Option<u64> {
     hepta_kernel_telegram_env_u64_value(raw)
+}
+
+pub fn resolve_native_telegram_token_observation(
+    input: NativeTelegramTokenObservationInput,
+) -> NativeTelegramTokenObservation {
+    hepta_kernel_telegram_token_observation(input)
+}
+
+pub fn build_native_telegram_config_status(
+    input: NativeTelegramConfigStatusInput,
+) -> NativeTelegramConfigStatus {
+    build_hepta_kernel_telegram_config_status(input)
 }
 
 pub fn native_telegram_next_update_offset(update_id: i64) -> Option<i64> {
@@ -1017,6 +1036,45 @@ mod tests {
         assert!(!parse_native_telegram_env_truthy_value("off"));
         assert_eq!(parse_native_telegram_env_u64_value(" 42 "), Some(42));
         assert_eq!(parse_native_telegram_env_u64_value("not-a-number"), None);
+    }
+
+    #[test]
+    fn telegram_config_status_policy_delegates_to_kernel() {
+        let observation =
+            resolve_native_telegram_token_observation(NativeTelegramTokenObservationInput {
+                env_token_present: false,
+                env_token_shape_ok: false,
+                file_token_present: true,
+                file_token_shape_ok: true,
+                inline_token_present: true,
+                inline_token_shape_ok: true,
+                token_secret_ref_present: true,
+            });
+        assert_eq!(observation.token_source, "secret_file");
+        assert!(observation.token_shape_ok);
+
+        let status = build_native_telegram_config_status(NativeTelegramConfigStatusInput {
+            config_path: Some("private/config/openclaw.json".to_string()),
+            config_found: true,
+            enabled: true,
+            dm_policy: "trusted".to_string(),
+            group_policy: "deny".to_string(),
+            allow_from_count: 0,
+            group_count: 0,
+            token_source: observation.token_source,
+            token_secret_ref_present: true,
+            token_secret_provider: Some("telegram_bot".to_string()),
+            token_secret_id_present: true,
+            token_file_present: true,
+            token_file_mode_0600: true,
+            token_shape_ok: observation.token_shape_ok,
+            error: None,
+        });
+
+        assert!(status.config_ready());
+        assert!(status.binding_ready);
+        assert_eq!(status.dm_policy, "trusted");
+        assert!(!status.raw_token_exposed);
     }
 
     #[test]
