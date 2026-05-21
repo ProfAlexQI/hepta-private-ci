@@ -817,6 +817,34 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
+### 03:1x Progress - Telegram Config Parser Helpers Moved Into Hepta Kernel
+
+Continued the Telegram shrink path with a small config parser helper slice:
+
+1. Added kernel-owned string-only helpers:
+   `hepta_kernel_telegram_normalize_binding_id(...)`,
+   `hepta_kernel_telegram_env_truthy_value(...)`, and
+   `hepta_kernel_telegram_env_u64_value(...)`.
+2. Kept gateway side effects outside the kernel: config file discovery, config
+   file reads, JSON metadata extraction, secret provider path resolution, env
+   reads, token file reads, token material, and launchd mutation remain outside
+   `hepta-kernel`.
+3. Kept compatibility surfaces through `hepta-runtime` native Telegram wrappers
+   and `hepta-gateway::telegram_config` public names.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel telegram_config -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_config -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_config -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+```
+
 ## Merge Lanes
 
 ### Lane A - Workspace Crate Transplant

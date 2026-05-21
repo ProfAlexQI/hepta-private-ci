@@ -3,6 +3,11 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 
+use hepta_runtime::{
+    native_telegram_normalize_binding_id, parse_native_telegram_env_truthy_value,
+    parse_native_telegram_env_u64_value,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NativeTelegramConfigStatus {
     pub config_path: Option<String>,
@@ -212,15 +217,7 @@ pub fn build_native_telegram_config_status(
 }
 
 pub fn normalize_telegram_binding_id(raw: &str) -> String {
-    let trimmed = raw.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.starts_with("telegram:") {
-        return trimmed["telegram:".len()..].trim().to_string();
-    }
-    if lower.starts_with("tg:") {
-        return trimmed["tg:".len()..].trim().to_string();
-    }
-    trimmed.to_string()
+    native_telegram_normalize_binding_id(raw)
 }
 
 pub fn extract_native_telegram_config_metadata(
@@ -308,14 +305,11 @@ pub fn extract_native_telegram_config_metadata(
 }
 
 pub fn parse_telegram_env_truthy_value(raw: &str) -> bool {
-    matches!(
-        raw.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "on"
-    )
+    parse_native_telegram_env_truthy_value(raw)
 }
 
 pub fn parse_telegram_env_u64_value(raw: &str) -> Option<u64> {
-    raw.trim().parse::<u64>().ok()
+    parse_native_telegram_env_u64_value(raw)
 }
 
 pub fn resolve_telegram_secret_provider_path(

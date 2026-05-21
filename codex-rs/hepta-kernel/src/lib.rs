@@ -1013,6 +1013,29 @@ pub fn hepta_kernel_telegram_cursor_body(
     }))
 }
 
+pub fn hepta_kernel_telegram_normalize_binding_id(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("telegram:") {
+        return trimmed["telegram:".len()..].trim().to_string();
+    }
+    if lower.starts_with("tg:") {
+        return trimmed["tg:".len()..].trim().to_string();
+    }
+    trimmed.to_string()
+}
+
+pub fn hepta_kernel_telegram_env_truthy_value(raw: &str) -> bool {
+    matches!(
+        raw.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+pub fn hepta_kernel_telegram_env_u64_value(raw: &str) -> Option<u64> {
+    raw.trim().parse::<u64>().ok()
+}
+
 pub fn hepta_kernel_telegram_next_update_offset(update_id: i64) -> Option<i64> {
     update_id.checked_add(1)
 }
@@ -3164,6 +3187,34 @@ mod tests {
         assert!(body.get("raw_update_payload").is_none());
         assert!(body.get("message").is_none());
         assert!(body.get("chat").is_none());
+    }
+
+    #[test]
+    fn kernel_telegram_config_parser_helpers_are_trimmed_and_bounded() {
+        assert_eq!(
+            hepta_kernel_telegram_normalize_binding_id(" telegram:6476198178 "),
+            "6476198178"
+        );
+        assert_eq!(
+            hepta_kernel_telegram_normalize_binding_id("tg:6476198178"),
+            "6476198178"
+        );
+        assert_eq!(
+            hepta_kernel_telegram_normalize_binding_id("6476198178"),
+            "6476198178"
+        );
+        assert_eq!(hepta_kernel_telegram_normalize_binding_id(" tg: "), "");
+
+        assert!(hepta_kernel_telegram_env_truthy_value(" YES "));
+        assert!(hepta_kernel_telegram_env_truthy_value("true"));
+        assert!(hepta_kernel_telegram_env_truthy_value("1"));
+        assert!(hepta_kernel_telegram_env_truthy_value("on"));
+        assert!(!hepta_kernel_telegram_env_truthy_value("off"));
+        assert!(!hepta_kernel_telegram_env_truthy_value("0"));
+
+        assert_eq!(hepta_kernel_telegram_env_u64_value(" 42 "), Some(42));
+        assert_eq!(hepta_kernel_telegram_env_u64_value("not-a-number"), None);
+        assert_eq!(hepta_kernel_telegram_env_u64_value("-1"), None);
     }
 
     #[test]

@@ -44,14 +44,16 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_delivery_lifecycle_record, hepta_kernel_telegram_drain_execution_plan,
     hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_drain_first_missing_gate,
     hepta_kernel_telegram_drain_status_probe_executes_pipeline,
-    hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_error_is_transient,
+    hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_env_truthy_value,
+    hepta_kernel_telegram_env_u64_value, hepta_kernel_telegram_error_is_transient,
     hepta_kernel_telegram_first_model_candidate_with_duplicate_decision,
     hepta_kernel_telegram_get_updates_error_is_conflict,
     hepta_kernel_telegram_get_updates_error_is_transient, hepta_kernel_telegram_get_updates_query,
     hepta_kernel_telegram_get_updates_should_retry,
     hepta_kernel_telegram_model_failure_fallback_allowed, hepta_kernel_telegram_model_timeout,
     hepta_kernel_telegram_model_turn_plan_from_candidates,
-    hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_poll_loop_interval_ms_policy,
+    hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_normalize_binding_id,
+    hepta_kernel_telegram_poll_loop_interval_ms_policy,
     hepta_kernel_telegram_poll_loop_should_spawn, hepta_kernel_telegram_prompt,
     hepta_kernel_telegram_read_max_attempts_policy,
     hepta_kernel_telegram_read_retry_backoff_policy, hepta_kernel_telegram_receive_limit_policy,
@@ -229,6 +231,18 @@ pub fn parse_native_telegram_cursor_next_update_offset(raw: &str) -> Result<i64,
 
 pub fn native_telegram_cursor_body(offset: i64, updated_at_unix_ms: u64) -> Result<Value, String> {
     hepta_kernel_telegram_cursor_body(offset, updated_at_unix_ms)
+}
+
+pub fn native_telegram_normalize_binding_id(raw: &str) -> String {
+    hepta_kernel_telegram_normalize_binding_id(raw)
+}
+
+pub fn parse_native_telegram_env_truthy_value(raw: &str) -> bool {
+    hepta_kernel_telegram_env_truthy_value(raw)
+}
+
+pub fn parse_native_telegram_env_u64_value(raw: &str) -> Option<u64> {
+    hepta_kernel_telegram_env_u64_value(raw)
 }
 
 pub fn native_telegram_next_update_offset(update_id: i64) -> Option<i64> {
@@ -988,6 +1002,21 @@ mod tests {
                 .expect_err("negative cursor should fail")
                 .contains("next_update_offset must be non-negative")
         );
+    }
+
+    #[test]
+    fn telegram_config_parser_helpers_delegate_to_kernel() {
+        assert_eq!(
+            native_telegram_normalize_binding_id(" telegram:6476198178 "),
+            "6476198178"
+        );
+        assert_eq!(native_telegram_normalize_binding_id("tg:42"), "42");
+        assert_eq!(native_telegram_normalize_binding_id("42"), "42");
+        assert!(parse_native_telegram_env_truthy_value(" YES "));
+        assert!(parse_native_telegram_env_truthy_value("on"));
+        assert!(!parse_native_telegram_env_truthy_value("off"));
+        assert_eq!(parse_native_telegram_env_u64_value(" 42 "), Some(42));
+        assert_eq!(parse_native_telegram_env_u64_value("not-a-number"), None);
     }
 
     #[test]
