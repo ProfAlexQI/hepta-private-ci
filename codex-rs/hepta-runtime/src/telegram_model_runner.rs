@@ -25,20 +25,24 @@ pub use hepta_kernel::{
     HeptaKernelTelegramGatewayGateSummary, HeptaKernelTelegramGatewayGateSummaryInput,
     HeptaKernelTelegramIngressInspection, HeptaKernelTelegramModelExecutionReport,
     HeptaKernelTelegramModelInvocationRequestPlan, HeptaKernelTelegramModelTurnPlan,
-    HeptaKernelTelegramReplyTargetMaterial, HeptaKernelTelegramRunnerInvocationOutcome,
-    HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSendExecutionReport,
-    HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
-    HeptaKernelTelegramTokenObservation, HeptaKernelTelegramTokenObservationInput,
-    HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
-    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+    HeptaKernelTelegramProductionGuardPolicyInput, HeptaKernelTelegramProductionGuardStatus,
+    HeptaKernelTelegramProductionGuardStatusInput, HeptaKernelTelegramReplyTargetMaterial,
+    HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
+    HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendRequestPlan,
+    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTelegramTokenObservation,
+    HeptaKernelTelegramTokenObservationInput, HeptaKernelTurnChannel, HeptaKernelTurnInput,
+    HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
+    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
     MAX_TELEGRAM_READ_MAX_ATTEMPTS, MAX_TELEGRAM_READ_RETRY_BACKOFF_MS,
     MAX_TELEGRAM_SEND_MAX_ATTEMPTS, MAX_TELEGRAM_SEND_MIN_INTERVAL_MS,
     MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS, MAX_TELEGRAM_SOAK_MAX_ATTENTION,
     MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, MAX_TELEGRAM_SOAK_MIN_POLLS,
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
-    build_hepta_kernel_telegram_gateway_gate_summary, classify_hepta_kernel_telegram_runner_error,
-    extract_hepta_kernel_exec_child_final_message,
+    build_hepta_kernel_telegram_gateway_gate_summary,
+    build_hepta_kernel_telegram_production_guard_status,
+    build_hepta_kernel_telegram_production_guard_status_from_policy,
+    classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text,
     extract_hepta_kernel_telegram_config_metadata, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
@@ -101,6 +105,9 @@ pub type NativeTelegramConfigStatusInput = HeptaKernelTelegramConfigStatusInput;
 pub type NativeTelegramTokenObservationInput = HeptaKernelTelegramTokenObservationInput;
 pub type NativeTelegramTokenObservation = HeptaKernelTelegramTokenObservation;
 pub type NativeTelegramConfigMetadata = HeptaKernelTelegramConfigMetadata;
+pub type NativeTelegramProductionGuardStatus = HeptaKernelTelegramProductionGuardStatus;
+pub type NativeTelegramProductionGuardStatusInput = HeptaKernelTelegramProductionGuardStatusInput;
+pub type NativeTelegramProductionGuardPolicyInput = HeptaKernelTelegramProductionGuardPolicyInput;
 
 pub fn invoke_native_telegram_model_runner_with_plan<M, I, C>(
     plan: &NativeTelegramModelRunnerPlan,
@@ -414,6 +421,18 @@ pub fn native_telegram_send_max_attempts_policy(value: Option<u64>) -> u64 {
 
 pub fn native_telegram_send_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
     hepta_kernel_telegram_send_retry_backoff_policy(value_ms)
+}
+
+pub fn build_native_telegram_production_guard_status(
+    input: NativeTelegramProductionGuardStatusInput,
+) -> NativeTelegramProductionGuardStatus {
+    build_hepta_kernel_telegram_production_guard_status(input)
+}
+
+pub fn build_native_telegram_production_guard_status_from_policy(
+    input: NativeTelegramProductionGuardPolicyInput,
+) -> NativeTelegramProductionGuardStatus {
+    build_hepta_kernel_telegram_production_guard_status_from_policy(input)
 }
 
 pub fn native_telegram_get_updates_query(
@@ -843,6 +862,51 @@ mod tests {
             native_telegram_send_retry_backoff_policy(Some(999_999)),
             Duration::from_millis(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS)
         );
+    }
+
+    #[test]
+    fn telegram_production_guard_status_policy_delegates_to_kernel() {
+        let report = build_native_telegram_production_guard_status_from_policy(
+            NativeTelegramProductionGuardPolicyInput {
+                read_max_attempts_env: "READ_MAX",
+                read_max_attempts: Some(999),
+                read_retry_backoff_env: "READ_BACKOFF",
+                read_retry_backoff_ms: Some(999_999),
+                typing_keepalive_env: "TYPING",
+                typing_keepalive_enabled: true,
+                typing_keepalive_interval_ms: Some(1),
+                model_timeout_env: "MODEL_TIMEOUT",
+                model_timeout_ms: Some(1),
+                model_failure_fallback_env: "MODEL_FALLBACK",
+                model_failure_fallback_enabled: true,
+                send_min_interval_env: "SEND_MIN",
+                send_min_interval_ms: Some(999_999),
+                send_max_attempts_env: "SEND_MAX",
+                send_max_attempts: Some(0),
+                send_retry_backoff_env: "SEND_BACKOFF",
+                send_retry_backoff_ms: Some(999_999),
+            },
+        );
+
+        assert_eq!(report.read_max_attempts, MAX_TELEGRAM_READ_MAX_ATTEMPTS);
+        assert_eq!(
+            report.read_retry_backoff_ms,
+            MAX_TELEGRAM_READ_RETRY_BACKOFF_MS
+        );
+        assert_eq!(report.typing_keepalive_interval_ms, 1_000);
+        assert_eq!(report.model_timeout_ms, MIN_TELEGRAM_MODEL_TIMEOUT_MS);
+        assert_eq!(
+            report.send_min_interval_ms,
+            MAX_TELEGRAM_SEND_MIN_INTERVAL_MS
+        );
+        assert_eq!(report.send_max_attempts, 1);
+        assert_eq!(
+            report.send_retry_backoff_ms,
+            MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS
+        );
+        assert!(report.retry_transient_read_errors);
+        assert!(report.retry_transient_send_errors);
+        assert!(!report.raw_token_exposed);
     }
 
     #[test]

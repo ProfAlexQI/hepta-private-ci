@@ -1,6 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use crate::telegram_config::NativeTelegramConfigStatus;
 use crate::telegram_cursor::{NativeTelegramCursorPlan, NativeTelegramCursorStatus};
@@ -15,18 +15,21 @@ use crate::telegram_policy::{
 use crate::telegram_runtime::NativeTelegramSessionBridgePlan;
 use crate::telegram_transport::{
     NativeTelegramSendPlan, NativeTelegramTransportPlan, telegram_get_updates_error_is_conflict,
-    telegram_read_max_attempts_policy, telegram_read_retry_backoff_policy,
-    telegram_redact_token_like_text, telegram_send_max_attempts_policy,
-    telegram_send_min_interval_policy, telegram_send_retry_backoff_policy,
-    telegram_typing_keepalive_interval_policy,
+    telegram_redact_token_like_text,
 };
 use hepta_runtime::{
-    NativeTelegramModelRunnerPlan, native_telegram_model_timeout,
+    NativeTelegramModelRunnerPlan, build_native_telegram_production_guard_status,
+    build_native_telegram_production_guard_status_from_policy,
     native_telegram_poll_loop_interval_ms_policy, native_telegram_poll_loop_should_spawn,
     native_telegram_receive_limit_policy, native_telegram_soak_max_attention_count_policy,
     native_telegram_soak_max_observed_age_ms_policy,
     native_telegram_soak_min_poll_iterations_policy, native_telegram_system_time_unix_ms,
     plan_hepta_kernel_telegram_session_bridge,
+};
+
+pub use hepta_runtime::{
+    NativeTelegramProductionGuardPolicyInput, NativeTelegramProductionGuardStatus,
+    NativeTelegramProductionGuardStatusInput,
 };
 
 pub use hepta_runtime::{
@@ -66,10 +69,6 @@ pub fn telegram_soak_max_attention_count_policy(value: Option<u64>) -> u64 {
 
 pub fn telegram_soak_max_observed_age_ms_policy(value: Option<u64>) -> u64 {
     native_telegram_soak_max_observed_age_ms_policy(value)
-}
-
-fn duration_millis_u64(duration: Duration) -> u64 {
-    duration.as_millis().min(u128::from(u64::MAX)) as u64
 }
 
 pub fn telegram_system_time_unix_ms(time: SystemTime) -> u64 {
@@ -656,133 +655,16 @@ pub struct NativeTelegramLiveSoakStatus {
     pub next_migration_slice: &'static str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramProductionGuardStatus {
-    pub read_max_attempts_env: &'static str,
-    pub read_max_attempts: u64,
-    pub read_retry_backoff_env: &'static str,
-    pub read_retry_backoff_ms: u64,
-    pub retry_transient_read_errors: bool,
-    pub typing_keepalive_env: &'static str,
-    pub typing_keepalive_enabled: bool,
-    pub typing_keepalive_interval_ms: u64,
-    pub model_timeout_env: &'static str,
-    pub model_timeout_ms: u64,
-    pub model_failure_fallback_env: &'static str,
-    pub model_failure_fallback_enabled: bool,
-    pub send_min_interval_env: &'static str,
-    pub send_min_interval_ms: u64,
-    pub send_max_attempts_env: &'static str,
-    pub send_max_attempts: u64,
-    pub send_retry_backoff_env: &'static str,
-    pub send_retry_backoff_ms: u64,
-    pub retry_transient_send_errors: bool,
-    pub rate_limit_scope: &'static str,
-    pub raw_token_exposed: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NativeTelegramProductionGuardStatusInput {
-    pub read_max_attempts_env: &'static str,
-    pub read_max_attempts: u64,
-    pub read_retry_backoff_env: &'static str,
-    pub read_retry_backoff_ms: u64,
-    pub typing_keepalive_env: &'static str,
-    pub typing_keepalive_enabled: bool,
-    pub typing_keepalive_interval_ms: u64,
-    pub model_timeout_env: &'static str,
-    pub model_timeout_ms: u64,
-    pub model_failure_fallback_env: &'static str,
-    pub model_failure_fallback_enabled: bool,
-    pub send_min_interval_env: &'static str,
-    pub send_min_interval_ms: u64,
-    pub send_max_attempts_env: &'static str,
-    pub send_max_attempts: u64,
-    pub send_retry_backoff_env: &'static str,
-    pub send_retry_backoff_ms: u64,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NativeTelegramProductionGuardPolicyInput {
-    pub read_max_attempts_env: &'static str,
-    pub read_max_attempts: Option<u64>,
-    pub read_retry_backoff_env: &'static str,
-    pub read_retry_backoff_ms: Option<u64>,
-    pub typing_keepalive_env: &'static str,
-    pub typing_keepalive_enabled: bool,
-    pub typing_keepalive_interval_ms: Option<u64>,
-    pub model_timeout_env: &'static str,
-    pub model_timeout_ms: Option<u64>,
-    pub model_failure_fallback_env: &'static str,
-    pub model_failure_fallback_enabled: bool,
-    pub send_min_interval_env: &'static str,
-    pub send_min_interval_ms: Option<u64>,
-    pub send_max_attempts_env: &'static str,
-    pub send_max_attempts: Option<u64>,
-    pub send_retry_backoff_env: &'static str,
-    pub send_retry_backoff_ms: Option<u64>,
-}
-
 pub fn build_telegram_production_guard_status(
     input: NativeTelegramProductionGuardStatusInput,
 ) -> NativeTelegramProductionGuardStatus {
-    NativeTelegramProductionGuardStatus {
-        read_max_attempts_env: input.read_max_attempts_env,
-        read_max_attempts: input.read_max_attempts,
-        read_retry_backoff_env: input.read_retry_backoff_env,
-        read_retry_backoff_ms: input.read_retry_backoff_ms,
-        retry_transient_read_errors: true,
-        typing_keepalive_env: input.typing_keepalive_env,
-        typing_keepalive_enabled: input.typing_keepalive_enabled,
-        typing_keepalive_interval_ms: input.typing_keepalive_interval_ms,
-        model_timeout_env: input.model_timeout_env,
-        model_timeout_ms: input.model_timeout_ms,
-        model_failure_fallback_env: input.model_failure_fallback_env,
-        model_failure_fallback_enabled: input.model_failure_fallback_enabled,
-        send_min_interval_env: input.send_min_interval_env,
-        send_min_interval_ms: input.send_min_interval_ms,
-        send_max_attempts_env: input.send_max_attempts_env,
-        send_max_attempts: input.send_max_attempts,
-        send_retry_backoff_env: input.send_retry_backoff_env,
-        send_retry_backoff_ms: input.send_retry_backoff_ms,
-        retry_transient_send_errors: true,
-        rate_limit_scope: "in-process per chat id; reset on gateway restart",
-        raw_token_exposed: false,
-    }
+    build_native_telegram_production_guard_status(input)
 }
 
 pub fn build_telegram_production_guard_status_from_policy(
     input: NativeTelegramProductionGuardPolicyInput,
 ) -> NativeTelegramProductionGuardStatus {
-    build_telegram_production_guard_status(NativeTelegramProductionGuardStatusInput {
-        read_max_attempts_env: input.read_max_attempts_env,
-        read_max_attempts: telegram_read_max_attempts_policy(input.read_max_attempts),
-        read_retry_backoff_env: input.read_retry_backoff_env,
-        read_retry_backoff_ms: duration_millis_u64(telegram_read_retry_backoff_policy(
-            input.read_retry_backoff_ms,
-        )),
-        typing_keepalive_env: input.typing_keepalive_env,
-        typing_keepalive_enabled: input.typing_keepalive_enabled,
-        typing_keepalive_interval_ms: duration_millis_u64(
-            telegram_typing_keepalive_interval_policy(input.typing_keepalive_interval_ms),
-        ),
-        model_timeout_env: input.model_timeout_env,
-        model_timeout_ms: duration_millis_u64(native_telegram_model_timeout(
-            input.model_timeout_ms,
-        )),
-        model_failure_fallback_env: input.model_failure_fallback_env,
-        model_failure_fallback_enabled: input.model_failure_fallback_enabled,
-        send_min_interval_env: input.send_min_interval_env,
-        send_min_interval_ms: duration_millis_u64(telegram_send_min_interval_policy(
-            input.send_min_interval_ms,
-        )),
-        send_max_attempts_env: input.send_max_attempts_env,
-        send_max_attempts: telegram_send_max_attempts_policy(input.send_max_attempts),
-        send_retry_backoff_env: input.send_retry_backoff_env,
-        send_retry_backoff_ms: duration_millis_u64(telegram_send_retry_backoff_policy(
-            input.send_retry_backoff_ms,
-        )),
-    })
+    build_native_telegram_production_guard_status_from_policy(input)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1938,6 +1820,7 @@ pub fn build_telegram_production_readiness_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     const LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
     const MODEL_TURN_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
