@@ -3167,20 +3167,32 @@ fn telegram_owner_handoff_status(
     options: &NativeGatewayOptions,
 ) -> NativeTelegramOwnerHandoffStatus {
     let legacy_config_path = legacy_openclaw_config_path();
-    let (legacy_config_found, legacy_config_parse_ok, legacy_telegram_enabled, error) =
-        read_legacy_openclaw_telegram_enabled(legacy_config_path.as_deref());
+    let (
+        legacy_config_found,
+        legacy_config_parse_ok,
+        legacy_telegram_enabled,
+        legacy_token_fingerprint,
+        error,
+    ) = read_legacy_openclaw_telegram_state(legacy_config_path.as_deref());
     let poll_loop_status = native_telegram::telegram_poll_loop_status(
         options.with_telegram_plugin,
         options.telegram_plugin_poll_ms,
     );
     let gate_summary = native_telegram::telegram_gateway_gate_summary();
+    let hepta_token_fingerprint = if options.with_telegram_plugin {
+        native_telegram::effective_telegram_token_fingerprint()
+    } else {
+        None
+    };
 
     telegram_owner_handoff_status_from_inputs(NativeTelegramOwnerHandoffInputs {
         legacy_config_path: legacy_config_path.map(|path| path.display().to_string()),
         legacy_config_found,
         legacy_config_parse_ok,
         legacy_telegram_enabled,
+        legacy_token_fingerprint,
         legacy_config_error: error,
+        hepta_token_fingerprint,
         hepta_telegram_requested: options.with_telegram_plugin,
         hepta_poll_loop_armed: poll_loop_status.status == "armed"
             && poll_loop_status.loop_invokes_drain_once,
@@ -3195,15 +3207,28 @@ fn telegram_owner_handoff_status_from_inputs(
     let legacy_telegram_enabled = inputs.legacy_telegram_enabled;
     let legacy_telegram_enabled_explicit = legacy_telegram_enabled.is_some();
     let legacy_enabled = legacy_telegram_enabled == Some(true);
-    let double_poller_risk = legacy_enabled && inputs.hepta_poll_loop_armed;
+    let bot_identity_match = match (
+        &inputs.legacy_token_fingerprint,
+        &inputs.hepta_token_fingerprint,
+    ) {
+        (Some(legacy), Some(hepta)) => Some(legacy == hepta),
+        _ => None,
+    };
+    let parallel_bot_mode =
+        legacy_enabled && inputs.hepta_poll_loop_armed && bot_identity_match == Some(false);
+    let double_poller_risk =
+        legacy_enabled && inputs.hepta_poll_loop_armed && bot_identity_match != Some(false);
     let conflict_free = inputs.legacy_config_parse_ok && !double_poller_risk;
     let hepta_takeover_ready = conflict_free
         && inputs.hepta_telegram_requested
         && inputs.hepta_poll_loop_armed
         && !legacy_enabled;
+    let hepta_parallel_bot_ready = conflict_free && parallel_bot_mode;
 
     let active_owner = if double_poller_risk {
         "conflict_risk"
+    } else if parallel_bot_mode {
+        "parallel_bots"
     } else if inputs.hepta_poll_loop_armed {
         "hepta"
     } else if legacy_enabled {
@@ -3216,6 +3241,8 @@ fn telegram_owner_handoff_status_from_inputs(
         "attention"
     } else if double_poller_risk {
         "conflict_risk"
+    } else if hepta_parallel_bot_ready {
+        "parallel_bot_ready"
     } else if hepta_takeover_ready {
         "hepta_takeover_ready"
     } else if legacy_enabled {
@@ -3228,7 +3255,7 @@ fn telegram_owner_handoff_status_from_inputs(
     if !inputs.legacy_config_parse_ok {
         takeover_blockers.push("legacy_openclaw_config_unreadable");
     }
-    if legacy_enabled {
+    if legacy_enabled && !parallel_bot_mode {
         takeover_blockers.push("legacy_openclaw_telegram_enabled");
     }
     if !inputs.hepta_telegram_requested {
@@ -3252,6 +3279,7 @@ fn telegram_owner_handoff_status_from_inputs(
         ready: conflict_free,
         conflict_free,
         hepta_takeover_ready,
+        hepta_parallel_bot_ready,
         side_effect_free: true,
         active_owner,
         legacy_config_path: inputs.legacy_config_path,
@@ -3259,6 +3287,10 @@ fn telegram_owner_handoff_status_from_inputs(
         legacy_config_parse_ok: inputs.legacy_config_parse_ok,
         legacy_telegram_enabled,
         legacy_telegram_enabled_explicit,
+        legacy_token_fingerprint: inputs.legacy_token_fingerprint,
+        hepta_token_fingerprint: inputs.hepta_token_fingerprint,
+        bot_identity_match,
+        parallel_bot_mode,
         hepta_telegram_requested: inputs.hepta_telegram_requested,
         hepta_poll_loop_armed: inputs.hepta_poll_loop_armed,
         hepta_poll_loop_gate_enabled: inputs.hepta_poll_loop_gate_enabled,
@@ -3272,10 +3304,12 @@ fn telegram_owner_handoff_status_from_inputs(
         raw_response_text_exposed: false,
         next_migration_slice: if hepta_takeover_ready {
             "legacy Telegram polling is disabled and Hepta is the only armed poller; continue live soak and ledger freshness checks"
+        } else if hepta_parallel_bot_ready {
+            "legacy OpenClaw and Hepta use distinct Telegram bot identities; run bounded parallel-bot soak before any owner replacement"
         } else if double_poller_risk {
-            "disable the legacy OpenClaw Telegram plugin before arming Hepta polling to avoid Bot API 409 conflicts"
+            "disable the legacy OpenClaw Telegram plugin or switch Hepta to a distinct bot identity before arming Hepta polling to avoid Bot API 409 conflicts"
         } else if legacy_enabled {
-            "keep legacy OpenClaw as owner until the controlled flip disables its Telegram plugin and arms Hepta gates"
+            "keep legacy OpenClaw as owner until Hepta is armed with a verified distinct bot identity or the controlled flip disables legacy Telegram"
         } else {
             "arm Hepta Telegram gates only after confirming legacy OpenClaw Telegram polling is disabled"
         },
@@ -3293,14 +3327,14 @@ fn legacy_openclaw_config_path() -> Option<PathBuf> {
     env::var_os("HOME").map(|home| PathBuf::from(home).join(".openclaw/openclaw.json"))
 }
 
-fn read_legacy_openclaw_telegram_enabled(
+fn read_legacy_openclaw_telegram_state(
     path: Option<&Path>,
-) -> (bool, bool, Option<bool>, Option<String>) {
+) -> (bool, bool, Option<bool>, Option<String>, Option<String>) {
     let Some(path) = path else {
-        return (false, true, None, None);
+        return (false, true, None, None, None);
     };
     if !path.is_file() {
-        return (false, true, None, None);
+        return (false, true, None, None, None);
     }
     let raw = match fs::read_to_string(path) {
         Ok(raw) => raw,
@@ -3308,6 +3342,7 @@ fn read_legacy_openclaw_telegram_enabled(
             return (
                 true,
                 false,
+                None,
                 None,
                 Some(format!("failed to read legacy OpenClaw config: {error}")),
             );
@@ -3320,12 +3355,19 @@ fn read_legacy_openclaw_telegram_enabled(
                 true,
                 false,
                 None,
+                None,
                 Some(format!("failed to parse legacy OpenClaw config: {error}")),
             );
         }
     };
 
-    (true, true, legacy_openclaw_telegram_enabled(&value), None)
+    (
+        true,
+        true,
+        legacy_openclaw_telegram_enabled(&value),
+        legacy_openclaw_telegram_token_fingerprint(path, &value),
+        None,
+    )
 }
 
 fn legacy_openclaw_telegram_enabled(value: &serde_json::Value) -> Option<bool> {
@@ -3337,6 +3379,60 @@ fn legacy_openclaw_telegram_enabled(value: &serde_json::Value) -> Option<bool> {
                 .pointer("/channels/telegram/enabled")
                 .and_then(serde_json::Value::as_bool)
         })
+}
+
+fn legacy_openclaw_telegram_token_fingerprint(
+    config_path: &Path,
+    value: &serde_json::Value,
+) -> Option<String> {
+    let token_ref = value.pointer("/channels/telegram/botToken")?;
+    let token = telegram_token_from_config_ref(config_path, value, token_ref)?;
+    native_telegram::redacted_telegram_token_fingerprint(&token)
+}
+
+fn telegram_token_from_config_ref(
+    config_path: &Path,
+    config: &serde_json::Value,
+    token_ref: &serde_json::Value,
+) -> Option<String> {
+    if let Some(inline) = token_ref.as_str() {
+        return non_empty_trimmed(inline);
+    }
+    let source = token_ref
+        .get("source")
+        .and_then(serde_json::Value::as_str)?;
+    if source != "file" {
+        return None;
+    }
+    let provider = token_ref
+        .get("provider")
+        .and_then(serde_json::Value::as_str)?;
+    let raw_path = config
+        .get("secrets")?
+        .get("providers")?
+        .get(provider)?
+        .get("path")?
+        .as_str()?;
+    let path = PathBuf::from(raw_path);
+    let path = if path.is_absolute() {
+        path
+    } else if let Some(parent) = config_path.parent() {
+        parent.join(path)
+    } else {
+        path
+    };
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|token| non_empty_trimmed(&token))
+}
+
+fn non_empty_trimmed(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 fn post_route_is_guarded(route: &ControlUiRouteSpec) -> bool {
@@ -7488,7 +7584,9 @@ struct NativeTelegramOwnerHandoffInputs {
     legacy_config_found: bool,
     legacy_config_parse_ok: bool,
     legacy_telegram_enabled: Option<bool>,
+    legacy_token_fingerprint: Option<String>,
     legacy_config_error: Option<String>,
+    hepta_token_fingerprint: Option<String>,
     hepta_telegram_requested: bool,
     hepta_poll_loop_armed: bool,
     hepta_poll_loop_gate_enabled: bool,
@@ -7504,6 +7602,7 @@ struct NativeTelegramOwnerHandoffStatus {
     ready: bool,
     conflict_free: bool,
     hepta_takeover_ready: bool,
+    hepta_parallel_bot_ready: bool,
     side_effect_free: bool,
     active_owner: &'static str,
     legacy_config_path: Option<String>,
@@ -7511,6 +7610,10 @@ struct NativeTelegramOwnerHandoffStatus {
     legacy_config_parse_ok: bool,
     legacy_telegram_enabled: Option<bool>,
     legacy_telegram_enabled_explicit: bool,
+    legacy_token_fingerprint: Option<String>,
+    hepta_token_fingerprint: Option<String>,
+    bot_identity_match: Option<bool>,
+    parallel_bot_mode: bool,
     hepta_telegram_requested: bool,
     hepta_poll_loop_armed: bool,
     hepta_poll_loop_gate_enabled: bool,
@@ -8085,7 +8188,9 @@ mod tests {
             legacy_config_found: true,
             legacy_config_parse_ok: true,
             legacy_telegram_enabled: Some(true),
+            legacy_token_fingerprint: Some("sha256:samebot00000000".to_string()),
             legacy_config_error: None,
+            hepta_token_fingerprint: Some("sha256:samebot00000000".to_string()),
             hepta_telegram_requested: true,
             hepta_poll_loop_armed: true,
             hepta_poll_loop_gate_enabled: true,
@@ -8097,7 +8202,10 @@ mod tests {
         assert!(!status.ready);
         assert!(!status.conflict_free);
         assert!(!status.hepta_takeover_ready);
+        assert!(!status.hepta_parallel_bot_ready);
         assert!(status.double_poller_risk);
+        assert_eq!(status.bot_identity_match, Some(true));
+        assert!(!status.parallel_bot_mode);
         assert!(
             status
                 .takeover_blockers
@@ -8113,7 +8221,9 @@ mod tests {
             legacy_config_found: true,
             legacy_config_parse_ok: true,
             legacy_telegram_enabled: Some(false),
+            legacy_token_fingerprint: Some("sha256:legacy00000000".to_string()),
             legacy_config_error: None,
+            hepta_token_fingerprint: Some("sha256:hepta000000000".to_string()),
             hepta_telegram_requested: true,
             hepta_poll_loop_armed: true,
             hepta_poll_loop_gate_enabled: true,
@@ -8125,8 +8235,42 @@ mod tests {
         assert!(status.ready);
         assert!(status.conflict_free);
         assert!(status.hepta_takeover_ready);
+        assert!(!status.hepta_parallel_bot_ready);
         assert!(!status.double_poller_risk);
         assert!(status.takeover_blockers.is_empty());
+    }
+
+    #[test]
+    fn telegram_owner_handoff_allows_distinct_parallel_bots() {
+        let status = telegram_owner_handoff_status_from_inputs(NativeTelegramOwnerHandoffInputs {
+            legacy_config_path: Some("/tmp/openclaw.json".to_string()),
+            legacy_config_found: true,
+            legacy_config_parse_ok: true,
+            legacy_telegram_enabled: Some(true),
+            legacy_token_fingerprint: Some("sha256:legacy00000000".to_string()),
+            legacy_config_error: None,
+            hepta_token_fingerprint: Some("sha256:hepta000000000".to_string()),
+            hepta_telegram_requested: true,
+            hepta_poll_loop_armed: true,
+            hepta_poll_loop_gate_enabled: true,
+            hepta_delivery_approval_gate_enabled: true,
+        });
+
+        assert_eq!(status.status, "parallel_bot_ready");
+        assert_eq!(status.active_owner, "parallel_bots");
+        assert!(status.ready);
+        assert!(status.conflict_free);
+        assert!(!status.hepta_takeover_ready);
+        assert!(status.hepta_parallel_bot_ready);
+        assert!(!status.double_poller_risk);
+        assert_eq!(status.bot_identity_match, Some(false));
+        assert!(status.parallel_bot_mode);
+        assert!(
+            !status
+                .takeover_blockers
+                .contains(&"legacy_openclaw_telegram_enabled")
+        );
+        assert!(!status.raw_token_exposed);
     }
 
     #[test]

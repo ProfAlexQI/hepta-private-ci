@@ -64,6 +64,8 @@ use hepta_gateway::{
     wait_for_native_telegram_model_child,
 };
 use serde_json::Value;
+use sha2::Digest;
+use sha2::Sha256;
 use tokio::runtime::Handle;
 
 const LEGACY_RUNTIME_SLUG: &str = "openclaw";
@@ -799,6 +801,28 @@ fn load_effective_telegram_token() -> Result<String, String> {
     } else {
         Err("Telegram bot token shape is invalid".to_string())
     }
+}
+
+pub(crate) fn effective_telegram_token_fingerprint() -> Option<String> {
+    load_effective_telegram_token()
+        .ok()
+        .and_then(|token| redacted_telegram_token_fingerprint(&token))
+}
+
+pub(crate) fn redacted_telegram_token_fingerprint(token: &str) -> Option<String> {
+    let token = token.trim();
+    if !token_shape_ok(token) {
+        return None;
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let digest = hasher.finalize();
+    let mut encoded = String::with_capacity("sha256:".len() + 16);
+    encoded.push_str("sha256:");
+    for byte in digest.iter().take(8) {
+        encoded.push_str(&format!("{byte:02x}"));
+    }
+    Some(encoded)
 }
 
 fn resolve_private_hepta_runtime_config_path() -> Option<PathBuf> {
