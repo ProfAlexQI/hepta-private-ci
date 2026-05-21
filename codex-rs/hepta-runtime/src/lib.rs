@@ -229,10 +229,11 @@ pub use telegram_model_runner::{
     native_telegram_exec_child_status_error, native_telegram_hepta_kernel_prompt,
     native_telegram_mlx_chat_completion_body, native_telegram_model_failure_fallback_allowed,
     native_telegram_model_failure_fallback_message, native_telegram_model_timeout,
-    native_telegram_next_update_offset, native_telegram_update_already_drained,
-    parse_native_telegram_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
-    plan_hepta_kernel_turn, redact_native_telegram_model_runner_error,
-    select_native_telegram_model_runner, wait_for_native_telegram_model_child,
+    native_telegram_model_turn_plan_from_candidates, native_telegram_next_update_offset,
+    native_telegram_update_already_drained, parse_native_telegram_mlx_model_ref,
+    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
+    redact_native_telegram_model_runner_error, select_native_telegram_model_runner,
+    wait_for_native_telegram_model_child,
 };
 pub use tool_invocation::{
     DEFAULT_TOOL_INVOCATION_LEDGER_ID, DEFAULT_TOOL_INVOCATION_LEDGER_PATH,

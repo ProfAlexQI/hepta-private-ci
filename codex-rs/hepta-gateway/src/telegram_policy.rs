@@ -11,8 +11,8 @@ pub use hepta_runtime::{
     native_telegram_drain_execution_plan as telegram_drain_execution_plan,
     native_telegram_drain_first_missing_gate as telegram_drain_first_missing_gate,
     native_telegram_drain_status_probe_executes_pipeline as telegram_drain_status_probe_executes_pipeline,
-    native_telegram_duplicate_decision, native_telegram_next_update_offset,
-    native_telegram_update_already_drained,
+    native_telegram_duplicate_decision, native_telegram_model_turn_plan_from_candidates,
+    native_telegram_next_update_offset, native_telegram_update_already_drained,
 };
 
 pub fn telegram_update_already_drained(update_id: i64, next_update_offset: Option<i64>) -> bool {
@@ -165,35 +165,12 @@ pub fn inspect_telegram_updates(updates: &[Value]) -> NativeTelegramIngressInspe
 }
 
 pub fn plan_model_turn_for_updates(updates: &[Value]) -> NativeTelegramModelTurnPlan {
-    let mut plan = NativeTelegramModelTurnPlan::ready();
-
-    for update in updates.iter().take(20) {
-        if let Some(candidate) = extract_telegram_candidate_material(update) {
-            let _prompt_material_is_held_in_memory = candidate.prompt_text.is_some();
-            plan.candidate_count = plan.candidate_count.saturating_add(1);
-            if candidate.requires_model
-                && (candidate.kind.starts_with("message:")
-                    || candidate.kind.starts_with("edited_message:"))
-            {
-                plan.text_candidate_count = plan.text_candidate_count.saturating_add(1);
-            } else if candidate.requires_model && candidate.kind == "callback_query:redacted" {
-                plan.callback_candidate_count = plan.callback_candidate_count.saturating_add(1);
-            } else if candidate.kind == "message_reaction:redacted" {
-                plan.reaction_candidate_count = plan.reaction_candidate_count.saturating_add(1);
-            }
-            if candidate.has_reply_target {
-                plan.reply_target_count = plan.reply_target_count.saturating_add(1);
-            }
-            if candidate.raw_identifiers_exposed {
-                plan.raw_chat_id_exposed = true;
-                plan.raw_sender_id_exposed = true;
-                plan.raw_message_id_exposed = true;
-            }
-            plan.candidate_kinds.push(candidate.kind);
-        }
-    }
-
-    plan
+    let candidates = updates
+        .iter()
+        .take(20)
+        .filter_map(extract_telegram_candidate_material)
+        .collect::<Vec<_>>();
+    native_telegram_model_turn_plan_from_candidates(&candidates)
 }
 
 pub fn build_model_invocation_request_plan(

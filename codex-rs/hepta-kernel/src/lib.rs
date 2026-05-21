@@ -1317,6 +1317,38 @@ pub fn hepta_kernel_telegram_drain_execution_plan(
     }
 }
 
+pub fn hepta_kernel_telegram_model_turn_plan_from_candidates(
+    candidates: &[HeptaKernelTelegramCandidateMaterial],
+) -> HeptaKernelTelegramModelTurnPlan {
+    let mut plan = HeptaKernelTelegramModelTurnPlan::ready();
+
+    for candidate in candidates {
+        let _prompt_material_is_held_in_memory = candidate.prompt_text.is_some();
+        plan.candidate_count = plan.candidate_count.saturating_add(1);
+        if candidate.requires_model
+            && (candidate.kind.starts_with("message:")
+                || candidate.kind.starts_with("edited_message:"))
+        {
+            plan.text_candidate_count = plan.text_candidate_count.saturating_add(1);
+        } else if candidate.requires_model && candidate.kind == "callback_query:redacted" {
+            plan.callback_candidate_count = plan.callback_candidate_count.saturating_add(1);
+        } else if candidate.kind == "message_reaction:redacted" {
+            plan.reaction_candidate_count = plan.reaction_candidate_count.saturating_add(1);
+        }
+        if candidate.has_reply_target {
+            plan.reply_target_count = plan.reply_target_count.saturating_add(1);
+        }
+        if candidate.raw_identifiers_exposed {
+            plan.raw_chat_id_exposed = true;
+            plan.raw_sender_id_exposed = true;
+            plan.raw_message_id_exposed = true;
+        }
+        plan.candidate_kinds.push(candidate.kind.clone());
+    }
+
+    plan
+}
+
 fn sanitize_hepta_kernel_mlx_base_url(value: Option<&str>) -> String {
     value
         .map(str::trim)
@@ -1650,6 +1682,74 @@ mod tests {
         assert!(!ready.raw_chat_id_exposed);
         assert!(!ready.raw_sender_id_exposed);
         assert!(!ready.raw_message_id_exposed);
+    }
+
+    #[test]
+    fn kernel_model_turn_plan_aggregates_candidates_without_serializing_private_material() {
+        let candidates = vec![
+            HeptaKernelTelegramCandidateMaterial {
+                update_id: Some(42),
+                kind: "message:text".to_string(),
+                prompt_text: Some("private prompt text".to_string()),
+                has_reply_target: true,
+                reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                    chat_id: 6476198178,
+                    reply_to_message_id: Some(7),
+                    raw_identifiers_exposed: false,
+                }),
+                requires_model: true,
+                raw_identifiers_exposed: false,
+            },
+            HeptaKernelTelegramCandidateMaterial {
+                update_id: Some(43),
+                kind: "callback_query:redacted".to_string(),
+                prompt_text: Some("button_secret_payload".to_string()),
+                has_reply_target: true,
+                reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                    chat_id: 6476198178,
+                    reply_to_message_id: Some(8),
+                    raw_identifiers_exposed: false,
+                }),
+                requires_model: true,
+                raw_identifiers_exposed: false,
+            },
+            HeptaKernelTelegramCandidateMaterial {
+                update_id: Some(44),
+                kind: "message_reaction:redacted".to_string(),
+                prompt_text: None,
+                has_reply_target: false,
+                reply_target: None,
+                requires_model: false,
+                raw_identifiers_exposed: false,
+            },
+        ];
+
+        let plan = hepta_kernel_telegram_model_turn_plan_from_candidates(&candidates);
+
+        assert!(plan.planner_ready);
+        assert_eq!(plan.candidate_count, 3);
+        assert_eq!(plan.text_candidate_count, 1);
+        assert_eq!(plan.callback_candidate_count, 1);
+        assert_eq!(plan.reaction_candidate_count, 1);
+        assert_eq!(plan.reply_target_count, 2);
+        assert_eq!(
+            plan.candidate_kinds,
+            vec![
+                "message:text".to_string(),
+                "callback_query:redacted".to_string(),
+                "message_reaction:redacted".to_string(),
+            ]
+        );
+
+        let serialized = serde_json::to_string(&plan).expect("serialize");
+        assert!(!serialized.contains("private prompt text"));
+        assert!(!serialized.contains("button_secret_payload"));
+        assert!(!serialized.contains("6476198178"));
+        assert!(!plan.raw_message_text_exposed);
+        assert!(!plan.raw_callback_data_exposed);
+        assert!(!plan.raw_chat_id_exposed);
+        assert!(!plan.raw_sender_id_exposed);
+        assert!(!plan.raw_message_id_exposed);
     }
 
     #[test]

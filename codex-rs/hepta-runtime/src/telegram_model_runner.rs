@@ -29,11 +29,12 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_drain_first_missing_gate,
     hepta_kernel_telegram_drain_status_probe_executes_pipeline,
     hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_model_failure_fallback_allowed,
-    hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_next_update_offset,
-    hepta_kernel_telegram_prompt, hepta_kernel_telegram_update_already_drained,
-    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
-    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
-    redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
+    hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_model_turn_plan_from_candidates,
+    hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_prompt,
+    hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
+    parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
+    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
+    select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
@@ -126,6 +127,12 @@ pub fn native_telegram_drain_execution_plan(
     gates: &NativeTelegramGatewayGateSummary,
 ) -> NativeTelegramExecutionPlan {
     hepta_kernel_telegram_drain_execution_plan(requested, gates)
+}
+
+pub fn native_telegram_model_turn_plan_from_candidates(
+    candidates: &[NativeTelegramCandidateMaterial],
+) -> NativeTelegramModelTurnPlan {
+    hepta_kernel_telegram_model_turn_plan_from_candidates(candidates)
 }
 
 pub fn native_telegram_drain_final_status(
