@@ -18,7 +18,8 @@ use crate::telegram_transport::{
     telegram_redact_token_like_text,
 };
 use hepta_runtime::{
-    NativeTelegramModelRunnerPlan, build_native_telegram_production_guard_status,
+    NativeTelegramModelRunnerPlan, build_native_telegram_poll_loop_status,
+    build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,
     native_telegram_poll_loop_interval_ms_policy, native_telegram_poll_loop_should_spawn,
     native_telegram_receive_limit_policy, native_telegram_soak_max_attention_count_policy,
@@ -28,6 +29,7 @@ use hepta_runtime::{
 };
 
 pub use hepta_runtime::{
+    NativeTelegramPollLoopStatus, NativeTelegramPollLoopStatusInput,
     NativeTelegramProductionGuardPolicyInput, NativeTelegramProductionGuardStatus,
     NativeTelegramProductionGuardStatusInput,
 };
@@ -603,33 +605,6 @@ pub struct NativeTelegramDrainOnceStatus {
     pub raw_response_text_exposed: bool,
     pub raw_token_exposed: bool,
     pub error: Option<String>,
-    pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramPollLoopStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub poll_loop_gate_env: &'static str,
-    pub poll_loop_gate_enabled: bool,
-    pub delivery_approval_gate_env: &'static str,
-    pub delivery_approval_gate_enabled: bool,
-    pub poll_ms: u64,
-    pub drain_once_endpoint: &'static str,
-    pub worker_spawned_by_status: bool,
-    pub loop_invokes_drain_once: bool,
-    pub requires_live_read_gate: &'static str,
-    pub requires_model_turn_gate: &'static str,
-    pub requires_send_gate: &'static str,
-    pub requires_delivery_approval_gate: &'static str,
-    pub external_network_read_by_status: bool,
-    pub external_send_by_status: bool,
-    pub raw_update_payload_exposed: bool,
-    pub raw_prompt_text_exposed: bool,
-    pub raw_response_text_exposed: bool,
-    pub raw_token_exposed: bool,
     pub next_migration_slice: &'static str,
 }
 
@@ -1509,59 +1484,10 @@ pub fn build_telegram_drain_once_status(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct NativeTelegramPollLoopStatusInput {
-    pub requested: bool,
-    pub poll_ms: u64,
-    pub poll_loop_gate_env: &'static str,
-    pub poll_loop_gate_enabled: bool,
-    pub delivery_approval_gate_env: &'static str,
-    pub delivery_approval_gate_enabled: bool,
-    pub live_read_gate_env: &'static str,
-    pub model_turn_gate_env: &'static str,
-    pub send_gate_env: &'static str,
-}
-
 pub fn build_telegram_poll_loop_status(
     input: NativeTelegramPollLoopStatusInput,
 ) -> NativeTelegramPollLoopStatus {
-    let status = if !input.requested {
-        "disabled"
-    } else if input.poll_loop_gate_enabled && input.delivery_approval_gate_enabled {
-        "armed"
-    } else if input.poll_loop_gate_enabled {
-        "approval_required"
-    } else {
-        "gated"
-    };
-
-    NativeTelegramPollLoopStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: input.requested,
-        status,
-        poll_loop_gate_env: input.poll_loop_gate_env,
-        poll_loop_gate_enabled: input.poll_loop_gate_enabled,
-        delivery_approval_gate_env: input.delivery_approval_gate_env,
-        delivery_approval_gate_enabled: input.delivery_approval_gate_enabled,
-        poll_ms: input.poll_ms,
-        drain_once_endpoint: "/api/telegram-drain-once",
-        worker_spawned_by_status: false,
-        loop_invokes_drain_once: input.requested
-            && input.poll_loop_gate_enabled
-            && input.delivery_approval_gate_enabled,
-        requires_live_read_gate: input.live_read_gate_env,
-        requires_model_turn_gate: input.model_turn_gate_env,
-        requires_send_gate: input.send_gate_env,
-        requires_delivery_approval_gate: input.delivery_approval_gate_env,
-        external_network_read_by_status: false,
-        external_send_by_status: false,
-        raw_update_payload_exposed: false,
-        raw_prompt_text_exposed: false,
-        raw_response_text_exposed: false,
-        raw_token_exposed: false,
-        next_migration_slice: "continue live soak and inspect /api/telegram-live-soak for production guard health",
-    }
+    build_native_telegram_poll_loop_status(input)
 }
 
 #[derive(Debug, Clone)]

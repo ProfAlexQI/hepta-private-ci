@@ -516,6 +516,46 @@ pub struct HeptaKernelTelegramProductionGuardPolicyInput {
     pub send_retry_backoff_ms: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramPollLoopStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub poll_loop_gate_env: &'static str,
+    pub poll_loop_gate_enabled: bool,
+    pub delivery_approval_gate_env: &'static str,
+    pub delivery_approval_gate_enabled: bool,
+    pub poll_ms: u64,
+    pub drain_once_endpoint: &'static str,
+    pub worker_spawned_by_status: bool,
+    pub loop_invokes_drain_once: bool,
+    pub requires_live_read_gate: &'static str,
+    pub requires_model_turn_gate: &'static str,
+    pub requires_send_gate: &'static str,
+    pub requires_delivery_approval_gate: &'static str,
+    pub external_network_read_by_status: bool,
+    pub external_send_by_status: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_token_exposed: bool,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HeptaKernelTelegramPollLoopStatusInput {
+    pub requested: bool,
+    pub poll_ms: u64,
+    pub poll_loop_gate_env: &'static str,
+    pub poll_loop_gate_enabled: bool,
+    pub delivery_approval_gate_env: &'static str,
+    pub delivery_approval_gate_enabled: bool,
+    pub live_read_gate_env: &'static str,
+    pub model_turn_gate_env: &'static str,
+    pub send_gate_env: &'static str,
+}
+
 impl HeptaKernelTelegramConfigStatus {
     pub fn disabled() -> Self {
         Self {
@@ -1659,6 +1699,48 @@ pub fn hepta_kernel_telegram_poll_loop_should_spawn(
     delivery_approval_gate_enabled: bool,
 ) -> bool {
     requested && poll_loop_gate_enabled && delivery_approval_gate_enabled
+}
+
+pub fn build_hepta_kernel_telegram_poll_loop_status(
+    input: HeptaKernelTelegramPollLoopStatusInput,
+) -> HeptaKernelTelegramPollLoopStatus {
+    let status = if !input.requested {
+        "disabled"
+    } else if input.poll_loop_gate_enabled && input.delivery_approval_gate_enabled {
+        "armed"
+    } else if input.poll_loop_gate_enabled {
+        "approval_required"
+    } else {
+        "gated"
+    };
+
+    HeptaKernelTelegramPollLoopStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: input.requested,
+        status,
+        poll_loop_gate_env: input.poll_loop_gate_env,
+        poll_loop_gate_enabled: input.poll_loop_gate_enabled,
+        delivery_approval_gate_env: input.delivery_approval_gate_env,
+        delivery_approval_gate_enabled: input.delivery_approval_gate_enabled,
+        poll_ms: input.poll_ms,
+        drain_once_endpoint: "/api/telegram-drain-once",
+        worker_spawned_by_status: false,
+        loop_invokes_drain_once: input.requested
+            && input.poll_loop_gate_enabled
+            && input.delivery_approval_gate_enabled,
+        requires_live_read_gate: input.live_read_gate_env,
+        requires_model_turn_gate: input.model_turn_gate_env,
+        requires_send_gate: input.send_gate_env,
+        requires_delivery_approval_gate: input.delivery_approval_gate_env,
+        external_network_read_by_status: false,
+        external_send_by_status: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        raw_token_exposed: false,
+        next_migration_slice: "continue live soak and inspect /api/telegram-live-soak for production guard health",
+    }
 }
 
 pub fn hepta_kernel_telegram_poll_loop_interval_ms_policy(value: u64) -> u64 {
@@ -2957,6 +3039,57 @@ mod tests {
         assert_eq!(hepta_kernel_telegram_receive_limit_policy(0), 1);
         assert_eq!(hepta_kernel_telegram_receive_limit_policy(7), 7);
         assert_eq!(hepta_kernel_telegram_receive_limit_policy(999), 20);
+    }
+
+    #[test]
+    fn kernel_telegram_poll_loop_status_is_side_effect_free() {
+        let disabled =
+            build_hepta_kernel_telegram_poll_loop_status(HeptaKernelTelegramPollLoopStatusInput {
+                requested: false,
+                poll_ms: 500,
+                poll_loop_gate_env: "POLL",
+                poll_loop_gate_enabled: true,
+                delivery_approval_gate_env: "APPROVAL",
+                delivery_approval_gate_enabled: true,
+                live_read_gate_env: "READ",
+                model_turn_gate_env: "MODEL",
+                send_gate_env: "SEND",
+            });
+        assert_eq!(disabled.status, "disabled");
+        assert!(!disabled.loop_invokes_drain_once);
+
+        let approval_required =
+            build_hepta_kernel_telegram_poll_loop_status(HeptaKernelTelegramPollLoopStatusInput {
+                requested: true,
+                poll_ms: 500,
+                poll_loop_gate_env: "POLL",
+                poll_loop_gate_enabled: true,
+                delivery_approval_gate_env: "APPROVAL",
+                delivery_approval_gate_enabled: false,
+                live_read_gate_env: "READ",
+                model_turn_gate_env: "MODEL",
+                send_gate_env: "SEND",
+            });
+        assert_eq!(approval_required.status, "approval_required");
+        assert!(!approval_required.worker_spawned_by_status);
+
+        let armed =
+            build_hepta_kernel_telegram_poll_loop_status(HeptaKernelTelegramPollLoopStatusInput {
+                requested: true,
+                poll_ms: 1_000,
+                poll_loop_gate_env: "POLL",
+                poll_loop_gate_enabled: true,
+                delivery_approval_gate_env: "APPROVAL",
+                delivery_approval_gate_enabled: true,
+                live_read_gate_env: "READ",
+                model_turn_gate_env: "MODEL",
+                send_gate_env: "SEND",
+            });
+        assert_eq!(armed.status, "armed");
+        assert!(armed.loop_invokes_drain_once);
+        assert!(!armed.external_network_read_by_status);
+        assert!(!armed.external_send_by_status);
+        assert!(!armed.raw_token_exposed);
     }
 
     #[test]

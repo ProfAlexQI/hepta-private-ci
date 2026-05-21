@@ -25,6 +25,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramGatewayGateSummary, HeptaKernelTelegramGatewayGateSummaryInput,
     HeptaKernelTelegramIngressInspection, HeptaKernelTelegramModelExecutionReport,
     HeptaKernelTelegramModelInvocationRequestPlan, HeptaKernelTelegramModelTurnPlan,
+    HeptaKernelTelegramPollLoopStatus, HeptaKernelTelegramPollLoopStatusInput,
     HeptaKernelTelegramProductionGuardPolicyInput, HeptaKernelTelegramProductionGuardStatus,
     HeptaKernelTelegramProductionGuardStatusInput, HeptaKernelTelegramReplyTargetMaterial,
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
@@ -39,7 +40,7 @@ pub use hepta_kernel::{
     MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, MAX_TELEGRAM_SOAK_MIN_POLLS,
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
-    build_hepta_kernel_telegram_gateway_gate_summary,
+    build_hepta_kernel_telegram_gateway_gate_summary, build_hepta_kernel_telegram_poll_loop_status,
     build_hepta_kernel_telegram_production_guard_status,
     build_hepta_kernel_telegram_production_guard_status_from_policy,
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
@@ -108,6 +109,8 @@ pub type NativeTelegramConfigMetadata = HeptaKernelTelegramConfigMetadata;
 pub type NativeTelegramProductionGuardStatus = HeptaKernelTelegramProductionGuardStatus;
 pub type NativeTelegramProductionGuardStatusInput = HeptaKernelTelegramProductionGuardStatusInput;
 pub type NativeTelegramProductionGuardPolicyInput = HeptaKernelTelegramProductionGuardPolicyInput;
+pub type NativeTelegramPollLoopStatus = HeptaKernelTelegramPollLoopStatus;
+pub type NativeTelegramPollLoopStatusInput = HeptaKernelTelegramPollLoopStatusInput;
 
 pub fn invoke_native_telegram_model_runner_with_plan<M, I, C>(
     plan: &NativeTelegramModelRunnerPlan,
@@ -373,6 +376,12 @@ pub fn native_telegram_poll_loop_should_spawn(
         poll_loop_gate_enabled,
         delivery_approval_gate_enabled,
     )
+}
+
+pub fn build_native_telegram_poll_loop_status(
+    input: NativeTelegramPollLoopStatusInput,
+) -> NativeTelegramPollLoopStatus {
+    build_hepta_kernel_telegram_poll_loop_status(input)
 }
 
 pub fn native_telegram_poll_loop_interval_ms_policy(value: u64) -> u64 {
@@ -770,6 +779,21 @@ mod tests {
     fn telegram_poll_loop_receive_and_soak_policies_delegate_to_kernel() {
         assert!(native_telegram_poll_loop_should_spawn(true, true, true));
         assert!(!native_telegram_poll_loop_should_spawn(true, true, false));
+        let poll_status =
+            build_native_telegram_poll_loop_status(NativeTelegramPollLoopStatusInput {
+                requested: true,
+                poll_ms: 1_000,
+                poll_loop_gate_env: "POLL",
+                poll_loop_gate_enabled: true,
+                delivery_approval_gate_env: "APPROVAL",
+                delivery_approval_gate_enabled: true,
+                live_read_gate_env: "READ",
+                model_turn_gate_env: "MODEL",
+                send_gate_env: "SEND",
+            });
+        assert_eq!(poll_status.status, "armed");
+        assert!(poll_status.loop_invokes_drain_once);
+        assert!(!poll_status.worker_spawned_by_status);
         assert_eq!(
             native_telegram_poll_loop_interval_ms_policy(1),
             MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS
