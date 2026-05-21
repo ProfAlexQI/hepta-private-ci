@@ -15,14 +15,11 @@ use crate::telegram_transport::{
 };
 use hepta_runtime::redact_native_telegram_model_runner_error;
 
-pub use hepta_runtime::NativeTelegramSessionBridgePlan;
-
-pub const NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE: &str =
-    "本地模型这次响应超时或失败了。我已先收下这条消息，避免反复重试；请稍后再发一条继续。";
-
-pub fn native_telegram_model_failure_fallback_message() -> &'static str {
-    NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE
-}
+pub use hepta_runtime::{
+    HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE as NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE,
+    NativeTelegramSessionBridgePlan, native_telegram_model_failure_fallback_allowed,
+    native_telegram_model_failure_fallback_message,
+};
 
 #[derive(Debug, Clone)]
 pub struct NativeTelegramModelExecutionInput {
@@ -325,17 +322,18 @@ fn telegram_model_failure_fallback_output(
     outcome: &NativeTelegramModelExecutionOutcome,
     enabled: bool,
 ) -> Option<()> {
-    if !enabled {
-        return None;
-    }
     let report = &outcome.report;
-    if !(report.session_runner_invoked && report.status == "attention") {
-        return None;
+    if native_telegram_model_failure_fallback_allowed(
+        enabled,
+        report.session_runner_invoked,
+        report.status,
+        outcome.reply_target.is_some(),
+        outcome.candidate_next_update_offset.is_some(),
+    ) {
+        Some(())
+    } else {
+        None
     }
-    if outcome.reply_target.is_none() || outcome.candidate_next_update_offset.is_none() {
-        return None;
-    }
-    Some(())
 }
 
 #[cfg(test)]

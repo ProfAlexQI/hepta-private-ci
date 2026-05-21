@@ -8,7 +8,8 @@ use serde_json::Value;
 pub use hepta_kernel::{
     CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
     DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
-    HEPTA_KERNEL_TELEGRAM_RUNNER_KIND, HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine,
+    HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
+    HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine,
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
     HeptaKernelTelegramSessionBridgePlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
     HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
@@ -16,10 +17,11 @@ pub use hepta_kernel::{
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_prompt,
-    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
-    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
-    redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
+    hepta_kernel_telegram_model_failure_fallback_allowed, hepta_kernel_telegram_model_timeout,
+    hepta_kernel_telegram_prompt, invoke_hepta_kernel_telegram_runner_with_plan,
+    parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
+    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
+    select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
@@ -53,6 +55,26 @@ pub fn classify_native_telegram_model_runner_error(error: &str) -> &'static str 
 
 pub fn redact_native_telegram_model_runner_error(error: &str) -> String {
     redact_hepta_kernel_telegram_runner_error(error)
+}
+
+pub fn native_telegram_model_failure_fallback_message() -> &'static str {
+    HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE
+}
+
+pub fn native_telegram_model_failure_fallback_allowed(
+    enabled: bool,
+    session_runner_invoked: bool,
+    status: &str,
+    reply_target_present: bool,
+    candidate_next_update_offset_present: bool,
+) -> bool {
+    hepta_kernel_telegram_model_failure_fallback_allowed(
+        enabled,
+        session_runner_invoked,
+        status,
+        reply_target_present,
+        candidate_next_update_offset_present,
+    )
 }
 
 pub fn select_native_telegram_model_runner(

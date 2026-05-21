@@ -318,6 +318,35 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
+### 20:0x Progress - Telegram Model Failure Fallback Policy Moved Into Hepta Kernel
+
+Continued the same kernel shrink path with another small side-effect-free slice:
+
+1. Added kernel-owned default failure fallback message:
+   `HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE`.
+2. Added kernel-owned fallback safety rule:
+   `hepta_kernel_telegram_model_failure_fallback_allowed(...)`.
+3. Kept runtime/gateway compatibility names:
+   `native_telegram_model_failure_fallback_message()` and
+   `NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE` still exist at the old
+   public boundary, but now delegate to the kernel contract.
+4. Gateway drain runtime now asks the kernel policy whether fallback delivery is
+   safe, while the actual send/cursor side effects remain in gateway transport
+   code and only execute under their existing gates.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+git diff --check
+```
+
 Observed test totals:
 
 - `hepta-core`: 200 passed.

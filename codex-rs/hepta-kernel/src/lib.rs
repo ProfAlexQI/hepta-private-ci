@@ -27,6 +27,8 @@ pub const MIN_TELEGRAM_MODEL_TIMEOUT_MS: u64 = 1_000;
 pub const MLX_LOCAL_CHAT_COMPLETIONS_RUNNER_KIND: &str = "mlx_local_chat_completions";
 pub const HEPTA_IN_PROCESS_EXEC_RUNNER_KIND: &str = "hepta_in_process_exec_runner";
 pub const HEPTA_EXEC_CHILD_RUNNER_KIND: &str = "hepta_exec_child_runner";
+pub const HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE: &str =
+    "本地模型这次响应超时或失败了。我已先收下这条消息，避免反复重试；请稍后再发一条继续。";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HeptaKernelTurnChannel {
@@ -562,6 +564,20 @@ pub fn hepta_kernel_exec_child_status_error(
     }
 }
 
+pub fn hepta_kernel_telegram_model_failure_fallback_allowed(
+    enabled: bool,
+    session_runner_invoked: bool,
+    status: &str,
+    reply_target_present: bool,
+    candidate_next_update_offset_present: bool,
+) -> bool {
+    enabled
+        && session_runner_invoked
+        && status == "attention"
+        && reply_target_present
+        && candidate_next_update_offset_present
+}
+
 fn sanitize_hepta_kernel_mlx_base_url(value: Option<&str>) -> String {
     value
         .map(str::trim)
@@ -992,6 +1008,56 @@ mod tests {
             hepta_kernel_exec_child_status_error(false, None)
                 .expect("signal status")
                 .contains("signal")
+        );
+    }
+
+    #[test]
+    fn kernel_model_failure_fallback_policy_requires_safe_delivery_context() {
+        assert!(hepta_kernel_telegram_model_failure_fallback_allowed(
+            true,
+            true,
+            "attention",
+            true,
+            true
+        ));
+        assert!(!hepta_kernel_telegram_model_failure_fallback_allowed(
+            false,
+            true,
+            "attention",
+            true,
+            true
+        ));
+        assert!(!hepta_kernel_telegram_model_failure_fallback_allowed(
+            true,
+            false,
+            "attention",
+            true,
+            true
+        ));
+        assert!(!hepta_kernel_telegram_model_failure_fallback_allowed(
+            true,
+            true,
+            "completed",
+            true,
+            true
+        ));
+        assert!(!hepta_kernel_telegram_model_failure_fallback_allowed(
+            true,
+            true,
+            "attention",
+            false,
+            true
+        ));
+        assert!(!hepta_kernel_telegram_model_failure_fallback_allowed(
+            true,
+            true,
+            "attention",
+            true,
+            false
+        ));
+        assert!(
+            HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE
+                .contains("本地模型这次响应超时或失败了")
         );
     }
 }
