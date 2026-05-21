@@ -787,6 +787,36 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
+### 02:2x Progress - Telegram Cursor Policy Moved Into Hepta Kernel
+
+Continued the same Telegram shrink path with the cursor policy slice:
+
+1. Added kernel-owned Telegram cursor constants:
+   `HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH` and
+   `HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA`.
+2. Moved pure cursor planning into `hepta-kernel`: current/legacy
+   `next_update_offset` parsing, duplicate-rule validation, and the safe cursor
+   JSON body shape that records only next offset, update timestamp, delivered
+   next offset, and `raw_update_payload_persisted=false`.
+3. Kept gateway side effects outside the kernel: reading the cursor file, mtime
+   fallback, directory creation, JSON file writes, and current-time capture stay
+   in `hepta-gateway`.
+4. Kept compatibility surfaces through `hepta-runtime` native Telegram wrappers
+   and `hepta-gateway::telegram_cursor` public names.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel telegram_cursor -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_cursor -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_cursor -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+```
+
 ## Merge Lanes
 
 ### Lane A - Workspace Crate Transplant

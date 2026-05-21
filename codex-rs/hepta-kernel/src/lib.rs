@@ -40,6 +40,9 @@ pub const HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE: &str =
     "本地模型这次响应超时或失败了。我已先收下这条消息，避免反复重试；请稍后再发一条继续。";
 pub const HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER: &str = "/store/delivery";
 pub const HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES: u32 = 5;
+pub const HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH: &str =
+    ".hepta/telegram/ingress-drain-cursor.json";
+pub const HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA: &str = "hepta.telegram.cursor.v1";
 pub const DEFAULT_TELEGRAM_SOAK_MIN_POLLS: u64 = 3;
 pub const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
 pub const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 0;
@@ -956,6 +959,58 @@ pub fn hepta_kernel_telegram_update_already_drained(
     next_update_offset
         .map(|cursor| update_id < cursor)
         .unwrap_or(false)
+}
+
+pub fn hepta_kernel_telegram_cursor_duplicate_rule_valid() -> bool {
+    hepta_kernel_telegram_update_already_drained(41, Some(42))
+        && !hepta_kernel_telegram_update_already_drained(42, Some(42))
+}
+
+pub fn parse_hepta_kernel_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
+    let value: Value = serde_json::from_str(raw)
+        .map_err(|error| format!("failed to parse Telegram cursor JSON: {error}"))?;
+    let explicit_next_update_offset = value
+        .get("next_update_offset")
+        .or_else(|| value.get("nextUpdateOffset"))
+        .and_then(Value::as_i64)
+        .or_else(|| {
+            value
+                .get("next_server_offset")
+                .or_else(|| value.get("nextServerOffset"))
+                .and_then(Value::as_i64)
+        });
+    let legacy_last_drained_next_offset = value
+        .get("last_drained_update_id")
+        .or_else(|| value.get("lastDrainedUpdateId"))
+        .and_then(Value::as_i64)
+        .filter(|offset| *offset >= 0)
+        .and_then(|offset| offset.checked_add(1));
+    let offset = explicit_next_update_offset
+        .or(legacy_last_drained_next_offset)
+        .ok_or_else(|| {
+            "Telegram cursor missing next_update_offset or legacy next_server_offset".to_string()
+        })?;
+    if offset < 0 {
+        Err("Telegram cursor next_update_offset must be non-negative".to_string())
+    } else {
+        Ok(offset)
+    }
+}
+
+pub fn hepta_kernel_telegram_cursor_body(
+    offset: i64,
+    updated_at_unix_ms: u64,
+) -> Result<Value, String> {
+    if offset < 0 {
+        return Err("Telegram cursor next_update_offset must be non-negative".to_string());
+    }
+    Ok(json!({
+        "schema": HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA,
+        "next_update_offset": offset,
+        "updated_at_unix_ms": updated_at_unix_ms,
+        "last_delivered_next_update_offset": offset,
+        "raw_update_payload_persisted": false,
+    }))
 }
 
 pub fn hepta_kernel_telegram_next_update_offset(update_id: i64) -> Option<i64> {
@@ -3018,6 +3073,7 @@ mod tests {
     fn kernel_duplicate_policy_treats_cursor_as_next_update_offset() {
         assert!(hepta_kernel_telegram_update_already_drained(41, Some(42)));
         assert!(!hepta_kernel_telegram_update_already_drained(42, Some(42)));
+        assert!(hepta_kernel_telegram_cursor_duplicate_rule_valid());
         assert_eq!(hepta_kernel_telegram_next_update_offset(42), Some(43));
         assert_eq!(hepta_kernel_telegram_next_update_offset(i64::MAX), None);
 
@@ -3038,6 +3094,76 @@ mod tests {
         assert!(candidate.cursor_write_allowed_after_delivery);
         assert_eq!(candidate.candidate_next_update_offset, Some(43));
         assert!(!candidate.raw_update_payload_exposed);
+    }
+
+    #[test]
+    fn kernel_telegram_cursor_parser_accepts_current_and_legacy_shapes() {
+        assert_eq!(
+            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"next_update_offset": 5}"#),
+            Ok(5)
+        );
+        assert_eq!(
+            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"nextUpdateOffset": 6}"#),
+            Ok(6)
+        );
+        assert_eq!(
+            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"next_server_offset": 7}"#),
+            Ok(7)
+        );
+        assert_eq!(
+            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"nextServerOffset": 8}"#),
+            Ok(8)
+        );
+        assert_eq!(
+            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"lastDrainedUpdateId": 8}"#),
+            Ok(9)
+        );
+    }
+
+    #[test]
+    fn kernel_telegram_cursor_policy_rejects_invalid_offsets_and_shapes() {
+        assert!(
+            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"next_update_offset": -1}"#)
+                .expect_err("negative offset should fail")
+                .contains("next_update_offset must be non-negative")
+        );
+        assert!(
+            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"lastDrainedUpdateId": -1}"#)
+                .expect_err("negative legacy offset should fail")
+                .contains("missing next_update_offset")
+        );
+        assert!(
+            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{}"#)
+                .expect_err("missing offset should fail")
+                .contains("missing next_update_offset")
+        );
+        assert!(
+            hepta_kernel_telegram_cursor_body(-1, 123)
+                .expect_err("negative body offset should fail")
+                .contains("next_update_offset must be non-negative")
+        );
+    }
+
+    #[test]
+    fn kernel_telegram_cursor_body_is_stable_and_payload_safe() {
+        assert_eq!(
+            HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+            ".hepta/telegram/ingress-drain-cursor.json"
+        );
+        assert_eq!(
+            HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA,
+            "hepta.telegram.cursor.v1"
+        );
+
+        let body = hepta_kernel_telegram_cursor_body(77, 1_777_777).expect("cursor body");
+        assert_eq!(body["schema"], HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA);
+        assert_eq!(body["next_update_offset"], 77);
+        assert_eq!(body["updated_at_unix_ms"], 1_777_777);
+        assert_eq!(body["last_delivered_next_update_offset"], 77);
+        assert_eq!(body["raw_update_payload_persisted"], false);
+        assert!(body.get("raw_update_payload").is_none());
+        assert!(body.get("message").is_none());
+        assert!(body.get("chat").is_none());
     }
 
     #[test]

@@ -5,7 +5,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use serde_json::Value;
 
-pub const DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
+pub use hepta_runtime::HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH as DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH;
+use hepta_runtime::{
+    native_telegram_cursor_body, native_telegram_cursor_duplicate_rule_valid,
+    parse_native_telegram_cursor_next_update_offset,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NativeTelegramCursorStatus {
@@ -55,8 +59,7 @@ impl NativeTelegramCursorPlan {
         Self {
             cursor_path: DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
             duplicate_suppression_ready: true,
-            duplicate_suppression_rule_valid: telegram_update_already_drained(41, Some(42))
-                && !telegram_update_already_drained(42, Some(42)),
+            duplicate_suppression_rule_valid: native_telegram_cursor_duplicate_rule_valid(),
             cursor_represents_next_update_offset: true,
             commit_offset_after_delivery: true,
             raw_update_payload_persisted: false,
@@ -106,8 +109,7 @@ pub fn telegram_cursor_status_from_path(path: &Path) -> NativeTelegramCursorStat
         last_delivered_next_update_offset: None,
         durable_cursor_evidence_present: false,
         cursor_represents_next_update_offset: true,
-        duplicate_suppression_rule_valid: telegram_update_already_drained(41, Some(42))
-            && !telegram_update_already_drained(42, Some(42)),
+        duplicate_suppression_rule_valid: native_telegram_cursor_duplicate_rule_valid(),
         cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
         cursor_written: false,
         raw_update_payload_persisted: false,
@@ -161,40 +163,11 @@ pub fn telegram_cursor_status_from_path(path: &Path) -> NativeTelegramCursorStat
 }
 
 pub fn parse_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
-    let value: Value = serde_json::from_str(raw)
-        .map_err(|error| format!("failed to parse Telegram cursor JSON: {error}"))?;
-    let explicit_next_update_offset = value
-        .get("next_update_offset")
-        .or_else(|| value.get("nextUpdateOffset"))
-        .and_then(Value::as_i64)
-        .or_else(|| {
-            value
-                .get("next_server_offset")
-                .or_else(|| value.get("nextServerOffset"))
-                .and_then(Value::as_i64)
-        });
-    let legacy_last_drained_next_offset = value
-        .get("last_drained_update_id")
-        .or_else(|| value.get("lastDrainedUpdateId"))
-        .and_then(Value::as_i64)
-        .filter(|offset| *offset >= 0)
-        .and_then(|offset| offset.checked_add(1));
-    let offset = explicit_next_update_offset
-        .or(legacy_last_drained_next_offset)
-        .ok_or_else(|| {
-            "Telegram cursor missing next_update_offset or legacy next_server_offset".to_string()
-        })?;
-    if offset < 0 {
-        Err("Telegram cursor next_update_offset must be non-negative".to_string())
-    } else {
-        Ok(offset)
-    }
+    parse_native_telegram_cursor_next_update_offset(raw)
 }
 
 pub fn write_telegram_cursor_next_update_offset(path: &Path, offset: i64) -> Result<(), String> {
-    if offset < 0 {
-        return Err("Telegram cursor next_update_offset must be non-negative".to_string());
-    }
+    let body = native_telegram_cursor_body(offset, now_unix_ms())?;
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -202,23 +175,10 @@ pub fn write_telegram_cursor_next_update_offset(path: &Path, offset: i64) -> Res
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create Telegram cursor directory: {error}"))?;
     }
-    let body = serde_json::json!({
-        "schema": "hepta.telegram.cursor.v1",
-        "next_update_offset": offset,
-        "updated_at_unix_ms": now_unix_ms(),
-        "last_delivered_next_update_offset": offset,
-        "raw_update_payload_persisted": false,
-    });
     let raw = serde_json::to_string_pretty(&body)
         .map_err(|error| format!("failed to encode Telegram cursor JSON: {error}"))?;
     fs::write(path, format!("{raw}\n"))
         .map_err(|error| format!("failed to write Telegram cursor file: {error}"))
-}
-
-fn telegram_update_already_drained(update_id: i64, next_update_offset: Option<i64>) -> bool {
-    next_update_offset
-        .map(|cursor| update_id < cursor)
-        .unwrap_or(false)
 }
 
 fn duration_millis_u64(duration: Duration) -> u64 {

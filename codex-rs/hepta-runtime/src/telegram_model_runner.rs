@@ -13,8 +13,10 @@ pub use hepta_kernel::{
     DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
     DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
     HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES as TELEGRAM_ALLOWED_UPDATES,
-    HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES, HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER,
+    HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA, HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES,
+    HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER,
     HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES as TELEGRAM_DRAIN_ONCE_STAGES,
+    HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
     HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDuplicateDecision,
@@ -36,7 +38,8 @@ pub use hepta_kernel::{
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_delivery_backoff_ms,
+    hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_cursor_body,
+    hepta_kernel_telegram_cursor_duplicate_rule_valid, hepta_kernel_telegram_delivery_backoff_ms,
     hepta_kernel_telegram_delivery_error_is_permanent,
     hepta_kernel_telegram_delivery_lifecycle_record, hepta_kernel_telegram_drain_execution_plan,
     hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_drain_first_missing_gate,
@@ -65,9 +68,10 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_typing_keepalive_interval_policy,
     hepta_kernel_telegram_typing_keepalive_should_start,
     hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
-    parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
-    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
-    redact_hepta_kernel_telegram_token_like_text, select_hepta_kernel_telegram_runner,
+    parse_hepta_kernel_mlx_model_ref, parse_hepta_kernel_telegram_cursor_next_update_offset,
+    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
+    redact_hepta_kernel_telegram_runner_error, redact_hepta_kernel_telegram_token_like_text,
+    select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
@@ -213,6 +217,18 @@ pub fn native_telegram_update_already_drained(
     next_update_offset: Option<i64>,
 ) -> bool {
     hepta_kernel_telegram_update_already_drained(update_id, next_update_offset)
+}
+
+pub fn native_telegram_cursor_duplicate_rule_valid() -> bool {
+    hepta_kernel_telegram_cursor_duplicate_rule_valid()
+}
+
+pub fn parse_native_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
+    parse_hepta_kernel_telegram_cursor_next_update_offset(raw)
+}
+
+pub fn native_telegram_cursor_body(offset: i64, updated_at_unix_ms: u64) -> Result<Value, String> {
+    hepta_kernel_telegram_cursor_body(offset, updated_at_unix_ms)
 }
 
 pub fn native_telegram_next_update_offset(update_id: i64) -> Option<i64> {
@@ -939,6 +955,39 @@ mod tests {
             "Too Many Requests"
         )));
         assert_eq!(native_telegram_delivery_backoff_ms(4), 600_000);
+    }
+
+    #[test]
+    fn telegram_cursor_policy_delegates_to_kernel() {
+        assert_eq!(
+            HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+            ".hepta/telegram/ingress-drain-cursor.json"
+        );
+        assert_eq!(
+            HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA,
+            "hepta.telegram.cursor.v1"
+        );
+        assert!(native_telegram_cursor_duplicate_rule_valid());
+        assert_eq!(
+            parse_native_telegram_cursor_next_update_offset(r#"{"next_update_offset": 42}"#),
+            Ok(42)
+        );
+        assert_eq!(
+            parse_native_telegram_cursor_next_update_offset(r#"{"lastDrainedUpdateId": 42}"#),
+            Ok(43)
+        );
+
+        let body = native_telegram_cursor_body(43, 1_777_777).expect("cursor body");
+        assert_eq!(body["schema"], HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA);
+        assert_eq!(body["next_update_offset"], 43);
+        assert_eq!(body["updated_at_unix_ms"], 1_777_777);
+        assert_eq!(body["last_delivered_next_update_offset"], 43);
+        assert_eq!(body["raw_update_payload_persisted"], false);
+        assert!(
+            native_telegram_cursor_body(-1, 1_777_777)
+                .expect_err("negative cursor should fail")
+                .contains("next_update_offset must be non-negative")
+        );
     }
 
     #[test]
