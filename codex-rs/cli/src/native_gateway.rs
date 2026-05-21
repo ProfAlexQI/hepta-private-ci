@@ -841,7 +841,7 @@ fn route_native_gateway_request_with_body(
                 return (
                     "200 OK",
                     "application/json; charset=utf-8",
-                    json_or_error(&hepta_merge_completion_report()),
+                    json_or_error(&hepta_merge_completion_report(options)),
                 );
             }
             HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT => {
@@ -3064,13 +3064,31 @@ fn operator_security_json(
         && post_execution_stores.rate_limit_store_ready
         && post_execution_stores.store_jsonl_valid
         && post_execution_stores.store_capacity_ok;
+    let active_post_activation_ready = post_activation_plan.activation_currently_enabled
+        && post_activation_plan.single_handler_scope_ready
+        && post_activation_plan.execution_evidence_ready
+        && post_activation_plan.store_contracts_ready
+        && post_activation_plan.store_jsonl_valid
+        && post_activation_plan.store_capacity_ok
+        && post_gray_release_evidence.gray_release_ready
+        && !post_activation_plan.real_mutation_performed
+        && !post_activation_plan.external_side_effects
+        && !post_gray_release_evidence.real_mutation_performed
+        && !post_gray_release_evidence.external_side_effects;
+    let staged_post_activation_ready = !post_activation_plan.activation_currently_enabled;
     let post_activation_plan_ready = post_activation_plan.activation_preflight_ready
         && post_activation_plan.rollback_ready
-        && !post_activation_plan.activation_currently_enabled;
-    let post_gray_release_evidence_ready = !post_activation_plan.activation_currently_enabled
-        || post_gray_release_evidence.gray_release_evidence_ready;
+        && (staged_post_activation_ready || active_post_activation_ready);
+    let post_gray_release_evidence_ready = if post_activation_plan.activation_currently_enabled {
+        post_gray_release_evidence.gray_release_evidence_ready
+            && post_gray_release_evidence.gray_release_ready
+    } else {
+        true
+    };
     let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
+    let telegram_owner_or_parallel_ready = telegram_owner_handoff_status.hepta_takeover_ready
+        || telegram_owner_handoff_status.hepta_parallel_bot_ready;
     let legacy_owner_coexistence_ready = control_ui_route_parity.ready
         && post_execution_readiness.all_evidence_contracts_ready
         && post_execution_stores_ready
@@ -3089,6 +3107,7 @@ fn operator_security_json(
         && post_activation_plan_ready
         && post_gray_release_evidence_ready
         && telegram_owner_handoff_status.conflict_free
+        && telegram_owner_or_parallel_ready
         && loopback_bound
         && guarded_post_route_count == post_route_count;
 
@@ -3457,12 +3476,16 @@ fn gateway_replacement_readiness(
         options.telegram_plugin_poll_ms,
     );
     let telegram_owner_handoff_status = telegram_owner_handoff_status(options);
+    let telegram_owner_or_parallel_ready = telegram_owner_handoff_status.hepta_takeover_ready
+        || telegram_owner_handoff_status.hepta_parallel_bot_ready;
     let control_ui_route_parity = control_ui_route_parity_report();
     let release_build_verified = env_truthy(RELEASE_BUILD_VERIFIED_ENV);
     let control_ui_parity_verified =
         control_ui_route_parity.ready && env_truthy(CONTROL_UI_PARITY_VERIFIED_ENV);
+    let model_runner_plan = native_telegram::telegram_model_runner_plan();
     let in_process_model_runner_ready =
         env_truthy(native_telegram::TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV);
+    let telegram_model_runner_plan_ready = model_runner_plan.runner_plan_ready;
     let side_effect_free = true;
 
     let checks = vec![
@@ -3518,8 +3541,8 @@ fn gateway_replacement_readiness(
         },
         NativeGatewayReplacementCheck {
             name: "telegram_owner_handoff_ready",
-            ready: telegram_owner_handoff_status.hepta_takeover_ready,
-            detail: "legacy OpenClaw Telegram polling must be disabled before Hepta becomes the armed Telegram owner",
+            ready: telegram_owner_or_parallel_ready,
+            detail: "Hepta must either own Telegram after handoff or run as an approved distinct-token parallel bot",
         },
         NativeGatewayReplacementCheck {
             name: "telegram_cursor_policy_ready",
@@ -3529,9 +3552,9 @@ fn gateway_replacement_readiness(
             detail: "cursor commits only after delivery or duplicate suppression without raw payload persistence",
         },
         NativeGatewayReplacementCheck {
-            name: "in_process_model_runner_ready",
-            ready: in_process_model_runner_ready,
-            detail: "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER must be enabled after in-process runner smoke passes",
+            name: "telegram_model_runner_plan_ready",
+            ready: telegram_model_runner_plan_ready,
+            detail: "Telegram replies must have a selected runner plan such as local MLX, in-process Hepta exec, or gated child exec",
         },
         NativeGatewayReplacementCheck {
             name: "release_build_verified",
@@ -3791,7 +3814,7 @@ struct HeptaMergeCompletionResponse {
     native_post_real_activation_enabled: bool,
     public_ga_claimed: bool,
     safe_continue_internal_work: bool,
-    blockers: &'static [&'static str],
+    blockers: Vec<&'static str>,
     next_actions: &'static [&'static str],
     side_effects: HeptaMergeCompletionSideEffects,
 }
@@ -6120,12 +6143,58 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
     }
 }
 
-fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
+fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCompletionResponse {
     let route_matrix = control_ui_route_parity_report();
+    let owner_handoff = telegram_owner_handoff_status(options);
+    let telegram_readiness = native_telegram::telegram_production_readiness_status(
+        options.with_telegram_plugin,
+        options.telegram_plugin_poll_ms,
+    );
+    let post_activation = native_post_activation_plan_report();
+    let telegram_owner_or_parallel_ready =
+        owner_handoff.hepta_takeover_ready || owner_handoff.hepta_parallel_bot_ready;
+    let telegram_live_poll_model_send_ready =
+        telegram_readiness.ready && telegram_owner_or_parallel_ready;
+    let native_post_real_activation_ready = post_activation.activation_currently_enabled
+        && post_activation.single_handler_scope_ready
+        && !post_activation.real_mutation_performed
+        && !post_activation.external_side_effects;
+    let credentialed_provider_smoke_ready =
+        env_truthy(HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV);
+    let channel_live_delivery_ready = env_truthy(HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED_ENV)
+        || (env_truthy(HEPTA_CHANNEL_LIVE_READ_VERIFIED_ENV)
+            && env_truthy(HEPTA_CHANNEL_LIVE_SEND_VERIFIED_ENV));
+    let external_public_release_approved = env_truthy("HEPTA_PUBLIC_GA_RELEASE_APPROVED");
+
+    let mut blockers = Vec::new();
+    if !telegram_owner_or_parallel_ready {
+        blockers.push("telegram_owner_handoff_not_requested");
+    }
+    if !telegram_live_poll_model_send_ready {
+        blockers.push("live_poll_send_not_operator_approved");
+    }
+    if !native_post_real_activation_ready {
+        blockers.push("native_post_real_activation_not_operator_approved");
+    }
+    if !credentialed_provider_smoke_ready {
+        blockers.push("credentialed_provider_live_smoke_not_operator_approved");
+    }
+    if !channel_live_delivery_ready {
+        blockers.push("channel_live_delivery_not_operator_approved");
+    }
+    if !external_public_release_approved {
+        blockers.push("external_public_release_not_operator_approved");
+    }
+    let production_tracks_ready = blockers.is_empty();
+
     HeptaMergeCompletionResponse {
         product: "Hepta",
         runtime: "hepta-codex",
-        status: "attention",
+        status: if production_tracks_ready {
+            "ready"
+        } else {
+            "attention"
+        },
         source_command: "/hepta-merge-completion --json",
         native_route: true,
         compatibility_mode: "native_merge_completion_audit",
@@ -6155,19 +6224,12 @@ fn hepta_merge_completion_report() -> HeptaMergeCompletionResponse {
         merge_completion_gateway_index_surfaced: true,
         browser_visual_smoke_ready: true,
         browser_visual_smoke_command: "scripts/hepta-codex-browser-visual-smoke.sh",
-        production_owner_handoff_required: true,
-        telegram_live_send_enabled: false,
-        native_post_real_activation_enabled: false,
+        production_owner_handoff_required: !telegram_owner_or_parallel_ready,
+        telegram_live_send_enabled: telegram_live_poll_model_send_ready,
+        native_post_real_activation_enabled: native_post_real_activation_ready,
         public_ga_claimed: false,
         safe_continue_internal_work: true,
-        blockers: &[
-            "telegram_owner_handoff_not_requested",
-            "live_poll_send_not_operator_approved",
-            "native_post_real_activation_not_operator_approved",
-            "credentialed_provider_live_smoke_not_operator_approved",
-            "channel_live_delivery_not_operator_approved",
-            "external_public_release_not_operator_approved",
-        ],
+        blockers,
         next_actions: &[
             "continue high-value old CLI family planners and isolated fixtures",
             "keep browser visual smoke, preflight, soak, and watchdog gates green",
@@ -6347,7 +6409,7 @@ fn hepta_public_ga_readiness_report(
     telegram_plugin: &NativeTelegramPluginStatus,
 ) -> HeptaPublicGaReadinessResponse {
     let route_matrix = control_ui_route_parity_report();
-    let merge = hepta_merge_completion_report();
+    let merge = hepta_merge_completion_report(options);
     let cli = hepta_cli_command_inventory_report();
     let provider = hepta_provider_metadata_inventory_report();
     let runtime_inventory = hepta_runtime_session_dry_run_inventory_report();
@@ -6430,8 +6492,10 @@ fn hepta_public_ga_readiness_report(
     let channel_live_delivery_ready = channel.live_adapter_enabled_count == channel.adapter_count
         && channel.live_channel_read_enabled
         && channel.live_channel_send_enabled;
+    let telegram_owner_or_parallel_ready =
+        owner_handoff.hepta_takeover_ready || owner_handoff.hepta_parallel_bot_ready;
     let telegram_live_poll_model_send_ready =
-        telegram_readiness.ready && owner_handoff.hepta_takeover_ready;
+        telegram_readiness.ready && telegram_owner_or_parallel_ready;
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
     let release_artifact_pack_ready = release_artifact_pack_verified
         || (release.release_artifact_pack_enabled && release.external_production_gate_enabled);
@@ -6459,7 +6523,7 @@ fn hepta_public_ga_readiness_report(
     if !gateway_replacement.ready {
         blockers.push("gateway_replacement_not_ready");
     }
-    if !owner_handoff.hepta_takeover_ready {
+    if !telegram_owner_or_parallel_ready {
         blockers.push("telegram_owner_handoff_not_operator_approved");
     }
     if !telegram_live_poll_model_send_ready {
@@ -6524,7 +6588,7 @@ fn hepta_public_ga_readiness_report(
         operator_approval_required: !public_ga_ready,
         gateway_replacement_ready: gateway_replacement.ready,
         gateway_replacement_blocker_count: gateway_replacement.blocker_count,
-        telegram_owner_handoff_ready: owner_handoff.hepta_takeover_ready,
+        telegram_owner_handoff_ready: telegram_owner_or_parallel_ready,
         telegram_live_poll_model_send_ready,
         native_post_real_activation_ready,
         native_post_dry_run_evidence_ready,
@@ -6558,7 +6622,7 @@ fn hepta_public_ga_readiness_report(
             NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
         ],
         required_operator_approvals: &[
-            "disable legacy Telegram polling and arm Hepta Telegram gates",
+            "disable legacy Telegram polling for full takeover, or approve distinct-token parallel bot mode",
             "perform live Telegram poll/model/send soak",
             "enable one scoped native POST real handler after rollback anchor evidence",
             "run credentialed provider/search smoke with redacted evidence",
@@ -8012,7 +8076,7 @@ mod tests {
         assert!(body.contains(r#""control_ui_route_parity_ready":true"#));
         assert!(body.contains(r#""status":"blocked""#));
         assert!(body.contains(r#""active_install_allowed":false"#));
-        assert!(body.contains(r#""in_process_model_runner_ready""#));
+        assert!(body.contains(r#""telegram_model_runner_plan_ready""#));
         assert!(body.contains(r#""release_build_verified""#));
         assert!(body.contains(r#""control_ui_route_matrix_ready""#));
         assert!(body.contains(r#""control_ui_route_parity_verified""#));
@@ -8300,7 +8364,8 @@ mod tests {
             .iter()
             .filter_map(|value| value.as_str())
             .collect::<Vec<_>>();
-        assert!(blockers.contains(&"in_process_model_runner_ready"));
+        assert!(!blockers.contains(&"in_process_model_runner_ready"));
+        assert!(!blockers.contains(&"telegram_model_runner_plan_ready"));
         assert!(blockers.contains(&"release_build_verified"));
         assert!(blockers.contains(&"control_ui_route_parity_verified"));
         assert!(!blockers.contains(&"control_ui_route_matrix_ready"));

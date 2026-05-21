@@ -977,7 +977,7 @@ fn telegram_typing_keepalive_interval() -> Duration {
     telegram_typing_keepalive_interval_policy(env_u64(TELEGRAM_TYPING_KEEPALIVE_INTERVAL_ENV))
 }
 
-fn telegram_model_runner_plan() -> NativeTelegramModelRunnerPlan {
+pub(crate) fn telegram_model_runner_plan() -> NativeTelegramModelRunnerPlan {
     let model_ref = env::var(TELEGRAM_MODEL_ENV)
         .ok()
         .or_else(|| env::var(HEPTA_DEFAULT_MODEL_ENV).ok());

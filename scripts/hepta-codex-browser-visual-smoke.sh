@@ -30,12 +30,17 @@ if [[ "$(jq -r '.route_matrix_ready' <<<"$merge_json")" != "true" ]]; then
   echo "merge completion endpoint route matrix is not ready" >&2
   exit 1
 fi
-if [[ "$(jq -r '.telegram_live_send_enabled' <<<"$merge_json")" != "false" ]]; then
-  echo "merge completion endpoint unexpectedly enables Telegram live send" >&2
-  exit 1
-fi
-if [[ "$(jq -r '.native_post_real_activation_enabled' <<<"$merge_json")" != "false" ]]; then
-  echo "merge completion endpoint unexpectedly enables native POST real activation" >&2
+merge_status="$(jq -r '.status' <<<"$merge_json")"
+merge_blockers="$(jq -r '.blockers | length' <<<"$merge_json")"
+telegram_live_send_enabled="$(jq -r '.telegram_live_send_enabled' <<<"$merge_json")"
+native_post_real_activation_enabled="$(jq -r '.native_post_real_activation_enabled' <<<"$merge_json")"
+if [[ "$telegram_live_send_enabled" == "true" || "$native_post_real_activation_enabled" == "true" ]]; then
+  if [[ "$merge_status" != "ready" || "$merge_blockers" != "0" ]]; then
+    echo "merge completion enables production gates without ready status and zero blockers" >&2
+    exit 1
+  fi
+elif [[ "$telegram_live_send_enabled" != "false" || "$native_post_real_activation_enabled" != "false" ]]; then
+  echo "merge completion endpoint returned invalid production gate booleans" >&2
   exit 1
 fi
 
@@ -112,6 +117,8 @@ jq -n \
   --arg runtime "hepta-codex" \
   --arg base_url "$BASE_URL" \
   --arg output_dir "$OUT_DIR" \
+  --argjson telegram_live_send_enabled "$telegram_live_send_enabled" \
+  --argjson native_post_real_activation_enabled "$native_post_real_activation_enabled" \
   --arg desktop_sha "$(shasum -a 256 "$OUT_DIR/desktop.png" | awk '{print $1}')" \
   --arg mobile_sha "$(shasum -a 256 "$OUT_DIR/mobile.png" | awk '{print $1}')" \
   '{
@@ -122,6 +129,8 @@ jq -n \
     output_dir:$output_dir,
     browser:"chrome-headless",
     checked_text:["Merge completion","82 / 91 / 88 / 68","/api/hepta-merge-completion"],
+    telegram_live_send_enabled:$telegram_live_send_enabled,
+    native_post_real_activation_enabled:$native_post_real_activation_enabled,
     screenshots:[
       {name:"desktop", viewport:"1365x900", sha256:$desktop_sha},
       {name:"mobile", viewport:"390x844", sha256:$mobile_sha}

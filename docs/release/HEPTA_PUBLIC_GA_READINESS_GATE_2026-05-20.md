@@ -247,3 +247,25 @@ These flags do not execute the smokes themselves and do not read credentials,
 send channel messages, mutate LaunchAgents, or publish a release from the
 readiness endpoint. They only make completed evidence visible to the aggregate
 GA gate.
+
+## Follow-Up: Distinct Telegram Parallel Bot Closure
+
+After the operator approved running OpenClaw Telegram and Hepta Telegram
+together, the Telegram readiness semantics were narrowed:
+
+- A distinct-token Hepta bot in `parallel_bot_ready` mode is accepted as a
+  production Telegram path for coexistence.
+- Full owner handoff, where OpenClaw Telegram is disabled and Hepta becomes the
+  only Telegram owner, remains a separate replacement mode and is not required
+  for the approved parallel-bot topology.
+- `/api/gateway-replacement-readiness` now accepts any ready Telegram model
+  runner plan. The local MLX chat-completions runner is a valid production
+  runner; `HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER=1` is no longer the
+  only way to clear the model-runner readiness check.
+- `/api/hepta-merge-completion` now reflects live evidence instead of carrying
+  static Telegram/native-POST/provider/channel blockers after those tracks have
+  evidence flags or runtime readiness.
+
+This change does not publish a public release and does not perform external
+actions from the readiness endpoints. It only corrects the readiness accounting
+after the live soak showed stable parallel-bot operation.

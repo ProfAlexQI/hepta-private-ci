@@ -44,22 +44,36 @@ report="$(jq -n \
       if $health.status == "ready"
         and $route.status == "ready"
         and $route.missing_route_count == 0
-        and $operator.status == "attention"
-        and $operator.legacy_owner_coexistence_ready == true
-        and $operator.attention_reason == "telegram_replacement_not_requested"
-        and $owner.active_owner == "legacy_openclaw"
         and $owner.double_poller_risk == false
-        and $owner.hepta_poll_loop_armed == false
-        and $poll.status == "gated"
         and $poll.external_network_read_by_status == false
         and $poll.external_send_by_status == false
         and $post.status == "ready"
-        and $post.activation_currently_enabled == false
         and $post.real_mutation_performed == false
         and $post.external_side_effects == false
         and $stores.status == "ready"
         and $stores.store_jsonl_valid == true
         and $stores.store_capacity_ok == true
+        and (
+          (
+            $operator.status == "attention"
+            and $operator.legacy_owner_coexistence_ready == true
+            and $operator.attention_reason == "telegram_replacement_not_requested"
+            and $owner.active_owner == "legacy_openclaw"
+            and $owner.hepta_poll_loop_armed == false
+            and $poll.status == "gated"
+            and $post.activation_currently_enabled == false
+          )
+          or (
+            $operator.status == "ready"
+            and $operator.security_mode == "active_replacement_ready"
+            and $owner.active_owner == "parallel_bots"
+            and $owner.hepta_parallel_bot_ready == true
+            and $owner.hepta_poll_loop_armed == true
+            and $poll.status == "armed"
+            and $post.activation_currently_enabled == true
+            and $post.single_handler_scope_ready == true
+          )
+        )
       then "ok" else "failed" end
     ),
     release_sha256:$release_sha,
