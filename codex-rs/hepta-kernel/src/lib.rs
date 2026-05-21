@@ -1339,6 +1339,26 @@ pub fn hepta_kernel_telegram_send_message_request_body(
     Ok(body)
 }
 
+pub fn hepta_kernel_telegram_typing_keepalive_should_start(
+    enabled: bool,
+    token: &str,
+    chat_id: i64,
+) -> bool {
+    enabled && hepta_kernel_telegram_bot_token_shape_ok(token) && chat_id != 0
+}
+
+pub fn hepta_kernel_telegram_send_rate_limit_sleep_for(
+    last_elapsed: Option<Duration>,
+    min_interval: Duration,
+) -> Duration {
+    if min_interval.is_zero() {
+        return Duration::default();
+    }
+    last_elapsed
+        .and_then(|elapsed| min_interval.checked_sub(elapsed))
+        .unwrap_or_default()
+}
+
 pub fn hepta_kernel_telegram_bot_token_shape_ok(token: &str) -> bool {
     let Some((bot_id, secret)) = token.split_once(':') else {
         return false;
@@ -2565,6 +2585,48 @@ mod tests {
             hepta_kernel_telegram_send_chat_action_request_body(0)
                 .expect_err("bad chat id rejected")
                 .contains("chat id must be non-zero")
+        );
+    }
+
+    #[test]
+    fn kernel_telegram_transport_keepalive_and_rate_limit_policies_are_bounded() {
+        let token = "123456789:abcdefghijklmnopqrstuvwxyz";
+        assert!(hepta_kernel_telegram_typing_keepalive_should_start(
+            true, token, 6476198178
+        ));
+        assert!(!hepta_kernel_telegram_typing_keepalive_should_start(
+            false, token, 6476198178
+        ));
+        assert!(!hepta_kernel_telegram_typing_keepalive_should_start(
+            true,
+            "not-a-token",
+            6476198178
+        ));
+        assert!(!hepta_kernel_telegram_typing_keepalive_should_start(
+            true, token, 0
+        ));
+
+        assert_eq!(
+            hepta_kernel_telegram_send_rate_limit_sleep_for(None, Duration::from_millis(750)),
+            Duration::default()
+        );
+        assert_eq!(
+            hepta_kernel_telegram_send_rate_limit_sleep_for(
+                Some(Duration::from_millis(250)),
+                Duration::from_millis(750)
+            ),
+            Duration::from_millis(500)
+        );
+        assert_eq!(
+            hepta_kernel_telegram_send_rate_limit_sleep_for(
+                Some(Duration::from_millis(900)),
+                Duration::from_millis(750)
+            ),
+            Duration::default()
+        );
+        assert_eq!(
+            hepta_kernel_telegram_send_rate_limit_sleep_for(Some(Duration::ZERO), Duration::ZERO),
+            Duration::default()
         );
     }
 

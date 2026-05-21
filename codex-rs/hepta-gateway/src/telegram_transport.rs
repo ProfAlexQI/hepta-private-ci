@@ -23,8 +23,9 @@ use hepta_runtime::{
     native_telegram_read_retry_backoff_policy, native_telegram_send_chat_action_request_body,
     native_telegram_send_error_is_transient, native_telegram_send_max_attempts_policy,
     native_telegram_send_message_request_body, native_telegram_send_min_interval_policy,
-    native_telegram_send_retry_backoff_policy, native_telegram_send_should_retry,
-    native_telegram_typing_keepalive_interval_policy, redact_native_telegram_token_like_text,
+    native_telegram_send_rate_limit_sleep_for, native_telegram_send_retry_backoff_policy,
+    native_telegram_send_should_retry, native_telegram_typing_keepalive_interval_policy,
+    native_telegram_typing_keepalive_should_start, redact_native_telegram_token_like_text,
 };
 
 pub use hepta_runtime::{
@@ -291,7 +292,7 @@ pub fn telegram_call_send_chat_action(
 }
 
 pub fn telegram_typing_keepalive_should_start(enabled: bool, token: &str, chat_id: i64) -> bool {
-    enabled && telegram_bot_token_shape_ok(token) && chat_id != 0
+    native_telegram_typing_keepalive_should_start(enabled, token, chat_id)
 }
 
 pub fn telegram_start_typing_keepalive<F>(
@@ -336,12 +337,7 @@ pub fn telegram_send_rate_limit_sleep_for(
     last_elapsed: Option<Duration>,
     min_interval: Duration,
 ) -> Duration {
-    if min_interval.is_zero() {
-        return Duration::default();
-    }
-    last_elapsed
-        .and_then(|elapsed| min_interval.checked_sub(elapsed))
-        .unwrap_or_default()
+    native_telegram_send_rate_limit_sleep_for(last_elapsed, min_interval)
 }
 
 pub fn telegram_wait_for_send_rate_limit(chat_id: i64, min_interval: Duration) {

@@ -53,12 +53,14 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_send_error_is_transient, hepta_kernel_telegram_send_max_attempts_policy,
     hepta_kernel_telegram_send_message_request_body,
     hepta_kernel_telegram_send_min_interval_policy,
+    hepta_kernel_telegram_send_rate_limit_sleep_for,
     hepta_kernel_telegram_send_retry_backoff_policy, hepta_kernel_telegram_send_should_retry,
     hepta_kernel_telegram_soak_max_attention_count_policy,
     hepta_kernel_telegram_soak_max_observed_age_ms_policy,
     hepta_kernel_telegram_soak_min_poll_iterations_policy,
     hepta_kernel_telegram_system_time_unix_ms,
     hepta_kernel_telegram_typing_keepalive_interval_policy,
+    hepta_kernel_telegram_typing_keepalive_should_start,
     hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
     parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
     plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
@@ -362,6 +364,21 @@ pub fn native_telegram_send_message_request_body(
     reply_to_message_id: Option<i64>,
 ) -> Result<Value, String> {
     hepta_kernel_telegram_send_message_request_body(message_text, chat_id, reply_to_message_id)
+}
+
+pub fn native_telegram_typing_keepalive_should_start(
+    enabled: bool,
+    token: &str,
+    chat_id: i64,
+) -> bool {
+    hepta_kernel_telegram_typing_keepalive_should_start(enabled, token, chat_id)
+}
+
+pub fn native_telegram_send_rate_limit_sleep_for(
+    last_elapsed: Option<Duration>,
+    min_interval: Duration,
+) -> Duration {
+    hepta_kernel_telegram_send_rate_limit_sleep_for(last_elapsed, min_interval)
 }
 
 pub fn native_telegram_bot_token_shape_ok(token: &str) -> bool {
@@ -782,6 +799,44 @@ mod tests {
             native_telegram_send_chat_action_request_body(0)
                 .expect_err("bad chat id rejected")
                 .contains("chat id must be non-zero")
+        );
+    }
+
+    #[test]
+    fn telegram_transport_keepalive_and_rate_limit_policies_delegate_to_kernel() {
+        let token = "123456789:abcdefghijklmnopqrstuvwxyz";
+        assert!(native_telegram_typing_keepalive_should_start(
+            true, token, 6476198178
+        ));
+        assert!(!native_telegram_typing_keepalive_should_start(
+            false, token, 6476198178
+        ));
+        assert!(!native_telegram_typing_keepalive_should_start(
+            true,
+            "not-a-token",
+            6476198178
+        ));
+        assert!(!native_telegram_typing_keepalive_should_start(
+            true, token, 0
+        ));
+
+        assert_eq!(
+            native_telegram_send_rate_limit_sleep_for(None, Duration::from_millis(750)),
+            Duration::default()
+        );
+        assert_eq!(
+            native_telegram_send_rate_limit_sleep_for(
+                Some(Duration::from_millis(250)),
+                Duration::from_millis(750)
+            ),
+            Duration::from_millis(500)
+        );
+        assert_eq!(
+            native_telegram_send_rate_limit_sleep_for(
+                Some(Duration::from_millis(900)),
+                Duration::from_millis(750)
+            ),
+            Duration::default()
         );
     }
 
