@@ -18,6 +18,13 @@ pub const CODEX_AGENTS_MD_FILENAME: &str = "AGENTS.md";
 pub const HEPTA_KERNEL_TELEGRAM_RUNNER_KIND: &str = "hepta_kernel_session_runner";
 pub const HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY: &str =
     "gated in-process Hepta kernel turn runner with Codex as an internal execution engine";
+pub const HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
+    "receive_getUpdates",
+    "duplicate_suppression",
+    "model_turn",
+    "sendMessage",
+    "cursor_commit",
+];
 pub const DEFAULT_TELEGRAM_MLX_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 pub const DEFAULT_TELEGRAM_MLX_MAX_TOKENS: u64 = 512;
 pub const MAX_TELEGRAM_MLX_MAX_TOKENS: u64 = 4096;
@@ -125,6 +132,84 @@ pub struct HeptaKernelTelegramSessionBridgePlan {
     pub failure_policy: &'static str,
     pub process_spawned_by_status: bool,
     pub raw_prompt_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_sender_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramGatewayGateSummary {
+    pub delivery_approval_gate_env: &'static str,
+    pub delivery_approval_gate_enabled: bool,
+    pub live_read_gate_env: &'static str,
+    pub live_read_gate_enabled: bool,
+    pub model_turn_gate_env: &'static str,
+    pub model_turn_gate_enabled: bool,
+    pub send_gate_env: &'static str,
+    pub send_gate_enabled: bool,
+    pub readiness_summary_performs_live_read: bool,
+    pub readiness_summary_invokes_model: bool,
+    pub readiness_summary_sends_message: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelTelegramGatewayGateSummaryInput {
+    pub delivery_approval_gate_env: &'static str,
+    pub delivery_approval_gate_enabled: bool,
+    pub live_read_gate_env: &'static str,
+    pub live_read_gate_enabled: bool,
+    pub model_turn_gate_env: &'static str,
+    pub model_turn_gate_enabled: bool,
+    pub send_gate_env: &'static str,
+    pub send_gate_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramExecutionPlan {
+    pub execution_plan_ready: bool,
+    pub stages: &'static [&'static str],
+    pub all_required_gates_enabled: bool,
+    pub first_missing_gate: Option<&'static str>,
+    pub receive_before_model: bool,
+    pub send_after_model_success: bool,
+    pub cursor_commit_after_delivery: bool,
+    pub status_probe_executes_pipeline: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramIngressInspection {
+    pub parser_ready: bool,
+    pub update_count: usize,
+    pub allowed_update_count: usize,
+    pub latest_observed_update_id: Option<i64>,
+    pub latest_allowed_update_id: Option<i64>,
+    pub latest_allowed_next_update_offset: Option<i64>,
+    pub latest_allowed_text_present: bool,
+    pub message_count: usize,
+    pub edited_message_count: usize,
+    pub callback_query_count: usize,
+    pub reaction_count: usize,
+    pub raw_message_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_sender_id_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramModelTurnPlan {
+    pub planner_ready: bool,
+    pub candidate_count: usize,
+    pub text_candidate_count: usize,
+    pub callback_candidate_count: usize,
+    pub reaction_candidate_count: usize,
+    pub reply_target_count: usize,
+    pub candidate_kinds: Vec<String>,
+    pub prompt_material_policy: &'static str,
+    pub session_key_strategy: &'static str,
+    pub reply_target_strategy: &'static str,
+    pub model_turn_invocation_gate: &'static str,
+    pub send_delivery_gate: &'static str,
+    pub raw_message_text_exposed: bool,
+    pub raw_callback_data_exposed: bool,
     pub raw_chat_id_exposed: bool,
     pub raw_sender_id_exposed: bool,
     pub raw_message_id_exposed: bool,
@@ -349,6 +434,52 @@ impl HeptaKernelTelegramSessionBridgePlan {
             failure_policy: "on runner failure, keep cursor uncommitted and return a redacted diagnostic instead of sending partial output",
             process_spawned_by_status: model_runner_plan.process_spawned_by_status,
             raw_prompt_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+}
+
+impl HeptaKernelTelegramModelTurnPlan {
+    pub fn disabled() -> Self {
+        Self {
+            planner_ready: false,
+            candidate_count: 0,
+            text_candidate_count: 0,
+            callback_candidate_count: 0,
+            reaction_candidate_count: 0,
+            reply_target_count: 0,
+            candidate_kinds: Vec::new(),
+            prompt_material_policy: "disabled",
+            session_key_strategy: "disabled",
+            reply_target_strategy: "disabled",
+            model_turn_invocation_gate: "disabled",
+            send_delivery_gate: "disabled",
+            raw_message_text_exposed: false,
+            raw_callback_data_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+
+    pub fn ready() -> Self {
+        Self {
+            planner_ready: true,
+            candidate_count: 0,
+            text_candidate_count: 0,
+            callback_candidate_count: 0,
+            reaction_candidate_count: 0,
+            reply_target_count: 0,
+            candidate_kinds: Vec::new(),
+            prompt_material_policy: "carry prompt text only inside the later model-turn call; never expose it in readiness JSON",
+            session_key_strategy: "derive a stable internal session key from redacted Telegram binding metadata",
+            reply_target_strategy: "retain only an opaque reply target handle for later sendMessage reply_parameters",
+            model_turn_invocation_gate: "requires receive candidate, duplicate-suppression decision, and explicit model bridge enablement",
+            send_delivery_gate: "requires successful model-turn output and explicit Telegram send gate",
+            raw_message_text_exposed: false,
+            raw_callback_data_exposed: false,
             raw_chat_id_exposed: false,
             raw_sender_id_exposed: false,
             raw_message_id_exposed: false,
@@ -1126,6 +1257,66 @@ pub fn hepta_kernel_telegram_drain_final_status(
     }
 }
 
+pub fn build_hepta_kernel_telegram_gateway_gate_summary(
+    input: HeptaKernelTelegramGatewayGateSummaryInput,
+) -> HeptaKernelTelegramGatewayGateSummary {
+    HeptaKernelTelegramGatewayGateSummary {
+        delivery_approval_gate_env: input.delivery_approval_gate_env,
+        delivery_approval_gate_enabled: input.delivery_approval_gate_enabled,
+        live_read_gate_env: input.live_read_gate_env,
+        live_read_gate_enabled: input.live_read_gate_enabled,
+        model_turn_gate_env: input.model_turn_gate_env,
+        model_turn_gate_enabled: input.model_turn_gate_enabled,
+        send_gate_env: input.send_gate_env,
+        send_gate_enabled: input.send_gate_enabled,
+        readiness_summary_performs_live_read: false,
+        readiness_summary_invokes_model: false,
+        readiness_summary_sends_message: false,
+    }
+}
+
+pub fn hepta_kernel_telegram_drain_first_missing_gate(
+    gates: &HeptaKernelTelegramGatewayGateSummary,
+) -> Option<&'static str> {
+    if !gates.delivery_approval_gate_enabled {
+        Some(gates.delivery_approval_gate_env)
+    } else if !gates.live_read_gate_enabled {
+        Some(gates.live_read_gate_env)
+    } else if !gates.model_turn_gate_enabled {
+        Some(gates.model_turn_gate_env)
+    } else if !gates.send_gate_enabled {
+        Some(gates.send_gate_env)
+    } else {
+        None
+    }
+}
+
+pub fn hepta_kernel_telegram_drain_status_probe_executes_pipeline(
+    requested: bool,
+    gates: &HeptaKernelTelegramGatewayGateSummary,
+) -> bool {
+    requested && gates.delivery_approval_gate_enabled && gates.live_read_gate_enabled
+}
+
+pub fn hepta_kernel_telegram_drain_execution_plan(
+    requested: bool,
+    gates: &HeptaKernelTelegramGatewayGateSummary,
+) -> HeptaKernelTelegramExecutionPlan {
+    let first_missing_gate = hepta_kernel_telegram_drain_first_missing_gate(gates);
+    HeptaKernelTelegramExecutionPlan {
+        execution_plan_ready: requested,
+        stages: HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES,
+        all_required_gates_enabled: requested && first_missing_gate.is_none(),
+        first_missing_gate,
+        receive_before_model: true,
+        send_after_model_success: true,
+        cursor_commit_after_delivery: true,
+        status_probe_executes_pipeline: hepta_kernel_telegram_drain_status_probe_executes_pipeline(
+            requested, gates,
+        ),
+    }
+}
+
 fn sanitize_hepta_kernel_mlx_base_url(value: Option<&str>) -> String {
     value
         .map(str::trim)
@@ -1337,6 +1528,128 @@ mod tests {
         let disabled = plan_hepta_kernel_telegram_session_bridge(None);
         assert!(!disabled.bridge_plan_ready);
         assert_eq!(disabled.runner_kind, "disabled");
+    }
+
+    fn telegram_kernel_gates(
+        delivery: bool,
+        live_read: bool,
+        model_turn: bool,
+        send: bool,
+    ) -> HeptaKernelTelegramGatewayGateSummary {
+        build_hepta_kernel_telegram_gateway_gate_summary(
+            HeptaKernelTelegramGatewayGateSummaryInput {
+                delivery_approval_gate_env: "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED",
+                delivery_approval_gate_enabled: delivery,
+                live_read_gate_env: "HEPTA_NATIVE_TELEGRAM_LIVE_READ",
+                live_read_gate_enabled: live_read,
+                model_turn_gate_env: "HEPTA_NATIVE_TELEGRAM_MODEL_TURN",
+                model_turn_gate_enabled: model_turn,
+                send_gate_env: "HEPTA_NATIVE_TELEGRAM_SEND",
+                send_gate_enabled: send,
+            },
+        )
+    }
+
+    #[test]
+    fn kernel_gateway_gate_summary_is_side_effect_free() {
+        let summary = telegram_kernel_gates(true, false, true, false);
+
+        assert!(summary.delivery_approval_gate_enabled);
+        assert!(!summary.live_read_gate_enabled);
+        assert!(summary.model_turn_gate_enabled);
+        assert!(!summary.send_gate_enabled);
+        assert!(!summary.readiness_summary_performs_live_read);
+        assert!(!summary.readiness_summary_invokes_model);
+        assert!(!summary.readiness_summary_sends_message);
+    }
+
+    #[test]
+    fn kernel_drain_execution_plan_preserves_gate_order_and_probe_boundary() {
+        assert_eq!(
+            hepta_kernel_telegram_drain_first_missing_gate(&telegram_kernel_gates(
+                false, false, false, false
+            )),
+            Some("HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED")
+        );
+        assert_eq!(
+            hepta_kernel_telegram_drain_first_missing_gate(&telegram_kernel_gates(
+                true, false, false, false
+            )),
+            Some("HEPTA_NATIVE_TELEGRAM_LIVE_READ")
+        );
+        assert_eq!(
+            hepta_kernel_telegram_drain_first_missing_gate(&telegram_kernel_gates(
+                true, true, false, false
+            )),
+            Some("HEPTA_NATIVE_TELEGRAM_MODEL_TURN")
+        );
+        assert_eq!(
+            hepta_kernel_telegram_drain_first_missing_gate(&telegram_kernel_gates(
+                true, true, true, false
+            )),
+            Some("HEPTA_NATIVE_TELEGRAM_SEND")
+        );
+
+        let gates = telegram_kernel_gates(true, true, true, true);
+        let plan = hepta_kernel_telegram_drain_execution_plan(true, &gates);
+
+        assert!(plan.execution_plan_ready);
+        assert_eq!(plan.stages, HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES);
+        assert!(plan.all_required_gates_enabled);
+        assert_eq!(plan.first_missing_gate, None);
+        assert!(plan.receive_before_model);
+        assert!(plan.send_after_model_success);
+        assert!(plan.cursor_commit_after_delivery);
+        assert!(plan.status_probe_executes_pipeline);
+        assert!(hepta_kernel_telegram_drain_status_probe_executes_pipeline(
+            true,
+            &telegram_kernel_gates(true, true, false, false)
+        ));
+        assert!(!hepta_kernel_telegram_drain_status_probe_executes_pipeline(
+            true,
+            &telegram_kernel_gates(true, false, true, true)
+        ));
+    }
+
+    #[test]
+    fn kernel_model_turn_plan_defaults_keep_private_fields_redacted() {
+        let disabled = HeptaKernelTelegramModelTurnPlan::disabled();
+        assert!(!disabled.planner_ready);
+        assert_eq!(disabled.prompt_material_policy, "disabled");
+        assert!(!disabled.raw_message_text_exposed);
+        assert!(!disabled.raw_callback_data_exposed);
+        assert!(!disabled.raw_chat_id_exposed);
+        assert!(!disabled.raw_sender_id_exposed);
+        assert!(!disabled.raw_message_id_exposed);
+
+        let mut ready = HeptaKernelTelegramModelTurnPlan::ready();
+        ready.candidate_count = 2;
+        ready.text_candidate_count = 1;
+        ready.callback_candidate_count = 1;
+        ready.reply_target_count = 2;
+        ready.candidate_kinds.push("message:text".to_string());
+        ready
+            .candidate_kinds
+            .push("callback_query:redacted".to_string());
+
+        assert!(ready.planner_ready);
+        assert!(
+            ready
+                .prompt_material_policy
+                .contains("never expose it in readiness JSON")
+        );
+        assert!(ready.session_key_strategy.contains("redacted"));
+        assert_eq!(ready.candidate_count, 2);
+        let serialized = serde_json::to_string(&ready).expect("serialize");
+        assert!(serialized.contains("callback_query:redacted"));
+        assert!(!serialized.contains("private prompt text"));
+        assert!(!serialized.contains("button_secret_payload"));
+        assert!(!serialized.contains("6476198178"));
+        assert!(!ready.raw_message_text_exposed);
+        assert!(!ready.raw_callback_data_exposed);
+        assert!(!ready.raw_chat_id_exposed);
+        assert!(!ready.raw_sender_id_exposed);
+        assert!(!ready.raw_message_id_exposed);
     }
 
     #[test]

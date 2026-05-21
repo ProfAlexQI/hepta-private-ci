@@ -8,30 +8,42 @@ use serde_json::Value;
 pub use hepta_kernel::{
     CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
     DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
+    HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES as TELEGRAM_DRAIN_ONCE_STAGES,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
     HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDuplicateDecision,
+    HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
+    HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
     HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
-    HeptaKernelTelegramReplyTargetMaterial, HeptaKernelTelegramRunnerInvocationOutcome,
-    HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSendExecutionReport,
-    HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
-    HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
-    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
-    classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
+    HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramReplyTargetMaterial,
+    HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
+    HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendRequestPlan,
+    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
+    HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
+    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
+    build_hepta_kernel_telegram_gateway_gate_summary, classify_hepta_kernel_telegram_runner_error,
+    extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_duplicate_decision,
-    hepta_kernel_telegram_model_failure_fallback_allowed, hepta_kernel_telegram_model_timeout,
-    hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_prompt,
-    hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
-    parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
-    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
-    select_hepta_kernel_telegram_runner,
+    hepta_kernel_telegram_drain_execution_plan, hepta_kernel_telegram_drain_final_status,
+    hepta_kernel_telegram_drain_first_missing_gate,
+    hepta_kernel_telegram_drain_status_probe_executes_pipeline,
+    hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_model_failure_fallback_allowed,
+    hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_next_update_offset,
+    hepta_kernel_telegram_prompt, hepta_kernel_telegram_update_already_drained,
+    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
+    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
+    redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
 pub type NativeTelegramModelRunnerInvocationOutcome = HeptaKernelTelegramRunnerInvocationOutcome;
 pub type NativeTelegramSessionBridgePlan = HeptaKernelTelegramSessionBridgePlan;
+pub type NativeTelegramGatewayGateSummary = HeptaKernelTelegramGatewayGateSummary;
+pub type NativeTelegramGatewayGateSummaryInput = HeptaKernelTelegramGatewayGateSummaryInput;
+pub type NativeTelegramExecutionPlan = HeptaKernelTelegramExecutionPlan;
+pub type NativeTelegramIngressInspection = HeptaKernelTelegramIngressInspection;
+pub type NativeTelegramModelTurnPlan = HeptaKernelTelegramModelTurnPlan;
 pub type NativeTelegramDrainFinalStatusPlan = HeptaKernelTelegramDrainFinalStatusPlan;
 pub type NativeTelegramDuplicateDecision = HeptaKernelTelegramDuplicateDecision;
 pub type NativeTelegramCandidateMaterial = HeptaKernelTelegramCandidateMaterial;
@@ -88,6 +100,32 @@ pub fn native_telegram_model_failure_fallback_allowed(
         reply_target_present,
         candidate_next_update_offset_present,
     )
+}
+
+pub fn build_native_telegram_gateway_gate_summary(
+    input: NativeTelegramGatewayGateSummaryInput,
+) -> NativeTelegramGatewayGateSummary {
+    build_hepta_kernel_telegram_gateway_gate_summary(input)
+}
+
+pub fn native_telegram_drain_first_missing_gate(
+    gates: &NativeTelegramGatewayGateSummary,
+) -> Option<&'static str> {
+    hepta_kernel_telegram_drain_first_missing_gate(gates)
+}
+
+pub fn native_telegram_drain_status_probe_executes_pipeline(
+    requested: bool,
+    gates: &NativeTelegramGatewayGateSummary,
+) -> bool {
+    hepta_kernel_telegram_drain_status_probe_executes_pipeline(requested, gates)
+}
+
+pub fn native_telegram_drain_execution_plan(
+    requested: bool,
+    gates: &NativeTelegramGatewayGateSummary,
+) -> NativeTelegramExecutionPlan {
+    hepta_kernel_telegram_drain_execution_plan(requested, gates)
 }
 
 pub fn native_telegram_drain_final_status(
