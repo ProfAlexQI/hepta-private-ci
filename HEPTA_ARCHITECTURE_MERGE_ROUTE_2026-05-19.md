@@ -379,6 +379,45 @@ CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_transport -- --nocapture
 ```
 
+### 00:3x Progress - Telegram Transport Token And Retry Classifiers Moved Into Hepta Kernel
+
+Continued the adjacent transport extraction:
+
+1. Moved Telegram Bot token shape checks, token-like redaction, getUpdates
+   conflict classification, transient Bot API error classification, and
+   bounded retry decisions into `hepta-kernel`.
+2. Added `hepta-runtime` compatibility wrappers and root re-exports so
+   `hepta-gateway::telegram_transport` keeps its existing public
+   `telegram_*` facade while delegating pure policy to the kernel.
+3. Kept actual Bot API HTTP calls, retry sleeps, rate-limit sleeps, token/env
+   reads, delivery ledger writes, cursor commits, and launchd/service mutation
+   outside `hepta-kernel`.
+4. Tightened redaction to also handle token-like values embedded behind
+   key/value labels such as `token=<bot-token>` without exposing the raw token.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_transport -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_post -- --nocapture
+cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+git diff --check
+```
+
+Full preflight also passed:
+
+```text
+HEPTA_CODEX_PREFLIGHT_RELEASE=0 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 scripts/hepta-codex-preflight.sh
+```
+
 ### 21:4x Progress - Telegram Ingress/Model-Turn Planning Moved Into Hepta Kernel
 
 Continued after the model-invocation policy slice:

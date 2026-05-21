@@ -1283,6 +1283,79 @@ pub fn hepta_kernel_telegram_send_retry_backoff_policy(value_ms: Option<u64>) ->
     )
 }
 
+pub fn hepta_kernel_telegram_bot_token_shape_ok(token: &str) -> bool {
+    let Some((bot_id, secret)) = token.split_once(':') else {
+        return false;
+    };
+    !bot_id.is_empty()
+        && bot_id.chars().all(|ch| ch.is_ascii_digit())
+        && secret.len() >= 20
+        && secret
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+
+pub fn redact_hepta_kernel_telegram_token_like_text(text: &str) -> String {
+    text.split_whitespace()
+        .map(|part| {
+            let candidate = part.trim_matches(|ch: char| {
+                !ch.is_ascii_alphanumeric() && ch != ':' && ch != '_' && ch != '-' && ch != '='
+            });
+            let token_like = hepta_kernel_telegram_bot_token_shape_ok(candidate)
+                || candidate
+                    .rsplit_once('=')
+                    .is_some_and(|(_, value)| hepta_kernel_telegram_bot_token_shape_ok(value));
+            if token_like {
+                "[redacted-telegram-token]".to_string()
+            } else {
+                part.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+pub fn hepta_kernel_telegram_get_updates_error_is_conflict(error: &str) -> bool {
+    error.contains("Telegram Bot API getUpdates HTTP status 409")
+        && error.contains("terminated by other getUpdates request")
+}
+
+pub fn hepta_kernel_telegram_error_is_transient(error: &str) -> bool {
+    error.contains("request failed")
+        || error.contains("HTTP status 429")
+        || error.contains("HTTP status 500")
+        || error.contains("HTTP status 502")
+        || error.contains("HTTP status 503")
+        || error.contains("HTTP status 504")
+        || error.contains("Too Many Requests")
+}
+
+pub fn hepta_kernel_telegram_send_error_is_transient(error: &str) -> bool {
+    hepta_kernel_telegram_error_is_transient(error)
+}
+
+pub fn hepta_kernel_telegram_get_updates_error_is_transient(error: &str) -> bool {
+    hepta_kernel_telegram_error_is_transient(error)
+}
+
+pub fn hepta_kernel_telegram_get_updates_should_retry(
+    attempt: u64,
+    max_attempts: u64,
+    error: &str,
+) -> bool {
+    attempt < max_attempts
+        && hepta_kernel_telegram_get_updates_error_is_transient(error)
+        && !hepta_kernel_telegram_get_updates_error_is_conflict(error)
+}
+
+pub fn hepta_kernel_telegram_send_should_retry(
+    attempt: u64,
+    max_attempts: u64,
+    error: &str,
+) -> bool {
+    attempt < max_attempts && hepta_kernel_telegram_send_error_is_transient(error)
+}
+
 pub fn hepta_kernel_exec_child_args(last_message_path: &str, prompt: &str) -> Vec<String> {
     vec![
         "-c".to_string(),
@@ -2305,6 +2378,46 @@ mod tests {
             hepta_kernel_telegram_send_retry_backoff_policy(Some(999_999)),
             Duration::from_millis(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS)
         );
+    }
+
+    #[test]
+    fn kernel_telegram_token_redaction_and_retry_classification_are_bounded() {
+        assert!(hepta_kernel_telegram_bot_token_shape_ok(
+            "123456789:abcdefghijklmnopqrstuvwxyz"
+        ));
+        assert!(!hepta_kernel_telegram_bot_token_shape_ok("not-a-token"));
+        assert_eq!(
+            redact_hepta_kernel_telegram_token_like_text(
+                "failed token=123456789:abcdefghijklmnopqrstuvwxyz!"
+            ),
+            "failed [redacted-telegram-token]"
+        );
+        let conflict = "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request";
+        let auth_error = "Telegram Bot API sendMessage HTTP status 401";
+        let transient = "Telegram Bot API sendMessage HTTP status 503";
+        assert!(hepta_kernel_telegram_get_updates_error_is_conflict(
+            conflict
+        ));
+        assert!(!hepta_kernel_telegram_get_updates_error_is_conflict(
+            auth_error
+        ));
+        assert!(hepta_kernel_telegram_send_error_is_transient(transient));
+        assert!(hepta_kernel_telegram_get_updates_error_is_transient(
+            "request failed: timed out"
+        ));
+        assert!(!hepta_kernel_telegram_send_error_is_transient(auth_error));
+        assert!(hepta_kernel_telegram_get_updates_should_retry(
+            1, 2, transient
+        ));
+        assert!(!hepta_kernel_telegram_get_updates_should_retry(
+            2, 2, transient
+        ));
+        assert!(!hepta_kernel_telegram_get_updates_should_retry(
+            1, 2, conflict
+        ));
+        assert!(hepta_kernel_telegram_send_should_retry(1, 2, transient));
+        assert!(!hepta_kernel_telegram_send_should_retry(2, 2, transient));
+        assert!(!hepta_kernel_telegram_send_should_retry(1, 2, auth_error));
     }
 
     #[test]

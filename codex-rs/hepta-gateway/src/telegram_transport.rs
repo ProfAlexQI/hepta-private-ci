@@ -17,9 +17,13 @@ use crate::telegram_policy::{
     NativeTelegramSendRequestPlan,
 };
 use hepta_runtime::{
+    native_telegram_bot_token_shape_ok, native_telegram_get_updates_error_is_conflict,
+    native_telegram_get_updates_error_is_transient, native_telegram_get_updates_should_retry,
     native_telegram_read_max_attempts_policy, native_telegram_read_retry_backoff_policy,
-    native_telegram_send_max_attempts_policy, native_telegram_send_min_interval_policy,
-    native_telegram_send_retry_backoff_policy, native_telegram_typing_keepalive_interval_policy,
+    native_telegram_send_error_is_transient, native_telegram_send_max_attempts_policy,
+    native_telegram_send_min_interval_policy, native_telegram_send_retry_backoff_policy,
+    native_telegram_send_should_retry, native_telegram_typing_keepalive_interval_policy,
+    redact_native_telegram_token_like_text,
 };
 
 pub const TELEGRAM_ALLOWED_UPDATES: &str =
@@ -381,53 +385,31 @@ pub fn telegram_wait_for_send_rate_limit(chat_id: i64, min_interval: Duration) {
 }
 
 pub fn telegram_bot_token_shape_ok(token: &str) -> bool {
-    let Some((bot_id, secret)) = token.split_once(':') else {
-        return false;
-    };
-    !bot_id.is_empty()
-        && bot_id.chars().all(|ch| ch.is_ascii_digit())
-        && secret.len() >= 20
-        && secret
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    native_telegram_bot_token_shape_ok(token)
 }
 
 pub fn telegram_redact_token_like_text(text: &str) -> String {
-    text.split_whitespace()
-        .map(|part| {
-            if telegram_bot_token_shape_ok(part.trim_matches(|ch: char| {
-                !ch.is_ascii_alphanumeric() && ch != ':' && ch != '_' && ch != '-'
-            })) {
-                "[redacted-telegram-token]".to_string()
-            } else {
-                part.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    redact_native_telegram_token_like_text(text)
 }
 
 pub fn telegram_get_updates_error_is_conflict(error: &str) -> bool {
-    error.contains("Telegram Bot API getUpdates HTTP status 409")
-        && error.contains("terminated by other getUpdates request")
+    native_telegram_get_updates_error_is_conflict(error)
 }
 
 pub fn telegram_send_error_is_transient(error: &str) -> bool {
-    telegram_error_is_transient(error)
+    native_telegram_send_error_is_transient(error)
 }
 
 pub fn telegram_get_updates_error_is_transient(error: &str) -> bool {
-    telegram_error_is_transient(error)
+    native_telegram_get_updates_error_is_transient(error)
 }
 
 pub fn telegram_get_updates_should_retry(attempt: u64, max_attempts: u64, error: &str) -> bool {
-    attempt < max_attempts
-        && telegram_get_updates_error_is_transient(error)
-        && !telegram_get_updates_error_is_conflict(error)
+    native_telegram_get_updates_should_retry(attempt, max_attempts, error)
 }
 
 pub fn telegram_send_should_retry(attempt: u64, max_attempts: u64, error: &str) -> bool {
-    attempt < max_attempts && telegram_send_error_is_transient(error)
+    native_telegram_send_should_retry(attempt, max_attempts, error)
 }
 
 pub fn execute_telegram_send_after_model_output<F>(
@@ -654,16 +636,6 @@ where
         }
     }
     Err("Telegram Bot API getUpdates retry loop exited unexpectedly".to_string())
-}
-
-fn telegram_error_is_transient(error: &str) -> bool {
-    error.contains("request failed")
-        || error.contains("HTTP status 429")
-        || error.contains("HTTP status 500")
-        || error.contains("HTTP status 502")
-        || error.contains("HTTP status 503")
-        || error.contains("HTTP status 504")
-        || error.contains("Too Many Requests")
 }
 
 fn telegram_note_send_rate_limit(chat_id: i64, min_interval: Duration) -> Duration {

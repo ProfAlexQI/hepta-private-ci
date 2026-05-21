@@ -34,19 +34,23 @@ pub use hepta_kernel::{
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_drain_execution_plan, hepta_kernel_telegram_drain_final_status,
-    hepta_kernel_telegram_drain_first_missing_gate,
+    hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_drain_execution_plan,
+    hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_drain_first_missing_gate,
     hepta_kernel_telegram_drain_status_probe_executes_pipeline,
-    hepta_kernel_telegram_duplicate_decision,
+    hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_error_is_transient,
     hepta_kernel_telegram_first_model_candidate_with_duplicate_decision,
+    hepta_kernel_telegram_get_updates_error_is_conflict,
+    hepta_kernel_telegram_get_updates_error_is_transient,
+    hepta_kernel_telegram_get_updates_should_retry,
     hepta_kernel_telegram_model_failure_fallback_allowed, hepta_kernel_telegram_model_timeout,
     hepta_kernel_telegram_model_turn_plan_from_candidates,
     hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_poll_loop_interval_ms_policy,
     hepta_kernel_telegram_poll_loop_should_spawn, hepta_kernel_telegram_prompt,
     hepta_kernel_telegram_read_max_attempts_policy,
     hepta_kernel_telegram_read_retry_backoff_policy, hepta_kernel_telegram_receive_limit_policy,
-    hepta_kernel_telegram_send_max_attempts_policy, hepta_kernel_telegram_send_min_interval_policy,
-    hepta_kernel_telegram_send_retry_backoff_policy,
+    hepta_kernel_telegram_send_error_is_transient, hepta_kernel_telegram_send_max_attempts_policy,
+    hepta_kernel_telegram_send_min_interval_policy,
+    hepta_kernel_telegram_send_retry_backoff_policy, hepta_kernel_telegram_send_should_retry,
     hepta_kernel_telegram_soak_max_attention_count_policy,
     hepta_kernel_telegram_soak_max_observed_age_ms_policy,
     hepta_kernel_telegram_soak_min_poll_iterations_policy,
@@ -55,7 +59,7 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
     parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
     plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
-    select_hepta_kernel_telegram_runner,
+    redact_hepta_kernel_telegram_token_like_text, select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
@@ -336,6 +340,42 @@ pub fn native_telegram_send_max_attempts_policy(value: Option<u64>) -> u64 {
 
 pub fn native_telegram_send_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
     hepta_kernel_telegram_send_retry_backoff_policy(value_ms)
+}
+
+pub fn native_telegram_bot_token_shape_ok(token: &str) -> bool {
+    hepta_kernel_telegram_bot_token_shape_ok(token)
+}
+
+pub fn redact_native_telegram_token_like_text(text: &str) -> String {
+    redact_hepta_kernel_telegram_token_like_text(text)
+}
+
+pub fn native_telegram_get_updates_error_is_conflict(error: &str) -> bool {
+    hepta_kernel_telegram_get_updates_error_is_conflict(error)
+}
+
+pub fn native_telegram_error_is_transient(error: &str) -> bool {
+    hepta_kernel_telegram_error_is_transient(error)
+}
+
+pub fn native_telegram_send_error_is_transient(error: &str) -> bool {
+    hepta_kernel_telegram_send_error_is_transient(error)
+}
+
+pub fn native_telegram_get_updates_error_is_transient(error: &str) -> bool {
+    hepta_kernel_telegram_get_updates_error_is_transient(error)
+}
+
+pub fn native_telegram_get_updates_should_retry(
+    attempt: u64,
+    max_attempts: u64,
+    error: &str,
+) -> bool {
+    hepta_kernel_telegram_get_updates_should_retry(attempt, max_attempts, error)
+}
+
+pub fn native_telegram_send_should_retry(attempt: u64, max_attempts: u64, error: &str) -> bool {
+    hepta_kernel_telegram_send_should_retry(attempt, max_attempts, error)
 }
 
 pub fn extract_native_telegram_exec_child_final_message(output: &str) -> Result<String, String> {
@@ -665,6 +705,37 @@ mod tests {
             native_telegram_send_retry_backoff_policy(Some(999_999)),
             Duration::from_millis(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS)
         );
+    }
+
+    #[test]
+    fn telegram_transport_token_redaction_and_retry_classification_delegate_to_kernel() {
+        assert!(native_telegram_bot_token_shape_ok(
+            "123456789:abcdefghijklmnopqrstuvwxyz"
+        ));
+        assert!(!native_telegram_bot_token_shape_ok("not-a-token"));
+        assert_eq!(
+            redact_native_telegram_token_like_text(
+                "failed token=123456789:abcdefghijklmnopqrstuvwxyz!"
+            ),
+            "failed [redacted-telegram-token]"
+        );
+
+        let conflict = "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request";
+        let auth_error = "Telegram Bot API sendMessage HTTP status 401";
+        let transient = "Telegram Bot API sendMessage HTTP status 503";
+        assert!(native_telegram_get_updates_error_is_conflict(conflict));
+        assert!(native_telegram_error_is_transient(transient));
+        assert!(native_telegram_send_error_is_transient(transient));
+        assert!(native_telegram_get_updates_error_is_transient(
+            "request failed: timed out"
+        ));
+        assert!(!native_telegram_send_error_is_transient(auth_error));
+        assert!(native_telegram_get_updates_should_retry(1, 2, transient));
+        assert!(!native_telegram_get_updates_should_retry(2, 2, transient));
+        assert!(!native_telegram_get_updates_should_retry(1, 2, conflict));
+        assert!(native_telegram_send_should_retry(1, 2, transient));
+        assert!(!native_telegram_send_should_retry(2, 2, transient));
+        assert!(!native_telegram_send_should_retry(1, 2, auth_error));
     }
 
     #[test]
