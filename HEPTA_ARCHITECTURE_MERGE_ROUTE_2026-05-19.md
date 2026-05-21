@@ -1271,3 +1271,31 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 git diff --check
 ```
+
+### 18:1x Progress - MLX Request/Response Shaping Moved Into Hepta Kernel
+
+Continued the same ownership-inversion path:
+
+1. Added `serde_json` to `hepta-kernel` and moved pure MLX/OpenAI-compatible
+   model-runner shaping into the kernel:
+   `hepta_kernel_mlx_chat_completion_body` and
+   `extract_hepta_kernel_openai_chat_completion_text`.
+2. Kept `hepta-runtime::telegram_model_runner` compatibility functions with
+   the existing names while delegating request-body and response-text policy to
+   `hepta-kernel`.
+3. Preserved side-effect boundaries: the kernel shapes/parses JSON only; local
+   network calls, process spawning, Telegram send/poll, and launchd/runtime
+   state remain outside the kernel crate.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+git diff --check
+```

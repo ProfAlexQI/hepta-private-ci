@@ -6,6 +6,7 @@
 //! post-turn persistence boundaries.
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 pub const HEPTA_KERNEL_CONTRACT: &str = "hepta-kernel-v1";
 pub const HEPTA_KERNEL_OWNER: &str = "hepta-kernel";
@@ -384,6 +385,50 @@ pub fn parse_hepta_kernel_mlx_model_ref(model_ref: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+pub fn hepta_kernel_mlx_chat_completion_body(
+    model: &str,
+    prompt: &str,
+    max_tokens: u64,
+) -> Result<Value, String> {
+    let model = model.trim();
+    if model.is_empty() {
+        return Err("Telegram MLX runner requires a selected model".to_string());
+    }
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Err("Telegram MLX runner requires non-empty prompt material".to_string());
+    }
+
+    Ok(json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are Hepta replying in Telegram. Answer naturally, concisely, and in the user's language."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "max_tokens": max_tokens.clamp(1, MAX_TELEGRAM_MLX_MAX_TOKENS),
+        "max_kv_size": 4096,
+        "temperature": 0.2,
+        "stream": false,
+        "strip_thinking": true
+    }))
+}
+
+pub fn extract_hepta_kernel_openai_chat_completion_text(body: &Value) -> Result<String, String> {
+    body.pointer("/choices/0/message/content")
+        .and_then(Value::as_str)
+        .or_else(|| body.pointer("/choices/0/text").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| "local MLX chat-completions response did not include text".to_string())
+}
+
 pub fn clamp_hepta_kernel_mlx_max_tokens(value: Option<u64>) -> u64 {
     value
         .map(|value| value.clamp(1, MAX_TELEGRAM_MLX_MAX_TOKENS))
@@ -653,5 +698,59 @@ mod tests {
         assert_eq!(outcome.status, "attention");
         assert!(!outcome.runner_invoked);
         assert_eq!(outcome.error_kind, Some("empty_prompt"));
+    }
+
+    #[test]
+    fn kernel_mlx_chat_completion_body_is_bounded_and_openai_compatible() {
+        let body =
+            hepta_kernel_mlx_chat_completion_body("local-model", " private prompt ", 999_999)
+                .expect("request body");
+
+        assert_eq!(body["model"], "local-model");
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][1]["role"], "user");
+        assert_eq!(body["messages"][1]["content"], "private prompt");
+        assert_eq!(body["max_tokens"], MAX_TELEGRAM_MLX_MAX_TOKENS);
+        assert_eq!(body["stream"], false);
+        assert_eq!(body["strip_thinking"], true);
+
+        assert!(
+            hepta_kernel_mlx_chat_completion_body("   ", "prompt", 12)
+                .expect_err("empty model rejected")
+                .contains("selected model")
+        );
+        assert!(
+            hepta_kernel_mlx_chat_completion_body("model", "   ", 12)
+                .expect_err("empty prompt rejected")
+                .contains("non-empty prompt")
+        );
+    }
+
+    #[test]
+    fn kernel_openai_chat_completion_text_extractor_accepts_message_or_text() {
+        let chat = json!({
+            "choices": [{
+                "message": { "role": "assistant", "content": "  local reply  " }
+            }]
+        });
+        assert_eq!(
+            extract_hepta_kernel_openai_chat_completion_text(&chat).expect("chat content"),
+            "local reply"
+        );
+
+        let completion = json!({
+            "choices": [{ "text": "  completion reply  " }]
+        });
+        assert_eq!(
+            extract_hepta_kernel_openai_chat_completion_text(&completion).expect("completion text"),
+            "completion reply"
+        );
+
+        let missing = json!({ "choices": [{ "message": { "content": "   " }}]});
+        assert!(
+            extract_hepta_kernel_openai_chat_completion_text(&missing)
+                .expect_err("empty text rejected")
+                .contains("did not include text")
+        );
     }
 }

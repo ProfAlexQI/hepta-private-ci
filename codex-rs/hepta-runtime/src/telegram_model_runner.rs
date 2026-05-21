@@ -3,7 +3,7 @@ use std::process::{Child, ExitStatus};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub use hepta_kernel::{
     CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
@@ -12,6 +12,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
     HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
     MAX_TELEGRAM_MLX_MAX_TOKENS, classify_hepta_kernel_telegram_runner_error,
+    extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_mlx_chat_completion_body,
     hepta_kernel_telegram_prompt, invoke_hepta_kernel_telegram_runner_with_plan,
     parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_turn,
     redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
@@ -102,43 +103,11 @@ pub fn native_telegram_mlx_chat_completion_body(
     prompt: &str,
     max_tokens: u64,
 ) -> Result<Value, String> {
-    let model = model.trim();
-    if model.is_empty() {
-        return Err("Telegram MLX runner requires a selected model".to_string());
-    }
-    let prompt = prompt.trim();
-    if prompt.is_empty() {
-        return Err("Telegram MLX runner requires non-empty prompt material".to_string());
-    }
-
-    Ok(json!({
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are Hepta replying in Telegram. Answer naturally, concisely, and in the user's language."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "max_tokens": max_tokens.clamp(1, MAX_TELEGRAM_MLX_MAX_TOKENS),
-        "max_kv_size": 4096,
-        "temperature": 0.2,
-        "stream": false,
-        "strip_thinking": true
-    }))
+    hepta_kernel_mlx_chat_completion_body(model, prompt, max_tokens)
 }
 
 pub fn extract_native_telegram_openai_chat_completion_text(body: &Value) -> Result<String, String> {
-    body.pointer("/choices/0/message/content")
-        .and_then(Value::as_str)
-        .or_else(|| body.pointer("/choices/0/text").and_then(Value::as_str))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| "local MLX chat-completions response did not include text".to_string())
+    extract_hepta_kernel_openai_chat_completion_text(body)
 }
 
 pub fn native_telegram_exec_child_args(last_message_path: &Path, prompt: &str) -> Vec<String> {
@@ -216,6 +185,7 @@ pub fn native_telegram_exec_child_status_error(status: ExitStatus) -> Option<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn mlx_runner_plan_requires_provider_prefix_and_does_not_spawn_process() {

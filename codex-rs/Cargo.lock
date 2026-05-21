@@ -7178,6 +7178,7 @@ dependencies = [
  "hepta-memory",
  "hepta-plugins",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
