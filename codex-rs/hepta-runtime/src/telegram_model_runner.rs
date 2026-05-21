@@ -9,8 +9,10 @@ pub use hepta_kernel::{
     CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
     DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
-    HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine,
-    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramRunnerInvocationOutcome,
+    HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
+    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDuplicateDecision,
+    HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
+    HeptaKernelTelegramReplyTargetMaterial, HeptaKernelTelegramRunnerInvocationOutcome,
     HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSendExecutionReport,
     HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
     HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
@@ -18,17 +20,24 @@ pub use hepta_kernel::{
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_model_failure_fallback_allowed,
-    hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_prompt,
-    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
-    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
-    redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
+    hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_duplicate_decision,
+    hepta_kernel_telegram_model_failure_fallback_allowed, hepta_kernel_telegram_model_timeout,
+    hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_prompt,
+    hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
+    parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
+    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
+    select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
 pub type NativeTelegramModelRunnerInvocationOutcome = HeptaKernelTelegramRunnerInvocationOutcome;
 pub type NativeTelegramSessionBridgePlan = HeptaKernelTelegramSessionBridgePlan;
 pub type NativeTelegramDrainFinalStatusPlan = HeptaKernelTelegramDrainFinalStatusPlan;
+pub type NativeTelegramDuplicateDecision = HeptaKernelTelegramDuplicateDecision;
+pub type NativeTelegramCandidateMaterial = HeptaKernelTelegramCandidateMaterial;
+pub type NativeTelegramReplyTargetMaterial = HeptaKernelTelegramReplyTargetMaterial;
+pub type NativeTelegramModelInvocationRequestPlan = HeptaKernelTelegramModelInvocationRequestPlan;
+pub type NativeTelegramModelExecutionReport = HeptaKernelTelegramModelExecutionReport;
 pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
 
@@ -101,6 +110,24 @@ pub fn native_telegram_drain_final_status(
         previous_status,
         previous_error,
     )
+}
+
+pub fn native_telegram_update_already_drained(
+    update_id: i64,
+    next_update_offset: Option<i64>,
+) -> bool {
+    hepta_kernel_telegram_update_already_drained(update_id, next_update_offset)
+}
+
+pub fn native_telegram_next_update_offset(update_id: i64) -> Option<i64> {
+    hepta_kernel_telegram_next_update_offset(update_id)
+}
+
+pub fn native_telegram_duplicate_decision(
+    update_id: i64,
+    next_update_offset: Option<i64>,
+) -> NativeTelegramDuplicateDecision {
+    hepta_kernel_telegram_duplicate_decision(update_id, next_update_offset)
 }
 
 pub fn select_native_telegram_model_runner(

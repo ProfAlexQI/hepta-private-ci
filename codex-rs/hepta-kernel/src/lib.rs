@@ -138,6 +138,90 @@ pub struct HeptaKernelTelegramDrainFinalStatusPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramDuplicateDecision {
+    pub decision: &'static str,
+    pub update_id: i64,
+    pub current_next_update_offset: Option<i64>,
+    pub candidate_next_update_offset: Option<i64>,
+    pub already_drained: bool,
+    pub should_invoke_model: bool,
+    pub should_record_duplicate: bool,
+    pub cursor_write_allowed_after_delivery: bool,
+    pub raw_update_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramCandidateMaterial {
+    pub update_id: Option<i64>,
+    pub kind: String,
+    pub prompt_text: Option<String>,
+    pub has_reply_target: bool,
+    pub reply_target: Option<HeptaKernelTelegramReplyTargetMaterial>,
+    pub requires_model: bool,
+    pub raw_identifiers_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramReplyTargetMaterial {
+    pub chat_id: i64,
+    pub reply_to_message_id: Option<i64>,
+    pub raw_identifiers_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramModelInvocationRequestPlan {
+    pub request_builder_ready: bool,
+    pub candidate_present: bool,
+    pub candidate_kind: Option<String>,
+    pub duplicate_decision: &'static str,
+    pub prompt_material_in_memory: bool,
+    pub prompt_material_serialized: bool,
+    pub reply_target_available: bool,
+    pub stable_session_key_ready: bool,
+    pub should_invoke_model: bool,
+    pub should_record_duplicate: bool,
+    pub candidate_next_update_offset: Option<i64>,
+    pub model_turn_gate_env: &'static str,
+    pub model_turn_gate_enabled: bool,
+    pub runner_invocation_allowed: bool,
+    pub session_runner_invoked: bool,
+    pub local_process_spawned: bool,
+    pub external_send: bool,
+    pub cursor_written: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_sender_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramModelExecutionReport {
+    pub status: &'static str,
+    pub execution_ready: bool,
+    pub model_turn_gate_env: &'static str,
+    pub model_turn_gate_enabled: bool,
+    pub candidate_present: bool,
+    pub prompt_material_present: bool,
+    pub reply_target_available: bool,
+    pub stable_session_key_ready: bool,
+    pub candidate_next_update_offset: Option<i64>,
+    pub runner_invocation_allowed: bool,
+    pub session_runner_invoked: bool,
+    pub local_process_spawned: bool,
+    pub model_output_present: bool,
+    pub external_send: bool,
+    pub cursor_written: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_sender_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaKernelTelegramSendRequestPlan {
     pub request_builder_ready: bool,
     pub model_output_present: bool,
@@ -268,6 +352,212 @@ impl HeptaKernelTelegramSessionBridgePlan {
             raw_chat_id_exposed: false,
             raw_sender_id_exposed: false,
             raw_message_id_exposed: false,
+        }
+    }
+}
+
+impl HeptaKernelTelegramModelInvocationRequestPlan {
+    pub fn disabled(model_turn_gate_env: &'static str, model_turn_gate_enabled: bool) -> Self {
+        Self {
+            request_builder_ready: false,
+            candidate_present: false,
+            candidate_kind: None,
+            duplicate_decision: "disabled",
+            prompt_material_in_memory: false,
+            prompt_material_serialized: false,
+            reply_target_available: false,
+            stable_session_key_ready: false,
+            should_invoke_model: false,
+            should_record_duplicate: false,
+            candidate_next_update_offset: None,
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+            runner_invocation_allowed: false,
+            session_runner_invoked: false,
+            local_process_spawned: false,
+            external_send: false,
+            cursor_written: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+
+    pub fn empty(model_turn_gate_env: &'static str, model_turn_gate_enabled: bool) -> Self {
+        Self {
+            request_builder_ready: true,
+            candidate_present: false,
+            candidate_kind: None,
+            duplicate_decision: "no_model_candidate",
+            prompt_material_in_memory: false,
+            prompt_material_serialized: false,
+            reply_target_available: false,
+            stable_session_key_ready: false,
+            should_invoke_model: false,
+            should_record_duplicate: false,
+            candidate_next_update_offset: None,
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+            runner_invocation_allowed: false,
+            session_runner_invoked: false,
+            local_process_spawned: false,
+            external_send: false,
+            cursor_written: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+
+    pub fn attention(
+        candidate: HeptaKernelTelegramCandidateMaterial,
+        duplicate_decision: &'static str,
+        candidate_next_update_offset: Option<i64>,
+        model_turn_gate_env: &'static str,
+        model_turn_gate_enabled: bool,
+    ) -> Self {
+        Self::from_parts(
+            candidate,
+            duplicate_decision,
+            false,
+            false,
+            candidate_next_update_offset,
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+        )
+    }
+
+    pub fn from_candidate(
+        candidate: HeptaKernelTelegramCandidateMaterial,
+        decision: HeptaKernelTelegramDuplicateDecision,
+        model_turn_gate_env: &'static str,
+        model_turn_gate_enabled: bool,
+    ) -> Self {
+        Self::from_parts(
+            candidate,
+            decision.decision,
+            decision.should_invoke_model,
+            decision.should_record_duplicate,
+            decision.candidate_next_update_offset,
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+        )
+    }
+
+    fn from_parts(
+        candidate: HeptaKernelTelegramCandidateMaterial,
+        duplicate_decision: &'static str,
+        should_invoke_model: bool,
+        should_record_duplicate: bool,
+        candidate_next_update_offset: Option<i64>,
+        model_turn_gate_env: &'static str,
+        model_turn_gate_enabled: bool,
+    ) -> Self {
+        let prompt_material_in_memory = candidate.prompt_text.is_some();
+        let stable_session_key_ready =
+            candidate.has_reply_target && !candidate.raw_identifiers_exposed;
+        Self {
+            request_builder_ready: true,
+            candidate_present: true,
+            candidate_kind: Some(candidate.kind),
+            duplicate_decision,
+            prompt_material_in_memory,
+            prompt_material_serialized: false,
+            reply_target_available: candidate.has_reply_target,
+            stable_session_key_ready,
+            should_invoke_model,
+            should_record_duplicate,
+            candidate_next_update_offset,
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+            runner_invocation_allowed: model_turn_gate_enabled && should_invoke_model,
+            session_runner_invoked: false,
+            local_process_spawned: false,
+            external_send: false,
+            cursor_written: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+}
+
+impl HeptaKernelTelegramModelExecutionReport {
+    pub fn disabled(model_turn_gate_env: &'static str, model_turn_gate_enabled: bool) -> Self {
+        Self {
+            status: "disabled",
+            execution_ready: false,
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+            candidate_present: false,
+            prompt_material_present: false,
+            reply_target_available: false,
+            stable_session_key_ready: false,
+            candidate_next_update_offset: None,
+            runner_invocation_allowed: false,
+            session_runner_invoked: false,
+            local_process_spawned: false,
+            model_output_present: false,
+            external_send: false,
+            cursor_written: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+            error: None,
+        }
+    }
+
+    pub fn from_invocation_request(
+        request: &HeptaKernelTelegramModelInvocationRequestPlan,
+    ) -> Self {
+        let status = if !request.request_builder_ready {
+            "disabled"
+        } else if !request.model_turn_gate_enabled {
+            "gated"
+        } else if !request.candidate_present {
+            "waiting_candidate"
+        } else if request.should_record_duplicate {
+            "duplicate_suppressed"
+        } else if !request.prompt_material_in_memory {
+            "waiting_prompt"
+        } else if request.runner_invocation_allowed {
+            "ready"
+        } else {
+            "attention"
+        };
+
+        Self {
+            status,
+            execution_ready: request.request_builder_ready,
+            model_turn_gate_env: request.model_turn_gate_env,
+            model_turn_gate_enabled: request.model_turn_gate_enabled,
+            candidate_present: request.candidate_present,
+            prompt_material_present: request.prompt_material_in_memory,
+            reply_target_available: request.reply_target_available,
+            stable_session_key_ready: request.stable_session_key_ready,
+            candidate_next_update_offset: request.candidate_next_update_offset,
+            runner_invocation_allowed: request.runner_invocation_allowed,
+            session_runner_invoked: false,
+            local_process_spawned: false,
+            model_output_present: false,
+            external_send: false,
+            cursor_written: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+            error: None,
         }
     }
 }
@@ -503,6 +793,54 @@ pub fn plan_hepta_kernel_telegram_session_bridge(
     model_runner_plan
         .map(HeptaKernelTelegramSessionBridgePlan::ready)
         .unwrap_or_else(HeptaKernelTelegramSessionBridgePlan::disabled)
+}
+
+pub fn hepta_kernel_telegram_update_already_drained(
+    update_id: i64,
+    next_update_offset: Option<i64>,
+) -> bool {
+    next_update_offset
+        .map(|cursor| update_id < cursor)
+        .unwrap_or(false)
+}
+
+pub fn hepta_kernel_telegram_next_update_offset(update_id: i64) -> Option<i64> {
+    update_id.checked_add(1)
+}
+
+pub fn hepta_kernel_telegram_duplicate_decision(
+    update_id: i64,
+    next_update_offset: Option<i64>,
+) -> HeptaKernelTelegramDuplicateDecision {
+    let already_drained =
+        hepta_kernel_telegram_update_already_drained(update_id, next_update_offset);
+    let candidate_next_update_offset = hepta_kernel_telegram_next_update_offset(update_id);
+
+    if already_drained {
+        HeptaKernelTelegramDuplicateDecision {
+            decision: "skip_already_drained",
+            update_id,
+            current_next_update_offset: next_update_offset,
+            candidate_next_update_offset,
+            already_drained: true,
+            should_invoke_model: false,
+            should_record_duplicate: true,
+            cursor_write_allowed_after_delivery: false,
+            raw_update_payload_exposed: false,
+        }
+    } else {
+        HeptaKernelTelegramDuplicateDecision {
+            decision: "model_candidate",
+            update_id,
+            current_next_update_offset: next_update_offset,
+            candidate_next_update_offset,
+            already_drained: false,
+            should_invoke_model: true,
+            should_record_duplicate: false,
+            cursor_write_allowed_after_delivery: candidate_next_update_offset.is_some(),
+            raw_update_payload_exposed: false,
+        }
+    }
 }
 
 pub fn select_hepta_kernel_telegram_runner(
@@ -1409,5 +1747,181 @@ mod tests {
         assert!(without_offset.reply_target_available);
         assert!(!without_offset.send_allowed);
         assert!(!without_offset.cursor_commit_allowed_after_delivery);
+    }
+
+    #[test]
+    fn kernel_duplicate_policy_treats_cursor_as_next_update_offset() {
+        assert!(hepta_kernel_telegram_update_already_drained(41, Some(42)));
+        assert!(!hepta_kernel_telegram_update_already_drained(42, Some(42)));
+        assert_eq!(hepta_kernel_telegram_next_update_offset(42), Some(43));
+        assert_eq!(hepta_kernel_telegram_next_update_offset(i64::MAX), None);
+
+        let duplicate = hepta_kernel_telegram_duplicate_decision(41, Some(42));
+        assert_eq!(duplicate.decision, "skip_already_drained");
+        assert!(duplicate.already_drained);
+        assert!(!duplicate.should_invoke_model);
+        assert!(duplicate.should_record_duplicate);
+        assert!(!duplicate.cursor_write_allowed_after_delivery);
+        assert_eq!(duplicate.candidate_next_update_offset, Some(42));
+        assert!(!duplicate.raw_update_payload_exposed);
+
+        let candidate = hepta_kernel_telegram_duplicate_decision(42, Some(42));
+        assert_eq!(candidate.decision, "model_candidate");
+        assert!(!candidate.already_drained);
+        assert!(candidate.should_invoke_model);
+        assert!(!candidate.should_record_duplicate);
+        assert!(candidate.cursor_write_allowed_after_delivery);
+        assert_eq!(candidate.candidate_next_update_offset, Some(43));
+        assert!(!candidate.raw_update_payload_exposed);
+    }
+
+    #[test]
+    fn kernel_model_invocation_request_preserves_prompt_privacy_and_gates() {
+        let candidate = HeptaKernelTelegramCandidateMaterial {
+            update_id: Some(42),
+            kind: "message:text".to_string(),
+            prompt_text: Some("private prompt text".to_string()),
+            has_reply_target: true,
+            reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                chat_id: 123,
+                reply_to_message_id: Some(456),
+                raw_identifiers_exposed: false,
+            }),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let decision = hepta_kernel_telegram_duplicate_decision(42, Some(42));
+        let request = HeptaKernelTelegramModelInvocationRequestPlan::from_candidate(
+            candidate,
+            decision,
+            "HEPTA_NATIVE_TELEGRAM_MODEL_TURN",
+            true,
+        );
+
+        assert!(request.request_builder_ready);
+        assert!(request.candidate_present);
+        assert_eq!(request.candidate_kind.as_deref(), Some("message:text"));
+        assert_eq!(request.duplicate_decision, "model_candidate");
+        assert!(request.prompt_material_in_memory);
+        assert!(!request.prompt_material_serialized);
+        assert!(request.reply_target_available);
+        assert!(request.stable_session_key_ready);
+        assert!(request.should_invoke_model);
+        assert!(!request.should_record_duplicate);
+        assert_eq!(request.candidate_next_update_offset, Some(43));
+        assert!(request.runner_invocation_allowed);
+        assert!(!request.session_runner_invoked);
+        assert!(!request.local_process_spawned);
+        assert!(!request.external_send);
+        assert!(!request.cursor_written);
+        assert!(!request.raw_prompt_text_exposed);
+        assert!(!request.raw_chat_id_exposed);
+        assert!(!request.raw_sender_id_exposed);
+        assert!(!request.raw_message_id_exposed);
+        assert!(
+            !serde_json::to_string(&request)
+                .expect("serialize")
+                .contains("private prompt text")
+        );
+    }
+
+    #[test]
+    fn kernel_model_execution_report_maps_request_statuses() {
+        let disabled = HeptaKernelTelegramModelInvocationRequestPlan::disabled("MODEL_GATE", false);
+        assert_eq!(
+            HeptaKernelTelegramModelExecutionReport::from_invocation_request(&disabled).status,
+            "disabled"
+        );
+
+        let empty_gated = HeptaKernelTelegramModelInvocationRequestPlan::empty("MODEL_GATE", false);
+        assert_eq!(
+            HeptaKernelTelegramModelExecutionReport::from_invocation_request(&empty_gated).status,
+            "gated"
+        );
+
+        let waiting_candidate =
+            HeptaKernelTelegramModelInvocationRequestPlan::empty("MODEL_GATE", true);
+        assert_eq!(
+            HeptaKernelTelegramModelExecutionReport::from_invocation_request(&waiting_candidate)
+                .status,
+            "waiting_candidate"
+        );
+
+        let duplicate_candidate = HeptaKernelTelegramCandidateMaterial {
+            update_id: Some(41),
+            kind: "message:text".to_string(),
+            prompt_text: Some("private prompt text".to_string()),
+            has_reply_target: true,
+            reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                chat_id: 123,
+                reply_to_message_id: Some(456),
+                raw_identifiers_exposed: false,
+            }),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let duplicate_request = HeptaKernelTelegramModelInvocationRequestPlan::from_candidate(
+            duplicate_candidate,
+            hepta_kernel_telegram_duplicate_decision(41, Some(42)),
+            "MODEL_GATE",
+            true,
+        );
+        assert_eq!(
+            HeptaKernelTelegramModelExecutionReport::from_invocation_request(&duplicate_request)
+                .status,
+            "duplicate_suppressed"
+        );
+
+        let waiting_prompt_candidate = HeptaKernelTelegramCandidateMaterial {
+            update_id: Some(44),
+            kind: "message_reaction:redacted".to_string(),
+            prompt_text: None,
+            has_reply_target: false,
+            reply_target: None,
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let waiting_prompt_request = HeptaKernelTelegramModelInvocationRequestPlan::from_candidate(
+            waiting_prompt_candidate,
+            hepta_kernel_telegram_duplicate_decision(44, Some(44)),
+            "MODEL_GATE",
+            true,
+        );
+        assert_eq!(
+            HeptaKernelTelegramModelExecutionReport::from_invocation_request(
+                &waiting_prompt_request
+            )
+            .status,
+            "waiting_prompt"
+        );
+
+        let ready_candidate = HeptaKernelTelegramCandidateMaterial {
+            update_id: Some(45),
+            kind: "message:text".to_string(),
+            prompt_text: Some("private prompt text".to_string()),
+            has_reply_target: true,
+            reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                chat_id: 123,
+                reply_to_message_id: Some(456),
+                raw_identifiers_exposed: false,
+            }),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let ready_request = HeptaKernelTelegramModelInvocationRequestPlan::from_candidate(
+            ready_candidate,
+            hepta_kernel_telegram_duplicate_decision(45, Some(45)),
+            "MODEL_GATE",
+            true,
+        );
+        let ready_report =
+            HeptaKernelTelegramModelExecutionReport::from_invocation_request(&ready_request);
+        assert_eq!(ready_report.status, "ready");
+        assert!(ready_report.execution_ready);
+        assert!(ready_report.runner_invocation_allowed);
+        assert!(!ready_report.session_runner_invoked);
+        assert!(!ready_report.external_send);
+        assert!(!ready_report.cursor_written);
+        assert!(!ready_report.raw_response_text_exposed);
     }
 }

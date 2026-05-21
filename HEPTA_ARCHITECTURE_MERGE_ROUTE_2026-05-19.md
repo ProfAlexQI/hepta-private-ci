@@ -1422,3 +1422,38 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 git diff --check
 ```
+
+### 21:1x Progress - Telegram Model Invocation Policy Moved Into Hepta Kernel
+
+Continued after the send-delivery policy slice:
+
+1. Moved side-effect-free Telegram duplicate/model-invocation policy into
+   `hepta-kernel`:
+   `HeptaKernelTelegramDuplicateDecision`,
+   `HeptaKernelTelegramCandidateMaterial`,
+   `HeptaKernelTelegramReplyTargetMaterial`,
+   `HeptaKernelTelegramModelInvocationRequestPlan`, and
+   `HeptaKernelTelegramModelExecutionReport`.
+2. Added kernel-owned duplicate/cursor helpers:
+   `hepta_kernel_telegram_update_already_drained`,
+   `hepta_kernel_telegram_next_update_offset`, and
+   `hepta_kernel_telegram_duplicate_decision`.
+3. Kept `hepta-runtime::telegram_model_runner` and
+   `hepta-gateway::telegram_policy` compatibility names so existing gateway,
+   status, transport, and CLI callers still use the `NativeTelegram*` surface
+   while the policy is owned by the kernel.
+4. Preserved the boundary: Telegram JSON parsing, actual model execution,
+   Bot API calls, cursor commits, delivery ledger writes, retries, token
+   checks, network I/O, and launchd mutation remain outside `hepta-kernel`.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+```
