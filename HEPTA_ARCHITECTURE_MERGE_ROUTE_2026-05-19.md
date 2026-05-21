@@ -1236,3 +1236,38 @@ find . -maxdepth 2 -type d -name artifacts -print
 
 The next patch can safely continue small gateway/CLI cuts, but the current
 slice has both gateway and CLI targeted gates green again.
+
+### 17:5x Progress - Telegram Runner Policy Moved Into Hepta Kernel
+
+Continued the kernel-fusion line after the Hepta-owned Telegram runner gate was
+already live:
+
+1. Added kernel-owned Telegram runner policy in `hepta-kernel`:
+   `HeptaKernelTelegramRunnerPlan`,
+   `HeptaKernelTelegramRunnerInvocationOutcome`,
+   `select_hepta_kernel_telegram_runner`, error classification/redaction, MLX
+   model-ref parsing, and bounded MLX token policy.
+2. Kept `hepta-runtime::telegram_model_runner` as a compatibility facade:
+   `NativeTelegramModelRunnerPlan` and
+   `NativeTelegramModelRunnerInvocationOutcome` now alias the kernel-owned
+   types, and the runtime selectors/invocation wrappers delegate to
+   `hepta-kernel`.
+3. Preserved live behavior and side-effect boundaries: MLX local network
+   execution, in-process execution, child process spawning, Telegram send/poll,
+   cursor writes, and launchd state remain outside the kernel policy crate.
+4. This is another ownership inversion slice: runner selection and invocation
+   outcome policy now live under the Hepta kernel contract while Codex remains
+   an internal execution engine.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+git diff --check
+```
