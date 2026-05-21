@@ -90,6 +90,14 @@ const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
 const HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED";
 const HEPTA_CHANNEL_LIVE_READ_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_READ_VERIFIED";
 const HEPTA_CHANNEL_LIVE_SEND_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_SEND_VERIFIED";
+const HEPTA_OLD_CLI_INVOCATION_COMPATIBILITY_VERIFIED_ENV: &str =
+    "HEPTA_OLD_CLI_INVOCATION_COMPATIBILITY_VERIFIED";
+const HEPTA_LAUNCHD_SERVICE_MUTATION_VERIFIED_ENV: &str = "HEPTA_LAUNCHD_SERVICE_MUTATION_VERIFIED";
+const HEPTA_RECURRING_WATCHDOG_INSTALLED_ENV: &str = "HEPTA_RECURRING_WATCHDOG_INSTALLED";
+const HEPTA_LOCAL_IMPORT_COMPATIBILITY_VERIFIED_ENV: &str =
+    "HEPTA_LOCAL_IMPORT_COMPATIBILITY_VERIFIED";
+const HEPTA_AUTONOMOUS_SUBAGENT_GATE_COMPATIBILITY_VERIFIED_ENV: &str =
+    "HEPTA_AUTONOMOUS_SUBAGENT_GATE_COMPATIBILITY_VERIFIED";
 const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str = "/api/gateway-replacement-readiness";
 const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
 const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
@@ -3857,7 +3865,7 @@ struct HeptaCliCommandInventoryResponse {
     script_inventory_script: &'static str,
     ops_families: &'static [HeptaCliOpsFamily],
     next_slices: &'static [&'static str],
-    blockers: &'static [&'static str],
+    blockers: Vec<&'static str>,
     side_effects: HeptaCliCommandInventorySideEffects,
 }
 
@@ -4223,10 +4231,11 @@ struct HeptaReleaseHardeningStatusGateResponse {
     recurring_watchdog_install_enabled: bool,
     local_import_execution_enabled: bool,
     autonomous_subagent_spawn_enabled: bool,
+    autonomous_subagent_gate_compatibility_verified: bool,
     script_inventory_script: &'static str,
     release_hardening_gates: &'static [HeptaReleaseHardeningStatusGate],
     next_slices: &'static [&'static str],
-    blockers: &'static [&'static str],
+    blockers: Vec<&'static str>,
     side_effects: HeptaReleaseHardeningStatusGateSideEffects,
 }
 
@@ -5881,10 +5890,40 @@ fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGa
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
     let external_public_release_approved = env_truthy("HEPTA_PUBLIC_GA_RELEASE_APPROVED");
+    let launchd_service_mutation_verified = env_truthy(HEPTA_LAUNCHD_SERVICE_MUTATION_VERIFIED_ENV);
+    let recurring_watchdog_installed = env_truthy(HEPTA_RECURRING_WATCHDOG_INSTALLED_ENV);
+    let local_import_compatibility_verified =
+        env_truthy(HEPTA_LOCAL_IMPORT_COMPATIBILITY_VERIFIED_ENV);
+    let autonomous_subagent_gate_compatibility_verified =
+        env_truthy(HEPTA_AUTONOMOUS_SUBAGENT_GATE_COMPATIBILITY_VERIFIED_ENV);
+    let mut blockers = Vec::new();
+    if !release_artifact_pack_verified {
+        blockers.push("release_artifact_pack_not_operator_approved");
+    }
+    if !external_public_release_approved {
+        blockers.push("external_production_gate_not_operator_approved");
+    }
+    if !launchd_service_mutation_verified {
+        blockers.push("launchd_service_mutation_not_operator_approved");
+    }
+    if !recurring_watchdog_installed {
+        blockers.push("recurring_watchdog_install_not_operator_approved");
+    }
+    if !local_import_compatibility_verified {
+        blockers.push("local_import_execution_not_operator_approved");
+    }
+    if !autonomous_subagent_gate_compatibility_verified {
+        blockers.push("autonomous_subagent_spawn_not_operator_approved");
+    }
+    let status = if blockers.is_empty() {
+        "ready"
+    } else {
+        "attention"
+    };
     HeptaReleaseHardeningStatusGateResponse {
         product: "Hepta",
         runtime: "hepta-codex",
-        status: "attention",
+        status,
         source_command: "/hepta-release-hardening-status-gate --json",
         native_route: true,
         compatibility_mode: "native_release_hardening_status_gate_inventory",
@@ -5925,25 +5964,19 @@ fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGa
         old_script_execution_compatibility_claimed: true,
         external_production_gate_enabled: external_public_release_approved,
         release_artifact_pack_enabled: release_artifact_pack_verified,
-        launchd_service_mutation_enabled: false,
-        recurring_watchdog_install_enabled: false,
-        local_import_execution_enabled: false,
+        launchd_service_mutation_enabled: launchd_service_mutation_verified,
+        recurring_watchdog_install_enabled: recurring_watchdog_installed,
+        local_import_execution_enabled: local_import_compatibility_verified,
         autonomous_subagent_spawn_enabled: false,
+        autonomous_subagent_gate_compatibility_verified,
         script_inventory_script: "scripts/hepta-codex-release-hardening-status-gate.sh",
         release_hardening_gates: HEPTA_RELEASE_HARDENING_STATUS_GATES,
         next_slices: &[
-            "keep release/hardening script families as status gates until operator-approved activation",
-            "use explicit scoped approval before artifact packing, launchd mutation, local import, or subagent spawn",
-            "continue internal parity work without Telegram owner handoff or external production push",
+            "keep release/hardening script families backed by status gates and explicit production evidence",
+            "use scoped approval before any new launchd mutation, local import write, or subagent spawn",
+            "continue public-release publication only after final operator claim",
         ],
-        blockers: &[
-            "release_artifact_pack_not_operator_approved",
-            "external_production_gate_not_operator_approved",
-            "launchd_service_mutation_not_operator_approved",
-            "recurring_watchdog_install_not_operator_approved",
-            "local_import_execution_not_operator_approved",
-            "autonomous_subagent_spawn_not_operator_approved",
-        ],
+        blockers,
         side_effects: HeptaReleaseHardeningStatusGateSideEffects {
             process_spawned: false,
             filesystem_read: false,
@@ -6093,10 +6126,37 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
 
 fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
+    let provider_live_ready = env_truthy(HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV);
+    let channel_live_delivery_ready = env_truthy(HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED_ENV)
+        || (env_truthy(HEPTA_CHANNEL_LIVE_READ_VERIFIED_ENV)
+            && env_truthy(HEPTA_CHANNEL_LIVE_SEND_VERIFIED_ENV));
+    let old_cli_invocation_compatibility_verified =
+        env_truthy(HEPTA_OLD_CLI_INVOCATION_COMPATIBILITY_VERIFIED_ENV);
+    let release_hardening = hepta_release_hardening_status_gate_report();
+    let release_scripts_ready = release_hardening.status == "ready"
+        && release_hardening.old_script_execution_compatibility_claimed;
+    let mut blockers = Vec::new();
+    if !provider_live_ready {
+        blockers.push("credentialed_provider_surfaces_not_live_smoked");
+    }
+    if !channel_live_delivery_ready {
+        blockers.push("channel_adapters_not_owner_handoff_approved");
+    }
+    if !old_cli_invocation_compatibility_verified {
+        blockers.push("old_cli_invocation_compatibility_not_claimed");
+    }
+    if !release_scripts_ready {
+        blockers.push("old_hepta_release_external_scripts_not_fully_ported");
+    }
+    let status = if blockers.is_empty() {
+        "ready"
+    } else {
+        "attention"
+    };
     HeptaCliCommandInventoryResponse {
         product: "Hepta",
         runtime: "hepta-codex",
-        status: "attention",
+        status,
         source_command: "/hepta-cli-command-inventory --json",
         native_route: true,
         compatibility_mode: "native_cli_command_breadth_inventory",
@@ -6119,16 +6179,11 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         script_inventory_script: "scripts/hepta-codex-cli-command-inventory.sh",
         ops_families: HEPTA_CLI_OPS_FAMILIES,
         next_slices: &[
-            "use local tooling/content inventory before process or filesystem smokes",
-            "promote memory/capability absorption gaps as read-only reports",
-            "defer credentialed/live smokes until explicit operator approval",
+            "keep old hepta-cli breadth represented by native routes and compatibility scripts",
+            "use scoped operator approval for additional live provider/channel smokes",
+            "retire old standalone CLI invocations only after production canary evidence stays green",
         ],
-        blockers: &[
-            "credentialed_provider_surfaces_not_live_smoked",
-            "channel_adapters_not_owner_handoff_approved",
-            "old_cli_invocation_compatibility_not_claimed",
-            "old_hepta_release_external_scripts_not_fully_ported",
-        ],
+        blockers,
         side_effects: HeptaCliCommandInventorySideEffects {
             provider_invoked: false,
             credential_read: false,

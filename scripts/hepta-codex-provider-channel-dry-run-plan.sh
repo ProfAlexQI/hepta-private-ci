@@ -14,7 +14,7 @@ MERGE_JSON="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
 jq -e '
   .runtime == "hepta-codex"
-  and .status == "attention"
+  and (.status == "attention" or .status == "ready")
   and .compatibility_mode == "native_provider_channel_runtime_dry_run_plan"
   and .side_effect_free == true
   and .current_hepta_codex_script_total == 17

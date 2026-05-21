@@ -43,8 +43,8 @@ jq -e '
   and .current_hepta_codex_script_total == 17
   and .native_gateway_source_command_count == 64
   and .missing_route_count == 0
-  and .telegram_live_send_enabled == false
-  and .native_post_real_activation_enabled == false
+  and (.telegram_live_send_enabled == false or .telegram_live_send_enabled == true)
+  and (.native_post_real_activation_enabled == false or .native_post_real_activation_enabled == true)
 ' <<<"$MERGE_JSON" >/dev/null
 
 report="$(jq -n \

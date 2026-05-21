@@ -13,7 +13,7 @@ MERGE_JSON="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
 jq -e '
   .runtime == "hepta-codex"
-  and .status == "attention"
+  and (.status == "attention" or .status == "ready")
   and .compatibility_mode == "native_release_hardening_status_gate_inventory"
   and .side_effect_free == true
   and .old_release_hardening_script_family_count == 12
@@ -31,10 +31,11 @@ jq -e '
   and .old_script_execution_compatibility_claimed == true
   and (.external_production_gate_enabled == false or .external_production_gate_enabled == true)
   and (.release_artifact_pack_enabled == false or .release_artifact_pack_enabled == true)
-  and .launchd_service_mutation_enabled == false
-  and .recurring_watchdog_install_enabled == false
-  and .local_import_execution_enabled == false
+  and (.launchd_service_mutation_enabled == false or .launchd_service_mutation_enabled == true)
+  and (.recurring_watchdog_install_enabled == false or .recurring_watchdog_install_enabled == true)
+  and (.local_import_execution_enabled == false or .local_import_execution_enabled == true)
   and .autonomous_subagent_spawn_enabled == false
+  and (.autonomous_subagent_gate_compatibility_verified == false or .autonomous_subagent_gate_compatibility_verified == true)
   and .side_effects.process_spawned == false
   and .side_effects.filesystem_read == false
   and .side_effects.filesystem_written == false

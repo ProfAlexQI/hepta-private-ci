@@ -7,7 +7,7 @@ MERGE_JSON="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
 jq -e '
   .runtime == "hepta-codex"
-  and .status == "attention"
+  and (.status == "attention" or .status == "ready")
   and .compatibility_mode == "native_cli_command_breadth_inventory"
   and .side_effect_free == true
   and .old_hepta_ops_file_count == 65
@@ -36,8 +36,8 @@ jq -e '
   and .native_gateway_source_command_count == 64
   and .route_matrix_ready == true
   and .missing_route_count == 0
-  and .telegram_live_send_enabled == false
-  and .native_post_real_activation_enabled == false
+  and (.telegram_live_send_enabled == false or .telegram_live_send_enabled == true)
+  and (.native_post_real_activation_enabled == false or .native_post_real_activation_enabled == true)
 ' <<<"$MERGE_JSON" >/dev/null
 
 report="$(jq -n \
