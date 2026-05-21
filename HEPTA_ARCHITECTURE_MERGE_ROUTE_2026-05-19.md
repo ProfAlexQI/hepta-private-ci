@@ -420,6 +420,58 @@ scripts/hepta-codex-browser-visual-smoke.sh
 browser_smoke=/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.ZTzGsk
 ```
 
+### 22:5x Progress - Telegram First-Candidate Selection Moved Into Hepta Kernel
+
+Continued after the model-turn aggregation slice:
+
+1. Added
+   `hepta_kernel_telegram_first_model_candidate_with_duplicate_decision(...)`
+   in `hepta-kernel`, so the first model-eligible candidate selection,
+   missing-update-id handling, duplicate decision binding, and invocation
+   request construction are kernel-owned policy.
+2. Kept `hepta-runtime::telegram_model_runner` as the compatibility facade via
+   `native_telegram_first_model_candidate_with_duplicate_decision(...)`.
+3. Simplified `hepta-gateway::telegram_policy::first_model_candidate_with_duplicate_decision`
+   so the gateway only parses the first 20 raw Telegram updates into bounded
+   candidate material and then delegates candidate selection / duplicate policy
+   to the kernel.
+4. Preserved the boundary: raw Telegram JSON parsing, actual model execution,
+   Bot API calls, cursor commits, delivery ledger writes, retries, token
+   checks, network I/O, and launchd mutation remain outside `hepta-kernel`.
+
+Focused gates for this slice:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+git diff --check
+HEPTA_CODEX_PREFLIGHT_RELEASE=0 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 scripts/hepta-codex-preflight.sh
+CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo build --offline --manifest-path codex-rs/Cargo.toml --release -p codex-cli --bin hepta
+```
+
+Live install and post-install gates passed:
+
+```text
+installed_sha256=a468c7df0f682c6de60eddeb12d111f8286a48e1b28fc56d47a64987c1c6d427
+backup_dir=/Users/qianqi/.openclaw/workspace/backups/hepta-kernel-first-candidate-selection-20260521-225511
+launchd=ai.hepta.gateway running pid=90782 runs=12
+curl -fsS http://127.0.0.1:7373/health
+curl -fsS http://127.0.0.1:7373/api/telegram-model-bridge
+curl -fsS http://127.0.0.1:7373/api/gateway-replacement-readiness
+scripts/hepta-codex-watchdog.sh
+HEPTA_CODEX_SOAK_SAMPLES=3 HEPTA_CODEX_SOAK_INTERVAL_SECONDS=2 scripts/hepta-codex-live-soak.sh
+scripts/hepta-codex-public-ga-readiness.sh
+scripts/hepta-codex-native-packaging-gate.sh
+scripts/hepta-codex-browser-visual-smoke.sh
+browser_smoke=/Users/qianqi/.openclaw/tmp/hepta-codex-browser-visual-smoke.2NKFLC
+```
+
 ### 20:0x Progress - Telegram Model Failure Fallback Policy Moved Into Hepta Kernel
 
 Continued the same kernel shrink path with another small side-effect-free slice:

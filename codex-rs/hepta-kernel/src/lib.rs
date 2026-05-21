@@ -1349,6 +1349,52 @@ pub fn hepta_kernel_telegram_model_turn_plan_from_candidates(
     plan
 }
 
+pub fn hepta_kernel_telegram_first_model_candidate_with_duplicate_decision(
+    candidates: &[HeptaKernelTelegramCandidateMaterial],
+    next_update_offset: Option<i64>,
+    model_turn_gate_env: &'static str,
+    model_turn_gate_enabled: bool,
+) -> (
+    Option<HeptaKernelTelegramCandidateMaterial>,
+    Option<HeptaKernelTelegramDuplicateDecision>,
+    HeptaKernelTelegramModelInvocationRequestPlan,
+) {
+    for candidate in candidates {
+        if !candidate.requires_model {
+            continue;
+        }
+
+        let Some(update_id) = candidate.update_id else {
+            let request = HeptaKernelTelegramModelInvocationRequestPlan::attention(
+                candidate.clone(),
+                "missing_update_id",
+                None,
+                model_turn_gate_env,
+                model_turn_gate_enabled,
+            );
+            return (Some(candidate.clone()), None, request);
+        };
+
+        let decision = hepta_kernel_telegram_duplicate_decision(update_id, next_update_offset);
+        let request = HeptaKernelTelegramModelInvocationRequestPlan::from_candidate(
+            candidate.clone(),
+            decision.clone(),
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+        );
+        return (Some(candidate.clone()), Some(decision), request);
+    }
+
+    (
+        None,
+        None,
+        HeptaKernelTelegramModelInvocationRequestPlan::empty(
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+        ),
+    )
+}
+
 fn sanitize_hepta_kernel_mlx_base_url(value: Option<&str>) -> String {
     value
         .map(str::trim)
@@ -1750,6 +1796,106 @@ mod tests {
         assert!(!plan.raw_chat_id_exposed);
         assert!(!plan.raw_sender_id_exposed);
         assert!(!plan.raw_message_id_exposed);
+    }
+
+    #[test]
+    fn kernel_first_model_candidate_selects_duplicate_policy_without_raw_payload() {
+        let candidates = vec![
+            HeptaKernelTelegramCandidateMaterial {
+                update_id: Some(40),
+                kind: "message_reaction:redacted".to_string(),
+                prompt_text: None,
+                has_reply_target: false,
+                reply_target: None,
+                requires_model: false,
+                raw_identifiers_exposed: false,
+            },
+            HeptaKernelTelegramCandidateMaterial {
+                update_id: Some(42),
+                kind: "message:text".to_string(),
+                prompt_text: Some("private prompt text".to_string()),
+                has_reply_target: true,
+                reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                    chat_id: 6476198178,
+                    reply_to_message_id: Some(7),
+                    raw_identifiers_exposed: false,
+                }),
+                requires_model: true,
+                raw_identifiers_exposed: false,
+            },
+        ];
+
+        let (candidate, decision, request) =
+            hepta_kernel_telegram_first_model_candidate_with_duplicate_decision(
+                &candidates,
+                Some(42),
+                "HEPTA_NATIVE_TELEGRAM_MODEL_TURN",
+                true,
+            );
+
+        assert_eq!(
+            candidate.as_ref().map(|candidate| candidate.kind.as_str()),
+            Some("message:text")
+        );
+        assert_eq!(
+            decision.as_ref().map(|decision| decision.decision),
+            Some("model_candidate")
+        );
+        assert_eq!(request.duplicate_decision, "model_candidate");
+        assert!(request.should_invoke_model);
+        assert!(request.runner_invocation_allowed);
+        assert_eq!(request.candidate_next_update_offset, Some(43));
+        assert!(!request.raw_update_payload_exposed);
+        assert!(!request.raw_prompt_text_exposed);
+        assert!(!request.raw_chat_id_exposed);
+        assert!(
+            !serde_json::to_string(&request)
+                .expect("serialize")
+                .contains("private prompt text")
+        );
+    }
+
+    #[test]
+    fn kernel_first_model_candidate_reports_missing_update_id_and_empty_queue() {
+        let missing_update_id = vec![HeptaKernelTelegramCandidateMaterial {
+            update_id: None,
+            kind: "message:text".to_string(),
+            prompt_text: Some("private prompt text".to_string()),
+            has_reply_target: true,
+            reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                chat_id: 6476198178,
+                reply_to_message_id: Some(7),
+                raw_identifiers_exposed: false,
+            }),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        }];
+
+        let (candidate, decision, request) =
+            hepta_kernel_telegram_first_model_candidate_with_duplicate_decision(
+                &missing_update_id,
+                Some(42),
+                "HEPTA_NATIVE_TELEGRAM_MODEL_TURN",
+                true,
+            );
+
+        assert!(candidate.is_some());
+        assert!(decision.is_none());
+        assert_eq!(request.duplicate_decision, "missing_update_id");
+        assert!(!request.should_invoke_model);
+        assert!(!request.runner_invocation_allowed);
+        assert!(!request.raw_prompt_text_exposed);
+
+        let (_, empty_decision, empty_request) =
+            hepta_kernel_telegram_first_model_candidate_with_duplicate_decision(
+                &[],
+                Some(42),
+                "HEPTA_NATIVE_TELEGRAM_MODEL_TURN",
+                true,
+            );
+        assert!(empty_decision.is_none());
+        assert_eq!(empty_request.duplicate_decision, "no_model_candidate");
+        assert!(!empty_request.candidate_present);
     }
 
     #[test]

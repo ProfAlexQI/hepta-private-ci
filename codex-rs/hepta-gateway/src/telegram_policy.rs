@@ -11,8 +11,10 @@ pub use hepta_runtime::{
     native_telegram_drain_execution_plan as telegram_drain_execution_plan,
     native_telegram_drain_first_missing_gate as telegram_drain_first_missing_gate,
     native_telegram_drain_status_probe_executes_pipeline as telegram_drain_status_probe_executes_pipeline,
-    native_telegram_duplicate_decision, native_telegram_model_turn_plan_from_candidates,
-    native_telegram_next_update_offset, native_telegram_update_already_drained,
+    native_telegram_duplicate_decision,
+    native_telegram_first_model_candidate_with_duplicate_decision,
+    native_telegram_model_turn_plan_from_candidates, native_telegram_next_update_offset,
+    native_telegram_update_already_drained,
 };
 
 pub fn telegram_update_already_drained(update_id: i64, next_update_offset: Option<i64>) -> bool {
@@ -198,41 +200,16 @@ pub fn first_model_candidate_with_duplicate_decision(
     Option<NativeTelegramDuplicateDecision>,
     NativeTelegramModelInvocationRequestPlan,
 ) {
-    for update in updates.iter().take(20) {
-        let Some(candidate) = extract_telegram_candidate_material(update) else {
-            continue;
-        };
-        if !candidate.requires_model {
-            continue;
-        }
-
-        let Some(update_id) = candidate.update_id else {
-            let request = NativeTelegramModelInvocationRequestPlan::attention(
-                candidate.clone(),
-                "missing_update_id",
-                None,
-                model_turn_gate_env,
-                model_turn_gate_enabled,
-            );
-            return (Some(candidate), None, request);
-        };
-        let decision = telegram_duplicate_decision(update_id, next_update_offset);
-        let request = NativeTelegramModelInvocationRequestPlan::from_candidate(
-            candidate.clone(),
-            decision.clone(),
-            model_turn_gate_env,
-            model_turn_gate_enabled,
-        );
-        return (Some(candidate), Some(decision), request);
-    }
-
-    (
-        None,
-        None,
-        NativeTelegramModelInvocationRequestPlan::empty(
-            model_turn_gate_env,
-            model_turn_gate_enabled,
-        ),
+    let candidates = updates
+        .iter()
+        .take(20)
+        .filter_map(extract_telegram_candidate_material)
+        .collect::<Vec<_>>();
+    native_telegram_first_model_candidate_with_duplicate_decision(
+        &candidates,
+        next_update_offset,
+        model_turn_gate_env,
+        model_turn_gate_enabled,
     )
 }
 
