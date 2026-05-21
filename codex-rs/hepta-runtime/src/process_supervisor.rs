@@ -1000,7 +1000,7 @@ mod tests {
         let planned = supervisor
             .plan_process(
                 "cargo test -q -p hepta-runtime",
-                "/workspace/Hepta",
+                "/workspace/hepta-codex",
                 "proc-idem-1",
             )
             .unwrap();
@@ -1008,7 +1008,7 @@ mod tests {
         let duplicate = supervisor
             .plan_process(
                 "cargo test -q -p hepta-runtime",
-                "/workspace/Hepta",
+                "/workspace/hepta-codex",
                 "proc-idem-1",
             )
             .unwrap();
@@ -1069,7 +1069,7 @@ mod tests {
         let planned = supervisor
             .plan_process(
                 "cargo test -q -p hepta-runtime --lib",
-                "/workspace/Hepta",
+                "/workspace/hepta-codex",
                 "proc-idem-start-handoff",
             )
             .unwrap();

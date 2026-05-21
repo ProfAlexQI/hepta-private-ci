@@ -233,7 +233,7 @@ Continued from the Matrix-heart fast path into the shared desktop/mobile Hepta c
 Packaging evidence captured in UI/docs:
 
 - `cargo-makepad v1.0.0` installed from Makepad `dev` branch.
-- Android SDK/NDK/JDK local workaround materialized under `/Users/qianqi/.openclaw/workspace/Hepta/android_33_sdk`.
+- Android SDK/NDK/JDK local workaround materialized under `/Users/qianqi/.openclaw/workspace/hepta-codex/android_33_sdk`.
 - Android APK build smoke passed and produced `apps/hepta-native/target/android/makepad-android-apk/hepta_native/apk/heptanative.apk`.
 - iOS release build reached the asset/runtime phase; current host blocker is `No simulator runtime version from ["23C54"] available to use with iphonesimulator SDK version 23F73`.
 

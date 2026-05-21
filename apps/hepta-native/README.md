@@ -63,7 +63,7 @@ cargo makepad android \
   --abi=aarch64 \
   --package-name=ai.hepta.nativeapp \
   --app-label='Hepta Native' \
-  --sdk-path=/Users/qianqi/.openclaw/workspace/Hepta/android_33_sdk \
+  --sdk-path=/Users/qianqi/.openclaw/workspace/hepta-codex/android_33_sdk \
   build -p hepta-native --release
 ```
 

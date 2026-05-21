@@ -14,6 +14,9 @@ user.bazelrc
 build/
 out/
 storybook-static/
+target/
+apps/hepta-native/target/
+android_33_sdk/
 
 # ignore README for publishing
 codex-cli/README.md

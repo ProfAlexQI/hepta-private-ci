@@ -125,8 +125,8 @@ Recent green gates before this inventory:
 - `CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture`
 - `CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture`
 - `CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_post -- --nocapture`
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml`
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture`
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml`
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture`
 - targeted `rustfmt --check` on new/changed native bridge/status files
 - `git diff --check`
 

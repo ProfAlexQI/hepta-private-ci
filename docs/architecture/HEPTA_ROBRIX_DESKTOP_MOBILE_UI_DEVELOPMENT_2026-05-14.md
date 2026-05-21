@@ -41,7 +41,7 @@ The development goal is not “a Matrix client with Hepta branding.” The goal 
 
 Verified before this document revision:
 
-- Repository: `/Users/qianqi/.openclaw/workspace/Hepta`
+- Repository: `/Users/qianqi/.openclaw/workspace/hepta-codex`
 - Branch: `main`
 - Head at inspection: `b6d7543 fix: expand rust control ui route parity`
 - Current UI path: Rust-rendered Control UI
@@ -427,7 +427,7 @@ Goal: create a Hepta-controlled Robrix fork/spike that still builds as Robrix-st
 Tasks:
 
 1. Create a working copy separate from the reference clone:
-   - recommended: `/Users/qianqi/.openclaw/workspace/Hepta/vendor/robrix-hepta-spike` for initial vendor audit, or
+   - recommended: `/Users/qianqi/.openclaw/workspace/hepta-codex/vendor/robrix-hepta-spike` for initial vendor audit, or
    - `apps/hepta-native` + copied Robrix source for direct workspace integration.
 2. Preserve upstream commit metadata:
    - `project-robius/robrix @ b2bb6cf`
@@ -857,14 +857,14 @@ Current packaging status on this host:
 
 ```sh
 cargo makepad --help
-cargo makepad android --abi=aarch64 --package-name=ai.hepta.nativeapp --app-label='Hepta Native' --sdk-path=/Users/qianqi/.openclaw/workspace/Hepta/android_33_sdk build -p hepta-native --release
+cargo makepad android --abi=aarch64 --package-name=ai.hepta.nativeapp --app-label='Hepta Native' --sdk-path=/Users/qianqi/.openclaw/workspace/hepta-codex/android_33_sdk build -p hepta-native --release
 cargo makepad apple ios --org=ai.hepta --app=hepta-native build -p hepta-native --release
 ```
 
 Results:
 
 - `cargo-makepad v1.0.0` is installed from Makepad `dev` branch.
-- Android SDK/NDK/JDK were materialized under `/Users/qianqi/.openclaw/workspace/Hepta/android_33_sdk` after a Makepad stripped-NDK installer path issue.
+- Android SDK/NDK/JDK were materialized under `/Users/qianqi/.openclaw/workspace/hepta-codex/android_33_sdk` after a Makepad stripped-NDK installer path issue.
 - Android APK build smoke passed with Java-safe package `ai.hepta.nativeapp`; using `ai.hepta.native` generated Java package errors because `native` is reserved.
 - APK artifacts were produced at `apps/hepta-native/target/android/makepad-android-apk/hepta_native/apk/heptanative.apk` and `heptanative.unaligned.apk`.
 - iOS release build reached the native/iOS asset phase; current local blocker is simulator runtime mismatch: `No simulator runtime version from ["23C54"] available to use with iphonesimulator SDK version 23F73`.

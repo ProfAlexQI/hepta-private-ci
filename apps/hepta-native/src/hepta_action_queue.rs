@@ -709,7 +709,7 @@ mod tests {
     #[test]
     fn compact_payload_preview_redacts_home_and_bounds_length() {
         let payload = json!({
-            "a_path": "/Users/qianqi/.openclaw/workspace/Hepta/very/long/path",
+            "a_path": "/Users/qianqi/.openclaw/workspace/hepta-codex/very/long/path",
             "body": "x".repeat(500),
         });
         let preview = compact_payload_preview(&payload);

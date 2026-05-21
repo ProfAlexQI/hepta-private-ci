@@ -1,16 +1,16 @@
 # Hepta Native Transplant Inventory
 
 Date: 2026-05-20
-Scope: source-only inventory for bringing `Hepta/apps/hepta-native` into `hepta-codex`
-Status: inventory complete; Patch 1 source-only app/docs import executed; Patch 2 isolated build/test gates passed; Patch 3 local bridge alignment complete for current bridge/fixture/status smoke; no install, deploy, or Telegram ownership change performed
+Scope: source-only inventory for bringing the standalone Native desktop/mobile
+client into `hepta-codex`
+Status: inventory complete; Patch 1 source-only app/docs import executed; Patch 2 isolated build/test gates passed; Patch 3 local bridge alignment complete for current bridge/fixture/status smoke; 2026-05-21 retirement pass moved active runtime state to `hepta-codex` and removed the old standalone Native residue
 
 ## Current Truth
 
-`hepta-codex` has absorbed the Hepta control UI, core/runtime/gateway/intelligence/memory/plugins crates, and native Telegram/POST surfaces. The active command entrypoint is `codex-rs` `codex-cli --bin hepta`; the old standalone `apps/hepta` wrapper was excluded because it depends on the old Hepta workspace layout. The repository did not yet contain the standalone desktop/mobile client before this transplant:
+`hepta-codex` has absorbed the Hepta control UI, core/runtime/gateway/intelligence/memory/plugins crates, native Telegram/POST surfaces, runtime state, and native desktop/mobile client. The active command entrypoint is `codex-rs` `codex-cli --bin hepta`; the old standalone `apps/hepta` wrapper was excluded because it depends on the old workspace layout. The repository did not yet contain the standalone desktop/mobile client before this transplant:
 
-- source present in old repo: `/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native`
-- destination now present in current repo: `/Users/qianqi/.openclaw/workspace/hepta-codex/apps/hepta-native`
-- old Hepta workspace explicitly excludes `apps/hepta-native` from its root Cargo workspace
+- active source now present in current repo: `/Users/qianqi/.openclaw/workspace/hepta-codex/apps/hepta-native`
+- the old standalone Native source/target/runtime-state duplicate has been retired from the active workspace
 - `hepta-codex` currently has no root Cargo workspace; its active Rust workspace is `codex-rs/Cargo.toml`
 
 This means the native desktop/mobile client should be transplanted as a top-level app first, not added to the `codex-rs` workspace in the same patch.
@@ -66,13 +66,13 @@ These should be copied with the app source because the app incorporates Robrix /
 
 ## Explicit Exclude List
 
-Do not copy these into `hepta-codex`:
+Do not restore these retired standalone-repo artifacts into `hepta-codex`:
 
-- `Hepta/apps/hepta-native/target/` - about 31 GB of build output
-- `Hepta/target/` - about 30 GB of build output
-- `Hepta/android_33_sdk/` - about 4.7 GB SDK/toolchain cache
-- `Hepta/dist/` - release/test bundles
-- `Hepta/artifacts/` - local rollback/checkpoint/test artifacts
+- old standalone Native `target/` build output
+- old standalone repository `target/` build output
+- old standalone Native Android SDK/toolchain cache
+- old standalone release/test bundles
+- old standalone rollback/checkpoint/test artifacts
 - any `.hepta/` runtime state, Telegram ledgers, native-post stores, local-import stores, or watchdog state
 - any generated screenshots, visual referee outputs, or temporary UI audit directories
 
@@ -91,7 +91,7 @@ Executed source-only import:
 
 ## Patch 2 Executed
 
-Executed isolated build/test gates with `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target` to avoid generating a large `target/` tree inside `hepta-codex`:
+Executed isolated build/test gates with `CARGO_TARGET_DIR=apps/hepta-native/target`:
 
 - `cargo check --manifest-path apps/hepta-native/Cargo.toml` passed
 - `cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture` passed: 47 tests, 0 failed
@@ -110,9 +110,9 @@ Executed first local bridge alignment slice:
 
 Verification for this slice:
 
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml` passed
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_runtime_bridge -- --nocapture` passed: 2 tests, 0 failed
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture` passed: 49 tests, 0 failed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml` passed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_runtime_bridge -- --nocapture` passed: 2 tests, 0 failed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture` passed: 49 tests, 0 failed
 - `rustfmt --check apps/hepta-native/src/hepta_runtime_bridge.rs` passed with existing stable-channel warnings about ignored unstable rustfmt options
 - `git diff --check` passed
 - verified `apps/hepta-native/target/` still does not exist in `hepta-codex`
@@ -130,11 +130,11 @@ Executed second, third, and fourth local bridge alignment slices:
 
 Verification for this slice:
 
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_fixture -- --nocapture` passed: 6 tests, 0 failed
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_fixture_smoke -- --nocapture` passed: 1 test, 0 failed
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_runtime_status -- --nocapture` passed: 5 tests, 0 failed
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture` passed: 52 tests, 0 failed
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml` passed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_fixture -- --nocapture` passed: 6 tests, 0 failed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_fixture_smoke -- --nocapture` passed: 1 test, 0 failed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_runtime_status -- --nocapture` passed: 5 tests, 0 failed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture` passed: 52 tests, 0 failed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml` passed
 - targeted `rustfmt --check` on the new/changed native bridge, fixture, smoke, runtime-status, and runtime-status-pane files passed with existing stable-channel warnings about ignored unstable rustfmt options
 - trailing-whitespace scan on changed native bridge/fixture/doc files passed
 - `git diff --check` passed

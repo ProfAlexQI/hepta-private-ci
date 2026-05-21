@@ -270,8 +270,8 @@ Fresh audit gates passed:
 - `cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_post -- --nocapture`: 17 passed
 - `CARGO_NET_OFFLINE=true scripts/hepta-control-ui-smoke.sh`: passed
 - `cargo metadata --offline --manifest-path apps/hepta-native/Cargo.toml --no-deps`
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml`
-- `CARGO_TARGET_DIR=/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture`: 52 passed
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo check --manifest-path apps/hepta-native/Cargo.toml`
+- `CARGO_TARGET_DIR=apps/hepta-native/target cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture`: 52 passed
 - `cargo build --release --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta`
 - `scripts/hepta-codex-browser-visual-smoke.sh`: passed; captured
   desktop/mobile Chrome headless screenshots under

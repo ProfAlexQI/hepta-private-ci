@@ -5,10 +5,15 @@
 The target is an architecture merge from old `Hepta` into `hepta-codex`.
 This is not a minimal absorption plan and not another adapter pass.
 
-The current `hepta-codex` work has made the Codex fork launchd-compatible and
-has added native gateway, Telegram, and native POST safety surfaces, but it has
-not absorbed the old Hepta architecture. The old Hepta architecture still lives
-as first-class crates under `/Users/qianqi/.openclaw/workspace/Hepta`:
+The original version of this route was written before the final production
+replacement work. As of the 2026-05-21 retirement pass, the active Hepta product
+line is `hepta-codex`: launchd, runtime config, Telegram, native POST state, and
+the native desktop/mobile app all point at the `hepta-codex` workspace. The old
+standalone Native app and duplicate `.hepta` runtime state have been removed
+from the old repository.
+
+The old Hepta architecture has now been absorbed as first-class crates under
+`hepta-codex/codex-rs`:
 
 - `crates/hepta-core`
 - `crates/hepta-memory`
@@ -18,10 +23,10 @@ as first-class crates under `/Users/qianqi/.openclaw/workspace/Hepta`:
 - `crates/hepta-plugins`
 - `crates/hepta-cli`
 
-`hepta-codex` currently keeps most new Hepta runtime logic inside
-`codex-rs/cli/src/native_gateway.rs` and `codex-rs/cli/src/native_telegram.rs`.
-That is useful as a migration proving ground, but it is not the final merged
-architecture.
+Some compatibility and HTTP routing logic still lives inside
+`codex-rs/cli/src/native_gateway.rs` and `codex-rs/cli/src/native_telegram.rs`,
+but the runtime policy, gateway, memory, intelligence, plugin, and core layers
+are now workspace-native crates inside the new product line.
 
 ## Target Architecture
 
