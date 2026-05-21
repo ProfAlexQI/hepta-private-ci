@@ -7169,6 +7169,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hepta-kernel"
+version = "0.0.0"
+dependencies = [
+ "codex-core",
+ "hepta-core",
+ "hepta-intelligence",
+ "hepta-memory",
+ "hepta-plugins",
+ "serde",
+]
+
+[[package]]
 name = "hepta-memory"
 version = "0.0.0"
 dependencies = [
@@ -7191,6 +7203,7 @@ version = "0.0.0"
 dependencies = [
  "hepta-core",
  "hepta-intelligence",
+ "hepta-kernel",
  "hepta-memory",
  "hepta-plugins",
  "serde",

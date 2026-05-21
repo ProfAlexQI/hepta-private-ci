@@ -23,17 +23,20 @@ pub use coverage::GatewayPluginResolutionCoverageDigest;
 pub use dispatch::{GatewayPluginHandoffDraft, plugin_handoff_draft};
 pub use explanation::{GatewayResolutionCoverageGapNote, GatewayResolvedPluginDiagnosticNote};
 pub use hepta_runtime::{
-    DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
-    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS,
-    MIN_TELEGRAM_MODEL_TIMEOUT_MS, NativeTelegramModelRunnerInvocationOutcome,
-    NativeTelegramModelRunnerPlan, classify_native_telegram_model_runner_error,
-    extract_native_telegram_exec_child_final_message,
-    extract_native_telegram_openai_chat_completion_text,
+    CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
+    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
+    HEPTA_KERNEL_TELEGRAM_RUNNER_KIND, HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine,
+    HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
+    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
+    NativeTelegramModelRunnerInvocationOutcome, NativeTelegramModelRunnerPlan,
+    classify_native_telegram_model_runner_error, extract_native_telegram_exec_child_final_message,
+    extract_native_telegram_openai_chat_completion_text, hepta_kernel_telegram_prompt,
     invoke_native_telegram_model_runner_with_plan, native_telegram_codex_core_prompt,
     native_telegram_exec_child_args, native_telegram_exec_child_status_error,
-    native_telegram_mlx_chat_completion_body, native_telegram_model_timeout,
-    parse_native_telegram_mlx_model_ref, redact_native_telegram_model_runner_error,
-    select_native_telegram_model_runner, wait_for_native_telegram_model_child,
+    native_telegram_hepta_kernel_prompt, native_telegram_mlx_chat_completion_body,
+    native_telegram_model_timeout, parse_native_telegram_mlx_model_ref, plan_hepta_kernel_turn,
+    redact_native_telegram_model_runner_error, select_native_telegram_model_runner,
+    wait_for_native_telegram_model_child,
 };
 pub use integrity::{
     GATEWAY_DISPATCH_READY, GATEWAY_RESOLUTION_SNAPSHOT_CONSISTENT, GATEWAY_TRANSPORT_SUPPORTED,

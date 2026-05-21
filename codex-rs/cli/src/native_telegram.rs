@@ -40,8 +40,8 @@ use hepta_gateway::{
     execute_telegram_drain_pipeline_for_updates, extract_native_telegram_config_metadata,
     extract_native_telegram_exec_child_final_message,
     extract_native_telegram_openai_chat_completion_text, finalize_telegram_drain_pipeline_status,
-    invoke_native_telegram_model_runner_with_plan, native_telegram_codex_core_prompt,
-    native_telegram_exec_child_args, native_telegram_exec_child_status_error,
+    invoke_native_telegram_model_runner_with_plan, native_telegram_exec_child_args,
+    native_telegram_exec_child_status_error, native_telegram_hepta_kernel_prompt,
     native_telegram_mlx_chat_completion_body, native_telegram_model_failure_fallback_message,
     native_telegram_model_timeout, parse_telegram_env_truthy_value, parse_telegram_env_u64_value,
     plan_telegram_drain_once_api_result, plan_telegram_drain_once_preflight,
@@ -1050,7 +1050,7 @@ fn run_hepta_in_process_model_turn(prompt: &str) -> Result<String, String> {
     if prompt.is_empty() {
         return Err("Telegram model runner requires non-empty prompt material".to_string());
     }
-    let prompt = native_telegram_codex_core_prompt(
+    let prompt = native_telegram_hepta_kernel_prompt(
         prompt,
         telegram_hepta_intelligence_context_enabled(),
         telegram_plugin_capability_context_enabled(),
@@ -1114,7 +1114,7 @@ fn run_hepta_exec_child_model_turn(prompt: &str) -> Result<String, String> {
     if prompt.is_empty() {
         return Err("Telegram model runner requires non-empty prompt material".to_string());
     }
-    let prompt = native_telegram_codex_core_prompt(
+    let prompt = native_telegram_hepta_kernel_prompt(
         prompt,
         telegram_hepta_intelligence_context_enabled(),
         telegram_plugin_capability_context_enabled(),

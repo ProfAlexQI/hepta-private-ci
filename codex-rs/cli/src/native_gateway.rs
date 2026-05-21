@@ -3563,15 +3563,15 @@ fn gateway_replacement_readiness(
         NativeGatewayReplacementCheck {
             name: "telegram_model_runner_plan_ready",
             ready: telegram_model_runner_plan_ready,
-            detail: "Telegram replies must have a selected runner plan such as Codex core session runner, local MLX, in-process Hepta exec, or gated child exec",
+            detail: "Telegram replies must have a selected runner plan such as Hepta kernel session runner, local MLX, in-process Hepta exec, or gated child exec",
         },
         NativeGatewayReplacementCheck {
-            name: "telegram_codex_core_runner_context_ready",
+            name: "telegram_hepta_kernel_runner_context_ready",
             ready: !codex_core_model_runner_ready
                 || (model_runner_plan.codex_core_runner_enabled
                     && model_runner_plan.hepta_intelligence_context_injected
                     && model_runner_plan.plugin_capability_context_injected),
-            detail: "when HEPTA_NATIVE_TELEGRAM_CODEX_CORE_RUNNER is enabled, Telegram model turns must inject Hepta intelligence and plugin/MCP capability context into Codex core",
+            detail: "when HEPTA_NATIVE_TELEGRAM_CODEX_CORE_RUNNER is enabled for compatibility, Telegram model turns must route through the Hepta kernel with Hepta intelligence and plugin/MCP capability context before using Codex as an internal engine",
         },
         NativeGatewayReplacementCheck {
             name: "release_build_verified",
@@ -3739,7 +3739,7 @@ fn gateway_live_activation_plan(
             NativeGatewayLiveActivationEnv {
                 env: native_telegram::TELEGRAM_CODEX_CORE_RUNNER_ENV,
                 enabled: env_truthy(native_telegram::TELEGRAM_CODEX_CORE_RUNNER_ENV),
-                purpose: "force Telegram model turns through Codex core with Hepta intelligence and plugin/MCP capability context, even when a local MLX model is configured",
+                purpose: "force Telegram model turns through Hepta kernel with Hepta intelligence and plugin/MCP capability context before using Codex as an internal engine",
             },
             NativeGatewayLiveActivationEnv {
                 env: RELEASE_BUILD_VERIFIED_ENV,

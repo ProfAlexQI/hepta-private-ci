@@ -82,6 +82,7 @@ members = [
     "utils/cargo-bin",
     "git-utils",
     "hepta-core",
+    "hepta-kernel",
     "hepta-intelligence",
     "hepta-gateway",
     "hepta-memory",
@@ -181,6 +182,7 @@ codex-git-utils = { path = "git-utils" }
 hepta-core = { path = "hepta-core" }
 hepta-gateway = { path = "hepta-gateway" }
 hepta-intelligence = { path = "hepta-intelligence" }
+hepta-kernel = { path = "hepta-kernel" }
 hepta-memory = { path = "hepta-memory" }
 hepta-plugins = { path = "hepta-plugins" }
 hepta-runtime = { path = "hepta-runtime" }
