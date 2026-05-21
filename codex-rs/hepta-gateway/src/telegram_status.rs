@@ -2165,12 +2165,15 @@ mod tests {
             runner_plan_ready: true,
             runner_kind: "hepta_in_process_exec_runner",
             runner_invocation_strategy: "in_process",
+            codex_core_runner_enabled: false,
             in_process_runner_enabled: true,
             mlx_base_url: None,
             mlx_model: None,
             mlx_max_tokens: None,
             local_network_call: false,
             process_spawned_by_status: false,
+            hepta_intelligence_context_injected: true,
+            plugin_capability_context_injected: true,
             raw_prompt_text_exposed: false,
         }
     }

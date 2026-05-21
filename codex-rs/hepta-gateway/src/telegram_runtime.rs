@@ -146,7 +146,7 @@ impl NativeTelegramSessionBridgePlan {
             response_delivery_policy: "convert model output to a Telegram send plan only after HEPTA_NATIVE_TELEGRAM_SEND is explicitly enabled",
             approval_policy: "reuse the Hepta session approval policy; do not auto-escalate shell/tool approvals from Telegram ingress",
             failure_policy: "on runner failure, keep cursor uncommitted and return a redacted diagnostic instead of sending partial output",
-            process_spawned_by_status: false,
+            process_spawned_by_status: model_runner_plan.process_spawned_by_status,
             raw_prompt_text_exposed: false,
             raw_chat_id_exposed: false,
             raw_sender_id_exposed: false,

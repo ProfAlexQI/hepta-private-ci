@@ -40,10 +40,10 @@ use hepta_gateway::{
     execute_telegram_drain_pipeline_for_updates, extract_native_telegram_config_metadata,
     extract_native_telegram_exec_child_final_message,
     extract_native_telegram_openai_chat_completion_text, finalize_telegram_drain_pipeline_status,
-    invoke_native_telegram_model_runner_with_plan, native_telegram_exec_child_args,
-    native_telegram_exec_child_status_error, native_telegram_mlx_chat_completion_body,
-    native_telegram_model_failure_fallback_message, native_telegram_model_timeout,
-    parse_telegram_env_truthy_value, parse_telegram_env_u64_value,
+    invoke_native_telegram_model_runner_with_plan, native_telegram_codex_core_prompt,
+    native_telegram_exec_child_args, native_telegram_exec_child_status_error,
+    native_telegram_mlx_chat_completion_body, native_telegram_model_failure_fallback_message,
+    native_telegram_model_timeout, parse_telegram_env_truthy_value, parse_telegram_env_u64_value,
     plan_telegram_drain_once_api_result, plan_telegram_drain_once_preflight,
     plan_telegram_drain_once_shell_readiness, plan_telegram_receive_once_preflight_status,
     plan_telegram_receive_once_shell_readiness, resolve_native_telegram_token_observation,
@@ -81,6 +81,11 @@ pub(crate) const TELEGRAM_POLL_LOOP_ENV: &str = "HEPTA_NATIVE_TELEGRAM_POLL_LOOP
 pub(crate) const TELEGRAM_DELIVERY_APPROVED_ENV: &str = "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED";
 pub(crate) const TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER";
+pub(crate) const TELEGRAM_CODEX_CORE_RUNNER_ENV: &str = "HEPTA_NATIVE_TELEGRAM_CODEX_CORE_RUNNER";
+const TELEGRAM_HEPTA_INTELLIGENCE_CONTEXT_ENV: &str =
+    "HEPTA_NATIVE_TELEGRAM_HEPTA_INTELLIGENCE_CONTEXT";
+const TELEGRAM_PLUGIN_CAPABILITY_CONTEXT_ENV: &str =
+    "HEPTA_NATIVE_TELEGRAM_PLUGIN_CAPABILITY_CONTEXT";
 const TELEGRAM_MODEL_TIMEOUT_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TIMEOUT_MS";
 const TELEGRAM_MODEL_ENV: &str = "HEPTA_TELEGRAM_MODEL";
 const HEPTA_DEFAULT_MODEL_ENV: &str = "HEPTA_DEFAULT_MODEL";
@@ -988,6 +993,7 @@ pub(crate) fn telegram_model_runner_plan() -> NativeTelegramModelRunnerPlan {
         mlx_base_url.as_deref(),
         mlx_max_tokens,
         telegram_in_process_model_runner_enabled(),
+        telegram_codex_core_runner_enabled(),
     )
 }
 
@@ -1044,9 +1050,13 @@ fn run_hepta_in_process_model_turn(prompt: &str) -> Result<String, String> {
     if prompt.is_empty() {
         return Err("Telegram model runner requires non-empty prompt material".to_string());
     }
+    let prompt = native_telegram_codex_core_prompt(
+        prompt,
+        telegram_hepta_intelligence_context_enabled(),
+        telegram_plugin_capability_context_enabled(),
+    )?;
 
     let timeout = telegram_model_timeout();
-    let prompt = prompt.to_string();
     let arg0_paths = Arg0DispatchPaths {
         codex_self_exe: env::current_exe().ok(),
         codex_linux_sandbox_exe: None,
@@ -1083,11 +1093,32 @@ fn telegram_in_process_model_runner_enabled() -> bool {
     env_truthy(TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV)
 }
 
+fn telegram_codex_core_runner_enabled() -> bool {
+    env_truthy(TELEGRAM_CODEX_CORE_RUNNER_ENV)
+}
+
+fn telegram_hepta_intelligence_context_enabled() -> bool {
+    env::var(TELEGRAM_HEPTA_INTELLIGENCE_CONTEXT_ENV)
+        .map(|value| parse_telegram_env_truthy_value(&value))
+        .unwrap_or(true)
+}
+
+fn telegram_plugin_capability_context_enabled() -> bool {
+    env::var(TELEGRAM_PLUGIN_CAPABILITY_CONTEXT_ENV)
+        .map(|value| parse_telegram_env_truthy_value(&value))
+        .unwrap_or(true)
+}
+
 fn run_hepta_exec_child_model_turn(prompt: &str) -> Result<String, String> {
     let prompt = prompt.trim();
     if prompt.is_empty() {
         return Err("Telegram model runner requires non-empty prompt material".to_string());
     }
+    let prompt = native_telegram_codex_core_prompt(
+        prompt,
+        telegram_hepta_intelligence_context_enabled(),
+        telegram_plugin_capability_context_enabled(),
+    )?;
 
     let exe = env::current_exe()
         .map_err(|error| format!("failed to resolve current Hepta executable: {error}"))?;
@@ -1096,7 +1127,7 @@ fn run_hepta_exec_child_model_turn(prompt: &str) -> Result<String, String> {
         .tempdir()
         .map_err(|error| format!("failed to create Telegram model tempdir: {error}"))?;
     let last_message_path = tempdir.path().join("last-message.txt");
-    let args = native_telegram_exec_child_args(&last_message_path, prompt);
+    let args = native_telegram_exec_child_args(&last_message_path, &prompt);
     let timeout = telegram_model_timeout();
     let mut child = Command::new(&exe)
         .args(args)

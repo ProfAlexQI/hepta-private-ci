@@ -211,11 +211,11 @@ pub use telegram_model_runner::{
     NativeTelegramModelRunnerPlan, classify_native_telegram_model_runner_error,
     extract_native_telegram_exec_child_final_message,
     extract_native_telegram_openai_chat_completion_text,
-    invoke_native_telegram_model_runner_with_plan, native_telegram_exec_child_args,
-    native_telegram_exec_child_status_error, native_telegram_mlx_chat_completion_body,
-    native_telegram_model_timeout, parse_native_telegram_mlx_model_ref,
-    redact_native_telegram_model_runner_error, select_native_telegram_model_runner,
-    wait_for_native_telegram_model_child,
+    invoke_native_telegram_model_runner_with_plan, native_telegram_codex_core_prompt,
+    native_telegram_exec_child_args, native_telegram_exec_child_status_error,
+    native_telegram_mlx_chat_completion_body, native_telegram_model_timeout,
+    parse_native_telegram_mlx_model_ref, redact_native_telegram_model_runner_error,
+    select_native_telegram_model_runner, wait_for_native_telegram_model_child,
 };
 pub use tool_invocation::{
     DEFAULT_TOOL_INVOCATION_LEDGER_ID, DEFAULT_TOOL_INVOCATION_LEDGER_PATH,
