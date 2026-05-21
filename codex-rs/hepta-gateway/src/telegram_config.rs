@@ -1,114 +1,15 @@
-use std::path::{Path, PathBuf};
-
-use serde_json::Value;
-
 pub use hepta_runtime::{
-    NativeTelegramConfigStatus, NativeTelegramConfigStatusInput, NativeTelegramTokenObservation,
-    NativeTelegramTokenObservationInput, build_native_telegram_config_status,
+    NativeTelegramConfigMetadata, NativeTelegramConfigStatus, NativeTelegramConfigStatusInput,
+    NativeTelegramTokenObservation, NativeTelegramTokenObservationInput,
+    build_native_telegram_config_status, extract_native_telegram_config_metadata,
     native_telegram_normalize_binding_id, parse_native_telegram_env_truthy_value,
-    parse_native_telegram_env_u64_value, resolve_native_telegram_token_observation,
+    parse_native_telegram_env_u64_value,
+    resolve_native_telegram_secret_provider_path as resolve_telegram_secret_provider_path,
+    resolve_native_telegram_token_observation,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NativeTelegramConfigMetadata {
-    pub enabled: bool,
-    pub dm_policy: String,
-    pub group_policy: String,
-    pub allow_from_count: usize,
-    pub group_count: usize,
-    pub token_secret_ref_present: bool,
-    pub token_secret_provider: Option<String>,
-    pub token_secret_id_present: bool,
-    pub token_secret_path: Option<PathBuf>,
-    pub inline_token_present: bool,
-}
 
 pub fn normalize_telegram_binding_id(raw: &str) -> String {
     native_telegram_normalize_binding_id(raw)
-}
-
-pub fn extract_native_telegram_config_metadata(
-    config_path: &Path,
-    config: &Value,
-) -> Result<NativeTelegramConfigMetadata, String> {
-    let telegram = config
-        .pointer("/channels/telegram")
-        .ok_or_else(|| "channels.telegram config is missing".to_string())?;
-
-    let enabled = telegram
-        .get("enabled")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let dm_policy = telegram
-        .get("dmPolicy")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
-    let group_policy = telegram
-        .get("groupPolicy")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
-    let allow_from_count = telegram
-        .get("allowFrom")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(normalize_telegram_binding_id)
-                .filter(|item| !item.is_empty())
-                .count()
-        })
-        .unwrap_or(0);
-    let group_count = telegram
-        .get("groups")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .or_else(|| {
-            telegram
-                .get("groups")
-                .and_then(Value::as_object)
-                .map(|groups| groups.len())
-        })
-        .unwrap_or(0);
-
-    let bot_token_ref = telegram.get("botToken");
-    let token_secret_ref_present = bot_token_ref
-        .and_then(|value| value.get("source"))
-        .and_then(Value::as_str)
-        == Some("file");
-    let token_secret_provider = bot_token_ref
-        .and_then(|value| value.get("provider"))
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned);
-    let token_secret_id_present = bot_token_ref
-        .and_then(|value| value.get("id"))
-        .and_then(Value::as_str)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-    let token_secret_path = token_secret_provider
-        .as_deref()
-        .and_then(|provider| resolve_telegram_secret_provider_path(config_path, config, provider));
-    let inline_token_present = bot_token_ref
-        .and_then(Value::as_str)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-
-    Ok(NativeTelegramConfigMetadata {
-        enabled,
-        dm_policy,
-        group_policy,
-        allow_from_count,
-        group_count,
-        token_secret_ref_present,
-        token_secret_provider,
-        token_secret_id_present,
-        token_secret_path,
-        inline_token_present,
-    })
 }
 
 pub fn parse_telegram_env_truthy_value(raw: &str) -> bool {
@@ -119,28 +20,10 @@ pub fn parse_telegram_env_u64_value(raw: &str) -> Option<u64> {
     parse_native_telegram_env_u64_value(raw)
 }
 
-pub fn resolve_telegram_secret_provider_path(
-    config_path: &Path,
-    config: &Value,
-    provider: &str,
-) -> Option<PathBuf> {
-    let raw = config
-        .get("secrets")?
-        .get("providers")?
-        .get(provider)?
-        .get("path")?
-        .as_str()?;
-    let path = PathBuf::from(raw);
-    if path.is_absolute() {
-        Some(path)
-    } else {
-        config_path.parent().map(|parent| parent.join(path))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn config_status_builder_derives_binding_without_exposing_tokens() {

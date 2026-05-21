@@ -19,18 +19,18 @@ pub use hepta_kernel::{
     HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
-    HeptaKernelTelegramConfigStatus, HeptaKernelTelegramConfigStatusInput,
-    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDuplicateDecision,
-    HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
-    HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
-    HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
-    HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramReplyTargetMaterial,
-    HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
-    HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendRequestPlan,
-    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTelegramTokenObservation,
-    HeptaKernelTelegramTokenObservationInput, HeptaKernelTurnChannel, HeptaKernelTurnInput,
-    HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
-    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+    HeptaKernelTelegramConfigMetadata, HeptaKernelTelegramConfigStatus,
+    HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramDrainFinalStatusPlan,
+    HeptaKernelTelegramDuplicateDecision, HeptaKernelTelegramExecutionPlan,
+    HeptaKernelTelegramGatewayGateSummary, HeptaKernelTelegramGatewayGateSummaryInput,
+    HeptaKernelTelegramIngressInspection, HeptaKernelTelegramModelExecutionReport,
+    HeptaKernelTelegramModelInvocationRequestPlan, HeptaKernelTelegramModelTurnPlan,
+    HeptaKernelTelegramReplyTargetMaterial, HeptaKernelTelegramRunnerInvocationOutcome,
+    HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSendExecutionReport,
+    HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
+    HeptaKernelTelegramTokenObservation, HeptaKernelTelegramTokenObservationInput,
+    HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
+    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
     MAX_TELEGRAM_READ_MAX_ATTEMPTS, MAX_TELEGRAM_READ_RETRY_BACKOFF_MS,
     MAX_TELEGRAM_SEND_MAX_ATTEMPTS, MAX_TELEGRAM_SEND_MIN_INTERVAL_MS,
     MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS, MAX_TELEGRAM_SOAK_MAX_ATTENTION,
@@ -39,7 +39,8 @@ pub use hepta_kernel::{
     MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
     build_hepta_kernel_telegram_gateway_gate_summary, classify_hepta_kernel_telegram_runner_error,
     extract_hepta_kernel_exec_child_final_message,
-    extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
+    extract_hepta_kernel_openai_chat_completion_text,
+    extract_hepta_kernel_telegram_config_metadata, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
     hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_cursor_body,
     hepta_kernel_telegram_cursor_duplicate_rule_valid, hepta_kernel_telegram_delivery_backoff_ms,
@@ -76,7 +77,7 @@ pub use hepta_kernel::{
     parse_hepta_kernel_mlx_model_ref, parse_hepta_kernel_telegram_cursor_next_update_offset,
     plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
     redact_hepta_kernel_telegram_runner_error, redact_hepta_kernel_telegram_token_like_text,
-    select_hepta_kernel_telegram_runner,
+    resolve_hepta_kernel_telegram_secret_provider_path, select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
@@ -99,6 +100,7 @@ pub type NativeTelegramConfigStatus = HeptaKernelTelegramConfigStatus;
 pub type NativeTelegramConfigStatusInput = HeptaKernelTelegramConfigStatusInput;
 pub type NativeTelegramTokenObservationInput = HeptaKernelTelegramTokenObservationInput;
 pub type NativeTelegramTokenObservation = HeptaKernelTelegramTokenObservation;
+pub type NativeTelegramConfigMetadata = HeptaKernelTelegramConfigMetadata;
 
 pub fn invoke_native_telegram_model_runner_with_plan<M, I, C>(
     plan: &NativeTelegramModelRunnerPlan,
@@ -262,6 +264,21 @@ pub fn build_native_telegram_config_status(
     input: NativeTelegramConfigStatusInput,
 ) -> NativeTelegramConfigStatus {
     build_hepta_kernel_telegram_config_status(input)
+}
+
+pub fn extract_native_telegram_config_metadata(
+    config_path: &Path,
+    config: &Value,
+) -> Result<NativeTelegramConfigMetadata, String> {
+    extract_hepta_kernel_telegram_config_metadata(config_path, config)
+}
+
+pub fn resolve_native_telegram_secret_provider_path(
+    config_path: &Path,
+    config: &Value,
+    provider: &str,
+) -> Option<std::path::PathBuf> {
+    resolve_hepta_kernel_telegram_secret_provider_path(config_path, config, provider)
 }
 
 pub fn native_telegram_next_update_offset(update_id: i64) -> Option<i64> {
@@ -1075,6 +1092,55 @@ mod tests {
         assert!(status.binding_ready);
         assert_eq!(status.dm_policy, "trusted");
         assert!(!status.raw_token_exposed);
+    }
+
+    #[test]
+    fn telegram_config_metadata_policy_delegates_to_kernel() {
+        let config = json!({
+            "secrets": {
+                "providers": {
+                    "telegram": {
+                        "path": "../secrets/telegram-token"
+                    }
+                }
+            },
+            "channels": {
+                "telegram": {
+                    "enabled": true,
+                    "dmPolicy": " Allow ",
+                    "groupPolicy": "Deny",
+                    "allowFrom": ["telegram:6476198178"],
+                    "groups": [],
+                    "botToken": {
+                        "source": "file",
+                        "provider": "telegram",
+                        "id": "bot-token"
+                    }
+                }
+            }
+        });
+
+        let metadata = extract_native_telegram_config_metadata(
+            Path::new("/tmp/hepta/private/config/openclaw.json"),
+            &config,
+        )
+        .expect("metadata");
+
+        assert!(metadata.enabled);
+        assert_eq!(metadata.dm_policy, "allow");
+        assert_eq!(metadata.group_policy, "deny");
+        assert_eq!(metadata.allow_from_count, 1);
+        assert_eq!(metadata.token_secret_provider.as_deref(), Some("telegram"));
+        assert_eq!(
+            resolve_native_telegram_secret_provider_path(
+                Path::new("/tmp/hepta/private/config/openclaw.json"),
+                &config,
+                "telegram",
+            ),
+            Some(std::path::PathBuf::from(
+                "/tmp/hepta/private/config/../secrets/telegram-token"
+            ))
+        );
     }
 
     #[test]

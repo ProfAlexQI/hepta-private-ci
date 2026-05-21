@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const HEPTA_KERNEL_CONTRACT: &str = "hepta-kernel-v1";
@@ -432,6 +433,20 @@ pub struct HeptaKernelTelegramTokenObservationInput {
 pub struct HeptaKernelTelegramTokenObservation {
     pub token_source: &'static str,
     pub token_shape_ok: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramConfigMetadata {
+    pub enabled: bool,
+    pub dm_policy: String,
+    pub group_policy: String,
+    pub allow_from_count: usize,
+    pub group_count: usize,
+    pub token_secret_ref_present: bool,
+    pub token_secret_provider: Option<String>,
+    pub token_secret_id_present: bool,
+    pub token_secret_path: Option<PathBuf>,
+    pub inline_token_present: bool,
 }
 
 impl HeptaKernelTelegramConfigStatus {
@@ -1227,6 +1242,109 @@ pub fn build_hepta_kernel_telegram_config_status(
         raw_token_exposed: false,
         binding_ready,
         error: input.error,
+    }
+}
+
+pub fn extract_hepta_kernel_telegram_config_metadata(
+    config_path: &Path,
+    config: &Value,
+) -> Result<HeptaKernelTelegramConfigMetadata, String> {
+    let telegram = config
+        .pointer("/channels/telegram")
+        .ok_or_else(|| "channels.telegram config is missing".to_string())?;
+
+    let enabled = telegram
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let dm_policy = telegram
+        .get("dmPolicy")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let group_policy = telegram
+        .get("groupPolicy")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let allow_from_count = telegram
+        .get("allowFrom")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(hepta_kernel_telegram_normalize_binding_id)
+                .filter(|item| !item.is_empty())
+                .count()
+        })
+        .unwrap_or(0);
+    let group_count = telegram
+        .get("groups")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .or_else(|| {
+            telegram
+                .get("groups")
+                .and_then(Value::as_object)
+                .map(|groups| groups.len())
+        })
+        .unwrap_or(0);
+
+    let bot_token_ref = telegram.get("botToken");
+    let token_secret_ref_present = bot_token_ref
+        .and_then(|value| value.get("source"))
+        .and_then(Value::as_str)
+        == Some("file");
+    let token_secret_provider = bot_token_ref
+        .and_then(|value| value.get("provider"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let token_secret_id_present = bot_token_ref
+        .and_then(|value| value.get("id"))
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let token_secret_path = token_secret_provider.as_deref().and_then(|provider| {
+        resolve_hepta_kernel_telegram_secret_provider_path(config_path, config, provider)
+    });
+    let inline_token_present = bot_token_ref
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+
+    Ok(HeptaKernelTelegramConfigMetadata {
+        enabled,
+        dm_policy,
+        group_policy,
+        allow_from_count,
+        group_count,
+        token_secret_ref_present,
+        token_secret_provider,
+        token_secret_id_present,
+        token_secret_path,
+        inline_token_present,
+    })
+}
+
+pub fn resolve_hepta_kernel_telegram_secret_provider_path(
+    config_path: &Path,
+    config: &Value,
+    provider: &str,
+) -> Option<PathBuf> {
+    let raw = config
+        .get("secrets")?
+        .get("providers")?
+        .get(provider)?
+        .get("path")?
+        .as_str()?;
+    let path = PathBuf::from(raw);
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        config_path.parent().map(|parent| parent.join(path))
     }
 }
 
@@ -3509,6 +3627,104 @@ mod tests {
             });
         assert_eq!(secret_missing.token_source, "secret_file_missing");
         assert!(!secret_missing.token_shape_ok);
+    }
+
+    #[test]
+    fn kernel_telegram_config_metadata_extracts_non_secret_fields() {
+        let config = json!({
+            "secrets": {
+                "providers": {
+                    "telegram_bot": {
+                        "path": "../secrets/telegram-token"
+                    }
+                }
+            },
+            "channels": {
+                "telegram": {
+                    "enabled": true,
+                    "dmPolicy": " Trusted ",
+                    "groupPolicy": "Mention",
+                    "allowFrom": ["telegram:6476198178", " tg:42 ", ""],
+                    "groups": {
+                        "ops": { "id": "-1001" },
+                        "dev": { "id": "-1002" }
+                    },
+                    "botToken": {
+                        "source": "file",
+                        "provider": "telegram_bot",
+                        "id": " bot-token "
+                    }
+                }
+            }
+        });
+
+        let metadata = extract_hepta_kernel_telegram_config_metadata(
+            Path::new("/tmp/hepta/private/config/openclaw.json"),
+            &config,
+        )
+        .expect("metadata");
+
+        assert!(metadata.enabled);
+        assert_eq!(metadata.dm_policy, "trusted");
+        assert_eq!(metadata.group_policy, "mention");
+        assert_eq!(metadata.allow_from_count, 2);
+        assert_eq!(metadata.group_count, 2);
+        assert!(metadata.token_secret_ref_present);
+        assert_eq!(
+            metadata.token_secret_provider.as_deref(),
+            Some("telegram_bot")
+        );
+        assert!(metadata.token_secret_id_present);
+        assert_eq!(
+            metadata.token_secret_path,
+            Some(PathBuf::from(
+                "/tmp/hepta/private/config/../secrets/telegram-token"
+            ))
+        );
+        assert!(!metadata.inline_token_present);
+    }
+
+    #[test]
+    fn kernel_telegram_secret_provider_path_resolves_against_config_parent() {
+        let config = json!({
+            "secrets": {
+                "providers": {
+                    "telegram_bot": {
+                        "path": "../secrets/telegram-token"
+                    },
+                    "absolute": {
+                        "path": "/private/tmp/telegram-token"
+                    }
+                }
+            }
+        });
+
+        assert_eq!(
+            resolve_hepta_kernel_telegram_secret_provider_path(
+                Path::new("/tmp/hepta/private/config/openclaw.json"),
+                &config,
+                "telegram_bot",
+            ),
+            Some(PathBuf::from(
+                "/tmp/hepta/private/config/../secrets/telegram-token"
+            ))
+        );
+        assert_eq!(
+            resolve_hepta_kernel_telegram_secret_provider_path(
+                Path::new("/tmp/hepta/private/config/openclaw.json"),
+                &config,
+                "absolute",
+            ),
+            Some(PathBuf::from("/private/tmp/telegram-token"))
+        );
+        assert!(
+            resolve_hepta_kernel_telegram_secret_provider_path(
+                Path::new("/tmp/hepta/private/config/openclaw.json"),
+                &config,
+                "missing",
+            )
+            .is_none()
+        );
     }
 
     #[test]
