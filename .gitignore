@@ -79,6 +79,8 @@ Thumbs.db
 Icon?
 !apps/hepta-native/resources/icons/
 !apps/hepta-native/resources/icons/**
+!apps/hepta-native/packaging/ios/icons/
+!apps/hepta-native/packaging/ios/icons/**
 .Spotlight-V100/
 
 # Unwanted package managers
