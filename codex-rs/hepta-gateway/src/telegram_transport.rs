@@ -18,23 +18,22 @@ use crate::telegram_policy::{
 };
 use hepta_runtime::{
     native_telegram_bot_token_shape_ok, native_telegram_get_updates_error_is_conflict,
-    native_telegram_get_updates_error_is_transient, native_telegram_get_updates_should_retry,
-    native_telegram_read_max_attempts_policy, native_telegram_read_retry_backoff_policy,
+    native_telegram_get_updates_error_is_transient, native_telegram_get_updates_query,
+    native_telegram_get_updates_should_retry, native_telegram_read_max_attempts_policy,
+    native_telegram_read_retry_backoff_policy, native_telegram_send_chat_action_request_body,
     native_telegram_send_error_is_transient, native_telegram_send_max_attempts_policy,
-    native_telegram_send_min_interval_policy, native_telegram_send_retry_backoff_policy,
-    native_telegram_send_should_retry, native_telegram_typing_keepalive_interval_policy,
-    redact_native_telegram_token_like_text,
+    native_telegram_send_message_request_body, native_telegram_send_min_interval_policy,
+    native_telegram_send_retry_backoff_policy, native_telegram_send_should_retry,
+    native_telegram_typing_keepalive_interval_policy, redact_native_telegram_token_like_text,
 };
 
-pub const TELEGRAM_ALLOWED_UPDATES: &str =
-    "[\"message\",\"edited_message\",\"callback_query\",\"message_reaction\"]";
 pub use hepta_runtime::{
     DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS, DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS,
     DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS, DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS,
     DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MAX_TELEGRAM_READ_MAX_ATTEMPTS,
     MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
     MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS,
+    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, TELEGRAM_ALLOWED_UPDATES,
 };
 const TELEGRAM_BOT_API_BASE_URL: &str = "https://api.telegram.org";
 static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
@@ -198,15 +197,7 @@ pub fn telegram_get_updates_query(
     limit: usize,
     offset: Option<i64>,
 ) -> Vec<(&'static str, String)> {
-    let mut query = vec![
-        ("timeout", "0".to_string()),
-        ("limit", limit.clamp(1, 20).to_string()),
-        ("allowed_updates", TELEGRAM_ALLOWED_UPDATES.to_string()),
-    ];
-    if let Some(offset) = offset.filter(|offset| *offset >= 0) {
-        query.push(("offset", offset.to_string()));
-    }
-    query
+    native_telegram_get_updates_query(limit, offset)
 }
 
 pub fn telegram_typing_keepalive_interval_policy(value_ms: Option<u64>) -> Duration {
@@ -234,13 +225,7 @@ pub fn telegram_send_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
 }
 
 pub fn telegram_send_chat_action_request_body(chat_id: i64) -> Result<Value, String> {
-    if chat_id == 0 {
-        return Err("Telegram sendChatAction chat id must be non-zero".to_string());
-    }
-    Ok(serde_json::json!({
-        "chat_id": chat_id,
-        "action": "typing",
-    }))
+    native_telegram_send_chat_action_request_body(chat_id)
 }
 
 pub fn telegram_send_message_request_body(
@@ -248,25 +233,7 @@ pub fn telegram_send_message_request_body(
     chat_id: i64,
     reply_to_message_id: Option<i64>,
 ) -> Result<Value, String> {
-    let text = message_text.trim();
-    if text.is_empty() {
-        return Err("Telegram sendMessage text must be non-empty".to_string());
-    }
-    let mut body = serde_json::json!({
-        "chat_id": chat_id,
-        "text": text,
-        "disable_web_page_preview": true,
-    });
-    if let Some(message_id) = reply_to_message_id {
-        if message_id <= 0 {
-            return Err("Telegram reply message id must be positive".to_string());
-        }
-        body["reply_parameters"] = serde_json::json!({
-            "message_id": message_id,
-            "allow_sending_without_reply": true,
-        });
-    }
-    Ok(body)
+    native_telegram_send_message_request_body(message_text, chat_id, reply_to_message_id)
 }
 
 pub fn telegram_call_get_updates_once(

@@ -12,6 +12,7 @@ pub use hepta_kernel::{
     DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS, DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
     DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
     DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
+    HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES as TELEGRAM_ALLOWED_UPDATES,
     HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES as TELEGRAM_DRAIN_ONCE_STAGES,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
@@ -40,7 +41,7 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_error_is_transient,
     hepta_kernel_telegram_first_model_candidate_with_duplicate_decision,
     hepta_kernel_telegram_get_updates_error_is_conflict,
-    hepta_kernel_telegram_get_updates_error_is_transient,
+    hepta_kernel_telegram_get_updates_error_is_transient, hepta_kernel_telegram_get_updates_query,
     hepta_kernel_telegram_get_updates_should_retry,
     hepta_kernel_telegram_model_failure_fallback_allowed, hepta_kernel_telegram_model_timeout,
     hepta_kernel_telegram_model_turn_plan_from_candidates,
@@ -48,7 +49,9 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_poll_loop_should_spawn, hepta_kernel_telegram_prompt,
     hepta_kernel_telegram_read_max_attempts_policy,
     hepta_kernel_telegram_read_retry_backoff_policy, hepta_kernel_telegram_receive_limit_policy,
+    hepta_kernel_telegram_send_chat_action_request_body,
     hepta_kernel_telegram_send_error_is_transient, hepta_kernel_telegram_send_max_attempts_policy,
+    hepta_kernel_telegram_send_message_request_body,
     hepta_kernel_telegram_send_min_interval_policy,
     hepta_kernel_telegram_send_retry_backoff_policy, hepta_kernel_telegram_send_should_retry,
     hepta_kernel_telegram_soak_max_attention_count_policy,
@@ -340,6 +343,25 @@ pub fn native_telegram_send_max_attempts_policy(value: Option<u64>) -> u64 {
 
 pub fn native_telegram_send_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
     hepta_kernel_telegram_send_retry_backoff_policy(value_ms)
+}
+
+pub fn native_telegram_get_updates_query(
+    limit: usize,
+    offset: Option<i64>,
+) -> Vec<(&'static str, String)> {
+    hepta_kernel_telegram_get_updates_query(limit, offset)
+}
+
+pub fn native_telegram_send_chat_action_request_body(chat_id: i64) -> Result<Value, String> {
+    hepta_kernel_telegram_send_chat_action_request_body(chat_id)
+}
+
+pub fn native_telegram_send_message_request_body(
+    message_text: &str,
+    chat_id: i64,
+    reply_to_message_id: Option<i64>,
+) -> Result<Value, String> {
+    hepta_kernel_telegram_send_message_request_body(message_text, chat_id, reply_to_message_id)
 }
 
 pub fn native_telegram_bot_token_shape_ok(token: &str) -> bool {
@@ -704,6 +726,62 @@ mod tests {
         assert_eq!(
             native_telegram_send_retry_backoff_policy(Some(999_999)),
             Duration::from_millis(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS)
+        );
+    }
+
+    #[test]
+    fn telegram_transport_request_shapes_delegate_to_kernel() {
+        assert_eq!(
+            native_telegram_get_updates_query(999, None),
+            vec![
+                ("timeout", "0".to_string()),
+                ("limit", "20".to_string()),
+                ("allowed_updates", TELEGRAM_ALLOWED_UPDATES.to_string()),
+            ]
+        );
+        assert_eq!(
+            native_telegram_get_updates_query(5, Some(43)),
+            vec![
+                ("timeout", "0".to_string()),
+                ("limit", "5".to_string()),
+                ("allowed_updates", TELEGRAM_ALLOWED_UPDATES.to_string()),
+                ("offset", "43".to_string()),
+            ]
+        );
+
+        let send_body = native_telegram_send_message_request_body(
+            "  private model response text  ",
+            6476198178,
+            Some(11),
+        )
+        .expect("send body");
+        assert_eq!(
+            send_body.get("text").and_then(Value::as_str),
+            Some("private model response text")
+        );
+        assert_eq!(
+            send_body
+                .pointer("/reply_parameters/message_id")
+                .and_then(Value::as_i64),
+            Some(11)
+        );
+        assert!(send_body.get("parse_mode").is_none());
+        assert!(
+            native_telegram_send_message_request_body("   ", 6476198178, Some(11))
+                .expect_err("empty text rejected")
+                .contains("text must be non-empty")
+        );
+
+        let typing_body =
+            native_telegram_send_chat_action_request_body(6476198178).expect("typing body");
+        assert_eq!(
+            typing_body.get("action").and_then(Value::as_str),
+            Some("typing")
+        );
+        assert!(
+            native_telegram_send_chat_action_request_body(0)
+                .expect_err("bad chat id rejected")
+                .contains("chat id must be non-zero")
         );
     }
 

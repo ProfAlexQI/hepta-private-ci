@@ -25,6 +25,8 @@ pub const HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES: &[&str] = &[
     "sendMessage",
     "cursor_commit",
 ];
+pub const HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES: &str =
+    "[\"message\",\"edited_message\",\"callback_query\",\"message_reaction\"]";
 pub const DEFAULT_TELEGRAM_MLX_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 pub const DEFAULT_TELEGRAM_MLX_MAX_TOKENS: u64 = 512;
 pub const MAX_TELEGRAM_MLX_MAX_TOKENS: u64 = 4096;
@@ -1283,6 +1285,60 @@ pub fn hepta_kernel_telegram_send_retry_backoff_policy(value_ms: Option<u64>) ->
     )
 }
 
+pub fn hepta_kernel_telegram_get_updates_query(
+    limit: usize,
+    offset: Option<i64>,
+) -> Vec<(&'static str, String)> {
+    let mut query = vec![
+        ("timeout", "0".to_string()),
+        ("limit", limit.clamp(1, 20).to_string()),
+        (
+            "allowed_updates",
+            HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES.to_string(),
+        ),
+    ];
+    if let Some(offset) = offset.filter(|offset| *offset >= 0) {
+        query.push(("offset", offset.to_string()));
+    }
+    query
+}
+
+pub fn hepta_kernel_telegram_send_chat_action_request_body(chat_id: i64) -> Result<Value, String> {
+    if chat_id == 0 {
+        return Err("Telegram sendChatAction chat id must be non-zero".to_string());
+    }
+    Ok(json!({
+        "chat_id": chat_id,
+        "action": "typing",
+    }))
+}
+
+pub fn hepta_kernel_telegram_send_message_request_body(
+    message_text: &str,
+    chat_id: i64,
+    reply_to_message_id: Option<i64>,
+) -> Result<Value, String> {
+    let text = message_text.trim();
+    if text.is_empty() {
+        return Err("Telegram sendMessage text must be non-empty".to_string());
+    }
+    let mut body = json!({
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": true,
+    });
+    if let Some(message_id) = reply_to_message_id {
+        if message_id <= 0 {
+            return Err("Telegram reply message id must be positive".to_string());
+        }
+        body["reply_parameters"] = json!({
+            "message_id": message_id,
+            "allow_sending_without_reply": true,
+        });
+    }
+    Ok(body)
+}
+
 pub fn hepta_kernel_telegram_bot_token_shape_ok(token: &str) -> bool {
     let Some((bot_id, secret)) = token.split_once(':') else {
         return false;
@@ -2418,6 +2474,98 @@ mod tests {
         assert!(hepta_kernel_telegram_send_should_retry(1, 2, transient));
         assert!(!hepta_kernel_telegram_send_should_retry(2, 2, transient));
         assert!(!hepta_kernel_telegram_send_should_retry(1, 2, auth_error));
+    }
+
+    #[test]
+    fn kernel_telegram_transport_request_shapes_are_bounded() {
+        assert_eq!(
+            hepta_kernel_telegram_get_updates_query(999, None),
+            vec![
+                ("timeout", "0".to_string()),
+                ("limit", "20".to_string()),
+                (
+                    "allowed_updates",
+                    HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES.to_string()
+                ),
+            ]
+        );
+        assert_eq!(
+            hepta_kernel_telegram_get_updates_query(5, Some(43)),
+            vec![
+                ("timeout", "0".to_string()),
+                ("limit", "5".to_string()),
+                (
+                    "allowed_updates",
+                    HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES.to_string()
+                ),
+                ("offset", "43".to_string()),
+            ]
+        );
+        assert!(
+            !hepta_kernel_telegram_get_updates_query(5, Some(-1))
+                .iter()
+                .any(|(name, _)| *name == "offset")
+        );
+
+        let send_body = hepta_kernel_telegram_send_message_request_body(
+            "  private model response text  ",
+            6476198178,
+            Some(11),
+        )
+        .expect("send body");
+        assert_eq!(
+            send_body.get("chat_id").and_then(Value::as_i64),
+            Some(6476198178)
+        );
+        assert_eq!(
+            send_body.get("text").and_then(Value::as_str),
+            Some("private model response text")
+        );
+        assert_eq!(
+            send_body
+                .pointer("/reply_parameters/message_id")
+                .and_then(Value::as_i64),
+            Some(11)
+        );
+        assert_eq!(
+            send_body
+                .pointer("/reply_parameters/allow_sending_without_reply")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            send_body
+                .get("disable_web_page_preview")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(send_body.get("parse_mode").is_none());
+        assert!(
+            hepta_kernel_telegram_send_message_request_body("   ", 6476198178, Some(11))
+                .expect_err("empty text rejected")
+                .contains("text must be non-empty")
+        );
+        assert!(
+            hepta_kernel_telegram_send_message_request_body("text", 6476198178, Some(0))
+                .expect_err("bad reply id rejected")
+                .contains("reply message id must be positive")
+        );
+
+        let typing_body =
+            hepta_kernel_telegram_send_chat_action_request_body(6476198178).expect("typing body");
+        assert_eq!(
+            typing_body.get("chat_id").and_then(Value::as_i64),
+            Some(6476198178)
+        );
+        assert_eq!(
+            typing_body.get("action").and_then(Value::as_str),
+            Some("typing")
+        );
+        assert!(
+            hepta_kernel_telegram_send_chat_action_request_body(0)
+                .expect_err("bad chat id rejected")
+                .contains("chat id must be non-zero")
+        );
     }
 
     #[test]
