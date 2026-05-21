@@ -5,7 +5,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use serde_json::Value;
 
-pub use hepta_runtime::HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH as DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH;
+pub use hepta_runtime::{
+    HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH as DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
+    NativeTelegramCursorPlan,
+};
 use hepta_runtime::{
     native_telegram_cursor_body, native_telegram_cursor_duplicate_rule_valid,
     parse_native_telegram_cursor_next_update_offset,
@@ -31,40 +34,6 @@ pub struct NativeTelegramCursorStatus {
     pub raw_update_payload_persisted: bool,
     pub error: Option<String>,
     pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramCursorPlan {
-    pub cursor_path: &'static str,
-    pub duplicate_suppression_ready: bool,
-    pub duplicate_suppression_rule_valid: bool,
-    pub cursor_represents_next_update_offset: bool,
-    pub commit_offset_after_delivery: bool,
-    pub raw_update_payload_persisted: bool,
-}
-
-impl NativeTelegramCursorPlan {
-    pub fn disabled() -> Self {
-        Self {
-            cursor_path: DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
-            duplicate_suppression_ready: false,
-            duplicate_suppression_rule_valid: true,
-            cursor_represents_next_update_offset: true,
-            commit_offset_after_delivery: false,
-            raw_update_payload_persisted: false,
-        }
-    }
-
-    pub fn ready() -> Self {
-        Self {
-            cursor_path: DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
-            duplicate_suppression_ready: true,
-            duplicate_suppression_rule_valid: native_telegram_cursor_duplicate_rule_valid(),
-            cursor_represents_next_update_offset: true,
-            commit_offset_after_delivery: true,
-            raw_update_payload_persisted: false,
-        }
-    }
 }
 
 pub fn telegram_cursor_status(requested: bool, path: &Path) -> NativeTelegramCursorStatus {

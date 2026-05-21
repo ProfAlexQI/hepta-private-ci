@@ -20,20 +20,20 @@ pub use hepta_kernel::{
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
     HeptaKernelTelegramConfigMetadata, HeptaKernelTelegramConfigStatus,
-    HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramDrainFinalStatusPlan,
-    HeptaKernelTelegramDuplicateDecision, HeptaKernelTelegramExecutionPlan,
-    HeptaKernelTelegramGatewayGateSummary, HeptaKernelTelegramGatewayGateSummaryInput,
-    HeptaKernelTelegramIngressInspection, HeptaKernelTelegramModelExecutionReport,
-    HeptaKernelTelegramModelInvocationRequestPlan, HeptaKernelTelegramModelTurnPlan,
-    HeptaKernelTelegramPollLoopStatus, HeptaKernelTelegramPollLoopStatusInput,
-    HeptaKernelTelegramProductionGuardPolicyInput, HeptaKernelTelegramProductionGuardStatus,
-    HeptaKernelTelegramProductionGuardStatusInput, HeptaKernelTelegramReplyTargetMaterial,
-    HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
-    HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendRequestPlan,
-    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTelegramTokenObservation,
-    HeptaKernelTelegramTokenObservationInput, HeptaKernelTurnChannel, HeptaKernelTurnInput,
-    HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
-    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+    HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramCursorPlan,
+    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDuplicateDecision,
+    HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
+    HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
+    HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
+    HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramPollLoopStatus,
+    HeptaKernelTelegramPollLoopStatusInput, HeptaKernelTelegramProductionGuardPolicyInput,
+    HeptaKernelTelegramProductionGuardStatus, HeptaKernelTelegramProductionGuardStatusInput,
+    HeptaKernelTelegramReplyTargetMaterial, HeptaKernelTelegramRunnerInvocationOutcome,
+    HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSendExecutionReport,
+    HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
+    HeptaKernelTelegramTokenObservation, HeptaKernelTelegramTokenObservationInput,
+    HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
+    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
     MAX_TELEGRAM_READ_MAX_ATTEMPTS, MAX_TELEGRAM_READ_RETRY_BACKOFF_MS,
     MAX_TELEGRAM_SEND_MAX_ATTEMPTS, MAX_TELEGRAM_SEND_MIN_INTERVAL_MS,
     MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS, MAX_TELEGRAM_SOAK_MAX_ATTENTION,
@@ -106,6 +106,7 @@ pub type NativeTelegramConfigStatusInput = HeptaKernelTelegramConfigStatusInput;
 pub type NativeTelegramTokenObservationInput = HeptaKernelTelegramTokenObservationInput;
 pub type NativeTelegramTokenObservation = HeptaKernelTelegramTokenObservation;
 pub type NativeTelegramConfigMetadata = HeptaKernelTelegramConfigMetadata;
+pub type NativeTelegramCursorPlan = HeptaKernelTelegramCursorPlan;
 pub type NativeTelegramProductionGuardStatus = HeptaKernelTelegramProductionGuardStatus;
 pub type NativeTelegramProductionGuardStatusInput = HeptaKernelTelegramProductionGuardStatusInput;
 pub type NativeTelegramProductionGuardPolicyInput = HeptaKernelTelegramProductionGuardPolicyInput;

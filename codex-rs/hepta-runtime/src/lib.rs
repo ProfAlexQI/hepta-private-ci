@@ -224,7 +224,7 @@ pub use telegram_model_runner::{
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, NativeTelegramCandidateMaterial,
     NativeTelegramConfigMetadata, NativeTelegramConfigStatus, NativeTelegramConfigStatusInput,
-    NativeTelegramDrainFinalStatusPlan, NativeTelegramDuplicateDecision,
+    NativeTelegramCursorPlan, NativeTelegramDrainFinalStatusPlan, NativeTelegramDuplicateDecision,
     NativeTelegramExecutionPlan, NativeTelegramGatewayGateSummary,
     NativeTelegramGatewayGateSummaryInput, NativeTelegramIngressInspection,
     NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,

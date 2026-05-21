@@ -1217,6 +1217,40 @@ pub fn hepta_kernel_telegram_cursor_duplicate_rule_valid() -> bool {
         && !hepta_kernel_telegram_update_already_drained(42, Some(42))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramCursorPlan {
+    pub cursor_path: &'static str,
+    pub duplicate_suppression_ready: bool,
+    pub duplicate_suppression_rule_valid: bool,
+    pub cursor_represents_next_update_offset: bool,
+    pub commit_offset_after_delivery: bool,
+    pub raw_update_payload_persisted: bool,
+}
+
+impl HeptaKernelTelegramCursorPlan {
+    pub fn disabled() -> Self {
+        Self {
+            cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+            duplicate_suppression_ready: false,
+            duplicate_suppression_rule_valid: true,
+            cursor_represents_next_update_offset: true,
+            commit_offset_after_delivery: false,
+            raw_update_payload_persisted: false,
+        }
+    }
+
+    pub fn ready() -> Self {
+        Self {
+            cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+            duplicate_suppression_ready: true,
+            duplicate_suppression_rule_valid: hepta_kernel_telegram_cursor_duplicate_rule_valid(),
+            cursor_represents_next_update_offset: true,
+            commit_offset_after_delivery: true,
+            raw_update_payload_persisted: false,
+        }
+    }
+}
+
 pub fn parse_hepta_kernel_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
     let value: Value = serde_json::from_str(raw)
         .map_err(|error| format!("failed to parse Telegram cursor JSON: {error}"))?;
@@ -3843,6 +3877,28 @@ mod tests {
         assert!(body.get("raw_update_payload").is_none());
         assert!(body.get("message").is_none());
         assert!(body.get("chat").is_none());
+    }
+
+    #[test]
+    fn kernel_telegram_cursor_plan_is_bounded_and_payload_safe() {
+        let disabled = HeptaKernelTelegramCursorPlan::disabled();
+        assert_eq!(
+            disabled.cursor_path,
+            HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH
+        );
+        assert!(!disabled.duplicate_suppression_ready);
+        assert!(disabled.duplicate_suppression_rule_valid);
+        assert!(disabled.cursor_represents_next_update_offset);
+        assert!(!disabled.commit_offset_after_delivery);
+        assert!(!disabled.raw_update_payload_persisted);
+
+        let ready = HeptaKernelTelegramCursorPlan::ready();
+        assert_eq!(ready.cursor_path, HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH);
+        assert!(ready.duplicate_suppression_ready);
+        assert!(ready.duplicate_suppression_rule_valid);
+        assert!(ready.cursor_represents_next_update_offset);
+        assert!(ready.commit_offset_after_delivery);
+        assert!(!ready.raw_update_payload_persisted);
     }
 
     #[test]
