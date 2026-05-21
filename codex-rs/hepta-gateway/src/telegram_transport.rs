@@ -16,20 +16,22 @@ use crate::telegram_policy::{
     NativeTelegramReplyTargetMaterial, NativeTelegramSendExecutionReport,
     NativeTelegramSendRequestPlan,
 };
+use hepta_runtime::{
+    native_telegram_read_max_attempts_policy, native_telegram_read_retry_backoff_policy,
+    native_telegram_send_max_attempts_policy, native_telegram_send_min_interval_policy,
+    native_telegram_send_retry_backoff_policy, native_telegram_typing_keepalive_interval_policy,
+};
 
 pub const TELEGRAM_ALLOWED_UPDATES: &str =
     "[\"message\",\"edited_message\",\"callback_query\",\"message_reaction\"]";
-pub const DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS: u64 = 4_000;
-pub const MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS: u64 = 30_000;
-pub const DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS: u64 = 1;
-pub const MAX_TELEGRAM_READ_MAX_ATTEMPTS: u64 = 5;
-pub const DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS: u64 = 500;
-pub const MAX_TELEGRAM_READ_RETRY_BACKOFF_MS: u64 = 30_000;
-pub const MAX_TELEGRAM_SEND_MIN_INTERVAL_MS: u64 = 60_000;
-pub const DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 1;
-pub const MAX_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 5;
-pub const DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 700;
-pub const MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 30_000;
+pub use hepta_runtime::{
+    DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS, DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS,
+    DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS, DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS,
+    DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MAX_TELEGRAM_READ_MAX_ATTEMPTS,
+    MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
+    MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
+    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS,
+};
 const TELEGRAM_BOT_API_BASE_URL: &str = "https://api.telegram.org";
 static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
 
@@ -204,47 +206,27 @@ pub fn telegram_get_updates_query(
 }
 
 pub fn telegram_typing_keepalive_interval_policy(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        value_ms
-            .map(|ms| ms.clamp(1_000, MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS))
-            .unwrap_or(DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS),
-    )
+    native_telegram_typing_keepalive_interval_policy(value_ms)
 }
 
 pub fn telegram_read_max_attempts_policy(value: Option<u64>) -> u64 {
-    value
-        .map(|attempts| attempts.clamp(1, MAX_TELEGRAM_READ_MAX_ATTEMPTS))
-        .unwrap_or(DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS)
+    native_telegram_read_max_attempts_policy(value)
 }
 
 pub fn telegram_read_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        value_ms
-            .map(|ms| ms.min(MAX_TELEGRAM_READ_RETRY_BACKOFF_MS))
-            .unwrap_or(DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS),
-    )
+    native_telegram_read_retry_backoff_policy(value_ms)
 }
 
 pub fn telegram_send_min_interval_policy(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        value_ms
-            .map(|ms| ms.min(MAX_TELEGRAM_SEND_MIN_INTERVAL_MS))
-            .unwrap_or(0),
-    )
+    native_telegram_send_min_interval_policy(value_ms)
 }
 
 pub fn telegram_send_max_attempts_policy(value: Option<u64>) -> u64 {
-    value
-        .map(|attempts| attempts.clamp(1, MAX_TELEGRAM_SEND_MAX_ATTEMPTS))
-        .unwrap_or(DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS)
+    native_telegram_send_max_attempts_policy(value)
 }
 
 pub fn telegram_send_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        value_ms
-            .map(|ms| ms.min(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS))
-            .unwrap_or(DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS),
-    )
+    native_telegram_send_retry_backoff_policy(value_ms)
 }
 
 pub fn telegram_send_chat_action_request_body(chat_id: i64) -> Result<Value, String> {

@@ -7,9 +7,11 @@ use serde_json::Value;
 
 pub use hepta_kernel::{
     CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
-    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
+    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS,
+    DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS, DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS,
+    DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS, DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
     DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
-    HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
+    DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
     HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES as TELEGRAM_DRAIN_ONCE_STAGES,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
@@ -23,10 +25,13 @@ pub use hepta_kernel::{
     HeptaKernelTelegramSessionBridgePlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
     HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
     MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
-    MAX_TELEGRAM_SOAK_MAX_ATTENTION, MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
-    MAX_TELEGRAM_SOAK_MIN_POLLS, MIN_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS,
-    build_hepta_kernel_telegram_gateway_gate_summary, classify_hepta_kernel_telegram_runner_error,
-    extract_hepta_kernel_exec_child_final_message,
+    MAX_TELEGRAM_READ_MAX_ATTEMPTS, MAX_TELEGRAM_READ_RETRY_BACKOFF_MS,
+    MAX_TELEGRAM_SEND_MAX_ATTEMPTS, MAX_TELEGRAM_SEND_MIN_INTERVAL_MS,
+    MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS, MAX_TELEGRAM_SOAK_MAX_ATTENTION,
+    MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, MAX_TELEGRAM_SOAK_MIN_POLLS,
+    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
+    MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_gateway_gate_summary,
+    classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
     hepta_kernel_telegram_drain_execution_plan, hepta_kernel_telegram_drain_final_status,
@@ -38,14 +43,19 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_model_turn_plan_from_candidates,
     hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_poll_loop_interval_ms_policy,
     hepta_kernel_telegram_poll_loop_should_spawn, hepta_kernel_telegram_prompt,
-    hepta_kernel_telegram_receive_limit_policy,
+    hepta_kernel_telegram_read_max_attempts_policy,
+    hepta_kernel_telegram_read_retry_backoff_policy, hepta_kernel_telegram_receive_limit_policy,
+    hepta_kernel_telegram_send_max_attempts_policy, hepta_kernel_telegram_send_min_interval_policy,
+    hepta_kernel_telegram_send_retry_backoff_policy,
     hepta_kernel_telegram_soak_max_attention_count_policy,
     hepta_kernel_telegram_soak_max_observed_age_ms_policy,
     hepta_kernel_telegram_soak_min_poll_iterations_policy,
-    hepta_kernel_telegram_system_time_unix_ms, hepta_kernel_telegram_update_already_drained,
-    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
-    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
-    redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
+    hepta_kernel_telegram_system_time_unix_ms,
+    hepta_kernel_telegram_typing_keepalive_interval_policy,
+    hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
+    parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
+    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
+    select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
@@ -302,6 +312,30 @@ pub fn native_telegram_soak_max_observed_age_ms_policy(value: Option<u64>) -> u6
 
 pub fn native_telegram_system_time_unix_ms(time: std::time::SystemTime) -> u64 {
     hepta_kernel_telegram_system_time_unix_ms(time)
+}
+
+pub fn native_telegram_typing_keepalive_interval_policy(value_ms: Option<u64>) -> Duration {
+    hepta_kernel_telegram_typing_keepalive_interval_policy(value_ms)
+}
+
+pub fn native_telegram_read_max_attempts_policy(value: Option<u64>) -> u64 {
+    hepta_kernel_telegram_read_max_attempts_policy(value)
+}
+
+pub fn native_telegram_read_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
+    hepta_kernel_telegram_read_retry_backoff_policy(value_ms)
+}
+
+pub fn native_telegram_send_min_interval_policy(value_ms: Option<u64>) -> Duration {
+    hepta_kernel_telegram_send_min_interval_policy(value_ms)
+}
+
+pub fn native_telegram_send_max_attempts_policy(value: Option<u64>) -> u64 {
+    hepta_kernel_telegram_send_max_attempts_policy(value)
+}
+
+pub fn native_telegram_send_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
+    hepta_kernel_telegram_send_retry_backoff_policy(value_ms)
 }
 
 pub fn extract_native_telegram_exec_child_final_message(output: &str) -> Result<String, String> {
@@ -576,6 +610,60 @@ mod tests {
         assert_eq!(
             native_telegram_system_time_unix_ms(std::time::UNIX_EPOCH + Duration::from_millis(42)),
             42
+        );
+    }
+
+    #[test]
+    fn telegram_transport_timing_and_retry_policies_delegate_to_kernel() {
+        assert_eq!(
+            native_telegram_typing_keepalive_interval_policy(None),
+            Duration::from_millis(DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS)
+        );
+        assert_eq!(
+            native_telegram_typing_keepalive_interval_policy(Some(999_999)),
+            Duration::from_millis(MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS)
+        );
+        assert_eq!(
+            native_telegram_read_max_attempts_policy(None),
+            DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS
+        );
+        assert_eq!(native_telegram_read_max_attempts_policy(Some(0)), 1);
+        assert_eq!(
+            native_telegram_read_max_attempts_policy(Some(999)),
+            MAX_TELEGRAM_READ_MAX_ATTEMPTS
+        );
+        assert_eq!(
+            native_telegram_read_retry_backoff_policy(None),
+            Duration::from_millis(DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS)
+        );
+        assert_eq!(
+            native_telegram_read_retry_backoff_policy(Some(999_999)),
+            Duration::from_millis(MAX_TELEGRAM_READ_RETRY_BACKOFF_MS)
+        );
+        assert_eq!(
+            native_telegram_send_min_interval_policy(None),
+            Duration::ZERO
+        );
+        assert_eq!(
+            native_telegram_send_min_interval_policy(Some(999_999)),
+            Duration::from_millis(MAX_TELEGRAM_SEND_MIN_INTERVAL_MS)
+        );
+        assert_eq!(
+            native_telegram_send_max_attempts_policy(None),
+            DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS
+        );
+        assert_eq!(native_telegram_send_max_attempts_policy(Some(0)), 1);
+        assert_eq!(
+            native_telegram_send_max_attempts_policy(Some(999)),
+            MAX_TELEGRAM_SEND_MAX_ATTEMPTS
+        );
+        assert_eq!(
+            native_telegram_send_retry_backoff_policy(None),
+            Duration::from_millis(DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS)
+        );
+        assert_eq!(
+            native_telegram_send_retry_backoff_policy(Some(999_999)),
+            Duration::from_millis(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS)
         );
     }
 

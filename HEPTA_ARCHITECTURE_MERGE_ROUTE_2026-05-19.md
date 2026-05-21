@@ -351,6 +351,34 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 git diff --check
 ```
 
+### 23:5x Progress - Telegram Transport Timing Policies Moved Into Hepta Kernel
+
+Continued after the poll/soak slice with the adjacent transport timing and
+retry policy:
+
+1. Moved Telegram typing keepalive interval clamps, read retry attempt/backoff
+   defaults, send minimum interval, send retry attempt/backoff defaults, and
+   their upper bounds into `hepta-kernel`.
+2. Added `hepta-runtime` compatibility wrappers and root re-exports so
+   gateway/CLI callers keep the existing `telegram_*` function names while the
+   pure policy is now kernel-owned.
+3. Kept concrete Bot API HTTP calls, retry sleeps, send rate-limit sleeps,
+   delivery ledger writes, cursor commits, token reads, and launchd/service
+   mutation outside `hepta-kernel`.
+4. Added kernel/runtime tests for the moved policies and kept
+   `hepta-gateway::telegram_transport` tests validating the compatibility
+   facade.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_transport -- --nocapture
+```
+
 ### 21:4x Progress - Telegram Ingress/Model-Turn Planning Moved Into Hepta Kernel
 
 Continued after the model-invocation policy slice:
