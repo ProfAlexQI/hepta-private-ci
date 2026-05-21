@@ -10,19 +10,21 @@ pub use hepta_kernel::{
     DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
     HEPTA_KERNEL_TELEGRAM_RUNNER_KIND, HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine,
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
-    HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
-    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
+    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
+    HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
+    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
     hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_prompt,
     invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
-    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
-    select_hepta_kernel_telegram_runner,
+    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
+    redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
 pub type NativeTelegramModelRunnerInvocationOutcome = HeptaKernelTelegramRunnerInvocationOutcome;
+pub type NativeTelegramSessionBridgePlan = HeptaKernelTelegramSessionBridgePlan;
 
 pub fn invoke_native_telegram_model_runner_with_plan<M, I, C>(
     plan: &NativeTelegramModelRunnerPlan,

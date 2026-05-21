@@ -20,7 +20,10 @@ use crate::telegram_transport::{
     telegram_send_min_interval_policy, telegram_send_retry_backoff_policy,
     telegram_typing_keepalive_interval_policy,
 };
-use hepta_runtime::{NativeTelegramModelRunnerPlan, native_telegram_model_timeout};
+use hepta_runtime::{
+    NativeTelegramModelRunnerPlan, native_telegram_model_timeout,
+    plan_hepta_kernel_telegram_session_bridge,
+};
 
 pub const DEFAULT_TELEGRAM_SOAK_MIN_POLLS: u64 = 3;
 pub const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
@@ -1157,9 +1160,9 @@ pub fn build_telegram_model_bridge_status(
         )
     };
     let bridge_plan = if input.requested {
-        NativeTelegramSessionBridgePlan::ready(input.model_runner_plan)
+        plan_hepta_kernel_telegram_session_bridge(Some(input.model_runner_plan))
     } else {
-        NativeTelegramSessionBridgePlan::disabled()
+        plan_hepta_kernel_telegram_session_bridge(None)
     };
     let config_ready = input.requested && input.config.config_ready();
     let status = if !input.requested {

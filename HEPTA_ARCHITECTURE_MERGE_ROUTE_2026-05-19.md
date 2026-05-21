@@ -239,11 +239,14 @@ Lane C has started with a real gateway crate boundary:
   applies the runtime-owned model-error redactor for model failures.
   `codex-cli` still performs only the concrete MLX HTTP request, in-process
   Codex execution, and child-process spawn.
-- Telegram session bridge status planning moved to
-  `hepta-gateway::telegram_runtime`. The gateway-runtime boundary now owns
-  `NativeTelegramSessionBridgePlan`, including prompt-material policy,
+- Telegram session bridge status planning first moved to
+  `hepta-gateway::telegram_runtime`, and the pure policy portion has now moved
+  further into `hepta-kernel`. The kernel owns
+  `HeptaKernelTelegramSessionBridgePlan`, including prompt-material policy,
   session-key strategy, duplicate policy, cursor-commit policy, response
   delivery policy, approval policy, failure policy, and redaction flags.
+  `hepta-runtime` and `hepta-gateway` keep compatibility aliases while gateway
+  status building delegates to `plan_hepta_kernel_telegram_session_bridge(...)`.
 - Telegram private config status DTO moved to
   `hepta-gateway::telegram_config`. Gateway now owns the stable
   `NativeTelegramConfigStatus` report shape and readiness helper, while
@@ -285,6 +288,34 @@ cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin h
 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_post -- --nocapture
 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
 git diff --check
+```
+
+### 19:3x Progress - Telegram Session Bridge Policy Moved Into Hepta Kernel
+
+Continued shrinking the runtime/gateway facades after child-runner policy moved
+into `hepta-kernel`:
+
+1. Added kernel-owned Telegram session bridge planning:
+   `HeptaKernelTelegramSessionBridgePlan` and
+   `plan_hepta_kernel_telegram_session_bridge(...)`.
+2. Kept existing public gateway/runtime compatibility names:
+   `NativeTelegramSessionBridgePlan` now aliases the kernel-owned contract
+   through `hepta-runtime` and `hepta-gateway`.
+3. Updated Telegram model bridge status construction to use the kernel planner
+   while preserving status JSON redaction flags and side-effect boundaries.
+4. Concrete Telegram reads/sends, cursor writes, process spawning, local MLX
+   requests, launchd state, and model execution remain outside the kernel.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
 Observed test totals:

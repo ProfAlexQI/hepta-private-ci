@@ -109,6 +109,25 @@ pub struct HeptaKernelTelegramRunnerInvocationOutcome {
     pub model_output: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramSessionBridgePlan {
+    pub bridge_plan_ready: bool,
+    pub runner_kind: &'static str,
+    pub runner_invocation_strategy: &'static str,
+    pub prompt_material_policy: &'static str,
+    pub session_key_strategy: &'static str,
+    pub duplicate_policy: &'static str,
+    pub cursor_commit_policy: &'static str,
+    pub response_delivery_policy: &'static str,
+    pub approval_policy: &'static str,
+    pub failure_policy: &'static str,
+    pub process_spawned_by_status: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_sender_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+}
+
 impl HeptaKernelTelegramRunnerInvocationOutcome {
     pub fn into_result(self) -> Result<String, String> {
         self.model_output.ok_or_else(|| {
@@ -153,6 +172,48 @@ impl HeptaKernelTelegramRunnerInvocationOutcome {
                 "telegram_model_runner_error[{error_kind}]: {error}"
             ))),
             model_output: None,
+        }
+    }
+}
+
+impl HeptaKernelTelegramSessionBridgePlan {
+    pub fn disabled() -> Self {
+        Self {
+            bridge_plan_ready: false,
+            runner_kind: "disabled",
+            runner_invocation_strategy: "disabled",
+            prompt_material_policy: "disabled",
+            session_key_strategy: "disabled",
+            duplicate_policy: "disabled",
+            cursor_commit_policy: "disabled",
+            response_delivery_policy: "disabled",
+            approval_policy: "disabled",
+            failure_policy: "disabled",
+            process_spawned_by_status: false,
+            raw_prompt_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
+        }
+    }
+
+    pub fn ready(model_runner_plan: &HeptaKernelTelegramRunnerPlan) -> Self {
+        Self {
+            bridge_plan_ready: true,
+            runner_kind: model_runner_plan.runner_kind,
+            runner_invocation_strategy: model_runner_plan.runner_invocation_strategy,
+            prompt_material_policy: "raw Telegram text is held only in the pending model-turn invocation and is never serialized into status JSON",
+            session_key_strategy: "map each Telegram conversation to a stable internal Hepta session key without exposing raw chat ids",
+            duplicate_policy: "suppress candidates whose update id is below the committed next-update cursor before any model turn",
+            cursor_commit_policy: "write the next-update cursor only after model output is handled or duplicate suppression is recorded",
+            response_delivery_policy: "convert model output to a Telegram send plan only after HEPTA_NATIVE_TELEGRAM_SEND is explicitly enabled",
+            approval_policy: "reuse the Hepta session approval policy; do not auto-escalate shell/tool approvals from Telegram ingress",
+            failure_policy: "on runner failure, keep cursor uncommitted and return a redacted diagnostic instead of sending partial output",
+            process_spawned_by_status: model_runner_plan.process_spawned_by_status,
+            raw_prompt_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_sender_id_exposed: false,
+            raw_message_id_exposed: false,
         }
     }
 }
@@ -251,6 +312,14 @@ impl HeptaKernelTelegramRunnerPlan {
             raw_prompt_text_exposed: false,
         }
     }
+}
+
+pub fn plan_hepta_kernel_telegram_session_bridge(
+    model_runner_plan: Option<&HeptaKernelTelegramRunnerPlan>,
+) -> HeptaKernelTelegramSessionBridgePlan {
+    model_runner_plan
+        .map(HeptaKernelTelegramSessionBridgePlan::ready)
+        .unwrap_or_else(HeptaKernelTelegramSessionBridgePlan::disabled)
 }
 
 pub fn select_hepta_kernel_telegram_runner(
@@ -662,6 +731,48 @@ mod tests {
         assert!(plan.hepta_intelligence_context_injected);
         assert!(plan.plugin_capability_context_injected);
         assert!(!plan.raw_prompt_text_exposed);
+    }
+
+    #[test]
+    fn kernel_session_bridge_plan_is_ready_and_redacted() {
+        let runner = select_hepta_kernel_telegram_runner(
+            Some("mlx-local/local-model"),
+            Some(DEFAULT_TELEGRAM_MLX_BASE_URL),
+            Some(128),
+            false,
+            true,
+        );
+        let plan = plan_hepta_kernel_telegram_session_bridge(Some(&runner));
+
+        assert!(plan.bridge_plan_ready);
+        assert_eq!(plan.runner_kind, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND);
+        assert_eq!(
+            plan.runner_invocation_strategy,
+            HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY
+        );
+        assert!(
+            plan.prompt_material_policy
+                .contains("never serialized into status JSON")
+        );
+        assert!(
+            plan.session_key_strategy
+                .contains("without exposing raw chat ids")
+        );
+        assert!(plan.duplicate_policy.contains("before any model turn"));
+        assert!(plan.cursor_commit_policy.contains("after model output"));
+        assert!(
+            plan.response_delivery_policy
+                .contains("HEPTA_NATIVE_TELEGRAM_SEND")
+        );
+        assert!(!plan.process_spawned_by_status);
+        assert!(!plan.raw_prompt_text_exposed);
+        assert!(!plan.raw_chat_id_exposed);
+        assert!(!plan.raw_sender_id_exposed);
+        assert!(!plan.raw_message_id_exposed);
+
+        let disabled = plan_hepta_kernel_telegram_session_bridge(None);
+        assert!(!disabled.bridge_plan_ready);
+        assert_eq!(disabled.runner_kind, "disabled");
     }
 
     #[test]

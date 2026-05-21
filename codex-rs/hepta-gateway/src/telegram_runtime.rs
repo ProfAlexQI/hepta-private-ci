@@ -13,7 +13,9 @@ use crate::telegram_policy::{
 use crate::telegram_transport::{
     NativeTelegramSendExecutionInput, execute_telegram_send_after_model_output,
 };
-use hepta_runtime::{NativeTelegramModelRunnerPlan, redact_native_telegram_model_runner_error};
+use hepta_runtime::redact_native_telegram_model_runner_error;
+
+pub use hepta_runtime::NativeTelegramSessionBridgePlan;
 
 pub const NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE: &str =
     "本地模型这次响应超时或失败了。我已先收下这条消息，避免反复重试；请稍后再发一条继续。";
@@ -91,67 +93,6 @@ pub fn finalize_telegram_drain_pipeline_status(
         status,
         error,
         outcome,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct NativeTelegramSessionBridgePlan {
-    pub bridge_plan_ready: bool,
-    pub runner_kind: &'static str,
-    pub runner_invocation_strategy: &'static str,
-    pub prompt_material_policy: &'static str,
-    pub session_key_strategy: &'static str,
-    pub duplicate_policy: &'static str,
-    pub cursor_commit_policy: &'static str,
-    pub response_delivery_policy: &'static str,
-    pub approval_policy: &'static str,
-    pub failure_policy: &'static str,
-    pub process_spawned_by_status: bool,
-    pub raw_prompt_text_exposed: bool,
-    pub raw_chat_id_exposed: bool,
-    pub raw_sender_id_exposed: bool,
-    pub raw_message_id_exposed: bool,
-}
-
-impl NativeTelegramSessionBridgePlan {
-    pub fn disabled() -> Self {
-        Self {
-            bridge_plan_ready: false,
-            runner_kind: "disabled",
-            runner_invocation_strategy: "disabled",
-            prompt_material_policy: "disabled",
-            session_key_strategy: "disabled",
-            duplicate_policy: "disabled",
-            cursor_commit_policy: "disabled",
-            response_delivery_policy: "disabled",
-            approval_policy: "disabled",
-            failure_policy: "disabled",
-            process_spawned_by_status: false,
-            raw_prompt_text_exposed: false,
-            raw_chat_id_exposed: false,
-            raw_sender_id_exposed: false,
-            raw_message_id_exposed: false,
-        }
-    }
-
-    pub fn ready(model_runner_plan: &NativeTelegramModelRunnerPlan) -> Self {
-        Self {
-            bridge_plan_ready: true,
-            runner_kind: model_runner_plan.runner_kind,
-            runner_invocation_strategy: model_runner_plan.runner_invocation_strategy,
-            prompt_material_policy: "raw Telegram text is held only in the pending model-turn invocation and is never serialized into status JSON",
-            session_key_strategy: "map each Telegram conversation to a stable internal Hepta session key without exposing raw chat ids",
-            duplicate_policy: "suppress candidates whose update id is below the committed next-update cursor before any model turn",
-            cursor_commit_policy: "write the next-update cursor only after model output is handled or duplicate suppression is recorded",
-            response_delivery_policy: "convert model output to a Telegram send plan only after HEPTA_NATIVE_TELEGRAM_SEND is explicitly enabled",
-            approval_policy: "reuse the Hepta session approval policy; do not auto-escalate shell/tool approvals from Telegram ingress",
-            failure_policy: "on runner failure, keep cursor uncommitted and return a redacted diagnostic instead of sending partial output",
-            process_spawned_by_status: model_runner_plan.process_spawned_by_status,
-            raw_prompt_text_exposed: false,
-            raw_chat_id_exposed: false,
-            raw_sender_id_exposed: false,
-            raw_message_id_exposed: false,
-        }
     }
 }
 

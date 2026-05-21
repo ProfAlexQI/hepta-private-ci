@@ -34,7 +34,8 @@ pub use hepta_runtime::{
     invoke_native_telegram_model_runner_with_plan, native_telegram_codex_core_prompt,
     native_telegram_exec_child_args, native_telegram_exec_child_status_error,
     native_telegram_hepta_kernel_prompt, native_telegram_mlx_chat_completion_body,
-    native_telegram_model_timeout, parse_native_telegram_mlx_model_ref, plan_hepta_kernel_turn,
+    native_telegram_model_timeout, parse_native_telegram_mlx_model_ref,
+    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
     redact_native_telegram_model_runner_error, select_native_telegram_model_runner,
     wait_for_native_telegram_model_child,
 };
