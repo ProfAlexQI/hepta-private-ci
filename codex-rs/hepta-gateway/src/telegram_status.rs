@@ -1,6 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use crate::telegram_config::NativeTelegramConfigStatus;
 use crate::telegram_cursor::{NativeTelegramCursorPlan, NativeTelegramCursorStatus};
@@ -22,53 +22,50 @@ use crate::telegram_transport::{
 };
 use hepta_runtime::{
     NativeTelegramModelRunnerPlan, native_telegram_model_timeout,
+    native_telegram_poll_loop_interval_ms_policy, native_telegram_poll_loop_should_spawn,
+    native_telegram_receive_limit_policy, native_telegram_soak_max_attention_count_policy,
+    native_telegram_soak_max_observed_age_ms_policy,
+    native_telegram_soak_min_poll_iterations_policy, native_telegram_system_time_unix_ms,
     plan_hepta_kernel_telegram_session_bridge,
 };
 
-pub const DEFAULT_TELEGRAM_SOAK_MIN_POLLS: u64 = 3;
-pub const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
-pub const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 0;
-pub const MAX_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 1_000;
-pub const DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS: u64 = 120_000;
-pub const MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS: u64 = 3_600_000;
-pub const MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS: u64 = 500;
-pub const MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS: u64 = 60_000;
+pub use hepta_runtime::{
+    DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION, DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
+    DEFAULT_TELEGRAM_SOAK_MIN_POLLS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+    MAX_TELEGRAM_SOAK_MAX_ATTENTION, MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
+    MAX_TELEGRAM_SOAK_MIN_POLLS, MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+};
 
 pub fn telegram_poll_loop_should_spawn(
     requested: bool,
     poll_loop_gate_enabled: bool,
     delivery_approval_gate_enabled: bool,
 ) -> bool {
-    requested && poll_loop_gate_enabled && delivery_approval_gate_enabled
-}
-
-pub fn telegram_poll_loop_interval_ms_policy(value: u64) -> u64 {
-    value.clamp(
-        MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS,
-        MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+    native_telegram_poll_loop_should_spawn(
+        requested,
+        poll_loop_gate_enabled,
+        delivery_approval_gate_enabled,
     )
 }
 
+pub fn telegram_poll_loop_interval_ms_policy(value: u64) -> u64 {
+    native_telegram_poll_loop_interval_ms_policy(value)
+}
+
 pub fn telegram_receive_limit_policy(value: usize) -> usize {
-    value.clamp(1, 20)
+    native_telegram_receive_limit_policy(value)
 }
 
 pub fn telegram_soak_min_poll_iterations_policy(value: Option<u64>) -> u64 {
-    value
-        .map(|polls| polls.clamp(1, MAX_TELEGRAM_SOAK_MIN_POLLS))
-        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MIN_POLLS)
+    native_telegram_soak_min_poll_iterations_policy(value)
 }
 
 pub fn telegram_soak_max_attention_count_policy(value: Option<u64>) -> u64 {
-    value
-        .map(|count| count.min(MAX_TELEGRAM_SOAK_MAX_ATTENTION))
-        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION)
+    native_telegram_soak_max_attention_count_policy(value)
 }
 
 pub fn telegram_soak_max_observed_age_ms_policy(value: Option<u64>) -> u64 {
-    value
-        .map(|age_ms| age_ms.clamp(1_000, MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS))
-        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS)
+    native_telegram_soak_max_observed_age_ms_policy(value)
 }
 
 fn duration_millis_u64(duration: Duration) -> u64 {
@@ -76,9 +73,7 @@ fn duration_millis_u64(duration: Duration) -> u64 {
 }
 
 pub fn telegram_system_time_unix_ms(time: SystemTime) -> u64 {
-    time.duration_since(UNIX_EPOCH)
-        .map(duration_millis_u64)
-        .unwrap_or(0)
+    native_telegram_system_time_unix_ms(time)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -2347,13 +2342,13 @@ mod tests {
 
     #[test]
     fn system_time_unix_ms_conversion_is_bounded() {
-        assert_eq!(telegram_system_time_unix_ms(UNIX_EPOCH), 0);
+        assert_eq!(telegram_system_time_unix_ms(std::time::UNIX_EPOCH), 0);
         assert_eq!(
-            telegram_system_time_unix_ms(UNIX_EPOCH + Duration::from_millis(42)),
+            telegram_system_time_unix_ms(std::time::UNIX_EPOCH + Duration::from_millis(42)),
             42
         );
         assert_eq!(
-            telegram_system_time_unix_ms(UNIX_EPOCH - Duration::from_millis(1)),
+            telegram_system_time_unix_ms(std::time::UNIX_EPOCH - Duration::from_millis(1)),
             0
         );
     }

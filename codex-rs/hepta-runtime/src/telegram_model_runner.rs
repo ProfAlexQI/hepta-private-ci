@@ -7,7 +7,9 @@ use serde_json::Value;
 
 pub use hepta_kernel::{
     CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
-    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
+    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
+    DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+    HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
     HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES as TELEGRAM_DRAIN_ONCE_STAGES,
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
@@ -20,7 +22,9 @@ pub use hepta_kernel::{
     HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendRequestPlan,
     HeptaKernelTelegramSessionBridgePlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
     HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
-    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
+    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+    MAX_TELEGRAM_SOAK_MAX_ATTENTION, MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
+    MAX_TELEGRAM_SOAK_MIN_POLLS, MIN_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS,
     build_hepta_kernel_telegram_gateway_gate_summary, classify_hepta_kernel_telegram_runner_error,
     extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text, hepta_kernel_exec_child_args,
@@ -32,11 +36,16 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_first_model_candidate_with_duplicate_decision,
     hepta_kernel_telegram_model_failure_fallback_allowed, hepta_kernel_telegram_model_timeout,
     hepta_kernel_telegram_model_turn_plan_from_candidates,
-    hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_prompt,
-    hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
-    parse_hepta_kernel_mlx_model_ref, plan_hepta_kernel_telegram_session_bridge,
-    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
-    select_hepta_kernel_telegram_runner,
+    hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_poll_loop_interval_ms_policy,
+    hepta_kernel_telegram_poll_loop_should_spawn, hepta_kernel_telegram_prompt,
+    hepta_kernel_telegram_receive_limit_policy,
+    hepta_kernel_telegram_soak_max_attention_count_policy,
+    hepta_kernel_telegram_soak_max_observed_age_ms_policy,
+    hepta_kernel_telegram_soak_min_poll_iterations_policy,
+    hepta_kernel_telegram_system_time_unix_ms, hepta_kernel_telegram_update_already_drained,
+    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
+    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
+    redact_hepta_kernel_telegram_runner_error, select_hepta_kernel_telegram_runner,
 };
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
@@ -257,6 +266,42 @@ pub fn native_telegram_exec_child_args(last_message_path: &Path, prompt: &str) -
 
 pub fn native_telegram_model_timeout(value_ms: Option<u64>) -> Duration {
     hepta_kernel_telegram_model_timeout(value_ms)
+}
+
+pub fn native_telegram_poll_loop_should_spawn(
+    requested: bool,
+    poll_loop_gate_enabled: bool,
+    delivery_approval_gate_enabled: bool,
+) -> bool {
+    hepta_kernel_telegram_poll_loop_should_spawn(
+        requested,
+        poll_loop_gate_enabled,
+        delivery_approval_gate_enabled,
+    )
+}
+
+pub fn native_telegram_poll_loop_interval_ms_policy(value: u64) -> u64 {
+    hepta_kernel_telegram_poll_loop_interval_ms_policy(value)
+}
+
+pub fn native_telegram_receive_limit_policy(value: usize) -> usize {
+    hepta_kernel_telegram_receive_limit_policy(value)
+}
+
+pub fn native_telegram_soak_min_poll_iterations_policy(value: Option<u64>) -> u64 {
+    hepta_kernel_telegram_soak_min_poll_iterations_policy(value)
+}
+
+pub fn native_telegram_soak_max_attention_count_policy(value: Option<u64>) -> u64 {
+    hepta_kernel_telegram_soak_max_attention_count_policy(value)
+}
+
+pub fn native_telegram_soak_max_observed_age_ms_policy(value: Option<u64>) -> u64 {
+    hepta_kernel_telegram_soak_max_observed_age_ms_policy(value)
+}
+
+pub fn native_telegram_system_time_unix_ms(time: std::time::SystemTime) -> u64 {
+    hepta_kernel_telegram_system_time_unix_ms(time)
 }
 
 pub fn extract_native_telegram_exec_child_final_message(output: &str) -> Result<String, String> {
@@ -487,6 +532,50 @@ mod tests {
         assert_eq!(
             native_telegram_model_timeout(Some(999_999_999)),
             Duration::from_millis(MAX_TELEGRAM_MODEL_TIMEOUT_MS)
+        );
+    }
+
+    #[test]
+    fn telegram_poll_loop_receive_and_soak_policies_delegate_to_kernel() {
+        assert!(native_telegram_poll_loop_should_spawn(true, true, true));
+        assert!(!native_telegram_poll_loop_should_spawn(true, true, false));
+        assert_eq!(
+            native_telegram_poll_loop_interval_ms_policy(1),
+            MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS
+        );
+        assert_eq!(
+            native_telegram_poll_loop_interval_ms_policy(999_999),
+            MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS
+        );
+        assert_eq!(native_telegram_receive_limit_policy(0), 1);
+        assert_eq!(native_telegram_receive_limit_policy(999), 20);
+        assert_eq!(
+            native_telegram_soak_min_poll_iterations_policy(None),
+            DEFAULT_TELEGRAM_SOAK_MIN_POLLS
+        );
+        assert_eq!(
+            native_telegram_soak_min_poll_iterations_policy(Some(999_999)),
+            MAX_TELEGRAM_SOAK_MIN_POLLS
+        );
+        assert_eq!(
+            native_telegram_soak_max_attention_count_policy(None),
+            DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION
+        );
+        assert_eq!(
+            native_telegram_soak_max_attention_count_policy(Some(999_999)),
+            MAX_TELEGRAM_SOAK_MAX_ATTENTION
+        );
+        assert_eq!(
+            native_telegram_soak_max_observed_age_ms_policy(None),
+            DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS
+        );
+        assert_eq!(
+            native_telegram_soak_max_observed_age_ms_policy(Some(999_999_999)),
+            MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS
+        );
+        assert_eq!(
+            native_telegram_system_time_unix_ms(std::time::UNIX_EPOCH + Duration::from_millis(42)),
+            42
         );
     }
 

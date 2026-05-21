@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const HEPTA_KERNEL_CONTRACT: &str = "hepta-kernel-v1";
 pub const HEPTA_KERNEL_OWNER: &str = "hepta-kernel";
@@ -36,6 +36,14 @@ pub const HEPTA_IN_PROCESS_EXEC_RUNNER_KIND: &str = "hepta_in_process_exec_runne
 pub const HEPTA_EXEC_CHILD_RUNNER_KIND: &str = "hepta_exec_child_runner";
 pub const HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE: &str =
     "本地模型这次响应超时或失败了。我已先收下这条消息，避免反复重试；请稍后再发一条继续。";
+pub const DEFAULT_TELEGRAM_SOAK_MIN_POLLS: u64 = 3;
+pub const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
+pub const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 0;
+pub const MAX_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 1_000;
+pub const DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS: u64 = 120_000;
+pub const MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS: u64 = 3_600_000;
+pub const MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS: u64 = 500;
+pub const MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS: u64 = 60_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HeptaKernelTurnChannel {
@@ -1173,6 +1181,53 @@ pub fn hepta_kernel_telegram_model_timeout(value_ms: Option<u64>) -> Duration {
     Duration::from_millis(hepta_kernel_telegram_model_timeout_ms(value_ms))
 }
 
+pub fn hepta_kernel_telegram_poll_loop_should_spawn(
+    requested: bool,
+    poll_loop_gate_enabled: bool,
+    delivery_approval_gate_enabled: bool,
+) -> bool {
+    requested && poll_loop_gate_enabled && delivery_approval_gate_enabled
+}
+
+pub fn hepta_kernel_telegram_poll_loop_interval_ms_policy(value: u64) -> u64 {
+    value.clamp(
+        MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+        MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
+    )
+}
+
+pub fn hepta_kernel_telegram_receive_limit_policy(value: usize) -> usize {
+    value.clamp(1, 20)
+}
+
+pub fn hepta_kernel_telegram_soak_min_poll_iterations_policy(value: Option<u64>) -> u64 {
+    value
+        .map(|polls| polls.clamp(1, MAX_TELEGRAM_SOAK_MIN_POLLS))
+        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MIN_POLLS)
+}
+
+pub fn hepta_kernel_telegram_soak_max_attention_count_policy(value: Option<u64>) -> u64 {
+    value
+        .map(|count| count.min(MAX_TELEGRAM_SOAK_MAX_ATTENTION))
+        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION)
+}
+
+pub fn hepta_kernel_telegram_soak_max_observed_age_ms_policy(value: Option<u64>) -> u64 {
+    value
+        .map(|age_ms| age_ms.clamp(1_000, MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS))
+        .unwrap_or(DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS)
+}
+
+fn hepta_kernel_duration_millis_u64(duration: Duration) -> u64 {
+    duration.as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+pub fn hepta_kernel_telegram_system_time_unix_ms(time: SystemTime) -> u64 {
+    time.duration_since(UNIX_EPOCH)
+        .map(hepta_kernel_duration_millis_u64)
+        .unwrap_or(0)
+}
+
 pub fn hepta_kernel_exec_child_args(last_message_path: &str, prompt: &str) -> Vec<String> {
     vec![
         "-c".to_string(),
@@ -2061,6 +2116,82 @@ mod tests {
             Duration::from_millis(MAX_TELEGRAM_MODEL_TIMEOUT_MS)
         );
         assert_eq!(hepta_kernel_telegram_model_timeout_ms(Some(2_500)), 2_500);
+    }
+
+    #[test]
+    fn kernel_poll_loop_and_receive_limit_policies_are_bounded() {
+        assert!(hepta_kernel_telegram_poll_loop_should_spawn(
+            true, true, true
+        ));
+        assert!(!hepta_kernel_telegram_poll_loop_should_spawn(
+            false, true, true
+        ));
+        assert!(!hepta_kernel_telegram_poll_loop_should_spawn(
+            true, false, true
+        ));
+        assert!(!hepta_kernel_telegram_poll_loop_should_spawn(
+            true, true, false
+        ));
+        assert_eq!(
+            hepta_kernel_telegram_poll_loop_interval_ms_policy(1),
+            MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS
+        );
+        assert_eq!(
+            hepta_kernel_telegram_poll_loop_interval_ms_policy(1_500),
+            1_500
+        );
+        assert_eq!(
+            hepta_kernel_telegram_poll_loop_interval_ms_policy(999_999),
+            MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS
+        );
+        assert_eq!(hepta_kernel_telegram_receive_limit_policy(0), 1);
+        assert_eq!(hepta_kernel_telegram_receive_limit_policy(7), 7);
+        assert_eq!(hepta_kernel_telegram_receive_limit_policy(999), 20);
+    }
+
+    #[test]
+    fn kernel_soak_and_time_policies_clamp_and_default() {
+        assert_eq!(
+            hepta_kernel_telegram_soak_min_poll_iterations_policy(None),
+            DEFAULT_TELEGRAM_SOAK_MIN_POLLS
+        );
+        assert_eq!(
+            hepta_kernel_telegram_soak_min_poll_iterations_policy(Some(0)),
+            1
+        );
+        assert_eq!(
+            hepta_kernel_telegram_soak_min_poll_iterations_policy(Some(999_999)),
+            MAX_TELEGRAM_SOAK_MIN_POLLS
+        );
+        assert_eq!(
+            hepta_kernel_telegram_soak_max_attention_count_policy(None),
+            DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION
+        );
+        assert_eq!(
+            hepta_kernel_telegram_soak_max_attention_count_policy(Some(999_999)),
+            MAX_TELEGRAM_SOAK_MAX_ATTENTION
+        );
+        assert_eq!(
+            hepta_kernel_telegram_soak_max_observed_age_ms_policy(None),
+            DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS
+        );
+        assert_eq!(
+            hepta_kernel_telegram_soak_max_observed_age_ms_policy(Some(1)),
+            1_000
+        );
+        assert_eq!(
+            hepta_kernel_telegram_soak_max_observed_age_ms_policy(Some(999_999_999)),
+            MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS
+        );
+        assert_eq!(hepta_kernel_telegram_system_time_unix_ms(UNIX_EPOCH), 0);
+        assert_eq!(
+            hepta_kernel_telegram_system_time_unix_ms(UNIX_EPOCH + Duration::from_millis(42)),
+            42
+        );
+        assert_eq!(
+            hepta_kernel_telegram_system_time_unix_ms(UNIX_EPOCH - Duration::from_millis(1)),
+            0
+        );
     }
 
     #[test]

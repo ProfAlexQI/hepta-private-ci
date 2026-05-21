@@ -318,6 +318,39 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
+### 22:5x Progress - Telegram Poll/Soak Timing Policies Moved Into Hepta Kernel
+
+Continued after first-candidate selection with another side-effect-free kernel
+ownership slice:
+
+1. Moved Telegram poll-loop spawn gating, poll interval clamp, receive-limit
+   clamp, live-soak threshold clamps/defaults, and bounded `SystemTime` to
+   unix-ms conversion into `hepta-kernel`.
+2. Added runtime compatibility wrappers and root re-exports so gateway/CLI
+   callers keep the `native_telegram_*` / `telegram_*` surfaces while policy
+   ownership moves into the Hepta kernel contract.
+3. Left actual polling, sleeps, Telegram Bot API reads/sends, cursor commits,
+   delivery ledger writes, model execution, token checks, retries, and launchd
+   mutation outside `hepta-kernel`.
+4. Added kernel/runtime tests for the moved policies and kept gateway tests
+   validating the compatibility wrappers.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_post -- --nocapture
+git diff --check
+```
+
 ### 21:4x Progress - Telegram Ingress/Model-Turn Planning Moved Into Hepta Kernel
 
 Continued after the model-invocation policy slice:
