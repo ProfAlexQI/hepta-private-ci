@@ -34,7 +34,8 @@ pub use hepta_runtime::{
     DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MAX_TELEGRAM_READ_MAX_ATTEMPTS,
     MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
     MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, TELEGRAM_ALLOWED_UPDATES,
+    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramSendPlan, NativeTelegramTransportPlan,
+    TELEGRAM_ALLOWED_UPDATES,
 };
 const TELEGRAM_BOT_API_BASE_URL: &str = "https://api.telegram.org";
 static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
@@ -53,56 +54,6 @@ impl Drop for TelegramTypingKeepalive {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct NativeTelegramTransportPlan {
-    pub bot_api_transport_plan_ready: bool,
-    pub endpoint_template: &'static str,
-    pub get_updates_method: &'static str,
-    pub send_message_method: &'static str,
-    pub send_chat_action_method: &'static str,
-    pub allowed_updates: &'static str,
-    pub offset_commit_strategy: &'static str,
-    pub send_delivery_gate: &'static str,
-    pub typing_keepalive_plan: &'static str,
-    pub raw_token_exposed: bool,
-    pub external_network_performed_by_status: bool,
-}
-
-impl NativeTelegramTransportPlan {
-    pub fn disabled() -> Self {
-        Self {
-            bot_api_transport_plan_ready: false,
-            endpoint_template: "https://api.telegram.org/bot<redacted-token>/{method}",
-            get_updates_method: "getUpdates",
-            send_message_method: "sendMessage",
-            send_chat_action_method: "sendChatAction",
-            allowed_updates: TELEGRAM_ALLOWED_UPDATES,
-            offset_commit_strategy: "disabled",
-            send_delivery_gate: "disabled",
-            typing_keepalive_plan: "disabled",
-            raw_token_exposed: false,
-            external_network_performed_by_status: false,
-        }
-    }
-
-    pub fn for_config_state(enabled: bool, token_shape_ok: bool, binding_ready: bool) -> Self {
-        let ready = enabled && token_shape_ok && binding_ready;
-        Self {
-            bot_api_transport_plan_ready: ready,
-            endpoint_template: "https://api.telegram.org/bot<redacted-token>/{method}",
-            get_updates_method: "getUpdates",
-            send_message_method: "sendMessage",
-            send_chat_action_method: "sendChatAction",
-            allowed_updates: TELEGRAM_ALLOWED_UPDATES,
-            offset_commit_strategy: "commit getUpdates offset only after delivery succeeds or duplicate suppression is recorded",
-            send_delivery_gate: "sendMessage requires a successful model-turn or command dispatch plus explicit confirm-send runtime gate",
-            typing_keepalive_plan: "sendChatAction typing keepalive is planned while the model turn is running, with bounded TTL",
-            raw_token_exposed: false,
-            external_network_performed_by_status: false,
-        }
-    }
-}
-
 pub fn telegram_transport_plan_for_config_status(
     config: &NativeTelegramConfigStatus,
 ) -> NativeTelegramTransportPlan {
@@ -111,73 +62,6 @@ pub fn telegram_transport_plan_for_config_status(
         config.token_shape_ok,
         config.binding_ready,
     )
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct NativeTelegramSendPlan {
-    pub send_plan_ready: bool,
-    pub method: &'static str,
-    pub request_builder_strategy: &'static str,
-    pub response_source_policy: &'static str,
-    pub reply_target_policy: &'static str,
-    pub parse_mode_policy: &'static str,
-    pub typing_keepalive_policy: &'static str,
-    pub rate_limit_policy: &'static str,
-    pub retry_policy: &'static str,
-    pub cursor_commit_policy: &'static str,
-    pub failure_policy: &'static str,
-    pub request_body_materialized_by_status: bool,
-    pub delivery_performed_by_status: bool,
-    pub raw_response_text_exposed: bool,
-    pub raw_chat_id_exposed: bool,
-    pub raw_message_id_exposed: bool,
-    pub raw_token_exposed: bool,
-}
-
-impl NativeTelegramSendPlan {
-    pub fn disabled() -> Self {
-        Self {
-            send_plan_ready: false,
-            method: "disabled",
-            request_builder_strategy: "disabled",
-            response_source_policy: "disabled",
-            reply_target_policy: "disabled",
-            parse_mode_policy: "disabled",
-            typing_keepalive_policy: "disabled",
-            rate_limit_policy: "disabled",
-            retry_policy: "disabled",
-            cursor_commit_policy: "disabled",
-            failure_policy: "disabled",
-            request_body_materialized_by_status: false,
-            delivery_performed_by_status: false,
-            raw_response_text_exposed: false,
-            raw_chat_id_exposed: false,
-            raw_message_id_exposed: false,
-            raw_token_exposed: false,
-        }
-    }
-
-    pub fn ready() -> Self {
-        Self {
-            send_plan_ready: true,
-            method: "sendMessage",
-            request_builder_strategy: "build a Telegram sendMessage request only from successful model output and an opaque reply target handle",
-            response_source_policy: "model output stays in memory until the gated send execution path; status JSON exposes only policy metadata",
-            reply_target_policy: "use reply_parameters when an opaque reply target is available, otherwise send to the resolved conversation handle",
-            parse_mode_policy: "start with plain text; enable parse_mode only after escaping and formatting tests land",
-            typing_keepalive_policy: "sendChatAction typing may run only while a gated model turn is active and must stop before final send",
-            rate_limit_policy: "apply per-chat send throttling before Bot API delivery",
-            retry_policy: "retry transient Bot API failures with bounded backoff; never duplicate sends after an acknowledged delivery",
-            cursor_commit_policy: "commit next-update cursor only after sendMessage succeeds or duplicate suppression is recorded",
-            failure_policy: "on send failure, keep cursor uncommitted and return redacted diagnostics without exposing model output",
-            request_body_materialized_by_status: false,
-            delivery_performed_by_status: false,
-            raw_response_text_exposed: false,
-            raw_chat_id_exposed: false,
-            raw_message_id_exposed: false,
-            raw_token_exposed: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy)]

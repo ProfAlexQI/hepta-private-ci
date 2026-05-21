@@ -378,6 +378,42 @@ pub struct HeptaKernelTelegramSendExecutionReport {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramTransportPlan {
+    pub bot_api_transport_plan_ready: bool,
+    pub endpoint_template: &'static str,
+    pub get_updates_method: &'static str,
+    pub send_message_method: &'static str,
+    pub send_chat_action_method: &'static str,
+    pub allowed_updates: &'static str,
+    pub offset_commit_strategy: &'static str,
+    pub send_delivery_gate: &'static str,
+    pub typing_keepalive_plan: &'static str,
+    pub raw_token_exposed: bool,
+    pub external_network_performed_by_status: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaKernelTelegramSendPlan {
+    pub send_plan_ready: bool,
+    pub method: &'static str,
+    pub request_builder_strategy: &'static str,
+    pub response_source_policy: &'static str,
+    pub reply_target_policy: &'static str,
+    pub parse_mode_policy: &'static str,
+    pub typing_keepalive_policy: &'static str,
+    pub rate_limit_policy: &'static str,
+    pub retry_policy: &'static str,
+    pub cursor_commit_policy: &'static str,
+    pub failure_policy: &'static str,
+    pub request_body_materialized_by_status: bool,
+    pub delivery_performed_by_status: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+    pub raw_token_exposed: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelTelegramConfigStatus {
     pub config_path: Option<String>,
@@ -1095,6 +1131,87 @@ impl HeptaKernelTelegramSendExecutionReport {
             raw_message_id_exposed: false,
             raw_token_exposed: false,
             error: None,
+        }
+    }
+}
+
+impl HeptaKernelTelegramTransportPlan {
+    pub fn disabled() -> Self {
+        Self {
+            bot_api_transport_plan_ready: false,
+            endpoint_template: "https://api.telegram.org/bot<redacted-token>/{method}",
+            get_updates_method: "getUpdates",
+            send_message_method: "sendMessage",
+            send_chat_action_method: "sendChatAction",
+            allowed_updates: HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES,
+            offset_commit_strategy: "disabled",
+            send_delivery_gate: "disabled",
+            typing_keepalive_plan: "disabled",
+            raw_token_exposed: false,
+            external_network_performed_by_status: false,
+        }
+    }
+
+    pub fn for_config_state(enabled: bool, token_shape_ok: bool, binding_ready: bool) -> Self {
+        let ready = enabled && token_shape_ok && binding_ready;
+        Self {
+            bot_api_transport_plan_ready: ready,
+            endpoint_template: "https://api.telegram.org/bot<redacted-token>/{method}",
+            get_updates_method: "getUpdates",
+            send_message_method: "sendMessage",
+            send_chat_action_method: "sendChatAction",
+            allowed_updates: HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES,
+            offset_commit_strategy: "commit getUpdates offset only after delivery succeeds or duplicate suppression is recorded",
+            send_delivery_gate: "sendMessage requires a successful model-turn or command dispatch plus explicit confirm-send runtime gate",
+            typing_keepalive_plan: "sendChatAction typing keepalive is planned while the model turn is running, with bounded TTL",
+            raw_token_exposed: false,
+            external_network_performed_by_status: false,
+        }
+    }
+}
+
+impl HeptaKernelTelegramSendPlan {
+    pub fn disabled() -> Self {
+        Self {
+            send_plan_ready: false,
+            method: "disabled",
+            request_builder_strategy: "disabled",
+            response_source_policy: "disabled",
+            reply_target_policy: "disabled",
+            parse_mode_policy: "disabled",
+            typing_keepalive_policy: "disabled",
+            rate_limit_policy: "disabled",
+            retry_policy: "disabled",
+            cursor_commit_policy: "disabled",
+            failure_policy: "disabled",
+            request_body_materialized_by_status: false,
+            delivery_performed_by_status: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+
+    pub fn ready() -> Self {
+        Self {
+            send_plan_ready: true,
+            method: "sendMessage",
+            request_builder_strategy: "build a Telegram sendMessage request only from successful model output and an opaque reply target handle",
+            response_source_policy: "model output stays in memory until the gated send execution path; status JSON exposes only policy metadata",
+            reply_target_policy: "use reply_parameters when an opaque reply target is available, otherwise send to the resolved conversation handle",
+            parse_mode_policy: "start with plain text; enable parse_mode only after escaping and formatting tests land",
+            typing_keepalive_policy: "sendChatAction typing may run only while a gated model turn is active and must stop before final send",
+            rate_limit_policy: "apply per-chat send throttling before Bot API delivery",
+            retry_policy: "retry transient Bot API failures with bounded backoff; never duplicate sends after an acknowledged delivery",
+            cursor_commit_policy: "commit next-update cursor only after sendMessage succeeds or duplicate suppression is recorded",
+            failure_policy: "on send failure, keep cursor uncommitted and return redacted diagnostics without exposing model output",
+            request_body_materialized_by_status: false,
+            delivery_performed_by_status: false,
+            raw_response_text_exposed: false,
+            raw_chat_id_exposed: false,
+            raw_message_id_exposed: false,
+            raw_token_exposed: false,
         }
     }
 }
@@ -3493,6 +3610,46 @@ mod tests {
                 .expect_err("bad chat id rejected")
                 .contains("chat id must be non-zero")
         );
+    }
+
+    #[test]
+    fn kernel_telegram_transport_and_send_plans_are_side_effect_free() {
+        let disabled_transport = HeptaKernelTelegramTransportPlan::disabled();
+        assert!(!disabled_transport.bot_api_transport_plan_ready);
+        assert_eq!(
+            disabled_transport.allowed_updates,
+            HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES
+        );
+        assert!(!disabled_transport.external_network_performed_by_status);
+        assert!(!disabled_transport.raw_token_exposed);
+
+        let ready_transport = HeptaKernelTelegramTransportPlan::for_config_state(true, true, true);
+        assert!(ready_transport.bot_api_transport_plan_ready);
+        assert_eq!(ready_transport.get_updates_method, "getUpdates");
+        assert_eq!(ready_transport.send_message_method, "sendMessage");
+        assert_eq!(ready_transport.send_chat_action_method, "sendChatAction");
+        assert!(!ready_transport.external_network_performed_by_status);
+        assert!(!ready_transport.raw_token_exposed);
+        assert!(
+            !HeptaKernelTelegramTransportPlan::for_config_state(true, true, false)
+                .bot_api_transport_plan_ready
+        );
+
+        let disabled_send = HeptaKernelTelegramSendPlan::disabled();
+        assert!(!disabled_send.send_plan_ready);
+        assert_eq!(disabled_send.method, "disabled");
+        assert!(!disabled_send.delivery_performed_by_status);
+        assert!(!disabled_send.raw_token_exposed);
+
+        let ready_send = HeptaKernelTelegramSendPlan::ready();
+        assert!(ready_send.send_plan_ready);
+        assert_eq!(ready_send.method, "sendMessage");
+        assert!(!ready_send.request_body_materialized_by_status);
+        assert!(!ready_send.delivery_performed_by_status);
+        assert!(!ready_send.raw_response_text_exposed);
+        assert!(!ready_send.raw_chat_id_exposed);
+        assert!(!ready_send.raw_message_id_exposed);
+        assert!(!ready_send.raw_token_exposed);
     }
 
     #[test]

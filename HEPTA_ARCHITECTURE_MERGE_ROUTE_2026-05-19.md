@@ -318,6 +318,42 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
+### 06:5x Progress - Telegram Transport/Send Plans Moved Into Hepta Kernel
+
+Continued after the cursor-plan kernel slice with another pure-plan ownership
+cut:
+
+1. Moved side-effect-free Telegram transport and send plan DTOs into
+   `hepta-kernel`:
+   `HeptaKernelTelegramTransportPlan` and `HeptaKernelTelegramSendPlan`.
+2. Kept `hepta-runtime::telegram_model_runner` compatibility aliases:
+   `NativeTelegramTransportPlan` and `NativeTelegramSendPlan`.
+3. Kept `hepta-gateway::telegram_transport` as the external I/O shell: Bot API
+   calls, typing keepalive threads, retry sleeps, delivery ledger writes,
+   cursor commits, token/env reads, and launchd/runtime mutation remain outside
+   `hepta-kernel`.
+4. `hepta-gateway` still exposes the same public `NativeTelegram*` facade, but
+   the static transport/send policy contract now belongs to the kernel.
+
+Focused and full gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml
+cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel kernel_telegram_transport_and_send_plans_are_side_effect_free -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_transport_and_send_plans_alias_kernel_contracts -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib transport_plan_for_config_status_requires_enabled_token_and_binding -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib send_plan_without_gate_is_gated_and_side_effect_free -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+HEPTA_CODEX_PREFLIGHT_RELEASE=0 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 scripts/hepta-codex-preflight.sh
+git diff --check
+```
+
 ### 22:5x Progress - Telegram Poll/Soak Timing Policies Moved Into Hepta Kernel
 
 Continued after first-candidate selection with another side-effect-free kernel

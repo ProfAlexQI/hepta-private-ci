@@ -30,8 +30,9 @@ pub use hepta_kernel::{
     HeptaKernelTelegramProductionGuardStatus, HeptaKernelTelegramProductionGuardStatusInput,
     HeptaKernelTelegramReplyTargetMaterial, HeptaKernelTelegramRunnerInvocationOutcome,
     HeptaKernelTelegramRunnerPlan, HeptaKernelTelegramSendExecutionReport,
-    HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
-    HeptaKernelTelegramTokenObservation, HeptaKernelTelegramTokenObservationInput,
+    HeptaKernelTelegramSendPlan, HeptaKernelTelegramSendRequestPlan,
+    HeptaKernelTelegramSessionBridgePlan, HeptaKernelTelegramTokenObservation,
+    HeptaKernelTelegramTokenObservationInput, HeptaKernelTelegramTransportPlan,
     HeptaKernelTurnChannel, HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
     MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
     MAX_TELEGRAM_READ_MAX_ATTEMPTS, MAX_TELEGRAM_READ_RETRY_BACKOFF_MS,
@@ -101,6 +102,8 @@ pub type NativeTelegramModelInvocationRequestPlan = HeptaKernelTelegramModelInvo
 pub type NativeTelegramModelExecutionReport = HeptaKernelTelegramModelExecutionReport;
 pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
+pub type NativeTelegramTransportPlan = HeptaKernelTelegramTransportPlan;
+pub type NativeTelegramSendPlan = HeptaKernelTelegramSendPlan;
 pub type NativeTelegramConfigStatus = HeptaKernelTelegramConfigStatus;
 pub type NativeTelegramConfigStatusInput = HeptaKernelTelegramConfigStatusInput;
 pub type NativeTelegramTokenObservationInput = HeptaKernelTelegramTokenObservationInput;
@@ -988,6 +991,30 @@ mod tests {
                 .expect_err("bad chat id rejected")
                 .contains("chat id must be non-zero")
         );
+    }
+
+    #[test]
+    fn telegram_transport_and_send_plans_alias_kernel_contracts() {
+        let transport = NativeTelegramTransportPlan::for_config_state(true, true, true);
+        assert!(transport.bot_api_transport_plan_ready);
+        assert_eq!(transport.allowed_updates, TELEGRAM_ALLOWED_UPDATES);
+        assert!(!transport.external_network_performed_by_status);
+        assert!(!transport.raw_token_exposed);
+        assert!(
+            !NativeTelegramTransportPlan::for_config_state(true, false, true)
+                .bot_api_transport_plan_ready
+        );
+
+        let send_plan = NativeTelegramSendPlan::ready();
+        assert!(send_plan.send_plan_ready);
+        assert_eq!(send_plan.method, "sendMessage");
+        assert!(!send_plan.request_body_materialized_by_status);
+        assert!(!send_plan.delivery_performed_by_status);
+        assert!(!send_plan.raw_response_text_exposed);
+        assert!(!send_plan.raw_chat_id_exposed);
+        assert!(!send_plan.raw_message_id_exposed);
+        assert!(!send_plan.raw_token_exposed);
+        assert!(!NativeTelegramSendPlan::disabled().send_plan_ready);
     }
 
     #[test]
