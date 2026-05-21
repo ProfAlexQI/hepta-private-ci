@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 MANIFEST="${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}"
 NATIVE_MANIFEST="${HEPTA_NATIVE_MANIFEST:-apps/hepta-native/Cargo.toml}"
-NATIVE_TARGET_DIR="${HEPTA_NATIVE_TARGET_DIR:-/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target}"
+NATIVE_TARGET_DIR="${HEPTA_NATIVE_TARGET_DIR:-apps/hepta-native/target}"
 RUN_NATIVE="${HEPTA_CODEX_PREFLIGHT_NATIVE:-1}"
 RUN_RELEASE="${HEPTA_CODEX_PREFLIGHT_RELEASE:-0}"
 

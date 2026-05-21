@@ -84,7 +84,7 @@ bash -n "$PACKAGING_DIR/fix-dmg-applications-icon.sh"
 plutil -lint "$PACKAGING_DIR/Info.plist" "$PACKAGING_DIR/Entitlements.plist" >/dev/null
 
 if [[ "${HEPTA_NATIVE_PACKAGING_RUN_CARGO:-0}" == "1" ]]; then
-  target_dir="${HEPTA_NATIVE_TARGET_DIR:-/Users/qianqi/.openclaw/workspace/Hepta/apps/hepta-native/target}"
+  target_dir="${HEPTA_NATIVE_TARGET_DIR:-apps/hepta-native/target}"
   CARGO_TARGET_DIR="$target_dir" cargo check --manifest-path "$APP_DIR/Cargo.toml"
   CARGO_TARGET_DIR="$target_dir" cargo test --manifest-path "$APP_DIR/Cargo.toml" hepta_ -- --nocapture
 fi
