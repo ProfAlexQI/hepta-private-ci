@@ -304,7 +304,7 @@ where
         .expect("send preflight requires next-update offset");
     let token = token.expect("send preflight requires valid Bot API token");
 
-    report.delivery_ledger_write_attempted = true;
+    report = report.with_delivery_ledger_write_attempted();
     let enqueued_record = telegram_delivery_lifecycle_record(
         "enqueued",
         input.candidate_next_update_offset,
@@ -316,21 +316,14 @@ where
     );
     match append_telegram_delivery_lifecycle_record(input.delivery_ledger_path, &enqueued_record) {
         Ok(()) => {
-            report.delivery_ledger_written_count =
-                report.delivery_ledger_written_count.saturating_add(1);
-            report.latest_delivery_ledger_stage = Some("enqueued".to_string());
+            report = report.with_delivery_ledger_written("enqueued");
         }
         Err(error) => {
-            report.status = "attention";
-            report.error = Some(telegram_redact_token_like_text(&error));
-            return report;
+            return report.with_redacted_attention_error(&error);
         }
     }
 
-    report.status = "sending";
-    report.request_body_materialized_by_execution = true;
-    report.send_attempted = true;
-    report.external_network_write = true;
+    report = report.with_sending_attempt_started();
 
     let max_attempts = input.send_max_attempts.max(1);
     for attempt in 1..=max_attempts {
@@ -348,7 +341,7 @@ where
                         api_result: Ok(&api),
                     },
                 );
-                report.bot_api_ack = provider_result.bot_api_ack;
+                report = report.with_bot_api_ack(provider_result.bot_api_ack);
                 if provider_result.should_retry {
                     thread::sleep(input.send_retry_backoff);
                     continue;
@@ -369,18 +362,14 @@ where
                             Some(&error),
                         ),
                     ) {
-                        report.error = Some(telegram_redact_token_like_text(&ledger_error));
-                        return report;
+                        return report.with_redacted_attention_error(&ledger_error);
                     }
-                    report.delivery_ledger_written_count =
-                        report.delivery_ledger_written_count.saturating_add(1);
-                    report.latest_delivery_ledger_stage = Some("failed".to_string());
-                    report.status = "attention";
-                    report.error = Some(error);
-                    return report;
+                    return report
+                        .with_delivery_ledger_written("failed")
+                        .with_attention_error(error);
                 }
 
-                report.external_send = provider_result.external_send;
+                report = report.with_external_send(provider_result.external_send);
                 match append_telegram_delivery_lifecycle_record(
                     input.delivery_ledger_path,
                     &telegram_delivery_lifecycle_record(
@@ -394,28 +383,22 @@ where
                     ),
                 ) {
                     Ok(()) => {
-                        report.delivery_ledger_written_count =
-                            report.delivery_ledger_written_count.saturating_add(1);
-                        report.latest_delivery_ledger_stage = Some("acked".to_string());
+                        report = report.with_delivery_ledger_written("acked");
                     }
                     Err(error) => {
-                        report.status = "attention";
-                        report.error = Some(telegram_redact_token_like_text(&error));
-                        return report;
+                        return report.with_redacted_attention_error(&error);
                     }
                 }
-                report.cursor_commit_attempted = true;
+                report = report.with_cursor_commit_attempted();
                 match write_telegram_cursor_next_update_offset(
                     input.cursor_path,
                     candidate_next_update_offset,
                 ) {
                     Ok(()) => {
-                        report.status = "delivered";
-                        report.cursor_written = true;
+                        report = report.with_cursor_written();
                     }
                     Err(error) => {
-                        report.status = "attention";
-                        report.error = Some(telegram_redact_token_like_text(&error));
+                        report = report.with_redacted_attention_error(&error);
                     }
                 }
                 return report;
@@ -445,15 +428,11 @@ where
                         Some(&error),
                     ),
                 ) {
-                    report.error = Some(telegram_redact_token_like_text(&ledger_error));
-                    return report;
+                    return report.with_redacted_attention_error(&ledger_error);
                 }
-                report.delivery_ledger_written_count =
-                    report.delivery_ledger_written_count.saturating_add(1);
-                report.latest_delivery_ledger_stage = Some("failed".to_string());
-                report.status = "attention";
-                report.error = Some(error);
-                return report;
+                return report
+                    .with_delivery_ledger_written("failed")
+                    .with_attention_error(error);
             }
         }
     }

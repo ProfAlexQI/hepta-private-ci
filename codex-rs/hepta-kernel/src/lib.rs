@@ -2219,6 +2219,56 @@ impl HeptaKernelTelegramSendExecutionReport {
             error: None,
         }
     }
+
+    pub fn with_delivery_ledger_write_attempted(mut self) -> Self {
+        self.delivery_ledger_write_attempted = true;
+        self
+    }
+
+    pub fn with_delivery_ledger_written(mut self, stage: &str) -> Self {
+        self.delivery_ledger_written_count = self.delivery_ledger_written_count.saturating_add(1);
+        self.latest_delivery_ledger_stage = Some(stage.to_string());
+        self
+    }
+
+    pub fn with_sending_attempt_started(mut self) -> Self {
+        self.status = "sending";
+        self.request_body_materialized_by_execution = true;
+        self.send_attempted = true;
+        self.external_network_write = true;
+        self
+    }
+
+    pub fn with_bot_api_ack(mut self, bot_api_ack: Option<bool>) -> Self {
+        self.bot_api_ack = bot_api_ack;
+        self
+    }
+
+    pub fn with_external_send(mut self, external_send: bool) -> Self {
+        self.external_send = external_send;
+        self
+    }
+
+    pub fn with_cursor_commit_attempted(mut self) -> Self {
+        self.cursor_commit_attempted = true;
+        self
+    }
+
+    pub fn with_cursor_written(mut self) -> Self {
+        self.status = "delivered";
+        self.cursor_written = true;
+        self
+    }
+
+    pub fn with_attention_error(mut self, error: String) -> Self {
+        self.status = "attention";
+        self.error = Some(error);
+        self
+    }
+
+    pub fn with_redacted_attention_error(self, error: &str) -> Self {
+        self.with_attention_error(redact_hepta_kernel_telegram_token_like_text(error))
+    }
 }
 
 impl HeptaKernelTelegramTransportPlan {
@@ -8209,6 +8259,53 @@ mod tests {
         assert!(!blocked.report.cursor_written);
         assert!(!blocked.report.external_send);
         assert!(!blocked.report.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_send_execution_report_transitions_preserve_redaction_boundary() {
+        let request = HeptaKernelTelegramSendRequestPlan::from_model_output(
+            Some("private model response text"),
+            true,
+            Some(43),
+            "HEPTA_NATIVE_TELEGRAM_SEND",
+            true,
+        );
+
+        let report = HeptaKernelTelegramSendExecutionReport::from_send_request(&request)
+            .with_delivery_ledger_write_attempted()
+            .with_delivery_ledger_written("enqueued")
+            .with_sending_attempt_started()
+            .with_bot_api_ack(Some(true))
+            .with_external_send(true)
+            .with_delivery_ledger_written("acked")
+            .with_cursor_commit_attempted()
+            .with_cursor_written();
+
+        assert_eq!(report.status, "delivered");
+        assert!(report.delivery_ledger_write_attempted);
+        assert_eq!(report.delivery_ledger_written_count, 2);
+        assert_eq!(
+            report.latest_delivery_ledger_stage.as_deref(),
+            Some("acked")
+        );
+        assert!(report.send_attempted);
+        assert_eq!(report.bot_api_ack, Some(true));
+        assert!(report.external_network_write);
+        assert!(report.external_send);
+        assert!(report.cursor_commit_attempted);
+        assert!(report.cursor_written);
+        assert!(!report.raw_response_text_exposed);
+        assert!(!report.raw_token_exposed);
+
+        let attention = report
+            .clone()
+            .with_redacted_attention_error("failed 123456789:abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(attention.status, "attention");
+        assert_eq!(
+            attention.error.as_deref(),
+            Some("failed [redacted-telegram-token]")
+        );
+        assert!(!attention.raw_token_exposed);
     }
 
     #[test]
