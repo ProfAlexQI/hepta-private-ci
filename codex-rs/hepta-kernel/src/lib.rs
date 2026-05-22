@@ -831,6 +831,58 @@ pub struct HeptaKernelTelegramLiveSoakObservationReport {
     pub raw_token_exposed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramProductionReadinessStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub ready: bool,
+    pub side_effect_free: bool,
+    pub min_poll_iterations_env: &'static str,
+    pub min_poll_iterations: u64,
+    pub max_attention_count_env: &'static str,
+    pub max_attention_count: u64,
+    pub max_observed_age_env: &'static str,
+    pub max_observed_age_ms: u64,
+    pub poll_loop_armed: bool,
+    pub cursor_ready: bool,
+    pub production_guards_ready: bool,
+    pub observation_ready: bool,
+    pub observation_fresh: bool,
+    pub durable_cursor_evidence_present: bool,
+    pub durable_delivery_evidence_required: bool,
+    pub durable_delivery_evidence_present: bool,
+    pub durable_delivery_evidence_fresh: bool,
+    pub delivery_ledger_ready: bool,
+    pub attention_budget_ok: bool,
+    pub recent_bot_api_ok: bool,
+    pub redaction_guards_ok: bool,
+    pub readiness_blockers: Vec<&'static str>,
+    pub readiness_warnings: Vec<&'static str>,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HeptaKernelTelegramProductionReadinessInput<'a> {
+    pub requested: bool,
+    pub poll_loop_status: &'a HeptaKernelTelegramPollLoopStatus,
+    pub cursor_status: &'a HeptaKernelTelegramCursorStatus,
+    pub delivery_ledger_status: &'a HeptaKernelTelegramDeliveryLedgerStatus,
+    pub production_guards: &'a HeptaKernelTelegramProductionGuardStatus,
+    pub observation: &'a HeptaKernelTelegramLiveSoakObservationReport,
+    pub min_poll_iterations_env: &'static str,
+    pub min_poll_iterations: u64,
+    pub max_attention_count_env: &'static str,
+    pub max_attention_count: u64,
+    pub max_observed_age_env: &'static str,
+    pub max_observed_age_ms: u64,
+    pub now_unix_ms: u64,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct HeptaKernelTelegramLiveSoakObservationState {
     poll_iterations: u64,
@@ -937,6 +989,188 @@ impl HeptaKernelTelegramLiveSoakObservationState {
             raw_response_text_exposed: false,
             raw_token_exposed: false,
         }
+    }
+}
+
+pub fn build_hepta_kernel_telegram_production_readiness_status(
+    input: HeptaKernelTelegramProductionReadinessInput<'_>,
+) -> HeptaKernelTelegramProductionReadinessStatus {
+    let poll_loop_armed = input.requested
+        && input.poll_loop_status.status == "armed"
+        && input.poll_loop_status.loop_invokes_drain_once;
+    let cursor_ready = input.cursor_status.status == "ready"
+        && input.cursor_status.cursor_parse_ok
+        && input.cursor_status.duplicate_suppression_rule_valid;
+    let production_guards_ready = input.production_guards.typing_keepalive_enabled
+        && input.production_guards.model_failure_fallback_enabled
+        && input.production_guards.model_timeout_ms >= MIN_TELEGRAM_MODEL_TIMEOUT_MS
+        && input.production_guards.read_max_attempts >= 1
+        && input.production_guards.send_max_attempts >= 1
+        && input.production_guards.send_min_interval_ms > 0
+        && input.production_guards.retry_transient_read_errors
+        && input.production_guards.retry_transient_send_errors
+        && !input.production_guards.raw_token_exposed;
+    let observation_ready = input.observation.poll_iterations >= input.min_poll_iterations
+        && input.observation.last_observed_at_unix_ms.is_some();
+    let observation_fresh = input
+        .observation
+        .last_observed_at_unix_ms
+        .map(|last_observed| {
+            input.now_unix_ms.saturating_sub(last_observed) <= input.max_observed_age_ms
+        })
+        .unwrap_or(false);
+    let durable_cursor_evidence_present = input.cursor_status.durable_cursor_evidence_present;
+    let durable_delivery_evidence_required = input.observation.drained_count > 0
+        || input.observation.send_started_count > 0
+        || input.observation.cursor_written_count > 0
+        || input.observation.external_send_count > 0;
+    let durable_delivery_evidence_present = input
+        .delivery_ledger_status
+        .durable_delivery_evidence_present;
+    let delivery_evidence_reference_ms = input
+        .observation
+        .last_drained_at_unix_ms
+        .or(input.observation.last_observed_at_unix_ms);
+    let durable_delivery_evidence_fresh = if durable_delivery_evidence_required {
+        input
+            .delivery_ledger_status
+            .latest_acked_created_unix_seconds
+            .map(|created| created.saturating_mul(1_000))
+            .zip(delivery_evidence_reference_ms)
+            .map(|(acked_ms, reference_ms)| {
+                acked_ms.saturating_add(input.max_observed_age_ms) >= reference_ms
+            })
+            .unwrap_or(false)
+    } else {
+        true
+    };
+    let delivery_ledger_ready = if durable_delivery_evidence_required {
+        input.delivery_ledger_status.status == "ready"
+            && input.delivery_ledger_status.jsonl_valid
+            && durable_delivery_evidence_present
+            && durable_delivery_evidence_fresh
+    } else {
+        !matches!(input.delivery_ledger_status.status, "attention")
+    };
+    let attention_budget_ok = input.observation.attention_count <= input.max_attention_count
+        && input.observation.last_status.as_deref() != Some("attention");
+    let recent_bot_api_ok = input.observation.last_bot_api_ok != Some(false);
+    let redaction_guards_ok = !input.observation.raw_update_payload_exposed
+        && !input.observation.raw_prompt_text_exposed
+        && !input.observation.raw_response_text_exposed
+        && !input.observation.raw_token_exposed
+        && !input.poll_loop_status.raw_update_payload_exposed
+        && !input.poll_loop_status.raw_prompt_text_exposed
+        && !input.poll_loop_status.raw_response_text_exposed
+        && !input.poll_loop_status.raw_token_exposed
+        && !input.delivery_ledger_status.raw_response_text_logged
+        && !input.delivery_ledger_status.raw_chat_id_logged
+        && !input.delivery_ledger_status.raw_message_id_logged
+        && !input.delivery_ledger_status.raw_token_logged;
+
+    let mut readiness_blockers = Vec::new();
+    if !input.requested {
+        readiness_blockers.push("telegram_plugin_not_requested");
+    }
+    if !poll_loop_armed {
+        readiness_blockers.push("poll_loop_not_armed");
+    }
+    if !cursor_ready {
+        readiness_blockers.push("cursor_not_ready");
+    }
+    if !production_guards_ready {
+        readiness_blockers.push("production_guards_not_ready");
+    }
+    if !observation_ready {
+        readiness_blockers.push("observation_min_poll_iterations");
+    }
+    if !observation_fresh {
+        readiness_blockers.push("observation_stale");
+    }
+    if !delivery_ledger_ready {
+        readiness_blockers.push("delivery_ledger_not_ready");
+    }
+    if durable_delivery_evidence_required && !durable_delivery_evidence_present {
+        readiness_blockers.push("durable_delivery_evidence_missing");
+    }
+    if durable_delivery_evidence_required && !durable_delivery_evidence_fresh {
+        readiness_blockers.push("durable_delivery_evidence_stale");
+    }
+    if !attention_budget_ok {
+        readiness_blockers.push("attention_budget_exceeded");
+    }
+    if !recent_bot_api_ok {
+        readiness_blockers.push("bot_api_recent_failure");
+    }
+    if !redaction_guards_ok {
+        readiness_blockers.push("redaction_guard_failed");
+    }
+
+    let mut readiness_warnings = Vec::new();
+    if input.observation.busy_count > 0 {
+        readiness_warnings.push("getupdates_busy_conflicts_observed");
+    }
+    if input.observation.drained_count == 0
+        && !durable_cursor_evidence_present
+        && !durable_delivery_evidence_present
+    {
+        readiness_warnings.push("no_messages_drained_since_gateway_start");
+    }
+    if input.observation.external_send_count > input.observation.cursor_written_count {
+        readiness_warnings.push("send_count_exceeds_cursor_write_count");
+    }
+
+    let ready = readiness_blockers.is_empty();
+    let status = if !input.requested {
+        "disabled"
+    } else if !poll_loop_armed || !cursor_ready {
+        "gated"
+    } else if !observation_fresh
+        || !attention_budget_ok
+        || !recent_bot_api_ok
+        || !redaction_guards_ok
+    {
+        "attention"
+    } else if !observation_ready {
+        "warming"
+    } else if ready {
+        "ready"
+    } else {
+        "attention"
+    };
+
+    HeptaKernelTelegramProductionReadinessStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: input.requested,
+        status,
+        ready,
+        side_effect_free: true,
+        min_poll_iterations_env: input.min_poll_iterations_env,
+        min_poll_iterations: input.min_poll_iterations,
+        max_attention_count_env: input.max_attention_count_env,
+        max_attention_count: input.max_attention_count,
+        max_observed_age_env: input.max_observed_age_env,
+        max_observed_age_ms: input.max_observed_age_ms,
+        poll_loop_armed,
+        cursor_ready,
+        production_guards_ready,
+        observation_ready,
+        observation_fresh,
+        durable_cursor_evidence_present,
+        durable_delivery_evidence_required,
+        durable_delivery_evidence_present,
+        durable_delivery_evidence_fresh,
+        delivery_ledger_ready,
+        attention_budget_ok,
+        recent_bot_api_ok,
+        redaction_guards_ok,
+        readiness_blockers,
+        readiness_warnings,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        raw_token_exposed: false,
     }
 }
 
@@ -4453,6 +4687,8 @@ fn build_hepta_kernel_prompt(input: &HeptaKernelTurnInput<'_>, user_message: &st
 mod tests {
     use super::*;
 
+    const TEST_NOW_MS: u64 = 1_000_000;
+
     #[test]
     fn kernel_turn_plan_makes_hepta_the_owner_and_codex_an_engine() {
         let plan = plan_hepta_kernel_turn(HeptaKernelTurnInput {
@@ -4592,6 +4828,150 @@ mod tests {
             raw_token_exposed: false,
             binding_ready: true,
             error: None,
+        }
+    }
+
+    fn ready_kernel_poll_loop_status() -> HeptaKernelTelegramPollLoopStatus {
+        HeptaKernelTelegramPollLoopStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: true,
+            status: "armed",
+            poll_loop_gate_env: "HEPTA_NATIVE_TELEGRAM_POLL_LOOP",
+            poll_loop_gate_enabled: true,
+            delivery_approval_gate_env: "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED",
+            delivery_approval_gate_enabled: true,
+            poll_ms: 1500,
+            drain_once_endpoint: "/api/telegram-drain-once",
+            worker_spawned_by_status: false,
+            loop_invokes_drain_once: true,
+            requires_live_read_gate: "HEPTA_NATIVE_TELEGRAM_LIVE_READ",
+            requires_model_turn_gate: "HEPTA_NATIVE_TELEGRAM_MODEL_TURN",
+            requires_send_gate: "HEPTA_NATIVE_TELEGRAM_SEND",
+            requires_delivery_approval_gate: "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED",
+            external_network_read_by_status: false,
+            external_send_by_status: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_token_exposed: false,
+            next_migration_slice: "test",
+        }
+    }
+
+    fn ready_kernel_cursor_status() -> HeptaKernelTelegramCursorStatus {
+        HeptaKernelTelegramCursorStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: true,
+            status: "ready",
+            cursor_path: ".hepta/telegram/ingress-drain-cursor.json",
+            cursor_file_present: true,
+            cursor_parse_ok: true,
+            next_update_offset: Some(917025970),
+            cursor_updated_at_unix_ms: Some(TEST_NOW_MS),
+            last_delivered_next_update_offset: Some(917025970),
+            durable_cursor_evidence_present: true,
+            cursor_represents_next_update_offset: true,
+            duplicate_suppression_rule_valid: true,
+            cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
+            cursor_written: false,
+            raw_update_payload_persisted: false,
+            error: None,
+            next_migration_slice: "test",
+        }
+    }
+
+    fn ready_kernel_delivery_ledger_status() -> HeptaKernelTelegramDeliveryLedgerStatus {
+        HeptaKernelTelegramDeliveryLedgerStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: true,
+            status: "ready",
+            ledger_path: ".hepta/telegram/delivery-ledger.jsonl",
+            ledger_file_present: true,
+            jsonl_readable: true,
+            jsonl_valid: true,
+            line_count: 2,
+            valid_json_line_count: 2,
+            invalid_json_line_count: 0,
+            acked_count: 1,
+            failed_count: 0,
+            latest_stage: Some("acked".to_string()),
+            latest_created_unix_seconds: Some(TEST_NOW_MS / 1_000),
+            latest_acked_created_unix_seconds: Some(TEST_NOW_MS / 1_000),
+            ledger_updated_at_unix_ms: Some(TEST_NOW_MS),
+            provider_message_id_present: true,
+            durable_delivery_evidence_present: true,
+            raw_response_text_logged: false,
+            raw_chat_id_logged: false,
+            raw_message_id_logged: false,
+            raw_token_logged: false,
+            error: None,
+            next_migration_slice: "test",
+        }
+    }
+
+    fn ready_kernel_production_guards() -> HeptaKernelTelegramProductionGuardStatus {
+        HeptaKernelTelegramProductionGuardStatus {
+            read_max_attempts_env: "HEPTA_NATIVE_TELEGRAM_READ_MAX_ATTEMPTS",
+            read_max_attempts: 3,
+            read_retry_backoff_env: "HEPTA_NATIVE_TELEGRAM_READ_RETRY_BACKOFF_MS",
+            read_retry_backoff_ms: 700,
+            retry_transient_read_errors: true,
+            typing_keepalive_env: "HEPTA_NATIVE_TELEGRAM_TYPING_KEEPALIVE",
+            typing_keepalive_enabled: true,
+            typing_keepalive_interval_ms: 4000,
+            model_timeout_env: "HEPTA_NATIVE_TELEGRAM_MODEL_TIMEOUT_MS",
+            model_timeout_ms: 120000,
+            model_failure_fallback_env: "HEPTA_NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK",
+            model_failure_fallback_enabled: true,
+            send_min_interval_env: "HEPTA_NATIVE_TELEGRAM_SEND_MIN_INTERVAL_MS",
+            send_min_interval_ms: 1200,
+            send_max_attempts_env: "HEPTA_NATIVE_TELEGRAM_SEND_MAX_ATTEMPTS",
+            send_max_attempts: 3,
+            send_retry_backoff_env: "HEPTA_NATIVE_TELEGRAM_SEND_RETRY_BACKOFF_MS",
+            send_retry_backoff_ms: 700,
+            retry_transient_send_errors: true,
+            rate_limit_scope: "in-process per chat id; reset on gateway restart",
+            raw_token_exposed: false,
+        }
+    }
+
+    fn kernel_live_soak_observation(
+        poll_iterations: u64,
+        attention_count: u64,
+        last_status: Option<&str>,
+        last_bot_api_ok: Option<bool>,
+    ) -> HeptaKernelTelegramLiveSoakObservationReport {
+        HeptaKernelTelegramLiveSoakObservationReport {
+            poll_iterations,
+            drained_count: 0,
+            busy_count: 0,
+            attention_count,
+            empty_read_count: poll_iterations.saturating_sub(attention_count),
+            model_turn_started_count: 0,
+            send_started_count: 0,
+            cursor_written_count: 0,
+            external_send_count: 0,
+            last_drained_at_unix_ms: None,
+            last_drained_next_update_offset: None,
+            last_observed_at_unix_ms: Some(TEST_NOW_MS),
+            last_status: last_status.map(str::to_string),
+            last_error: None,
+            last_bot_api_ok,
+            last_get_updates_offset: Some(917025970),
+            last_local_next_update_offset: None,
+            last_update_count: 0,
+            last_allowed_update_count: 0,
+            last_model_turn_started: false,
+            last_send_started: false,
+            last_cursor_written: false,
+            last_external_send: false,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_token_exposed: false,
         }
     }
 
@@ -6256,6 +6636,114 @@ mod tests {
         assert!(!report.raw_prompt_text_exposed);
         assert!(!report.raw_response_text_exposed);
         assert!(!report.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_telegram_production_readiness_is_ready_after_clean_guarded_soak() {
+        let poll_loop = ready_kernel_poll_loop_status();
+        let cursor = ready_kernel_cursor_status();
+        let delivery_ledger = ready_kernel_delivery_ledger_status();
+        let guards = ready_kernel_production_guards();
+        let observation = kernel_live_soak_observation(
+            DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+            0,
+            Some("planned"),
+            Some(true),
+        );
+
+        let readiness = build_hepta_kernel_telegram_production_readiness_status(
+            HeptaKernelTelegramProductionReadinessInput {
+                requested: true,
+                poll_loop_status: &poll_loop,
+                cursor_status: &cursor,
+                delivery_ledger_status: &delivery_ledger,
+                production_guards: &guards,
+                observation: &observation,
+                min_poll_iterations_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MIN_POLLS",
+                min_poll_iterations: DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+                max_attention_count_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION",
+                max_attention_count: DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
+                max_observed_age_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS",
+                max_observed_age_ms: DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
+                now_unix_ms: TEST_NOW_MS,
+            },
+        );
+
+        assert!(readiness.ready);
+        assert_eq!(readiness.status, "ready");
+        assert!(readiness.poll_loop_armed);
+        assert!(readiness.cursor_ready);
+        assert!(readiness.production_guards_ready);
+        assert!(readiness.observation_ready);
+        assert!(readiness.observation_fresh);
+        assert!(readiness.durable_cursor_evidence_present);
+        assert!(!readiness.durable_delivery_evidence_required);
+        assert!(readiness.durable_delivery_evidence_fresh);
+        assert!(readiness.delivery_ledger_ready);
+        assert!(readiness.attention_budget_ok);
+        assert!(readiness.recent_bot_api_ok);
+        assert!(readiness.redaction_guards_ok);
+        assert!(readiness.readiness_blockers.is_empty());
+        assert!(readiness.readiness_warnings.is_empty());
+        assert!(!readiness.raw_update_payload_exposed);
+        assert!(!readiness.raw_prompt_text_exposed);
+        assert!(!readiness.raw_response_text_exposed);
+        assert!(!readiness.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_telegram_production_readiness_blocks_missing_delivery_evidence_after_send() {
+        let poll_loop = ready_kernel_poll_loop_status();
+        let cursor = ready_kernel_cursor_status();
+        let mut delivery_ledger = ready_kernel_delivery_ledger_status();
+        delivery_ledger.status = "empty";
+        delivery_ledger.acked_count = 0;
+        delivery_ledger.provider_message_id_present = false;
+        delivery_ledger.durable_delivery_evidence_present = false;
+        delivery_ledger.latest_acked_created_unix_seconds = None;
+        let guards = ready_kernel_production_guards();
+        let mut observation = kernel_live_soak_observation(
+            DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+            0,
+            Some("drained"),
+            Some(true),
+        );
+        observation.drained_count = 1;
+        observation.send_started_count = 1;
+        observation.cursor_written_count = 1;
+        observation.external_send_count = 1;
+        observation.last_send_started = true;
+        observation.last_cursor_written = true;
+        observation.last_external_send = true;
+
+        let readiness = build_hepta_kernel_telegram_production_readiness_status(
+            HeptaKernelTelegramProductionReadinessInput {
+                requested: true,
+                poll_loop_status: &poll_loop,
+                cursor_status: &cursor,
+                delivery_ledger_status: &delivery_ledger,
+                production_guards: &guards,
+                observation: &observation,
+                min_poll_iterations_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MIN_POLLS",
+                min_poll_iterations: DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+                max_attention_count_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION",
+                max_attention_count: DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
+                max_observed_age_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS",
+                max_observed_age_ms: DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
+                now_unix_ms: TEST_NOW_MS,
+            },
+        );
+
+        assert!(!readiness.ready);
+        assert_eq!(readiness.status, "attention");
+        assert!(readiness.durable_delivery_evidence_required);
+        assert!(!readiness.durable_delivery_evidence_present);
+        assert!(!readiness.delivery_ledger_ready);
+        assert!(
+            readiness
+                .readiness_blockers
+                .contains(&"durable_delivery_evidence_missing")
+        );
     }
 
     #[test]

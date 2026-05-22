@@ -39,6 +39,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramPluginStatusInput, HeptaKernelTelegramPollLoopStatus,
     HeptaKernelTelegramPollLoopStatusInput, HeptaKernelTelegramProductionGuardPolicyInput,
     HeptaKernelTelegramProductionGuardStatus, HeptaKernelTelegramProductionGuardStatusInput,
+    HeptaKernelTelegramProductionReadinessInput, HeptaKernelTelegramProductionReadinessStatus,
     HeptaKernelTelegramReceiveOnceApiResultInput, HeptaKernelTelegramReceiveOnceErrorInput,
     HeptaKernelTelegramReceiveOncePreflightInput,
     HeptaKernelTelegramReceiveOnceShellReadinessInput,
@@ -65,6 +66,7 @@ pub use hepta_kernel::{
     build_hepta_kernel_telegram_poll_loop_status,
     build_hepta_kernel_telegram_production_guard_status,
     build_hepta_kernel_telegram_production_guard_status_from_policy,
+    build_hepta_kernel_telegram_production_readiness_status,
     build_hepta_kernel_telegram_receive_once_error_status,
     build_hepta_kernel_telegram_receive_once_status,
     build_hepta_kernel_telegram_receive_once_status_from_api_result,
@@ -186,6 +188,9 @@ pub type NativeTelegramDeliveryLedgerStatus = HeptaKernelTelegramDeliveryLedgerS
 pub type NativeTelegramProductionGuardStatus = HeptaKernelTelegramProductionGuardStatus;
 pub type NativeTelegramProductionGuardStatusInput = HeptaKernelTelegramProductionGuardStatusInput;
 pub type NativeTelegramProductionGuardPolicyInput = HeptaKernelTelegramProductionGuardPolicyInput;
+pub type NativeTelegramProductionReadinessStatus = HeptaKernelTelegramProductionReadinessStatus;
+pub type NativeTelegramProductionReadinessInput<'a> =
+    HeptaKernelTelegramProductionReadinessInput<'a>;
 pub type NativeTelegramPollLoopStatus = HeptaKernelTelegramPollLoopStatus;
 pub type NativeTelegramPollLoopStatusInput = HeptaKernelTelegramPollLoopStatusInput;
 pub type NativeTelegramLiveSoakObservationReport = HeptaKernelTelegramLiveSoakObservationReport;
@@ -689,6 +694,12 @@ pub fn build_native_telegram_production_guard_status_from_policy(
     input: NativeTelegramProductionGuardPolicyInput,
 ) -> NativeTelegramProductionGuardStatus {
     build_hepta_kernel_telegram_production_guard_status_from_policy(input)
+}
+
+pub fn build_native_telegram_production_readiness_status(
+    input: NativeTelegramProductionReadinessInput<'_>,
+) -> NativeTelegramProductionReadinessStatus {
+    build_hepta_kernel_telegram_production_readiness_status(input)
 }
 
 pub fn native_telegram_get_updates_query(

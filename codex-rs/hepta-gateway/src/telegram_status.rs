@@ -8,6 +8,7 @@ use hepta_runtime::{
     build_native_telegram_model_turn_plan_status, build_native_telegram_plugin_status,
     build_native_telegram_poll_loop_status, build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,
+    build_native_telegram_production_readiness_status,
     build_native_telegram_receive_once_error_status, build_native_telegram_receive_once_status,
     build_native_telegram_receive_once_status_from_api_result,
     build_native_telegram_send_plan_status, native_telegram_poll_loop_interval_ms_policy,
@@ -24,7 +25,8 @@ use hepta_runtime::{
 pub use hepta_runtime::{
     NativeTelegramPollLoopStatus, NativeTelegramPollLoopStatusInput,
     NativeTelegramProductionGuardPolicyInput, NativeTelegramProductionGuardStatus,
-    NativeTelegramProductionGuardStatusInput,
+    NativeTelegramProductionGuardStatusInput, NativeTelegramProductionReadinessInput,
+    NativeTelegramProductionReadinessStatus,
 };
 
 pub use hepta_runtime::{
@@ -153,39 +155,10 @@ pub fn build_telegram_production_guard_status_from_policy(
     build_native_telegram_production_guard_status_from_policy(input)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramProductionReadinessStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub ready: bool,
-    pub side_effect_free: bool,
-    pub min_poll_iterations_env: &'static str,
-    pub min_poll_iterations: u64,
-    pub max_attention_count_env: &'static str,
-    pub max_attention_count: u64,
-    pub max_observed_age_env: &'static str,
-    pub max_observed_age_ms: u64,
-    pub poll_loop_armed: bool,
-    pub cursor_ready: bool,
-    pub production_guards_ready: bool,
-    pub observation_ready: bool,
-    pub observation_fresh: bool,
-    pub durable_cursor_evidence_present: bool,
-    pub durable_delivery_evidence_required: bool,
-    pub durable_delivery_evidence_present: bool,
-    pub durable_delivery_evidence_fresh: bool,
-    pub delivery_ledger_ready: bool,
-    pub attention_budget_ok: bool,
-    pub recent_bot_api_ok: bool,
-    pub redaction_guards_ok: bool,
-    pub readiness_blockers: Vec<&'static str>,
-    pub readiness_warnings: Vec<&'static str>,
-    pub raw_update_payload_exposed: bool,
-    pub raw_prompt_text_exposed: bool,
-    pub raw_response_text_exposed: bool,
-    pub raw_token_exposed: bool,
+pub fn build_telegram_production_readiness_status(
+    input: NativeTelegramProductionReadinessInput<'_>,
+) -> NativeTelegramProductionReadinessStatus {
+    build_native_telegram_production_readiness_status(input)
 }
 
 pub fn build_telegram_plugin_status(
@@ -293,205 +266,6 @@ pub fn build_telegram_live_soak_status(
         raw_response_text_exposed: false,
         raw_token_exposed: false,
         next_migration_slice: "keep the active gateway soaking; use this endpoint plus logs before broadening traffic or reducing guards",
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NativeTelegramProductionReadinessInput<'a> {
-    pub requested: bool,
-    pub poll_loop_status: &'a NativeTelegramPollLoopStatus,
-    pub cursor_status: &'a NativeTelegramCursorStatus,
-    pub delivery_ledger_status: &'a NativeTelegramDeliveryLedgerStatus,
-    pub production_guards: &'a NativeTelegramProductionGuardStatus,
-    pub observation: &'a NativeTelegramLiveSoakObservationReport,
-    pub min_poll_iterations_env: &'static str,
-    pub min_poll_iterations: u64,
-    pub max_attention_count_env: &'static str,
-    pub max_attention_count: u64,
-    pub max_observed_age_env: &'static str,
-    pub max_observed_age_ms: u64,
-    pub now_unix_ms: u64,
-}
-
-pub fn build_telegram_production_readiness_status(
-    input: NativeTelegramProductionReadinessInput<'_>,
-) -> NativeTelegramProductionReadinessStatus {
-    let poll_loop_armed = input.requested
-        && input.poll_loop_status.status == "armed"
-        && input.poll_loop_status.loop_invokes_drain_once;
-    let cursor_ready = input.cursor_status.status == "ready"
-        && input.cursor_status.cursor_parse_ok
-        && input.cursor_status.duplicate_suppression_rule_valid;
-    let production_guards_ready = input.production_guards.typing_keepalive_enabled
-        && input.production_guards.model_failure_fallback_enabled
-        && input.production_guards.model_timeout_ms >= 1_000
-        && input.production_guards.read_max_attempts >= 1
-        && input.production_guards.send_max_attempts >= 1
-        && input.production_guards.send_min_interval_ms > 0
-        && input.production_guards.retry_transient_read_errors
-        && input.production_guards.retry_transient_send_errors
-        && !input.production_guards.raw_token_exposed;
-    let observation_ready = input.observation.poll_iterations >= input.min_poll_iterations
-        && input.observation.last_observed_at_unix_ms.is_some();
-    let observation_fresh = input
-        .observation
-        .last_observed_at_unix_ms
-        .map(|last_observed| {
-            input.now_unix_ms.saturating_sub(last_observed) <= input.max_observed_age_ms
-        })
-        .unwrap_or(false);
-    let durable_cursor_evidence_present = input.cursor_status.durable_cursor_evidence_present;
-    let durable_delivery_evidence_required = input.observation.drained_count > 0
-        || input.observation.send_started_count > 0
-        || input.observation.cursor_written_count > 0
-        || input.observation.external_send_count > 0;
-    let durable_delivery_evidence_present = input
-        .delivery_ledger_status
-        .durable_delivery_evidence_present;
-    let delivery_evidence_reference_ms = input
-        .observation
-        .last_drained_at_unix_ms
-        .or(input.observation.last_observed_at_unix_ms);
-    let durable_delivery_evidence_fresh = if durable_delivery_evidence_required {
-        input
-            .delivery_ledger_status
-            .latest_acked_created_unix_seconds
-            .map(|created| created.saturating_mul(1_000))
-            .zip(delivery_evidence_reference_ms)
-            .map(|(acked_ms, reference_ms)| {
-                acked_ms.saturating_add(input.max_observed_age_ms) >= reference_ms
-            })
-            .unwrap_or(false)
-    } else {
-        true
-    };
-    let delivery_ledger_ready = if durable_delivery_evidence_required {
-        input.delivery_ledger_status.status == "ready"
-            && input.delivery_ledger_status.jsonl_valid
-            && durable_delivery_evidence_present
-            && durable_delivery_evidence_fresh
-    } else {
-        !matches!(input.delivery_ledger_status.status, "attention")
-    };
-    let attention_budget_ok = input.observation.attention_count <= input.max_attention_count
-        && input.observation.last_status.as_deref() != Some("attention");
-    let recent_bot_api_ok = input.observation.last_bot_api_ok != Some(false);
-    let redaction_guards_ok = !input.observation.raw_update_payload_exposed
-        && !input.observation.raw_prompt_text_exposed
-        && !input.observation.raw_response_text_exposed
-        && !input.observation.raw_token_exposed
-        && !input.poll_loop_status.raw_update_payload_exposed
-        && !input.poll_loop_status.raw_prompt_text_exposed
-        && !input.poll_loop_status.raw_response_text_exposed
-        && !input.poll_loop_status.raw_token_exposed
-        && !input.delivery_ledger_status.raw_response_text_logged
-        && !input.delivery_ledger_status.raw_chat_id_logged
-        && !input.delivery_ledger_status.raw_message_id_logged
-        && !input.delivery_ledger_status.raw_token_logged;
-
-    let mut readiness_blockers = Vec::new();
-    if !input.requested {
-        readiness_blockers.push("telegram_plugin_not_requested");
-    }
-    if !poll_loop_armed {
-        readiness_blockers.push("poll_loop_not_armed");
-    }
-    if !cursor_ready {
-        readiness_blockers.push("cursor_not_ready");
-    }
-    if !production_guards_ready {
-        readiness_blockers.push("production_guards_not_ready");
-    }
-    if !observation_ready {
-        readiness_blockers.push("observation_min_poll_iterations");
-    }
-    if !observation_fresh {
-        readiness_blockers.push("observation_stale");
-    }
-    if !delivery_ledger_ready {
-        readiness_blockers.push("delivery_ledger_not_ready");
-    }
-    if durable_delivery_evidence_required && !durable_delivery_evidence_present {
-        readiness_blockers.push("durable_delivery_evidence_missing");
-    }
-    if durable_delivery_evidence_required && !durable_delivery_evidence_fresh {
-        readiness_blockers.push("durable_delivery_evidence_stale");
-    }
-    if !attention_budget_ok {
-        readiness_blockers.push("attention_budget_exceeded");
-    }
-    if !recent_bot_api_ok {
-        readiness_blockers.push("bot_api_recent_failure");
-    }
-    if !redaction_guards_ok {
-        readiness_blockers.push("redaction_guard_failed");
-    }
-
-    let mut readiness_warnings = Vec::new();
-    if input.observation.busy_count > 0 {
-        readiness_warnings.push("getupdates_busy_conflicts_observed");
-    }
-    if input.observation.drained_count == 0
-        && !durable_cursor_evidence_present
-        && !durable_delivery_evidence_present
-    {
-        readiness_warnings.push("no_messages_drained_since_gateway_start");
-    }
-    if input.observation.external_send_count > input.observation.cursor_written_count {
-        readiness_warnings.push("send_count_exceeds_cursor_write_count");
-    }
-
-    let ready = readiness_blockers.is_empty();
-    let status = if !input.requested {
-        "disabled"
-    } else if !poll_loop_armed || !cursor_ready {
-        "gated"
-    } else if !observation_fresh
-        || !attention_budget_ok
-        || !recent_bot_api_ok
-        || !redaction_guards_ok
-    {
-        "attention"
-    } else if !observation_ready {
-        "warming"
-    } else if ready {
-        "ready"
-    } else {
-        "attention"
-    };
-
-    NativeTelegramProductionReadinessStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: input.requested,
-        status,
-        ready,
-        side_effect_free: true,
-        min_poll_iterations_env: input.min_poll_iterations_env,
-        min_poll_iterations: input.min_poll_iterations,
-        max_attention_count_env: input.max_attention_count_env,
-        max_attention_count: input.max_attention_count,
-        max_observed_age_env: input.max_observed_age_env,
-        max_observed_age_ms: input.max_observed_age_ms,
-        poll_loop_armed,
-        cursor_ready,
-        production_guards_ready,
-        observation_ready,
-        observation_fresh,
-        durable_cursor_evidence_present,
-        durable_delivery_evidence_required,
-        durable_delivery_evidence_present,
-        durable_delivery_evidence_fresh,
-        delivery_ledger_ready,
-        attention_budget_ok,
-        recent_bot_api_ok,
-        redaction_guards_ok,
-        readiness_blockers,
-        readiness_warnings,
-        raw_update_payload_exposed: false,
-        raw_prompt_text_exposed: false,
-        raw_response_text_exposed: false,
-        raw_token_exposed: false,
     }
 }
 
