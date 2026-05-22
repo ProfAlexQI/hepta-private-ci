@@ -451,6 +451,17 @@ pub fn native_post_idempotency_duplicate_present_in_content(
     )
 }
 
+pub fn native_post_rate_limit_recent_present_in_content(
+    content: &str,
+    bucket: &str,
+    window_ms: u64,
+    now_ms: u64,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_rate_limit_recent_present_in_content(
+        content, bucket, window_ms, now_ms,
+    )
+}
+
 pub fn native_post_execution_stores_report(
     store_root: String,
     root_exists: bool,

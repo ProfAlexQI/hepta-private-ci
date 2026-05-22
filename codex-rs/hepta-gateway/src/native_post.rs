@@ -36,9 +36,9 @@ pub use hepta_runtime::{
     native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_specs,
     native_post_idempotency_duplicate_present_in_content, native_post_idempotency_evidence,
     native_post_plan_kind_has_real_handler, native_post_plan_parameter,
-    native_post_plan_route_specs, native_post_real_handler_scope_matches,
-    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
-    native_post_rollback_contract,
+    native_post_plan_route_specs, native_post_rate_limit_recent_present_in_content,
+    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
+    native_post_redacted_fingerprint, native_post_rollback_contract,
 };
 
 pub fn native_post_plan_report(
@@ -474,30 +474,9 @@ fn native_post_rate_limit_recent_present(
         }
     };
     let now_ms = native_post_now_unix_ms();
-    for line in content.lines() {
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
-        let Some(record_bucket) = value
-            .get("rate_limit_bucket")
-            .and_then(serde_json::Value::as_str)
-        else {
-            continue;
-        };
-        if record_bucket != bucket {
-            continue;
-        }
-        let Some(recorded_at_ms) = value
-            .get("recorded_at_unix_ms")
-            .and_then(serde_json::Value::as_u64)
-        else {
-            continue;
-        };
-        if now_ms.saturating_sub(recorded_at_ms) <= window_ms {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    Ok(native_post_rate_limit_recent_present_in_content(
+        &content, bucket, window_ms, now_ms,
+    ))
 }
 
 fn native_post_execution_store_file_statuses(

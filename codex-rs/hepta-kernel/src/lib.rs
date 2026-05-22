@@ -672,6 +672,32 @@ pub fn hepta_kernel_native_post_idempotency_duplicate_present_in_content(
     content.lines().any(|line| line.contains(key_fingerprint))
 }
 
+pub fn hepta_kernel_native_post_rate_limit_recent_present_in_content(
+    content: &str,
+    bucket: &str,
+    window_ms: u64,
+    now_ms: u64,
+) -> bool {
+    for line in content.lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let Some(record_bucket) = value.get("rate_limit_bucket").and_then(Value::as_str) else {
+            continue;
+        };
+        if record_bucket != bucket {
+            continue;
+        }
+        let Some(recorded_at_ms) = value.get("recorded_at_unix_ms").and_then(Value::as_u64) else {
+            continue;
+        };
+        if now_ms.saturating_sub(recorded_at_ms) <= window_ms {
+            return true;
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostExecutionStoresResponse {
     pub product: &'static str,
@@ -8614,6 +8640,33 @@ mod tests {
             )
         );
         assert!(!hepta_kernel_native_post_idempotency_duplicate_present_in_content(content, None));
+    }
+
+    #[test]
+    fn kernel_native_post_rate_limit_scan_uses_bucket_window_and_now() {
+        let content = "{\"rate_limit_bucket\":\"task_publish\",\"recorded_at_unix_ms\":900}\nnot-json\n{\"rate_limit_bucket\":\"chat_send\",\"recorded_at_unix_ms\":990}\n";
+
+        assert!(
+            hepta_kernel_native_post_rate_limit_recent_present_in_content(
+                content,
+                "task_publish",
+                150,
+                1_000,
+            )
+        );
+        assert!(
+            !hepta_kernel_native_post_rate_limit_recent_present_in_content(
+                content,
+                "task_publish",
+                99,
+                1_000,
+            )
+        );
+        assert!(
+            !hepta_kernel_native_post_rate_limit_recent_present_in_content(
+                content, "missing", 1_000, 1_000,
+            )
+        );
     }
 
     #[test]
