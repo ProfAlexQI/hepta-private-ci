@@ -135,6 +135,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostExecutionReadinessRoute as NativePostExecutionReadinessRoute,
     HeptaKernelNativePostExecutionStoreFileSpec as NativePostExecutionStoreFileSpec,
     HeptaKernelNativePostExecutionStoreFileStatus as NativePostExecutionStoreFileStatus,
+    HeptaKernelNativePostExecutionStoreJsonlHealth as NativePostExecutionStoreJsonlHealth,
     HeptaKernelNativePostExecutionStoreLimits as NativePostExecutionStoreLimits,
     HeptaKernelNativePostExecutionStoreRecord as NativePostExecutionStoreRecord,
     HeptaKernelNativePostExecutionStoreWriteReport as NativePostExecutionStoreWriteReport,
@@ -383,6 +384,21 @@ pub fn native_post_plan_response(
 
 pub fn native_post_execution_store_specs() -> &'static [NativePostExecutionStoreFileSpec] {
     hepta_kernel::hepta_kernel_native_post_execution_store_specs()
+}
+
+pub fn native_post_execution_store_jsonl_health_missing() -> NativePostExecutionStoreJsonlHealth {
+    hepta_kernel::hepta_kernel_native_post_execution_store_jsonl_health_missing()
+}
+
+pub fn native_post_execution_store_jsonl_health_read_failed() -> NativePostExecutionStoreJsonlHealth
+{
+    hepta_kernel::hepta_kernel_native_post_execution_store_jsonl_health_read_failed()
+}
+
+pub fn native_post_execution_store_jsonl_health_from_content(
+    content: &str,
+) -> NativePostExecutionStoreJsonlHealth {
+    hepta_kernel::hepta_kernel_native_post_execution_store_jsonl_health_from_content(content)
 }
 
 pub fn native_post_execution_store_file_status_report(

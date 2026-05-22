@@ -19,16 +19,20 @@ pub use hepta_runtime::{
     NativePostBodySchema, NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
     NativePostExecutionStoreFileSpec, NativePostExecutionStoreFileStatus,
-    NativePostExecutionStoreLimits, NativePostExecutionStoreRecord,
-    NativePostExecutionStoreWriteReport, NativePostExecutionStoresResponse,
-    NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanResponse,
-    NativePostPlanRouteSpec, NativePostRealHandlerHarness, NativePostRollbackContract,
+    NativePostExecutionStoreJsonlHealth, NativePostExecutionStoreLimits,
+    NativePostExecutionStoreRecord, NativePostExecutionStoreWriteReport,
+    NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
+    NativePostIdempotencyEvidence, NativePostPlanResponse, NativePostPlanRouteSpec,
+    NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
     NativePostSelectedHandlerRolloutEvidence, native_post_audit_event_contract,
     native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
     native_post_execution_admission_with_scope, native_post_execution_readiness_report,
-    native_post_execution_store_file_status_report, native_post_execution_store_specs,
+    native_post_execution_store_file_status_report,
+    native_post_execution_store_jsonl_health_from_content,
+    native_post_execution_store_jsonl_health_missing,
+    native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_specs,
     native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
     native_post_plan_parameter, native_post_plan_route_specs,
     native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
@@ -520,8 +524,7 @@ fn native_post_execution_store_file_status(
     let path = root.join(spec.filename);
     let metadata = path.metadata().ok();
     let exists = metadata.as_ref().is_some_and(std::fs::Metadata::is_file);
-    let (jsonl_readable, line_count, valid_json_line_count, invalid_json_line_count) =
-        native_post_execution_store_jsonl_health(&path, exists);
+    let jsonl_health = native_post_execution_store_jsonl_health(&path, exists);
     let bytes = metadata.as_ref().map(std::fs::Metadata::len).unwrap_or(0);
     native_post_execution_store_file_status_report(
         spec,
@@ -530,38 +533,25 @@ fn native_post_execution_store_file_status(
         bytes,
         max_store_bytes,
         max_store_lines,
-        jsonl_readable,
-        line_count,
-        valid_json_line_count,
-        invalid_json_line_count,
+        jsonl_health.jsonl_readable,
+        jsonl_health.line_count,
+        jsonl_health.valid_json_line_count,
+        jsonl_health.invalid_json_line_count,
     )
 }
 
-fn native_post_execution_store_jsonl_health(path: &Path, exists: bool) -> (bool, u64, u64, u64) {
+fn native_post_execution_store_jsonl_health(
+    path: &Path,
+    exists: bool,
+) -> NativePostExecutionStoreJsonlHealth {
     if !exists {
-        return (true, 0, 0, 0);
+        return native_post_execution_store_jsonl_health_missing();
     }
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
-        Err(_) => return (false, 0, 0, 0),
+        Err(_) => return native_post_execution_store_jsonl_health_read_failed(),
     };
-    let mut line_count = 0_u64;
-    let mut valid_json_line_count = 0_u64;
-    let mut invalid_json_line_count = 0_u64;
-    for line in content.lines() {
-        line_count = line_count.saturating_add(1);
-        if serde_json::from_str::<serde_json::Value>(line).is_ok() {
-            valid_json_line_count = valid_json_line_count.saturating_add(1);
-        } else {
-            invalid_json_line_count = invalid_json_line_count.saturating_add(1);
-        }
-    }
-    (
-        true,
-        line_count,
-        valid_json_line_count,
-        invalid_json_line_count,
-    )
+    native_post_execution_store_jsonl_health_from_content(&content)
 }
 
 fn native_post_rollout_evidence_scan(path: &Path) -> NativePostRolloutEvidenceScan {

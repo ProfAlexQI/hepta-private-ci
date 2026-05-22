@@ -536,6 +536,14 @@ pub struct HeptaKernelNativePostExecutionStoreFileStatus {
     pub raw_idempotency_key_exposed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionStoreJsonlHealth {
+    pub jsonl_readable: bool,
+    pub line_count: u64,
+    pub valid_json_line_count: u64,
+    pub invalid_json_line_count: u64,
+}
+
 pub fn hepta_kernel_native_post_execution_store_specs()
 -> &'static [HeptaKernelNativePostExecutionStoreFileSpec] {
     &[
@@ -560,6 +568,48 @@ pub fn hepta_kernel_native_post_execution_store_specs()
             filename: "rate-limit.jsonl",
         },
     ]
+}
+
+pub fn hepta_kernel_native_post_execution_store_jsonl_health_missing()
+-> HeptaKernelNativePostExecutionStoreJsonlHealth {
+    HeptaKernelNativePostExecutionStoreJsonlHealth {
+        jsonl_readable: true,
+        line_count: 0,
+        valid_json_line_count: 0,
+        invalid_json_line_count: 0,
+    }
+}
+
+pub fn hepta_kernel_native_post_execution_store_jsonl_health_read_failed()
+-> HeptaKernelNativePostExecutionStoreJsonlHealth {
+    HeptaKernelNativePostExecutionStoreJsonlHealth {
+        jsonl_readable: false,
+        line_count: 0,
+        valid_json_line_count: 0,
+        invalid_json_line_count: 0,
+    }
+}
+
+pub fn hepta_kernel_native_post_execution_store_jsonl_health_from_content(
+    content: &str,
+) -> HeptaKernelNativePostExecutionStoreJsonlHealth {
+    let mut line_count = 0_u64;
+    let mut valid_json_line_count = 0_u64;
+    let mut invalid_json_line_count = 0_u64;
+    for line in content.lines() {
+        line_count = line_count.saturating_add(1);
+        if serde_json::from_str::<Value>(line).is_ok() {
+            valid_json_line_count = valid_json_line_count.saturating_add(1);
+        } else {
+            invalid_json_line_count = invalid_json_line_count.saturating_add(1);
+        }
+    }
+    HeptaKernelNativePostExecutionStoreJsonlHealth {
+        jsonl_readable: true,
+        line_count,
+        valid_json_line_count,
+        invalid_json_line_count,
+    }
 }
 
 pub fn hepta_kernel_native_post_execution_store_file_status_report(
@@ -8439,6 +8489,29 @@ mod tests {
         assert!(!status.raw_body_exposed);
         assert!(!status.raw_field_values_exposed);
         assert!(!status.raw_idempotency_key_exposed);
+    }
+
+    #[test]
+    fn kernel_native_post_execution_store_jsonl_health_counts_content_and_default_paths() {
+        let missing = hepta_kernel_native_post_execution_store_jsonl_health_missing();
+        assert!(missing.jsonl_readable);
+        assert_eq!(missing.line_count, 0);
+        assert_eq!(missing.valid_json_line_count, 0);
+        assert_eq!(missing.invalid_json_line_count, 0);
+
+        let failed = hepta_kernel_native_post_execution_store_jsonl_health_read_failed();
+        assert!(!failed.jsonl_readable);
+        assert_eq!(failed.line_count, 0);
+        assert_eq!(failed.valid_json_line_count, 0);
+        assert_eq!(failed.invalid_json_line_count, 0);
+
+        let health = hepta_kernel_native_post_execution_store_jsonl_health_from_content(
+            "{\"ok\":true}\nnot-json\n[1,2,3]\n",
+        );
+        assert!(health.jsonl_readable);
+        assert_eq!(health.line_count, 3);
+        assert_eq!(health.valid_json_line_count, 2);
+        assert_eq!(health.invalid_json_line_count, 1);
     }
 
     #[test]
