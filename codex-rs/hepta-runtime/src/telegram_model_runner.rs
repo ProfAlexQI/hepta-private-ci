@@ -47,6 +47,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramReceiveOnceShellReadinessPlan, HeptaKernelTelegramReceiveOnceStatus,
     HeptaKernelTelegramReceiveOnceStatusInput, HeptaKernelTelegramReplyTargetMaterial,
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
+    HeptaKernelTelegramSendExecutionPreflightInput, HeptaKernelTelegramSendExecutionPreflightPlan,
     HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendPlan,
     HeptaKernelTelegramSendPlanStatus, HeptaKernelTelegramSendPlanStatusInput,
     HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
@@ -123,8 +124,9 @@ pub use hepta_kernel::{
     plan_hepta_kernel_telegram_drain_once_shell_readiness,
     plan_hepta_kernel_telegram_receive_once_preflight_status,
     plan_hepta_kernel_telegram_receive_once_shell_readiness,
-    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
-    redact_hepta_kernel_telegram_runner_error, redact_hepta_kernel_telegram_token_like_text,
+    plan_hepta_kernel_telegram_send_execution_preflight, plan_hepta_kernel_telegram_session_bridge,
+    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
+    redact_hepta_kernel_telegram_token_like_text,
     resolve_hepta_kernel_telegram_secret_provider_path, select_hepta_kernel_telegram_runner,
 };
 
@@ -154,6 +156,8 @@ pub type NativeTelegramPluginStatus = HeptaKernelTelegramPluginStatus;
 pub type NativeTelegramPluginStatusInput = HeptaKernelTelegramPluginStatusInput;
 pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
+pub type NativeTelegramSendExecutionPreflightInput = HeptaKernelTelegramSendExecutionPreflightInput;
+pub type NativeTelegramSendExecutionPreflightPlan = HeptaKernelTelegramSendExecutionPreflightPlan;
 pub type NativeTelegramTransportPlan = HeptaKernelTelegramTransportPlan;
 pub type NativeTelegramSendPlan = HeptaKernelTelegramSendPlan;
 pub type NativeTelegramSendPlanStatus = HeptaKernelTelegramSendPlanStatus;
@@ -486,6 +490,12 @@ pub fn build_native_telegram_send_plan_status(
     input: NativeTelegramSendPlanStatusInput,
 ) -> NativeTelegramSendPlanStatus {
     build_hepta_kernel_telegram_send_plan_status(input)
+}
+
+pub fn plan_native_telegram_send_execution_preflight(
+    input: NativeTelegramSendExecutionPreflightInput,
+) -> NativeTelegramSendExecutionPreflightPlan {
+    plan_hepta_kernel_telegram_send_execution_preflight(input)
 }
 
 pub fn native_telegram_update_already_drained(

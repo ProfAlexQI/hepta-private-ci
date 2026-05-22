@@ -501,6 +501,23 @@ pub struct HeptaKernelTelegramSendExecutionReport {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelTelegramSendExecutionPreflightInput {
+    pub model_output_present: bool,
+    pub reply_target_available: bool,
+    pub candidate_next_update_offset: Option<i64>,
+    pub token_shape_ok: bool,
+    pub send_gate_env: &'static str,
+    pub send_gate_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramSendExecutionPreflightPlan {
+    pub request: HeptaKernelTelegramSendRequestPlan,
+    pub report: HeptaKernelTelegramSendExecutionReport,
+    pub execution_can_attempt_send: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelTelegramSendPlanStatus {
     pub product: &'static str,
@@ -2013,6 +2030,22 @@ impl HeptaKernelTelegramSendRequestPlan {
             .map(str::trim)
             .map(|value| !value.is_empty())
             .unwrap_or(false);
+        Self::from_model_output_presence(
+            model_output_present,
+            reply_target_available,
+            candidate_next_update_offset,
+            send_gate_env,
+            send_gate_enabled,
+        )
+    }
+
+    pub fn from_model_output_presence(
+        model_output_present: bool,
+        reply_target_available: bool,
+        candidate_next_update_offset: Option<i64>,
+        send_gate_env: &'static str,
+        send_gate_enabled: bool,
+    ) -> Self {
         let send_allowed = send_gate_enabled
             && model_output_present
             && reply_target_available
@@ -2034,6 +2067,45 @@ impl HeptaKernelTelegramSendRequestPlan {
             raw_message_id_exposed: false,
             raw_token_exposed: false,
         }
+    }
+}
+
+pub fn plan_hepta_kernel_telegram_send_execution_preflight(
+    input: HeptaKernelTelegramSendExecutionPreflightInput,
+) -> HeptaKernelTelegramSendExecutionPreflightPlan {
+    let request = HeptaKernelTelegramSendRequestPlan::from_model_output_presence(
+        input.model_output_present,
+        input.reply_target_available,
+        input.candidate_next_update_offset,
+        input.send_gate_env,
+        input.send_gate_enabled,
+    );
+    let mut report = HeptaKernelTelegramSendExecutionReport::from_send_request(&request);
+    let mut execution_can_attempt_send = false;
+
+    if !input.send_gate_enabled {
+        report.error = Some(format!(
+            "Telegram send execution is gated by {}",
+            input.send_gate_env
+        ));
+    } else if !input.model_output_present {
+        report.error = Some("Telegram send execution requires non-empty model output".to_string());
+    } else if !input.reply_target_available {
+        report.error = Some("Telegram send execution requires an opaque reply target".to_string());
+    } else if input.candidate_next_update_offset.is_none() {
+        report.error =
+            Some("Telegram send execution requires a candidate next-update offset".to_string());
+    } else if !input.token_shape_ok {
+        report.status = "attention";
+        report.error = Some("Telegram send execution requires a valid Bot API token".to_string());
+    } else {
+        execution_can_attempt_send = true;
+    }
+
+    HeptaKernelTelegramSendExecutionPreflightPlan {
+        request,
+        report,
+        execution_can_attempt_send,
     }
 }
 
@@ -7273,6 +7345,59 @@ mod tests {
         assert!(without_offset.reply_target_available);
         assert!(!without_offset.send_allowed);
         assert!(!without_offset.cursor_commit_allowed_after_delivery);
+    }
+
+    #[test]
+    fn kernel_send_execution_preflight_reports_readiness_without_side_effects() {
+        let ready = plan_hepta_kernel_telegram_send_execution_preflight(
+            HeptaKernelTelegramSendExecutionPreflightInput {
+                model_output_present: true,
+                reply_target_available: true,
+                candidate_next_update_offset: Some(43),
+                token_shape_ok: true,
+                send_gate_env: "HEPTA_NATIVE_TELEGRAM_SEND",
+                send_gate_enabled: true,
+            },
+        );
+
+        assert!(ready.execution_can_attempt_send);
+        assert_eq!(ready.report.status, "ready");
+        assert!(ready.request.send_allowed);
+        assert!(!ready.report.send_attempted);
+        assert!(!ready.report.delivery_ledger_write_attempted);
+        assert!(!ready.report.cursor_commit_attempted);
+        assert!(!ready.report.external_network_write);
+        assert!(!ready.report.external_send);
+        assert!(!ready.report.raw_response_text_exposed);
+        assert!(!ready.report.raw_chat_id_exposed);
+        assert!(!ready.report.raw_message_id_exposed);
+        assert!(!ready.report.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_send_execution_preflight_blocks_missing_token_shape() {
+        let blocked = plan_hepta_kernel_telegram_send_execution_preflight(
+            HeptaKernelTelegramSendExecutionPreflightInput {
+                model_output_present: true,
+                reply_target_available: true,
+                candidate_next_update_offset: Some(43),
+                token_shape_ok: false,
+                send_gate_env: "HEPTA_NATIVE_TELEGRAM_SEND",
+                send_gate_enabled: true,
+            },
+        );
+
+        assert!(!blocked.execution_can_attempt_send);
+        assert_eq!(blocked.report.status, "attention");
+        assert_eq!(
+            blocked.report.error.as_deref(),
+            Some("Telegram send execution requires a valid Bot API token")
+        );
+        assert!(!blocked.report.send_attempted);
+        assert!(!blocked.report.delivery_ledger_write_attempted);
+        assert!(!blocked.report.cursor_written);
+        assert!(!blocked.report.external_send);
+        assert!(!blocked.report.raw_token_exposed);
     }
 
     #[test]

@@ -26,7 +26,8 @@ use hepta_runtime::{
     native_telegram_send_rate_limit_sleep_for, native_telegram_send_retry_backoff_policy,
     native_telegram_send_should_retry, native_telegram_transport_plan_for_config_status,
     native_telegram_typing_keepalive_interval_policy,
-    native_telegram_typing_keepalive_should_start, redact_native_telegram_token_like_text,
+    native_telegram_typing_keepalive_should_start, plan_native_telegram_send_execution_preflight,
+    redact_native_telegram_token_like_text,
 };
 
 pub use hepta_runtime::{
@@ -35,8 +36,8 @@ pub use hepta_runtime::{
     DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MAX_TELEGRAM_READ_MAX_ATTEMPTS,
     MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
     MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramSendPlan, NativeTelegramTransportPlan,
-    TELEGRAM_ALLOWED_UPDATES,
+    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramSendExecutionPreflightInput,
+    NativeTelegramSendPlan, NativeTelegramTransportPlan, TELEGRAM_ALLOWED_UPDATES,
 };
 const TELEGRAM_BOT_API_BASE_URL: &str = "https://api.telegram.org";
 static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
@@ -274,37 +275,32 @@ where
         input.send_gate_env,
         input.send_gate_enabled,
     );
-    let mut report = NativeTelegramSendExecutionReport::from_send_request(&request);
-
-    if !input.send_gate_enabled {
-        report.error = Some(format!(
-            "Telegram send execution is gated by {}",
-            input.send_gate_env
-        ));
-        return report;
-    }
-    let Some(model_output) = model_output else {
-        report.error = Some("Telegram send execution requires non-empty model output".to_string());
-        return report;
-    };
-    let Some(reply_target) = input.reply_target else {
-        report.error = Some("Telegram send execution requires an opaque reply target".to_string());
-        return report;
-    };
-    let Some(candidate_next_update_offset) = input.candidate_next_update_offset else {
-        report.error =
-            Some("Telegram send execution requires a candidate next-update offset".to_string());
-        return report;
-    };
-    let Some(token) = input
+    let token = input
         .token
         .map(str::trim)
-        .filter(|token| telegram_bot_token_shape_ok(token))
-    else {
-        report.status = "attention";
-        report.error = Some("Telegram send execution requires a valid Bot API token".to_string());
+        .filter(|token| telegram_bot_token_shape_ok(token));
+    let preflight =
+        plan_native_telegram_send_execution_preflight(NativeTelegramSendExecutionPreflightInput {
+            model_output_present: request.model_output_present,
+            reply_target_available: request.reply_target_available,
+            candidate_next_update_offset: request.candidate_next_update_offset,
+            token_shape_ok: token.is_some(),
+            send_gate_env: input.send_gate_env,
+            send_gate_enabled: input.send_gate_enabled,
+        });
+    debug_assert_eq!(preflight.request, request);
+    let mut report = preflight.report;
+    if !preflight.execution_can_attempt_send {
         return report;
     };
+    let model_output = model_output.expect("send preflight requires non-empty model output");
+    let reply_target = input
+        .reply_target
+        .expect("send preflight requires reply target");
+    let candidate_next_update_offset = input
+        .candidate_next_update_offset
+        .expect("send preflight requires next-update offset");
+    let token = token.expect("send preflight requires valid Bot API token");
 
     report.delivery_ledger_write_attempted = true;
     let enqueued_record = telegram_delivery_lifecycle_record(
