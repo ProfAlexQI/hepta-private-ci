@@ -321,6 +321,12 @@ pub fn native_post_execution_store_write_report(
     hepta_kernel::hepta_kernel_native_post_execution_store_write_report(root, written_files)
 }
 
+pub fn native_post_execution_store_record_json_line(
+    record: &NativePostExecutionStoreRecord,
+) -> Result<String, String> {
+    hepta_kernel::hepta_kernel_native_post_execution_store_record_json_line(record)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn native_post_real_handler_harness(
     spec: &NativePostPlanRouteSpec,

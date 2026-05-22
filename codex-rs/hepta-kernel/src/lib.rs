@@ -422,6 +422,13 @@ pub fn hepta_kernel_native_post_execution_store_write_report(
     }
 }
 
+pub fn hepta_kernel_native_post_execution_store_record_json_line(
+    record: &HeptaKernelNativePostExecutionStoreRecord,
+) -> Result<String, String> {
+    serde_json::to_string(record)
+        .map_err(|error| format!("failed to serialize native POST execution record: {error}"))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostRealHandlerHarness {
     pub status: &'static str,
@@ -8211,6 +8218,52 @@ mod tests {
         assert!(record.current_plan_executes_real_handler);
         assert!(!record.raw_request_body_exposed);
         assert!(!record.raw_idempotency_key_exposed);
+    }
+
+    #[test]
+    fn kernel_native_post_execution_store_record_json_line_serializes_redacted_record() {
+        let task_publish = hepta_kernel_native_post_plan_route_specs()
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let schema = hepta_kernel_native_post_body_schema(task_publish.plan_kind, true);
+        let admission = hepta_kernel_native_post_body_admission(
+            task_publish,
+            &schema,
+            Some(r#"{"task":"secret","confirm":true,"idempotency_key":"secret-idem"}"#),
+        );
+        let idempotency = hepta_kernel_native_post_idempotency_evidence(task_publish, &admission);
+        let audit = hepta_kernel_native_post_audit_event_contract(
+            task_publish,
+            &schema,
+            &admission,
+            &idempotency,
+        );
+        let record = hepta_kernel_native_post_execution_store_record(
+            task_publish,
+            &schema,
+            &admission,
+            &idempotency,
+            &audit,
+            true,
+            42,
+        );
+
+        let line = hepta_kernel_native_post_execution_store_record_json_line(&record)
+            .expect("record serializes");
+        let value = serde_json::from_str::<Value>(&line).expect("record JSON parses");
+
+        assert_eq!(value["schema_id"], "hepta.post.execution_store_record.v1");
+        assert_eq!(value["plan_kind"], "task_publish");
+        assert_eq!(value["idempotency_key_redacted"], true);
+        assert_eq!(value["raw_request_body_exposed"], false);
+        assert_eq!(value["raw_idempotency_key_exposed"], false);
+        assert!(
+            value["idempotency_key_fingerprint"]
+                .as_str()
+                .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
+        );
+        assert!(!line.contains("secret-idem"));
     }
 
     #[test]

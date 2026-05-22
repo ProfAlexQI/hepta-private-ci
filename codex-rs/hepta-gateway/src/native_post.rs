@@ -33,7 +33,8 @@ pub use hepta_runtime::{
     native_post_execution_store_file_status_report,
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
-    native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_specs,
+    native_post_execution_store_jsonl_health_read_failed,
+    native_post_execution_store_record_json_line, native_post_execution_store_specs,
     native_post_execution_store_write_report, native_post_idempotency_duplicate_present_in_content,
     native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
     native_post_plan_parameter, native_post_plan_route_specs,
@@ -380,8 +381,7 @@ pub fn native_post_execution_store_capacity_allows_append_with_limits(
     max_store_bytes: u64,
     max_store_lines: u64,
 ) -> Result<bool, String> {
-    let line = serde_json::to_string(record)
-        .map_err(|error| format!("failed to serialize native POST execution record: {error}"))?;
+    let line = native_post_execution_store_record_json_line(record)?;
     let projected_line_bytes = line.len() as u64 + 1;
     let stores = native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
     Ok(native_post_execution_store_capacity_allows_append(
@@ -402,8 +402,7 @@ pub fn persist_native_post_execution_store_record(
             root.display()
         )
     })?;
-    let line = serde_json::to_string(record)
-        .map_err(|error| format!("failed to serialize native POST execution record: {error}"))?;
+    let line = native_post_execution_store_record_json_line(record)?;
     let mut written_files = Vec::new();
     for spec in native_post_execution_store_specs() {
         let path = root.join(spec.filename);
