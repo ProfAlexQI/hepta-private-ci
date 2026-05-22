@@ -2526,6 +2526,246 @@ pub fn hepta_kernel_telegram_drain_execution_plan(
     }
 }
 
+pub fn hepta_kernel_telegram_message_is_reply_candidate(message: &Value) -> bool {
+    hepta_kernel_telegram_message_has_reply_target(message)
+        && hepta_kernel_telegram_message_text_present(message)
+}
+
+pub fn hepta_kernel_telegram_message_text_present(message: &Value) -> bool {
+    message
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+        || message
+            .get("caption")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+}
+
+pub fn hepta_kernel_telegram_message_has_reply_target(message: &Value) -> bool {
+    hepta_kernel_telegram_message_reply_target_material(message).is_some()
+}
+
+pub fn extract_hepta_kernel_telegram_candidate_material(
+    update: &Value,
+) -> Option<HeptaKernelTelegramCandidateMaterial> {
+    let update_id = update.get("update_id").and_then(Value::as_i64);
+    if let Some(message) = update.get("message") {
+        return hepta_kernel_telegram_message_prompt_material(update_id, "message", message);
+    }
+    if let Some(message) = update.get("edited_message") {
+        return hepta_kernel_telegram_message_prompt_material(update_id, "edited_message", message);
+    }
+    if let Some(callback) = update.get("callback_query") {
+        let reply_target = callback
+            .get("message")
+            .and_then(hepta_kernel_telegram_message_reply_target_material);
+        return Some(HeptaKernelTelegramCandidateMaterial {
+            update_id,
+            kind: "callback_query:redacted".to_string(),
+            prompt_text: callback
+                .get("data")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            has_reply_target: reply_target.is_some(),
+            reply_target,
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        });
+    }
+    if update.get("message_reaction").is_some() {
+        return Some(HeptaKernelTelegramCandidateMaterial {
+            update_id,
+            kind: "message_reaction:redacted".to_string(),
+            prompt_text: None,
+            has_reply_target: false,
+            reply_target: None,
+            requires_model: false,
+            raw_identifiers_exposed: false,
+        });
+    }
+    None
+}
+
+pub fn inspect_hepta_kernel_telegram_updates(
+    updates: &[Value],
+) -> HeptaKernelTelegramIngressInspection {
+    let mut inspection = HeptaKernelTelegramIngressInspection {
+        parser_ready: true,
+        update_count: updates.len(),
+        allowed_update_count: 0,
+        latest_observed_update_id: None,
+        latest_allowed_update_id: None,
+        latest_allowed_next_update_offset: None,
+        latest_allowed_text_present: false,
+        message_count: 0,
+        edited_message_count: 0,
+        callback_query_count: 0,
+        reaction_count: 0,
+        raw_message_text_exposed: false,
+        raw_chat_id_exposed: false,
+        raw_sender_id_exposed: false,
+    };
+
+    for update in updates {
+        let update_id = update.get("update_id").and_then(Value::as_i64);
+        if let Some(update_id) = update_id {
+            inspection.latest_observed_update_id = Some(
+                inspection
+                    .latest_observed_update_id
+                    .map(|current| current.max(update_id))
+                    .unwrap_or(update_id),
+            );
+        }
+
+        let (allowed, text_present) = if let Some(message) = update.get("message") {
+            inspection.message_count = inspection.message_count.saturating_add(1);
+            (
+                hepta_kernel_telegram_message_is_reply_candidate(message),
+                hepta_kernel_telegram_message_text_present(message),
+            )
+        } else if let Some(message) = update.get("edited_message") {
+            inspection.edited_message_count = inspection.edited_message_count.saturating_add(1);
+            (
+                hepta_kernel_telegram_message_is_reply_candidate(message),
+                hepta_kernel_telegram_message_text_present(message),
+            )
+        } else if update.get("callback_query").is_some() {
+            inspection.callback_query_count = inspection.callback_query_count.saturating_add(1);
+            (true, false)
+        } else if update.get("message_reaction").is_some() {
+            inspection.reaction_count = inspection.reaction_count.saturating_add(1);
+            (true, false)
+        } else {
+            (false, false)
+        };
+
+        if allowed {
+            inspection.allowed_update_count = inspection.allowed_update_count.saturating_add(1);
+            if let Some(update_id) = update_id {
+                inspection.latest_allowed_update_id = Some(
+                    inspection
+                        .latest_allowed_update_id
+                        .map(|current| current.max(update_id))
+                        .unwrap_or(update_id),
+                );
+                inspection.latest_allowed_next_update_offset =
+                    hepta_kernel_telegram_next_update_offset(update_id);
+            }
+            inspection.latest_allowed_text_present |= text_present;
+        }
+    }
+
+    inspection
+}
+
+pub fn hepta_kernel_telegram_model_turn_plan_for_updates(
+    updates: &[Value],
+) -> HeptaKernelTelegramModelTurnPlan {
+    let candidates = updates
+        .iter()
+        .take(20)
+        .filter_map(extract_hepta_kernel_telegram_candidate_material)
+        .collect::<Vec<_>>();
+    hepta_kernel_telegram_model_turn_plan_from_candidates(&candidates)
+}
+
+pub fn hepta_kernel_telegram_model_invocation_request_plan_for_updates(
+    updates: &[Value],
+    next_update_offset: Option<i64>,
+    model_turn_gate_env: &'static str,
+    model_turn_gate_enabled: bool,
+) -> HeptaKernelTelegramModelInvocationRequestPlan {
+    let (_, _, request) =
+        hepta_kernel_telegram_first_model_candidate_for_updates_with_duplicate_decision(
+            updates,
+            next_update_offset,
+            model_turn_gate_env,
+            model_turn_gate_enabled,
+        );
+    request
+}
+
+pub fn hepta_kernel_telegram_first_model_candidate_for_updates_with_duplicate_decision(
+    updates: &[Value],
+    next_update_offset: Option<i64>,
+    model_turn_gate_env: &'static str,
+    model_turn_gate_enabled: bool,
+) -> (
+    Option<HeptaKernelTelegramCandidateMaterial>,
+    Option<HeptaKernelTelegramDuplicateDecision>,
+    HeptaKernelTelegramModelInvocationRequestPlan,
+) {
+    let candidates = updates
+        .iter()
+        .take(20)
+        .filter_map(extract_hepta_kernel_telegram_candidate_material)
+        .collect::<Vec<_>>();
+    hepta_kernel_telegram_first_model_candidate_with_duplicate_decision(
+        &candidates,
+        next_update_offset,
+        model_turn_gate_env,
+        model_turn_gate_enabled,
+    )
+}
+
+fn hepta_kernel_telegram_message_prompt_material(
+    update_id: Option<i64>,
+    prefix: &str,
+    message: &Value,
+) -> Option<HeptaKernelTelegramCandidateMaterial> {
+    let (kind, prompt_text) = hepta_kernel_telegram_message_prompt_kind_and_text(message)?;
+    let reply_target = hepta_kernel_telegram_message_reply_target_material(message);
+    Some(HeptaKernelTelegramCandidateMaterial {
+        update_id,
+        kind: format!("{prefix}:{kind}"),
+        prompt_text: Some(prompt_text),
+        has_reply_target: reply_target.is_some(),
+        reply_target,
+        requires_model: true,
+        raw_identifiers_exposed: false,
+    })
+}
+
+fn hepta_kernel_telegram_message_prompt_kind_and_text(
+    message: &Value,
+) -> Option<(&'static str, String)> {
+    if let Some(text) = message
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(("text", text.to_string()))
+    } else {
+        message
+            .get("caption")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|caption| ("caption", caption.to_string()))
+    }
+}
+
+fn hepta_kernel_telegram_message_reply_target_material(
+    message: &Value,
+) -> Option<HeptaKernelTelegramReplyTargetMaterial> {
+    let chat_id = message.get("chat")?.get("id")?.as_i64()?;
+    let reply_to_message_id = message
+        .get("message_id")
+        .and_then(Value::as_i64)
+        .filter(|message_id| *message_id > 0)?;
+    Some(HeptaKernelTelegramReplyTargetMaterial {
+        chat_id,
+        reply_to_message_id: Some(reply_to_message_id),
+        raw_identifiers_exposed: false,
+    })
+}
+
 pub fn hepta_kernel_telegram_model_turn_plan_from_candidates(
     candidates: &[HeptaKernelTelegramCandidateMaterial],
 ) -> HeptaKernelTelegramModelTurnPlan {
@@ -3005,6 +3245,85 @@ mod tests {
         assert!(!plan.raw_chat_id_exposed);
         assert!(!plan.raw_sender_id_exposed);
         assert!(!plan.raw_message_id_exposed);
+    }
+
+    #[test]
+    fn kernel_ingress_parser_extracts_updates_without_serializing_private_material() {
+        let updates = vec![
+            json!({
+                "update_id": 50,
+                "message": {
+                    "message_id": 12,
+                    "text": "private message prompt",
+                    "chat": { "id": 6476198178_i64, "type": "private" },
+                    "from": { "id": 6476198178_i64, "username": "private_user" }
+                }
+            }),
+            json!({
+                "update_id": 51,
+                "callback_query": {
+                    "id": "opaque-callback-id",
+                    "data": "button_secret_payload",
+                    "message": {
+                        "message_id": 13,
+                        "chat": { "id": 6476198178_i64, "type": "private" }
+                    }
+                }
+            }),
+            json!({
+                "update_id": 52,
+                "message_reaction": {
+                    "chat": { "id": 6476198178_i64, "type": "private" }
+                }
+            }),
+        ];
+
+        let candidate =
+            extract_hepta_kernel_telegram_candidate_material(&updates[0]).expect("candidate");
+        assert_eq!(candidate.kind, "message:text");
+        assert_eq!(
+            candidate.prompt_text.as_deref(),
+            Some("private message prompt")
+        );
+        assert!(candidate.has_reply_target);
+        assert!(!candidate.raw_identifiers_exposed);
+
+        let plan = hepta_kernel_telegram_model_turn_plan_for_updates(&updates);
+        assert_eq!(plan.candidate_count, 3);
+        assert_eq!(plan.text_candidate_count, 1);
+        assert_eq!(plan.callback_candidate_count, 1);
+        assert_eq!(plan.reaction_candidate_count, 1);
+        assert_eq!(plan.reply_target_count, 2);
+
+        let request = hepta_kernel_telegram_model_invocation_request_plan_for_updates(
+            &updates,
+            Some(50),
+            "HEPTA_NATIVE_TELEGRAM_MODEL_TURN",
+            true,
+        );
+        assert_eq!(request.duplicate_decision, "model_candidate");
+        assert_eq!(request.candidate_kind.as_deref(), Some("message:text"));
+        assert!(request.prompt_material_in_memory);
+        assert!(!request.prompt_material_serialized);
+        assert!(!request.raw_prompt_text_exposed);
+
+        let inspection = inspect_hepta_kernel_telegram_updates(&updates);
+        assert_eq!(inspection.update_count, 3);
+        assert_eq!(inspection.allowed_update_count, 3);
+        assert_eq!(inspection.latest_allowed_next_update_offset, Some(53));
+        assert!(inspection.latest_allowed_text_present);
+
+        let serialized_plan = serde_json::to_string(&plan).expect("serialize plan");
+        let serialized_request = serde_json::to_string(&request).expect("serialize request");
+        let serialized_inspection =
+            serde_json::to_string(&inspection).expect("serialize inspection");
+        for serialized in [serialized_plan, serialized_request, serialized_inspection] {
+            assert!(!serialized.contains("private message prompt"));
+            assert!(!serialized.contains("button_secret_payload"));
+            assert!(!serialized.contains("opaque-callback-id"));
+            assert!(!serialized.contains("6476198178"));
+            assert!(!serialized.contains("private_user"));
+        }
     }
 
     #[test]

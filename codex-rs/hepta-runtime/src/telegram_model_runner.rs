@@ -49,6 +49,7 @@ pub use hepta_kernel::{
     build_hepta_kernel_telegram_production_guard_status_from_policy,
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text,
+    extract_hepta_kernel_telegram_candidate_material,
     extract_hepta_kernel_telegram_config_metadata, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
     hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_cursor_body,
@@ -59,11 +60,15 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_drain_status_probe_executes_pipeline,
     hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_env_truthy_value,
     hepta_kernel_telegram_env_u64_value, hepta_kernel_telegram_error_is_transient,
+    hepta_kernel_telegram_first_model_candidate_for_updates_with_duplicate_decision,
     hepta_kernel_telegram_first_model_candidate_with_duplicate_decision,
     hepta_kernel_telegram_get_updates_error_is_conflict,
     hepta_kernel_telegram_get_updates_error_is_transient, hepta_kernel_telegram_get_updates_query,
-    hepta_kernel_telegram_get_updates_should_retry,
-    hepta_kernel_telegram_model_failure_fallback_allowed, hepta_kernel_telegram_model_timeout,
+    hepta_kernel_telegram_get_updates_should_retry, hepta_kernel_telegram_message_has_reply_target,
+    hepta_kernel_telegram_message_is_reply_candidate, hepta_kernel_telegram_message_text_present,
+    hepta_kernel_telegram_model_failure_fallback_allowed,
+    hepta_kernel_telegram_model_invocation_request_plan_for_updates,
+    hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_model_turn_plan_for_updates,
     hepta_kernel_telegram_model_turn_plan_from_candidates,
     hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_normalize_binding_id,
     hepta_kernel_telegram_poll_loop_interval_ms_policy,
@@ -83,8 +88,9 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_transport_plan_for_config_status,
     hepta_kernel_telegram_typing_keepalive_interval_policy,
     hepta_kernel_telegram_typing_keepalive_should_start,
-    hepta_kernel_telegram_update_already_drained, invoke_hepta_kernel_telegram_runner_with_plan,
-    parse_hepta_kernel_mlx_model_ref, parse_hepta_kernel_telegram_cursor_next_update_offset,
+    hepta_kernel_telegram_update_already_drained, inspect_hepta_kernel_telegram_updates,
+    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
+    parse_hepta_kernel_telegram_cursor_next_update_offset,
     plan_hepta_kernel_telegram_drain_once_shell_readiness,
     plan_hepta_kernel_telegram_receive_once_shell_readiness,
     plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
@@ -240,6 +246,66 @@ pub fn native_telegram_first_model_candidate_with_duplicate_decision(
 ) {
     hepta_kernel_telegram_first_model_candidate_with_duplicate_decision(
         candidates,
+        next_update_offset,
+        model_turn_gate_env,
+        model_turn_gate_enabled,
+    )
+}
+
+pub fn native_telegram_message_is_reply_candidate(message: &Value) -> bool {
+    hepta_kernel_telegram_message_is_reply_candidate(message)
+}
+
+pub fn native_telegram_message_text_present(message: &Value) -> bool {
+    hepta_kernel_telegram_message_text_present(message)
+}
+
+pub fn native_telegram_message_has_reply_target(message: &Value) -> bool {
+    hepta_kernel_telegram_message_has_reply_target(message)
+}
+
+pub fn extract_native_telegram_candidate_material(
+    update: &Value,
+) -> Option<NativeTelegramCandidateMaterial> {
+    extract_hepta_kernel_telegram_candidate_material(update)
+}
+
+pub fn inspect_native_telegram_updates(updates: &[Value]) -> NativeTelegramIngressInspection {
+    inspect_hepta_kernel_telegram_updates(updates)
+}
+
+pub fn native_telegram_model_turn_plan_for_updates(
+    updates: &[Value],
+) -> NativeTelegramModelTurnPlan {
+    hepta_kernel_telegram_model_turn_plan_for_updates(updates)
+}
+
+pub fn native_telegram_model_invocation_request_plan_for_updates(
+    updates: &[Value],
+    next_update_offset: Option<i64>,
+    model_turn_gate_env: &'static str,
+    model_turn_gate_enabled: bool,
+) -> NativeTelegramModelInvocationRequestPlan {
+    hepta_kernel_telegram_model_invocation_request_plan_for_updates(
+        updates,
+        next_update_offset,
+        model_turn_gate_env,
+        model_turn_gate_enabled,
+    )
+}
+
+pub fn native_telegram_first_model_candidate_for_updates_with_duplicate_decision(
+    updates: &[Value],
+    next_update_offset: Option<i64>,
+    model_turn_gate_env: &'static str,
+    model_turn_gate_enabled: bool,
+) -> (
+    Option<NativeTelegramCandidateMaterial>,
+    Option<NativeTelegramDuplicateDecision>,
+    NativeTelegramModelInvocationRequestPlan,
+) {
+    hepta_kernel_telegram_first_model_candidate_for_updates_with_duplicate_decision(
+        updates,
         next_update_offset,
         model_turn_gate_env,
         model_turn_gate_enabled,

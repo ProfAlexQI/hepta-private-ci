@@ -8,12 +8,16 @@ pub use hepta_runtime::{
     NativeTelegramReplyTargetMaterial, NativeTelegramSendExecutionReport,
     NativeTelegramSendRequestPlan, TELEGRAM_DRAIN_ONCE_STAGES,
     build_native_telegram_gateway_gate_summary as build_telegram_gateway_gate_summary,
+    extract_native_telegram_candidate_material, inspect_native_telegram_updates,
     native_telegram_drain_execution_plan as telegram_drain_execution_plan,
     native_telegram_drain_first_missing_gate as telegram_drain_first_missing_gate,
     native_telegram_drain_status_probe_executes_pipeline as telegram_drain_status_probe_executes_pipeline,
     native_telegram_duplicate_decision,
-    native_telegram_first_model_candidate_with_duplicate_decision,
-    native_telegram_model_turn_plan_from_candidates, native_telegram_next_update_offset,
+    native_telegram_first_model_candidate_for_updates_with_duplicate_decision,
+    native_telegram_message_has_reply_target, native_telegram_message_is_reply_candidate,
+    native_telegram_message_text_present,
+    native_telegram_model_invocation_request_plan_for_updates,
+    native_telegram_model_turn_plan_for_updates, native_telegram_next_update_offset,
     native_telegram_update_already_drained,
 };
 
@@ -33,146 +37,29 @@ pub fn telegram_next_update_offset(update_id: i64) -> Option<i64> {
 }
 
 pub fn telegram_message_is_reply_candidate(message: &Value) -> bool {
-    telegram_message_has_reply_target(message) && telegram_message_text_present(message)
+    native_telegram_message_is_reply_candidate(message)
 }
 
 pub fn telegram_message_text_present(message: &Value) -> bool {
-    message
-        .get("text")
-        .and_then(Value::as_str)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
-        || message
-            .get("caption")
-            .and_then(Value::as_str)
-            .map(|value| !value.trim().is_empty())
-            .unwrap_or(false)
+    native_telegram_message_text_present(message)
 }
 
 pub fn telegram_message_has_reply_target(message: &Value) -> bool {
-    telegram_message_reply_target_material(message).is_some()
+    native_telegram_message_has_reply_target(message)
 }
 
 pub fn extract_telegram_candidate_material(
     update: &Value,
 ) -> Option<NativeTelegramCandidateMaterial> {
-    let update_id = update.get("update_id").and_then(Value::as_i64);
-    if let Some(message) = update.get("message") {
-        return telegram_message_prompt_material(update_id, "message", message);
-    }
-    if let Some(message) = update.get("edited_message") {
-        return telegram_message_prompt_material(update_id, "edited_message", message);
-    }
-    if let Some(callback) = update.get("callback_query") {
-        let reply_target = callback
-            .get("message")
-            .and_then(telegram_message_reply_target_material);
-        return Some(NativeTelegramCandidateMaterial {
-            update_id,
-            kind: "callback_query:redacted".to_string(),
-            prompt_text: callback
-                .get("data")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToOwned::to_owned),
-            has_reply_target: reply_target.is_some(),
-            reply_target,
-            requires_model: true,
-            raw_identifiers_exposed: false,
-        });
-    }
-    if update.get("message_reaction").is_some() {
-        return Some(NativeTelegramCandidateMaterial {
-            update_id,
-            kind: "message_reaction:redacted".to_string(),
-            prompt_text: None,
-            has_reply_target: false,
-            reply_target: None,
-            requires_model: false,
-            raw_identifiers_exposed: false,
-        });
-    }
-    None
+    extract_native_telegram_candidate_material(update)
 }
 
 pub fn inspect_telegram_updates(updates: &[Value]) -> NativeTelegramIngressInspection {
-    let mut inspection = NativeTelegramIngressInspection {
-        parser_ready: true,
-        update_count: updates.len(),
-        allowed_update_count: 0,
-        latest_observed_update_id: None,
-        latest_allowed_update_id: None,
-        latest_allowed_next_update_offset: None,
-        latest_allowed_text_present: false,
-        message_count: 0,
-        edited_message_count: 0,
-        callback_query_count: 0,
-        reaction_count: 0,
-        raw_message_text_exposed: false,
-        raw_chat_id_exposed: false,
-        raw_sender_id_exposed: false,
-    };
-
-    for update in updates {
-        let update_id = update.get("update_id").and_then(Value::as_i64);
-        if let Some(update_id) = update_id {
-            inspection.latest_observed_update_id = Some(
-                inspection
-                    .latest_observed_update_id
-                    .map(|current| current.max(update_id))
-                    .unwrap_or(update_id),
-            );
-        }
-
-        let (allowed, text_present) = if let Some(message) = update.get("message") {
-            inspection.message_count = inspection.message_count.saturating_add(1);
-            (
-                telegram_message_is_reply_candidate(message),
-                telegram_message_text_present(message),
-            )
-        } else if let Some(message) = update.get("edited_message") {
-            inspection.edited_message_count = inspection.edited_message_count.saturating_add(1);
-            (
-                telegram_message_is_reply_candidate(message),
-                telegram_message_text_present(message),
-            )
-        } else if update.get("callback_query").is_some() {
-            inspection.callback_query_count = inspection.callback_query_count.saturating_add(1);
-            (true, false)
-        } else if update.get("message_reaction").is_some() {
-            inspection.reaction_count = inspection.reaction_count.saturating_add(1);
-            (true, false)
-        } else {
-            (false, false)
-        };
-
-        if allowed {
-            inspection.allowed_update_count = inspection.allowed_update_count.saturating_add(1);
-            if let Some(update_id) = update_id {
-                inspection.latest_allowed_update_id = Some(
-                    inspection
-                        .latest_allowed_update_id
-                        .map(|current| current.max(update_id))
-                        .unwrap_or(update_id),
-                );
-                inspection.latest_allowed_next_update_offset =
-                    telegram_next_update_offset(update_id);
-            }
-            inspection.latest_allowed_text_present |= text_present;
-        }
-    }
-
-    inspection
+    inspect_native_telegram_updates(updates)
 }
 
 pub fn plan_model_turn_for_updates(updates: &[Value]) -> NativeTelegramModelTurnPlan {
-    let candidates = updates
-        .iter()
-        .take(20)
-        .filter_map(extract_telegram_candidate_material)
-        .collect::<Vec<_>>();
-    native_telegram_model_turn_plan_from_candidates(&candidates)
+    native_telegram_model_turn_plan_for_updates(updates)
 }
 
 pub fn build_model_invocation_request_plan(
@@ -181,13 +68,12 @@ pub fn build_model_invocation_request_plan(
     model_turn_gate_env: &'static str,
     model_turn_gate_enabled: bool,
 ) -> NativeTelegramModelInvocationRequestPlan {
-    let (_, _, request) = first_model_candidate_with_duplicate_decision(
+    native_telegram_model_invocation_request_plan_for_updates(
         updates,
         next_update_offset,
         model_turn_gate_env,
         model_turn_gate_enabled,
-    );
-    request
+    )
 }
 
 pub fn first_model_candidate_with_duplicate_decision(
@@ -200,68 +86,12 @@ pub fn first_model_candidate_with_duplicate_decision(
     Option<NativeTelegramDuplicateDecision>,
     NativeTelegramModelInvocationRequestPlan,
 ) {
-    let candidates = updates
-        .iter()
-        .take(20)
-        .filter_map(extract_telegram_candidate_material)
-        .collect::<Vec<_>>();
-    native_telegram_first_model_candidate_with_duplicate_decision(
-        &candidates,
+    native_telegram_first_model_candidate_for_updates_with_duplicate_decision(
+        updates,
         next_update_offset,
         model_turn_gate_env,
         model_turn_gate_enabled,
     )
-}
-
-fn telegram_message_prompt_material(
-    update_id: Option<i64>,
-    prefix: &str,
-    message: &Value,
-) -> Option<NativeTelegramCandidateMaterial> {
-    let (kind, prompt_text) = telegram_message_prompt_kind_and_text(message)?;
-    let reply_target = telegram_message_reply_target_material(message);
-    Some(NativeTelegramCandidateMaterial {
-        update_id,
-        kind: format!("{prefix}:{kind}"),
-        prompt_text: Some(prompt_text),
-        has_reply_target: reply_target.is_some(),
-        reply_target,
-        requires_model: true,
-        raw_identifiers_exposed: false,
-    })
-}
-
-fn telegram_message_prompt_kind_and_text(message: &Value) -> Option<(&'static str, String)> {
-    if let Some(text) = message
-        .get("text")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        Some(("text", text.to_string()))
-    } else {
-        message
-            .get("caption")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(|caption| ("caption", caption.to_string()))
-    }
-}
-
-fn telegram_message_reply_target_material(
-    message: &Value,
-) -> Option<NativeTelegramReplyTargetMaterial> {
-    let chat_id = message.get("chat")?.get("id")?.as_i64()?;
-    let reply_to_message_id = message
-        .get("message_id")
-        .and_then(Value::as_i64)
-        .filter(|message_id| *message_id > 0)?;
-    Some(NativeTelegramReplyTargetMaterial {
-        chat_id,
-        reply_to_message_id: Some(reply_to_message_id),
-        raw_identifiers_exposed: false,
-    })
 }
 
 #[cfg(test)]
