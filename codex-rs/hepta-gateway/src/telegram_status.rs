@@ -1,5 +1,4 @@
 use serde::Serialize;
-use serde_json::Value;
 use std::time::SystemTime;
 
 use crate::telegram_config::NativeTelegramConfigStatus;
@@ -13,19 +12,21 @@ use crate::telegram_policy::{
 };
 use crate::telegram_runtime::NativeTelegramSessionBridgePlan;
 use crate::telegram_transport::{
-    NativeTelegramSendPlan, NativeTelegramTransportPlan, telegram_get_updates_error_is_conflict,
-    telegram_redact_token_like_text,
+    NativeTelegramSendPlan, NativeTelegramTransportPlan, telegram_redact_token_like_text,
 };
 use hepta_runtime::{
     NativeTelegramModelRunnerPlan, build_native_telegram_poll_loop_status,
     build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,
+    build_native_telegram_receive_once_error_status, build_native_telegram_receive_once_status,
+    build_native_telegram_receive_once_status_from_api_result,
     native_telegram_poll_loop_interval_ms_policy, native_telegram_poll_loop_should_spawn,
     native_telegram_receive_limit_policy, native_telegram_soak_max_attention_count_policy,
     native_telegram_soak_max_observed_age_ms_policy,
     native_telegram_soak_min_poll_iterations_policy, native_telegram_system_time_unix_ms,
     plan_hepta_kernel_telegram_session_bridge, plan_native_telegram_drain_once_api_result,
     plan_native_telegram_drain_once_preflight, plan_native_telegram_drain_once_shell_readiness,
+    plan_native_telegram_receive_once_preflight_status,
     plan_native_telegram_receive_once_shell_readiness,
 };
 
@@ -39,7 +40,10 @@ pub use hepta_runtime::{
     NativeTelegramDrainOnceApiResultInput, NativeTelegramDrainOnceApiResultPlan,
     NativeTelegramDrainOncePreflightInput, NativeTelegramDrainOncePreflightPlan,
     NativeTelegramDrainOnceShellReadinessInput, NativeTelegramDrainOnceShellReadinessPlan,
-    NativeTelegramReceiveOnceShellReadinessInput, NativeTelegramReceiveOnceShellReadinessPlan,
+    NativeTelegramReceiveOnceApiResultInput, NativeTelegramReceiveOnceErrorInput,
+    NativeTelegramReceiveOncePreflightInput, NativeTelegramReceiveOnceShellReadinessInput,
+    NativeTelegramReceiveOnceShellReadinessPlan, NativeTelegramReceiveOnceStatus,
+    NativeTelegramReceiveOnceStatusInput,
 };
 
 pub use hepta_runtime::{
@@ -110,271 +114,22 @@ pub struct NativeTelegramPluginStatus {
     pub next_migration_slice: &'static str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramReceiveOnceStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub live_read_gate_env: &'static str,
-    pub live_read_gate_enabled: bool,
-    pub external_network_read: bool,
-    pub external_send: bool,
-    pub model_turn_started: bool,
-    pub cursor_written: bool,
-    pub raw_update_payload_exposed: bool,
-    pub raw_token_exposed: bool,
-    pub limit: usize,
-    pub get_updates_offset: Option<i64>,
-    pub bot_api_ok: Option<bool>,
-    pub local_next_update_offset: Option<i64>,
-    pub config: NativeTelegramConfigStatus,
-    pub transport_plan: NativeTelegramTransportPlan,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub inspection: NativeTelegramIngressInspection,
-    pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramReceiveOnceStatusInput {
-    pub requested: bool,
-    pub status: &'static str,
-    pub live_read_gate_env: &'static str,
-    pub live_read_gate_enabled: bool,
-    pub external_network_read: bool,
-    pub limit: usize,
-    pub config: NativeTelegramConfigStatus,
-    pub transport_plan: NativeTelegramTransportPlan,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub inspection: NativeTelegramIngressInspection,
-    pub model_turn_plan: Option<NativeTelegramModelTurnPlan>,
-    pub get_updates_offset: Option<i64>,
-    pub bot_api_ok: Option<bool>,
-    pub local_next_update_offset: Option<i64>,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NativeTelegramReceiveOncePreflightInput<'a> {
-    pub requested: bool,
-    pub live_read_gate_env: &'static str,
-    pub live_read_gate_enabled: bool,
-    pub limit: usize,
-    pub config: &'a NativeTelegramConfigStatus,
-    pub transport_plan: &'a NativeTelegramTransportPlan,
-    pub cursor_plan: &'a NativeTelegramCursorPlan,
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramReceiveOnceApiResultInput<'a> {
-    pub requested: bool,
-    pub live_read_gate_env: &'static str,
-    pub live_read_gate_enabled: bool,
-    pub external_network_read: bool,
-    pub limit: usize,
-    pub config: NativeTelegramConfigStatus,
-    pub transport_plan: NativeTelegramTransportPlan,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub get_updates_offset: Option<i64>,
-    pub api_result: Result<&'a Value, &'a str>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramReceiveOnceErrorInput {
-    pub requested: bool,
-    pub live_read_gate_env: &'static str,
-    pub live_read_gate_enabled: bool,
-    pub limit: usize,
-    pub config: NativeTelegramConfigStatus,
-    pub transport_plan: NativeTelegramTransportPlan,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub get_updates_offset: Option<i64>,
-    pub error: Option<String>,
-}
-
-impl NativeTelegramReceiveOnceStatus {
-    #[allow(clippy::too_many_arguments)]
-    pub fn base(
-        requested: bool,
-        status: &'static str,
-        live_read_gate_env: &'static str,
-        live_read_gate_enabled: bool,
-        external_network_read: bool,
-        limit: usize,
-        config: NativeTelegramConfigStatus,
-        transport_plan: NativeTelegramTransportPlan,
-        cursor_plan: NativeTelegramCursorPlan,
-        inspection: NativeTelegramIngressInspection,
-        error: Option<String>,
-        next_migration_slice: &'static str,
-    ) -> Self {
-        build_telegram_receive_once_status(NativeTelegramReceiveOnceStatusInput {
-            requested,
-            status,
-            live_read_gate_env,
-            live_read_gate_enabled,
-            external_network_read,
-            limit,
-            config,
-            transport_plan,
-            cursor_plan,
-            inspection,
-            model_turn_plan: None,
-            get_updates_offset: None,
-            bot_api_ok: None,
-            local_next_update_offset: None,
-            error,
-            next_migration_slice,
-        })
-    }
-}
-
 pub fn build_telegram_receive_once_error_status(
     input: NativeTelegramReceiveOnceErrorInput,
 ) -> NativeTelegramReceiveOnceStatus {
-    build_telegram_receive_once_status(NativeTelegramReceiveOnceStatusInput {
-        requested: input.requested,
-        status: "attention",
-        live_read_gate_env: input.live_read_gate_env,
-        live_read_gate_enabled: input.live_read_gate_enabled,
-        external_network_read: false,
-        limit: input.limit,
-        config: input.config,
-        transport_plan: input.transport_plan,
-        cursor_plan: input.cursor_plan,
-        inspection: crate::telegram_policy::inspect_telegram_updates(&[]),
-        model_turn_plan: None,
-        get_updates_offset: input.get_updates_offset,
-        bot_api_ok: None,
-        local_next_update_offset: None,
-        error: input
-            .error
-            .map(|error| telegram_redact_token_like_text(&error)),
-        next_migration_slice: TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
-    })
+    build_native_telegram_receive_once_error_status(input)
 }
 
 pub fn build_telegram_receive_once_status(
     input: NativeTelegramReceiveOnceStatusInput,
 ) -> NativeTelegramReceiveOnceStatus {
-    let local_next_update_offset = input
-        .local_next_update_offset
-        .or(input.inspection.latest_allowed_next_update_offset);
-    let model_turn_plan = input.model_turn_plan.unwrap_or_else(|| {
-        if input.requested {
-            plan_model_turn_for_updates(&[])
-        } else {
-            NativeTelegramModelTurnPlan::disabled()
-        }
-    });
-
-    NativeTelegramReceiveOnceStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: input.requested,
-        status: input.status,
-        live_read_gate_env: input.live_read_gate_env,
-        live_read_gate_enabled: input.live_read_gate_enabled,
-        external_network_read: input.external_network_read,
-        external_send: false,
-        model_turn_started: false,
-        cursor_written: false,
-        raw_update_payload_exposed: false,
-        raw_token_exposed: false,
-        limit: input.limit,
-        get_updates_offset: input.get_updates_offset,
-        bot_api_ok: input.bot_api_ok,
-        local_next_update_offset,
-        config: input.config,
-        transport_plan: input.transport_plan,
-        cursor_plan: input.cursor_plan,
-        inspection: input.inspection,
-        model_turn_plan,
-        error: input.error,
-        next_migration_slice: input.next_migration_slice,
-    }
+    build_native_telegram_receive_once_status(input)
 }
 
 pub fn plan_telegram_receive_once_preflight_status(
     input: NativeTelegramReceiveOncePreflightInput<'_>,
 ) -> Option<NativeTelegramReceiveOnceStatus> {
-    let inspection = crate::telegram_policy::inspect_telegram_updates(&[]);
-    if !input.requested {
-        return Some(build_telegram_receive_once_status(
-            NativeTelegramReceiveOnceStatusInput {
-                requested: false,
-                status: "disabled",
-                live_read_gate_env: input.live_read_gate_env,
-                live_read_gate_enabled: input.live_read_gate_enabled,
-                external_network_read: false,
-                limit: input.limit,
-                config: input.config.clone(),
-                transport_plan: input.transport_plan.clone(),
-                cursor_plan: input.cursor_plan.clone(),
-                inspection,
-                model_turn_plan: None,
-                get_updates_offset: None,
-                bot_api_ok: None,
-                local_next_update_offset: None,
-                error: None,
-                next_migration_slice: TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
-            },
-        ));
-    }
-
-    if !input.live_read_gate_enabled {
-        return Some(build_telegram_receive_once_status(
-            NativeTelegramReceiveOnceStatusInput {
-                requested: true,
-                status: "gated",
-                live_read_gate_env: input.live_read_gate_env,
-                live_read_gate_enabled: false,
-                external_network_read: false,
-                limit: input.limit,
-                config: input.config.clone(),
-                transport_plan: input.transport_plan.clone(),
-                cursor_plan: input.cursor_plan.clone(),
-                inspection,
-                model_turn_plan: None,
-                get_updates_offset: None,
-                bot_api_ok: None,
-                local_next_update_offset: None,
-                error: Some(format!(
-                    "live Telegram receive is gated; set {}=1 to run one redacted getUpdates read",
-                    input.live_read_gate_env
-                )),
-                next_migration_slice: TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
-            },
-        ));
-    }
-
-    if !input.config.config_ready() {
-        return Some(build_telegram_receive_once_status(
-            NativeTelegramReceiveOnceStatusInput {
-                requested: true,
-                status: "attention",
-                live_read_gate_env: input.live_read_gate_env,
-                live_read_gate_enabled: true,
-                external_network_read: false,
-                limit: input.limit,
-                config: input.config.clone(),
-                transport_plan: input.transport_plan.clone(),
-                cursor_plan: input.cursor_plan.clone(),
-                inspection,
-                model_turn_plan: None,
-                get_updates_offset: None,
-                bot_api_ok: None,
-                local_next_update_offset: None,
-                error: Some("Telegram config, token shape, or binding is not ready".to_string()),
-                next_migration_slice: TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
-            },
-        ));
-    }
-
-    None
+    plan_native_telegram_receive_once_preflight_status(input)
 }
 
 pub fn plan_telegram_receive_once_shell_readiness(
@@ -386,81 +141,8 @@ pub fn plan_telegram_receive_once_shell_readiness(
 pub fn build_telegram_receive_once_status_from_api_result(
     input: NativeTelegramReceiveOnceApiResultInput<'_>,
 ) -> NativeTelegramReceiveOnceStatus {
-    match input.api_result {
-        Ok(api) => {
-            let bot_api_ok = api.get("ok").and_then(Value::as_bool);
-            let updates = api
-                .get("result")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let inspection = crate::telegram_policy::inspect_telegram_updates(&updates);
-            let local_next_update_offset = inspection.latest_allowed_next_update_offset;
-            let model_turn_plan = plan_model_turn_for_updates(&updates);
-            let status = if bot_api_ok.unwrap_or(false) {
-                "ready"
-            } else {
-                "attention"
-            };
-            let error = if bot_api_ok == Some(false) {
-                api.get("description")
-                    .and_then(Value::as_str)
-                    .map(telegram_redact_token_like_text)
-                    .or_else(|| Some("Telegram Bot API getUpdates returned ok=false".to_string()))
-            } else {
-                None
-            };
-
-            build_telegram_receive_once_status(NativeTelegramReceiveOnceStatusInput {
-                requested: input.requested,
-                status,
-                live_read_gate_env: input.live_read_gate_env,
-                live_read_gate_enabled: input.live_read_gate_enabled,
-                external_network_read: input.external_network_read,
-                limit: input.limit,
-                config: input.config,
-                transport_plan: input.transport_plan,
-                cursor_plan: input.cursor_plan,
-                inspection,
-                model_turn_plan: Some(model_turn_plan),
-                get_updates_offset: input.get_updates_offset,
-                bot_api_ok,
-                local_next_update_offset,
-                error,
-                next_migration_slice: TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
-            })
-        }
-        Err(error) => {
-            let redacted_error = telegram_redact_token_like_text(error);
-            let status = if telegram_get_updates_error_is_conflict(&redacted_error) {
-                "busy"
-            } else {
-                "attention"
-            };
-
-            build_telegram_receive_once_status(NativeTelegramReceiveOnceStatusInput {
-                requested: input.requested,
-                status,
-                live_read_gate_env: input.live_read_gate_env,
-                live_read_gate_enabled: input.live_read_gate_enabled,
-                external_network_read: input.external_network_read,
-                limit: input.limit,
-                config: input.config,
-                transport_plan: input.transport_plan,
-                cursor_plan: input.cursor_plan,
-                inspection: crate::telegram_policy::inspect_telegram_updates(&[]),
-                model_turn_plan: None,
-                get_updates_offset: input.get_updates_offset,
-                bot_api_ok: None,
-                local_next_update_offset: None,
-                error: Some(redacted_error),
-                next_migration_slice: TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
-            })
-        }
-    }
+    build_native_telegram_receive_once_status_from_api_result(input)
 }
-
-const TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE: &str = "manual receive is a diagnostic read path; use drain-once or the armed poll loop for model, send, and cursor side effects";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NativeTelegramModelTurnPlanStatus {

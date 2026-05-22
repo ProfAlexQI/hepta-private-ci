@@ -31,8 +31,11 @@ pub use hepta_kernel::{
     HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramPollLoopStatus,
     HeptaKernelTelegramPollLoopStatusInput, HeptaKernelTelegramProductionGuardPolicyInput,
     HeptaKernelTelegramProductionGuardStatus, HeptaKernelTelegramProductionGuardStatusInput,
+    HeptaKernelTelegramReceiveOnceApiResultInput, HeptaKernelTelegramReceiveOnceErrorInput,
+    HeptaKernelTelegramReceiveOncePreflightInput,
     HeptaKernelTelegramReceiveOnceShellReadinessInput,
-    HeptaKernelTelegramReceiveOnceShellReadinessPlan, HeptaKernelTelegramReplyTargetMaterial,
+    HeptaKernelTelegramReceiveOnceShellReadinessPlan, HeptaKernelTelegramReceiveOnceStatus,
+    HeptaKernelTelegramReceiveOnceStatusInput, HeptaKernelTelegramReplyTargetMaterial,
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
     HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendPlan,
     HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
@@ -49,6 +52,9 @@ pub use hepta_kernel::{
     build_hepta_kernel_telegram_gateway_gate_summary, build_hepta_kernel_telegram_poll_loop_status,
     build_hepta_kernel_telegram_production_guard_status,
     build_hepta_kernel_telegram_production_guard_status_from_policy,
+    build_hepta_kernel_telegram_receive_once_error_status,
+    build_hepta_kernel_telegram_receive_once_status,
+    build_hepta_kernel_telegram_receive_once_status_from_api_result,
     classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text,
     extract_hepta_kernel_telegram_candidate_material,
@@ -96,6 +102,7 @@ pub use hepta_kernel::{
     plan_hepta_kernel_telegram_drain_once_api_result,
     plan_hepta_kernel_telegram_drain_once_preflight,
     plan_hepta_kernel_telegram_drain_once_shell_readiness,
+    plan_hepta_kernel_telegram_receive_once_preflight_status,
     plan_hepta_kernel_telegram_receive_once_shell_readiness,
     plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
     redact_hepta_kernel_telegram_runner_error, redact_hepta_kernel_telegram_token_like_text,
@@ -124,6 +131,13 @@ pub type NativeTelegramReceiveOnceShellReadinessInput<'a> =
     HeptaKernelTelegramReceiveOnceShellReadinessInput<'a>;
 pub type NativeTelegramReceiveOnceShellReadinessPlan =
     HeptaKernelTelegramReceiveOnceShellReadinessPlan;
+pub type NativeTelegramReceiveOnceStatus = HeptaKernelTelegramReceiveOnceStatus;
+pub type NativeTelegramReceiveOnceStatusInput = HeptaKernelTelegramReceiveOnceStatusInput;
+pub type NativeTelegramReceiveOncePreflightInput<'a> =
+    HeptaKernelTelegramReceiveOncePreflightInput<'a>;
+pub type NativeTelegramReceiveOnceApiResultInput<'a> =
+    HeptaKernelTelegramReceiveOnceApiResultInput<'a>;
+pub type NativeTelegramReceiveOnceErrorInput = HeptaKernelTelegramReceiveOnceErrorInput;
 pub type NativeTelegramDrainOnceShellReadinessInput<'a> =
     HeptaKernelTelegramDrainOnceShellReadinessInput<'a>;
 pub type NativeTelegramDrainOnceShellReadinessPlan = HeptaKernelTelegramDrainOnceShellReadinessPlan;
@@ -147,6 +161,30 @@ pub fn plan_native_telegram_receive_once_shell_readiness(
     input: NativeTelegramReceiveOnceShellReadinessInput<'_>,
 ) -> NativeTelegramReceiveOnceShellReadinessPlan {
     plan_hepta_kernel_telegram_receive_once_shell_readiness(input)
+}
+
+pub fn build_native_telegram_receive_once_status(
+    input: NativeTelegramReceiveOnceStatusInput,
+) -> NativeTelegramReceiveOnceStatus {
+    build_hepta_kernel_telegram_receive_once_status(input)
+}
+
+pub fn build_native_telegram_receive_once_error_status(
+    input: NativeTelegramReceiveOnceErrorInput,
+) -> NativeTelegramReceiveOnceStatus {
+    build_hepta_kernel_telegram_receive_once_error_status(input)
+}
+
+pub fn plan_native_telegram_receive_once_preflight_status(
+    input: NativeTelegramReceiveOncePreflightInput<'_>,
+) -> Option<NativeTelegramReceiveOnceStatus> {
+    plan_hepta_kernel_telegram_receive_once_preflight_status(input)
+}
+
+pub fn build_native_telegram_receive_once_status_from_api_result(
+    input: NativeTelegramReceiveOnceApiResultInput<'_>,
+) -> NativeTelegramReceiveOnceStatus {
+    build_hepta_kernel_telegram_receive_once_status_from_api_result(input)
 }
 
 pub fn plan_native_telegram_drain_once_shell_readiness(

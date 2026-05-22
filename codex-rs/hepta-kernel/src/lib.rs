@@ -44,6 +44,7 @@ pub const HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES: u32 = 5;
 pub const HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH: &str =
     ".hepta/telegram/ingress-drain-cursor.json";
 pub const HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA: &str = "hepta.telegram.cursor.v1";
+pub const HEPTA_KERNEL_TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE: &str = "manual receive is a diagnostic read path; use drain-once or the armed poll loop for model, send, and cursor side effects";
 pub const DEFAULT_TELEGRAM_SOAK_MIN_POLLS: u64 = 3;
 pub const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
 pub const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 0;
@@ -427,6 +428,91 @@ pub struct HeptaKernelTelegramReceiveOnceShellReadinessPlan {
     pub status: &'static str,
     pub error: Option<String>,
     pub may_call_bot_api: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramReceiveOnceStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub live_read_gate_env: &'static str,
+    pub live_read_gate_enabled: bool,
+    pub external_network_read: bool,
+    pub external_send: bool,
+    pub model_turn_started: bool,
+    pub cursor_written: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_token_exposed: bool,
+    pub limit: usize,
+    pub get_updates_offset: Option<i64>,
+    pub bot_api_ok: Option<bool>,
+    pub local_next_update_offset: Option<i64>,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub transport_plan: HeptaKernelTelegramTransportPlan,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub inspection: HeptaKernelTelegramIngressInspection,
+    pub model_turn_plan: HeptaKernelTelegramModelTurnPlan,
+    pub error: Option<String>,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramReceiveOnceStatusInput {
+    pub requested: bool,
+    pub status: &'static str,
+    pub live_read_gate_env: &'static str,
+    pub live_read_gate_enabled: bool,
+    pub external_network_read: bool,
+    pub limit: usize,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub transport_plan: HeptaKernelTelegramTransportPlan,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub inspection: HeptaKernelTelegramIngressInspection,
+    pub model_turn_plan: Option<HeptaKernelTelegramModelTurnPlan>,
+    pub get_updates_offset: Option<i64>,
+    pub bot_api_ok: Option<bool>,
+    pub local_next_update_offset: Option<i64>,
+    pub error: Option<String>,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HeptaKernelTelegramReceiveOncePreflightInput<'a> {
+    pub requested: bool,
+    pub live_read_gate_env: &'static str,
+    pub live_read_gate_enabled: bool,
+    pub limit: usize,
+    pub config: &'a HeptaKernelTelegramConfigStatus,
+    pub transport_plan: &'a HeptaKernelTelegramTransportPlan,
+    pub cursor_plan: &'a HeptaKernelTelegramCursorPlan,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramReceiveOnceApiResultInput<'a> {
+    pub requested: bool,
+    pub live_read_gate_env: &'static str,
+    pub live_read_gate_enabled: bool,
+    pub external_network_read: bool,
+    pub limit: usize,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub transport_plan: HeptaKernelTelegramTransportPlan,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub get_updates_offset: Option<i64>,
+    pub api_result: Result<&'a Value, &'a str>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramReceiveOnceErrorInput {
+    pub requested: bool,
+    pub live_read_gate_env: &'static str,
+    pub live_read_gate_enabled: bool,
+    pub limit: usize,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub transport_plan: HeptaKernelTelegramTransportPlan,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub get_updates_offset: Option<i64>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1327,6 +1413,273 @@ pub fn plan_hepta_kernel_telegram_receive_once_shell_readiness(
         status: "planned",
         error: None,
         may_call_bot_api: true,
+    }
+}
+
+impl HeptaKernelTelegramReceiveOnceStatus {
+    #[allow(clippy::too_many_arguments)]
+    pub fn base(
+        requested: bool,
+        status: &'static str,
+        live_read_gate_env: &'static str,
+        live_read_gate_enabled: bool,
+        external_network_read: bool,
+        limit: usize,
+        config: HeptaKernelTelegramConfigStatus,
+        transport_plan: HeptaKernelTelegramTransportPlan,
+        cursor_plan: HeptaKernelTelegramCursorPlan,
+        inspection: HeptaKernelTelegramIngressInspection,
+        error: Option<String>,
+        next_migration_slice: &'static str,
+    ) -> Self {
+        build_hepta_kernel_telegram_receive_once_status(HeptaKernelTelegramReceiveOnceStatusInput {
+            requested,
+            status,
+            live_read_gate_env,
+            live_read_gate_enabled,
+            external_network_read,
+            limit,
+            config,
+            transport_plan,
+            cursor_plan,
+            inspection,
+            model_turn_plan: None,
+            get_updates_offset: None,
+            bot_api_ok: None,
+            local_next_update_offset: None,
+            error,
+            next_migration_slice,
+        })
+    }
+}
+
+pub fn build_hepta_kernel_telegram_receive_once_error_status(
+    input: HeptaKernelTelegramReceiveOnceErrorInput,
+) -> HeptaKernelTelegramReceiveOnceStatus {
+    let updates = Vec::new();
+    build_hepta_kernel_telegram_receive_once_status(HeptaKernelTelegramReceiveOnceStatusInput {
+        requested: input.requested,
+        status: "attention",
+        live_read_gate_env: input.live_read_gate_env,
+        live_read_gate_enabled: input.live_read_gate_enabled,
+        external_network_read: false,
+        limit: input.limit,
+        config: input.config,
+        transport_plan: input.transport_plan,
+        cursor_plan: input.cursor_plan,
+        inspection: inspect_hepta_kernel_telegram_updates(&updates),
+        model_turn_plan: None,
+        get_updates_offset: input.get_updates_offset,
+        bot_api_ok: None,
+        local_next_update_offset: None,
+        error: input
+            .error
+            .map(|error| redact_hepta_kernel_telegram_token_like_text(&error)),
+        next_migration_slice: HEPTA_KERNEL_TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
+    })
+}
+
+pub fn build_hepta_kernel_telegram_receive_once_status(
+    input: HeptaKernelTelegramReceiveOnceStatusInput,
+) -> HeptaKernelTelegramReceiveOnceStatus {
+    let local_next_update_offset = input
+        .local_next_update_offset
+        .or(input.inspection.latest_allowed_next_update_offset);
+    let updates = Vec::new();
+    let model_turn_plan = input.model_turn_plan.unwrap_or_else(|| {
+        if input.requested {
+            hepta_kernel_telegram_model_turn_plan_for_updates(&updates)
+        } else {
+            HeptaKernelTelegramModelTurnPlan::disabled()
+        }
+    });
+
+    HeptaKernelTelegramReceiveOnceStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: input.requested,
+        status: input.status,
+        live_read_gate_env: input.live_read_gate_env,
+        live_read_gate_enabled: input.live_read_gate_enabled,
+        external_network_read: input.external_network_read,
+        external_send: false,
+        model_turn_started: false,
+        cursor_written: false,
+        raw_update_payload_exposed: false,
+        raw_token_exposed: false,
+        limit: input.limit,
+        get_updates_offset: input.get_updates_offset,
+        bot_api_ok: input.bot_api_ok,
+        local_next_update_offset,
+        config: input.config,
+        transport_plan: input.transport_plan,
+        cursor_plan: input.cursor_plan,
+        inspection: input.inspection,
+        model_turn_plan,
+        error: input.error,
+        next_migration_slice: input.next_migration_slice,
+    }
+}
+
+pub fn plan_hepta_kernel_telegram_receive_once_preflight_status(
+    input: HeptaKernelTelegramReceiveOncePreflightInput<'_>,
+) -> Option<HeptaKernelTelegramReceiveOnceStatus> {
+    let updates = Vec::new();
+    let inspection = inspect_hepta_kernel_telegram_updates(&updates);
+    if !input.requested {
+        return Some(build_hepta_kernel_telegram_receive_once_status(
+            HeptaKernelTelegramReceiveOnceStatusInput {
+                requested: false,
+                status: "disabled",
+                live_read_gate_env: input.live_read_gate_env,
+                live_read_gate_enabled: input.live_read_gate_enabled,
+                external_network_read: false,
+                limit: input.limit,
+                config: input.config.clone(),
+                transport_plan: input.transport_plan.clone(),
+                cursor_plan: input.cursor_plan.clone(),
+                inspection,
+                model_turn_plan: None,
+                get_updates_offset: None,
+                bot_api_ok: None,
+                local_next_update_offset: None,
+                error: None,
+                next_migration_slice: HEPTA_KERNEL_TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
+            },
+        ));
+    }
+
+    if !input.live_read_gate_enabled {
+        return Some(build_hepta_kernel_telegram_receive_once_status(
+            HeptaKernelTelegramReceiveOnceStatusInput {
+                requested: true,
+                status: "gated",
+                live_read_gate_env: input.live_read_gate_env,
+                live_read_gate_enabled: false,
+                external_network_read: false,
+                limit: input.limit,
+                config: input.config.clone(),
+                transport_plan: input.transport_plan.clone(),
+                cursor_plan: input.cursor_plan.clone(),
+                inspection,
+                model_turn_plan: None,
+                get_updates_offset: None,
+                bot_api_ok: None,
+                local_next_update_offset: None,
+                error: Some(format!(
+                    "live Telegram receive is gated; set {}=1 to run one redacted getUpdates read",
+                    input.live_read_gate_env
+                )),
+                next_migration_slice: HEPTA_KERNEL_TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
+            },
+        ));
+    }
+
+    if !input.config.config_ready() {
+        return Some(build_hepta_kernel_telegram_receive_once_status(
+            HeptaKernelTelegramReceiveOnceStatusInput {
+                requested: true,
+                status: "attention",
+                live_read_gate_env: input.live_read_gate_env,
+                live_read_gate_enabled: true,
+                external_network_read: false,
+                limit: input.limit,
+                config: input.config.clone(),
+                transport_plan: input.transport_plan.clone(),
+                cursor_plan: input.cursor_plan.clone(),
+                inspection,
+                model_turn_plan: None,
+                get_updates_offset: None,
+                bot_api_ok: None,
+                local_next_update_offset: None,
+                error: Some("Telegram config, token shape, or binding is not ready".to_string()),
+                next_migration_slice: HEPTA_KERNEL_TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
+            },
+        ));
+    }
+
+    None
+}
+
+pub fn build_hepta_kernel_telegram_receive_once_status_from_api_result(
+    input: HeptaKernelTelegramReceiveOnceApiResultInput<'_>,
+) -> HeptaKernelTelegramReceiveOnceStatus {
+    match input.api_result {
+        Ok(api) => {
+            let bot_api_ok = api.get("ok").and_then(Value::as_bool);
+            let updates = api
+                .get("result")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let inspection = inspect_hepta_kernel_telegram_updates(&updates);
+            let local_next_update_offset = inspection.latest_allowed_next_update_offset;
+            let model_turn_plan = hepta_kernel_telegram_model_turn_plan_for_updates(&updates);
+            let status = if bot_api_ok.unwrap_or(false) {
+                "ready"
+            } else {
+                "attention"
+            };
+            let error = if bot_api_ok == Some(false) {
+                api.get("description")
+                    .and_then(Value::as_str)
+                    .map(redact_hepta_kernel_telegram_token_like_text)
+                    .or_else(|| Some("Telegram Bot API getUpdates returned ok=false".to_string()))
+            } else {
+                None
+            };
+
+            build_hepta_kernel_telegram_receive_once_status(
+                HeptaKernelTelegramReceiveOnceStatusInput {
+                    requested: input.requested,
+                    status,
+                    live_read_gate_env: input.live_read_gate_env,
+                    live_read_gate_enabled: input.live_read_gate_enabled,
+                    external_network_read: input.external_network_read,
+                    limit: input.limit,
+                    config: input.config,
+                    transport_plan: input.transport_plan,
+                    cursor_plan: input.cursor_plan,
+                    inspection,
+                    model_turn_plan: Some(model_turn_plan),
+                    get_updates_offset: input.get_updates_offset,
+                    bot_api_ok,
+                    local_next_update_offset,
+                    error,
+                    next_migration_slice: HEPTA_KERNEL_TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
+                },
+            )
+        }
+        Err(error) => {
+            let redacted_error = redact_hepta_kernel_telegram_token_like_text(error);
+            let status = if hepta_kernel_telegram_get_updates_error_is_conflict(&redacted_error) {
+                "busy"
+            } else {
+                "attention"
+            };
+            let updates = Vec::new();
+
+            build_hepta_kernel_telegram_receive_once_status(
+                HeptaKernelTelegramReceiveOnceStatusInput {
+                    requested: input.requested,
+                    status,
+                    live_read_gate_env: input.live_read_gate_env,
+                    live_read_gate_enabled: input.live_read_gate_enabled,
+                    external_network_read: input.external_network_read,
+                    limit: input.limit,
+                    config: input.config,
+                    transport_plan: input.transport_plan,
+                    cursor_plan: input.cursor_plan,
+                    inspection: inspect_hepta_kernel_telegram_updates(&updates),
+                    model_turn_plan: None,
+                    get_updates_offset: input.get_updates_offset,
+                    bot_api_ok: None,
+                    local_next_update_offset: None,
+                    error: Some(redacted_error),
+                    next_migration_slice: HEPTA_KERNEL_TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE,
+                },
+            )
+        }
     }
 }
 
@@ -3296,6 +3649,28 @@ mod tests {
         )
     }
 
+    fn ready_telegram_config() -> HeptaKernelTelegramConfigStatus {
+        HeptaKernelTelegramConfigStatus {
+            config_path: Some("private/config/openclaw.json".to_string()),
+            config_found: true,
+            enabled: true,
+            dm_policy: "trusted".to_string(),
+            group_policy: "deny".to_string(),
+            allow_from_count: 1,
+            group_count: 0,
+            token_source: "secret_file",
+            token_secret_ref_present: true,
+            token_secret_provider: Some("telegram_bot".to_string()),
+            token_secret_id_present: true,
+            token_file_present: true,
+            token_file_mode_0600: true,
+            token_shape_ok: true,
+            raw_token_exposed: false,
+            binding_ready: true,
+            error: None,
+        }
+    }
+
     #[test]
     fn kernel_gateway_gate_summary_is_side_effect_free() {
         let summary = telegram_kernel_gates(true, false, true, false);
@@ -3307,6 +3682,151 @@ mod tests {
         assert!(!summary.readiness_summary_performs_live_read);
         assert!(!summary.readiness_summary_invokes_model);
         assert!(!summary.readiness_summary_sends_message);
+    }
+
+    #[test]
+    fn kernel_receive_once_preflight_reports_gate_without_side_effects() {
+        let config = ready_telegram_config();
+        let transport_plan = HeptaKernelTelegramTransportPlan::for_config_state(true, true, true);
+        let cursor_plan = HeptaKernelTelegramCursorPlan::ready();
+
+        let report = plan_hepta_kernel_telegram_receive_once_preflight_status(
+            HeptaKernelTelegramReceiveOncePreflightInput {
+                requested: true,
+                live_read_gate_env: "HEPTA_NATIVE_TELEGRAM_LIVE_READ",
+                live_read_gate_enabled: false,
+                limit: 99,
+                config: &config,
+                transport_plan: &transport_plan,
+                cursor_plan: &cursor_plan,
+            },
+        )
+        .expect("missing live-read gate should produce a status report");
+
+        assert_eq!(report.status, "gated");
+        assert_eq!(report.limit, 99);
+        assert!(!report.external_network_read);
+        assert!(!report.external_send);
+        assert!(!report.cursor_written);
+        assert!(!report.raw_token_exposed);
+        assert_eq!(
+            report.error.as_deref(),
+            Some(
+                "live Telegram receive is gated; set HEPTA_NATIVE_TELEGRAM_LIVE_READ=1 to run one redacted getUpdates read"
+            )
+        );
+
+        assert!(
+            plan_hepta_kernel_telegram_receive_once_preflight_status(
+                HeptaKernelTelegramReceiveOncePreflightInput {
+                    requested: true,
+                    live_read_gate_env: "HEPTA_NATIVE_TELEGRAM_LIVE_READ",
+                    live_read_gate_enabled: true,
+                    limit: 20,
+                    config: &config,
+                    transport_plan: &transport_plan,
+                    cursor_plan: &cursor_plan,
+                },
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn kernel_receive_once_api_result_redacts_and_preserves_candidate_plan() {
+        let api = json!({
+            "ok": true,
+            "result": [{
+                "update_id": 41,
+                "message": {
+                    "message_id": 9,
+                    "text": "private user prompt",
+                    "chat": { "id": 6476198178_i64, "type": "private" },
+                    "from": { "id": 6476198178_i64, "username": "private_user" }
+                }
+            }]
+        });
+
+        let report = build_hepta_kernel_telegram_receive_once_status_from_api_result(
+            HeptaKernelTelegramReceiveOnceApiResultInput {
+                requested: true,
+                live_read_gate_env: "HEPTA_NATIVE_TELEGRAM_LIVE_READ",
+                live_read_gate_enabled: true,
+                external_network_read: true,
+                limit: 20,
+                config: ready_telegram_config(),
+                transport_plan: HeptaKernelTelegramTransportPlan::for_config_state(
+                    true, true, true,
+                ),
+                cursor_plan: HeptaKernelTelegramCursorPlan::ready(),
+                get_updates_offset: Some(40),
+                api_result: Ok(&api),
+            },
+        );
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.bot_api_ok, Some(true));
+        assert_eq!(report.get_updates_offset, Some(40));
+        assert_eq!(report.local_next_update_offset, Some(42));
+        assert_eq!(report.inspection.allowed_update_count, 1);
+        assert_eq!(report.model_turn_plan.text_candidate_count, 1);
+        assert!(!report.raw_update_payload_exposed);
+        assert!(!report.raw_token_exposed);
+        assert!(report.error.is_none());
+
+        let ok_false = json!({
+            "ok": false,
+            "description": "Unauthorized 123456789:abcdefghijklmnopqrstuvwxyz token rejected"
+        });
+        let attention = build_hepta_kernel_telegram_receive_once_status_from_api_result(
+            HeptaKernelTelegramReceiveOnceApiResultInput {
+                requested: true,
+                live_read_gate_env: "HEPTA_NATIVE_TELEGRAM_LIVE_READ",
+                live_read_gate_enabled: true,
+                external_network_read: true,
+                limit: 1,
+                config: ready_telegram_config(),
+                transport_plan: HeptaKernelTelegramTransportPlan::for_config_state(
+                    true, true, true,
+                ),
+                cursor_plan: HeptaKernelTelegramCursorPlan::ready(),
+                get_updates_offset: Some(7),
+                api_result: Ok(&ok_false),
+            },
+        );
+        assert_eq!(attention.status, "attention");
+        assert_eq!(
+            attention.error.as_deref(),
+            Some("Unauthorized [redacted-telegram-token] token rejected")
+        );
+
+        let conflict = build_hepta_kernel_telegram_receive_once_status_from_api_result(
+            HeptaKernelTelegramReceiveOnceApiResultInput {
+                requested: true,
+                live_read_gate_env: "HEPTA_NATIVE_TELEGRAM_LIVE_READ",
+                live_read_gate_enabled: true,
+                external_network_read: true,
+                limit: 20,
+                config: ready_telegram_config(),
+                transport_plan: HeptaKernelTelegramTransportPlan::for_config_state(
+                    true, true, true,
+                ),
+                cursor_plan: HeptaKernelTelegramCursorPlan::ready(),
+                get_updates_offset: Some(9),
+                api_result: Err(
+                    "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request",
+                ),
+            },
+        );
+        assert_eq!(conflict.status, "busy");
+        assert_eq!(conflict.inspection.update_count, 0);
+        assert!(
+            conflict
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("409")
+        );
     }
 
     #[test]

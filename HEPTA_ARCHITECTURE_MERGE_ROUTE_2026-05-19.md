@@ -318,6 +318,44 @@ CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q 
 CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
 ```
 
+### 09:4x Progress - Telegram Receive-Once Status Planning Moved Into Hepta Kernel
+
+Continued after drain-once planning moved into `hepta-kernel`:
+
+1. Moved manual Telegram `receive-once` diagnostic status planning into
+   `hepta-kernel`:
+   `HeptaKernelTelegramReceiveOnceStatus`,
+   `HeptaKernelTelegramReceiveOnceStatusInput`,
+   `HeptaKernelTelegramReceiveOncePreflightInput`,
+   `HeptaKernelTelegramReceiveOnceApiResultInput`, and
+   `HeptaKernelTelegramReceiveOnceErrorInput`.
+2. Added kernel-owned builders/planners for disabled/gated/config-attention,
+   Bot API ok=false/error classification, conflict-as-busy handling, local
+   next-update-offset derivation, and redacted API description handling.
+3. Kept `hepta-runtime::telegram_model_runner` and
+   `hepta-gateway::telegram_status` compatibility names intact, so CLI/Gateway
+   callers still use the existing `NativeTelegram*` and `build_telegram_*`
+   surface while ownership moves into the kernel.
+4. Preserved side-effect boundaries: the kernel receives already-provided
+   config/transport/cursor/API payload values only. Config/token file reads,
+   Bot API getUpdates, cursor writes, delivery ledger writes, model execution,
+   sends, process spawning, and launchd mutation remain outside `hepta-kernel`.
+
+Focused gates passed:
+
+```text
+cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel receive_once -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-runtime --lib telegram_model_runner -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib receive_once -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-gateway --lib telegram_ -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway -- --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_telegram -- --nocapture
+CARGO_INCREMENTAL=0 cargo check --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-kernel -p hepta-runtime -p hepta-gateway -p codex-cli --bin hepta
+git diff --check
+```
+
 ### 07:5x Progress - Telegram Transport Config Plan Moved Into Hepta Kernel
 
 Continued immediately after the shell-readiness slice:
