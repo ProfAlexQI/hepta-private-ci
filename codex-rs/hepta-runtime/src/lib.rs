@@ -232,6 +232,7 @@ pub use telegram_model_runner::{
     NativeTelegramDrainPipelineFinalStatus, NativeTelegramDrainPipelineOutcome,
     NativeTelegramDuplicateDecision, NativeTelegramExecutionPlan, NativeTelegramGatewayGateSummary,
     NativeTelegramGatewayGateSummaryInput, NativeTelegramIngressInspection,
+    NativeTelegramLiveSoakObservationReport, NativeTelegramLiveSoakObservationState,
     NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput,
     NativeTelegramModelExecutionInput, NativeTelegramModelExecutionOutcome,
     NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,

@@ -29,6 +29,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramDrainPipelineOutcome, HeptaKernelTelegramDuplicateDecision,
     HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
     HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
+    HeptaKernelTelegramLiveSoakObservationReport, HeptaKernelTelegramLiveSoakObservationState,
     HeptaKernelTelegramModelBridgeStatus, HeptaKernelTelegramModelBridgeStatusInput,
     HeptaKernelTelegramModelExecutionInput, HeptaKernelTelegramModelExecutionOutcome,
     HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
@@ -184,6 +185,8 @@ pub type NativeTelegramProductionGuardStatusInput = HeptaKernelTelegramProductio
 pub type NativeTelegramProductionGuardPolicyInput = HeptaKernelTelegramProductionGuardPolicyInput;
 pub type NativeTelegramPollLoopStatus = HeptaKernelTelegramPollLoopStatus;
 pub type NativeTelegramPollLoopStatusInput = HeptaKernelTelegramPollLoopStatusInput;
+pub type NativeTelegramLiveSoakObservationReport = HeptaKernelTelegramLiveSoakObservationReport;
+pub type NativeTelegramLiveSoakObservationState = HeptaKernelTelegramLiveSoakObservationState;
 
 pub fn plan_native_telegram_receive_once_shell_readiness(
     input: NativeTelegramReceiveOnceShellReadinessInput<'_>,

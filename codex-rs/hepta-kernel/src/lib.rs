@@ -801,6 +801,146 @@ pub struct HeptaKernelTelegramDrainOnceStatusInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramLiveSoakObservationReport {
+    pub poll_iterations: u64,
+    pub drained_count: u64,
+    pub busy_count: u64,
+    pub attention_count: u64,
+    pub empty_read_count: u64,
+    pub model_turn_started_count: u64,
+    pub send_started_count: u64,
+    pub cursor_written_count: u64,
+    pub external_send_count: u64,
+    pub last_drained_at_unix_ms: Option<u64>,
+    pub last_drained_next_update_offset: Option<i64>,
+    pub last_observed_at_unix_ms: Option<u64>,
+    pub last_status: Option<String>,
+    pub last_error: Option<String>,
+    pub last_bot_api_ok: Option<bool>,
+    pub last_get_updates_offset: Option<i64>,
+    pub last_local_next_update_offset: Option<i64>,
+    pub last_update_count: usize,
+    pub last_allowed_update_count: usize,
+    pub last_model_turn_started: bool,
+    pub last_send_started: bool,
+    pub last_cursor_written: bool,
+    pub last_external_send: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_token_exposed: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct HeptaKernelTelegramLiveSoakObservationState {
+    poll_iterations: u64,
+    drained_count: u64,
+    busy_count: u64,
+    attention_count: u64,
+    empty_read_count: u64,
+    model_turn_started_count: u64,
+    send_started_count: u64,
+    cursor_written_count: u64,
+    external_send_count: u64,
+    last_drained_at_unix_ms: Option<u64>,
+    last_drained_next_update_offset: Option<i64>,
+    last_observed_at_unix_ms: Option<u64>,
+    last_status: Option<String>,
+    last_error: Option<String>,
+    last_bot_api_ok: Option<bool>,
+    last_get_updates_offset: Option<i64>,
+    last_local_next_update_offset: Option<i64>,
+    last_update_count: usize,
+    last_allowed_update_count: usize,
+    last_model_turn_started: bool,
+    last_send_started: bool,
+    last_cursor_written: bool,
+    last_external_send: bool,
+}
+
+impl HeptaKernelTelegramLiveSoakObservationState {
+    pub fn observe(
+        &mut self,
+        status: &HeptaKernelTelegramDrainOnceStatus,
+        observed_at_unix_ms: u64,
+    ) {
+        self.poll_iterations = self.poll_iterations.saturating_add(1);
+        match status.status {
+            "drained" => {
+                self.drained_count = self.drained_count.saturating_add(1);
+                self.last_drained_at_unix_ms = Some(observed_at_unix_ms);
+                self.last_drained_next_update_offset = status.local_next_update_offset;
+            }
+            "busy" => self.busy_count = self.busy_count.saturating_add(1),
+            "attention" => self.attention_count = self.attention_count.saturating_add(1),
+            _ if status.external_network_read && status.inspection.update_count == 0 => {
+                self.empty_read_count = self.empty_read_count.saturating_add(1)
+            }
+            _ => {}
+        }
+        if status.model_turn_started {
+            self.model_turn_started_count = self.model_turn_started_count.saturating_add(1);
+        }
+        if status.send_started {
+            self.send_started_count = self.send_started_count.saturating_add(1);
+        }
+        if status.cursor_written {
+            self.cursor_written_count = self.cursor_written_count.saturating_add(1);
+        }
+        if status.external_send {
+            self.external_send_count = self.external_send_count.saturating_add(1);
+        }
+        self.last_observed_at_unix_ms = Some(observed_at_unix_ms);
+        self.last_status = Some(status.status.to_string());
+        self.last_error = status
+            .error
+            .clone()
+            .map(|error| redact_hepta_kernel_telegram_token_like_text(&error));
+        self.last_bot_api_ok = status.bot_api_ok;
+        self.last_get_updates_offset = status.get_updates_offset;
+        self.last_local_next_update_offset = status.local_next_update_offset;
+        self.last_update_count = status.inspection.update_count;
+        self.last_allowed_update_count = status.inspection.allowed_update_count;
+        self.last_model_turn_started = status.model_turn_started;
+        self.last_send_started = status.send_started;
+        self.last_cursor_written = status.cursor_written;
+        self.last_external_send = status.external_send;
+    }
+
+    pub fn report(&self) -> HeptaKernelTelegramLiveSoakObservationReport {
+        HeptaKernelTelegramLiveSoakObservationReport {
+            poll_iterations: self.poll_iterations,
+            drained_count: self.drained_count,
+            busy_count: self.busy_count,
+            attention_count: self.attention_count,
+            empty_read_count: self.empty_read_count,
+            model_turn_started_count: self.model_turn_started_count,
+            send_started_count: self.send_started_count,
+            cursor_written_count: self.cursor_written_count,
+            external_send_count: self.external_send_count,
+            last_drained_at_unix_ms: self.last_drained_at_unix_ms,
+            last_drained_next_update_offset: self.last_drained_next_update_offset,
+            last_observed_at_unix_ms: self.last_observed_at_unix_ms,
+            last_status: self.last_status.clone(),
+            last_error: self.last_error.clone(),
+            last_bot_api_ok: self.last_bot_api_ok,
+            last_get_updates_offset: self.last_get_updates_offset,
+            last_local_next_update_offset: self.last_local_next_update_offset,
+            last_update_count: self.last_update_count,
+            last_allowed_update_count: self.last_allowed_update_count,
+            last_model_turn_started: self.last_model_turn_started,
+            last_send_started: self.last_send_started,
+            last_cursor_written: self.last_cursor_written,
+            last_external_send: self.last_external_send,
+            raw_update_payload_exposed: false,
+            raw_prompt_text_exposed: false,
+            raw_response_text_exposed: false,
+            raw_token_exposed: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelTelegramConfigStatus {
     pub config_path: Option<String>,
     pub config_found: bool,
@@ -6013,6 +6153,58 @@ mod tests {
         assert!(!status.raw_prompt_text_exposed);
         assert!(!status.raw_response_text_exposed);
         assert!(!status.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_live_soak_observation_state_accumulates_redacted_report() {
+        let gates = telegram_kernel_gates(true, true, true, true);
+        let plan = plan_hepta_kernel_telegram_drain_once_preflight(
+            HeptaKernelTelegramDrainOncePreflightInput {
+                requested: true,
+                gates: &gates,
+            },
+        );
+        let status = build_hepta_kernel_telegram_drain_once_status(
+            HeptaKernelTelegramDrainOnceStatusInput {
+                requested: true,
+                status: "attention",
+                gates,
+                config: ready_telegram_config(),
+                execution_plan: plan.execution_plan,
+                cursor_plan: plan.cursor_plan,
+                inspection: plan.inspection,
+                model_turn_plan: plan.model_turn_plan,
+                invocation_request: plan.invocation_request,
+                model_execution: plan.model_execution,
+                send_plan: plan.send_plan,
+                send_request: plan.send_request,
+                send_execution: plan.send_execution,
+                bot_api_ok: Some(false),
+                local_next_update_offset: Some(48),
+                get_updates_offset: Some(47),
+                live_read_started: true,
+                external_network_read: true,
+                error: Some("bad token 123456789:abcdefghijklmnopqrstuvwxyz".to_string()),
+            },
+        );
+
+        let mut state = HeptaKernelTelegramLiveSoakObservationState::default();
+        state.observe(&status, 1_000_500);
+        let report = state.report();
+
+        assert_eq!(report.poll_iterations, 1);
+        assert_eq!(report.attention_count, 1);
+        assert_eq!(report.last_status.as_deref(), Some("attention"));
+        assert_eq!(report.last_bot_api_ok, Some(false));
+        assert_eq!(report.last_get_updates_offset, Some(47));
+        assert_eq!(report.last_local_next_update_offset, Some(48));
+        let error = report.last_error.expect("redacted observation error");
+        assert!(error.contains("[redacted-telegram-token]"));
+        assert!(!error.contains("abcdefghijklmnopqrstuvwxyz"));
+        assert!(!report.raw_update_payload_exposed);
+        assert!(!report.raw_prompt_text_exposed);
+        assert!(!report.raw_response_text_exposed);
+        assert!(!report.raw_token_exposed);
     }
 
     #[test]
