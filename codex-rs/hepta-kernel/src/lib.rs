@@ -73,6 +73,8 @@ pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV: &str =
     "HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE";
 pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
     &["approval_apply", "task_publish", "chat_send"];
+pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str =
+    "/api/native-post-execution-readiness";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HeptaKernelNativePostPlanRouteSpec {
@@ -210,6 +212,74 @@ pub struct HeptaKernelNativePostExecutionAdmission {
     pub requires_rate_limit: bool,
     pub requires_dry_run_first: bool,
     pub external_side_effects_possible: bool,
+    pub blocked_reason: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionReadinessResponse {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub endpoint: &'static str,
+    pub source_command: &'static str,
+    pub native_route: bool,
+    pub compatibility_mode: &'static str,
+    pub side_effect_free: bool,
+    pub post_route_count: usize,
+    pub real_handler_candidate_count: usize,
+    pub plan_only_route_count: usize,
+    pub evidence_contract_route_count: usize,
+    pub all_evidence_contracts_ready: bool,
+    pub real_handler_implemented_count: usize,
+    pub real_handler_ready_count: usize,
+    pub real_handler_gate_env: &'static str,
+    pub real_handler_gate_enabled: bool,
+    pub real_handler_scope_env: &'static str,
+    pub real_handler_scope: Option<String>,
+    pub real_handler_scope_configured: bool,
+    pub single_handler_scope_ready: bool,
+    pub selected_handler_count: usize,
+    pub selected_handler_kinds: Vec<&'static str>,
+    pub all_real_handlers_blocked: bool,
+    pub routes: Vec<HeptaKernelNativePostExecutionReadinessRoute>,
+    pub action_dispatched: bool,
+    pub command_executed: bool,
+    pub approval_applied: bool,
+    pub task_published: bool,
+    pub chat_mutated: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_parameter_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+    pub external_side_effects: bool,
+    pub gateway_mutation_performed: bool,
+    pub telegram_read_performed: bool,
+    pub model_invoked: bool,
+    pub message_sent: bool,
+    pub cursor_written: bool,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionReadinessRoute {
+    pub pattern: &'static str,
+    pub capability: &'static str,
+    pub plan_kind: &'static str,
+    pub compatibility_mode: &'static str,
+    pub dry_run_only: bool,
+    pub allowlisted_for_real_handler: bool,
+    pub body_schema_id: &'static str,
+    pub body_required_for_real_handler: bool,
+    pub body_schema_ready: bool,
+    pub confirmation_contract_ready: bool,
+    pub rollback_contract_ready: bool,
+    pub idempotency_evidence_contract_ready: bool,
+    pub audit_event_contract_ready: bool,
+    pub rate_limit_contract_ready: bool,
+    pub execution_evidence_contract_ready: bool,
+    pub ready_for_real_handler_wiring: bool,
+    pub current_plan_executes_real_handler: bool,
+    pub real_handler_implemented: bool,
     pub blocked_reason: &'static str,
 }
 
@@ -807,6 +877,132 @@ fn hepta_kernel_native_post_real_handler_scope_tokens(handler_scope: &str) -> Ve
         .map(str::trim)
         .filter(|token| !token.is_empty())
         .collect()
+}
+
+pub fn hepta_kernel_native_post_execution_readiness_report(
+    real_handler_gate_enabled: bool,
+    handler_scope: Option<&str>,
+) -> HeptaKernelNativePostExecutionReadinessResponse {
+    let handler_scope = handler_scope
+        .map(str::trim)
+        .filter(|scope| !scope.is_empty())
+        .map(str::to_string);
+    let selected_handler_kinds =
+        hepta_kernel_native_post_real_handler_scope_selected_kinds(handler_scope.as_deref());
+    let selected_handler_count = selected_handler_kinds.len();
+    let handler_scope_configured = handler_scope.is_some();
+    let single_handler_scope_ready = selected_handler_count == 1;
+    let routes = hepta_kernel_native_post_plan_route_specs()
+        .iter()
+        .map(hepta_kernel_native_post_execution_readiness_route)
+        .collect::<Vec<_>>();
+    let real_handler_candidate_count = routes
+        .iter()
+        .filter(|route| route.allowlisted_for_real_handler)
+        .count();
+    let plan_only_route_count = routes.len().saturating_sub(real_handler_candidate_count);
+    let evidence_contract_route_count = routes
+        .iter()
+        .filter(|route| route.execution_evidence_contract_ready)
+        .count();
+    let real_handler_implemented_count = routes
+        .iter()
+        .filter(|route| route.real_handler_implemented)
+        .count();
+    let real_handler_ready_count = routes
+        .iter()
+        .filter(|route| route.ready_for_real_handler_wiring)
+        .count();
+    let all_evidence_contracts_ready = evidence_contract_route_count == routes.len();
+    let all_real_handlers_blocked = routes
+        .iter()
+        .all(|route| !route.current_plan_executes_real_handler);
+
+    HeptaKernelNativePostExecutionReadinessResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if all_evidence_contracts_ready {
+            "ready"
+        } else {
+            "attention"
+        },
+        endpoint: HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
+        source_command: "/native-post-execution-readiness --json",
+        native_route: true,
+        compatibility_mode: "native_post_execution_readiness",
+        side_effect_free: true,
+        post_route_count: routes.len(),
+        real_handler_candidate_count,
+        plan_only_route_count,
+        evidence_contract_route_count,
+        all_evidence_contracts_ready,
+        real_handler_implemented_count,
+        real_handler_ready_count,
+        real_handler_gate_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV,
+        real_handler_gate_enabled,
+        real_handler_scope_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        real_handler_scope: handler_scope,
+        real_handler_scope_configured: handler_scope_configured,
+        single_handler_scope_ready,
+        selected_handler_count,
+        selected_handler_kinds,
+        all_real_handlers_blocked,
+        routes,
+        action_dispatched: false,
+        command_executed: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        raw_request_body_exposed: false,
+        raw_parameter_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "activate the task-publish real-handler harness only under dual gate plus operator approval, then keep expanding one handler at a time",
+    }
+}
+
+fn hepta_kernel_native_post_execution_readiness_route(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+) -> HeptaKernelNativePostExecutionReadinessRoute {
+    let body_schema = hepta_kernel_native_post_body_schema(spec.plan_kind, false);
+    let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
+    let execution_evidence_contract_ready = true;
+    let real_handler_implemented =
+        hepta_kernel_native_post_plan_kind_has_real_handler(spec.plan_kind);
+    HeptaKernelNativePostExecutionReadinessRoute {
+        pattern: spec.pattern,
+        capability: spec.capability,
+        plan_kind: spec.plan_kind,
+        compatibility_mode: spec.compatibility_mode,
+        dry_run_only: spec.dry_run_only,
+        allowlisted_for_real_handler,
+        body_schema_id: body_schema.schema_id,
+        body_required_for_real_handler: body_schema.body_required_for_real_handler,
+        body_schema_ready: true,
+        confirmation_contract_ready: true,
+        rollback_contract_ready: true,
+        idempotency_evidence_contract_ready: true,
+        audit_event_contract_ready: true,
+        rate_limit_contract_ready: true,
+        execution_evidence_contract_ready,
+        ready_for_real_handler_wiring: allowlisted_for_real_handler
+            && execution_evidence_contract_ready,
+        current_plan_executes_real_handler: false,
+        real_handler_implemented,
+        blocked_reason: if allowlisted_for_real_handler && real_handler_implemented {
+            "real_handler_gate_disabled"
+        } else if allowlisted_for_real_handler {
+            "real_handler_not_wired"
+        } else {
+            "plan_only_route"
+        },
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -6364,6 +6560,33 @@ mod tests {
             "approval_apply",
             Some("task_publish,chat_send")
         ));
+    }
+
+    #[test]
+    fn kernel_native_post_execution_readiness_report_stays_side_effect_free() {
+        let report = hepta_kernel_native_post_execution_readiness_report(
+            false,
+            Some("task_publish chat_send"),
+        );
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.endpoint,
+            HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT
+        );
+        assert_eq!(report.post_route_count, 12);
+        assert_eq!(report.real_handler_candidate_count, 3);
+        assert_eq!(report.real_handler_implemented_count, 3);
+        assert_eq!(report.selected_handler_count, 2);
+        assert!(report.all_real_handlers_blocked);
+        assert!(!report.real_handler_gate_enabled);
+        assert!(!report.external_side_effects);
+        assert!(!report.gateway_mutation_performed);
+        assert!(report.routes.iter().any(|route| {
+            route.plan_kind == "task_publish"
+                && route.ready_for_real_handler_wiring
+                && route.blocked_reason == "real_handler_gate_disabled"
+        }));
     }
 
     #[test]

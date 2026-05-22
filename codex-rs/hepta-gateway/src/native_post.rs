@@ -8,20 +8,21 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 pub use hepta_runtime::{
-    NATIVE_POST_MAX_BODY_BYTES, NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
-    NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-    NATIVE_POST_REAL_HANDLERS_ENV, NativePostAuditEventContract, NativePostBodyAdmission,
-    NativePostBodySchema, NativePostConfirmationContract, NativePostExecutionAdmission,
+    NATIVE_POST_EXECUTION_READINESS_ENDPOINT, NATIVE_POST_MAX_BODY_BYTES,
+    NATIVE_POST_REAL_HANDLER_APPROVAL_ENV, NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
+    NATIVE_POST_REAL_HANDLER_SCOPE_ENV, NATIVE_POST_REAL_HANDLERS_ENV,
+    NativePostAuditEventContract, NativePostBodyAdmission, NativePostBodySchema,
+    NativePostConfirmationContract, NativePostExecutionAdmission,
+    NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
     NativePostIdempotencyEvidence, NativePostPlanRouteSpec, NativePostRollbackContract,
-    native_post_execution_admission_with_scope, native_post_real_handler_scope_matches,
-    native_post_real_handler_scope_selected_kinds,
+    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
+    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
 };
 
 pub const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
 pub const NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
 pub const NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
 pub const NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV: &str = "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS";
-pub const NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str = "/api/native-post-execution-readiness";
 pub const NATIVE_POST_EXECUTION_STORES_ENDPOINT: &str = "/api/native-post-execution-stores";
 pub const NATIVE_POST_ACTIVATION_PLAN_ENDPOINT: &str = "/api/native-post-activation-plan";
 pub const NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT: &str = "/api/native-post-rollout-evidence";
@@ -188,74 +189,6 @@ pub struct NativePostExecutionStoreLimits {
     pub max_store_bytes: u64,
     pub max_store_lines: u64,
     pub rate_limit_window_ms: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostExecutionReadinessResponse {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub status: &'static str,
-    pub endpoint: &'static str,
-    pub source_command: &'static str,
-    pub native_route: bool,
-    pub compatibility_mode: &'static str,
-    pub side_effect_free: bool,
-    pub post_route_count: usize,
-    pub real_handler_candidate_count: usize,
-    pub plan_only_route_count: usize,
-    pub evidence_contract_route_count: usize,
-    pub all_evidence_contracts_ready: bool,
-    pub real_handler_implemented_count: usize,
-    pub real_handler_ready_count: usize,
-    pub real_handler_gate_env: &'static str,
-    pub real_handler_gate_enabled: bool,
-    pub real_handler_scope_env: &'static str,
-    pub real_handler_scope: Option<String>,
-    pub real_handler_scope_configured: bool,
-    pub single_handler_scope_ready: bool,
-    pub selected_handler_count: usize,
-    pub selected_handler_kinds: Vec<&'static str>,
-    pub all_real_handlers_blocked: bool,
-    pub routes: Vec<NativePostExecutionReadinessRoute>,
-    pub action_dispatched: bool,
-    pub command_executed: bool,
-    pub approval_applied: bool,
-    pub task_published: bool,
-    pub chat_mutated: bool,
-    pub raw_request_body_exposed: bool,
-    pub raw_parameter_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
-    pub raw_audit_payload_exposed: bool,
-    pub external_side_effects: bool,
-    pub gateway_mutation_performed: bool,
-    pub telegram_read_performed: bool,
-    pub model_invoked: bool,
-    pub message_sent: bool,
-    pub cursor_written: bool,
-    pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostExecutionReadinessRoute {
-    pub pattern: &'static str,
-    pub capability: &'static str,
-    pub plan_kind: &'static str,
-    pub compatibility_mode: &'static str,
-    pub dry_run_only: bool,
-    pub allowlisted_for_real_handler: bool,
-    pub body_schema_id: &'static str,
-    pub body_required_for_real_handler: bool,
-    pub body_schema_ready: bool,
-    pub confirmation_contract_ready: bool,
-    pub rollback_contract_ready: bool,
-    pub idempotency_evidence_contract_ready: bool,
-    pub audit_event_contract_ready: bool,
-    pub rate_limit_contract_ready: bool,
-    pub execution_evidence_contract_ready: bool,
-    pub ready_for_real_handler_wiring: bool,
-    pub current_plan_executes_real_handler: bool,
-    pub real_handler_implemented: bool,
-    pub blocked_reason: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -586,131 +519,6 @@ pub fn native_post_audit_event_contract(
         body_admission,
         idempotency_evidence,
     )
-}
-
-pub fn native_post_execution_readiness_report(
-    real_handler_gate_enabled: bool,
-    handler_scope: Option<&str>,
-) -> NativePostExecutionReadinessResponse {
-    let handler_scope = handler_scope
-        .map(str::trim)
-        .filter(|scope| !scope.is_empty())
-        .map(str::to_string);
-    let selected_handler_kinds =
-        native_post_real_handler_scope_selected_kinds(handler_scope.as_deref());
-    let selected_handler_count = selected_handler_kinds.len();
-    let handler_scope_configured = handler_scope.is_some();
-    let single_handler_scope_ready = selected_handler_count == 1;
-    let routes = native_post_plan_route_specs()
-        .iter()
-        .map(native_post_execution_readiness_route)
-        .collect::<Vec<_>>();
-    let real_handler_candidate_count = routes
-        .iter()
-        .filter(|route| route.allowlisted_for_real_handler)
-        .count();
-    let plan_only_route_count = routes.len().saturating_sub(real_handler_candidate_count);
-    let evidence_contract_route_count = routes
-        .iter()
-        .filter(|route| route.execution_evidence_contract_ready)
-        .count();
-    let real_handler_implemented_count = routes
-        .iter()
-        .filter(|route| route.real_handler_implemented)
-        .count();
-    let real_handler_ready_count = routes
-        .iter()
-        .filter(|route| route.ready_for_real_handler_wiring)
-        .count();
-    let all_evidence_contracts_ready = evidence_contract_route_count == routes.len();
-    let all_real_handlers_blocked = routes
-        .iter()
-        .all(|route| !route.current_plan_executes_real_handler);
-
-    NativePostExecutionReadinessResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if all_evidence_contracts_ready {
-            "ready"
-        } else {
-            "attention"
-        },
-        endpoint: NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
-        source_command: "/native-post-execution-readiness --json",
-        native_route: true,
-        compatibility_mode: "native_post_execution_readiness",
-        side_effect_free: true,
-        post_route_count: routes.len(),
-        real_handler_candidate_count,
-        plan_only_route_count,
-        evidence_contract_route_count,
-        all_evidence_contracts_ready,
-        real_handler_implemented_count,
-        real_handler_ready_count,
-        real_handler_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
-        real_handler_gate_enabled,
-        real_handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        real_handler_scope: handler_scope,
-        real_handler_scope_configured: handler_scope_configured,
-        single_handler_scope_ready,
-        selected_handler_count,
-        selected_handler_kinds,
-        all_real_handlers_blocked,
-        routes,
-        action_dispatched: false,
-        command_executed: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        raw_request_body_exposed: false,
-        raw_parameter_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        next_migration_slice: "activate the task-publish real-handler harness only under dual gate plus operator approval, then keep expanding one handler at a time",
-    }
-}
-
-fn native_post_execution_readiness_route(
-    spec: &NativePostPlanRouteSpec,
-) -> NativePostExecutionReadinessRoute {
-    let body_schema = native_post_body_schema(spec.plan_kind, false);
-    let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
-    let execution_evidence_contract_ready = true;
-    let real_handler_implemented = native_post_plan_kind_has_real_handler(spec.plan_kind);
-    NativePostExecutionReadinessRoute {
-        pattern: spec.pattern,
-        capability: spec.capability,
-        plan_kind: spec.plan_kind,
-        compatibility_mode: spec.compatibility_mode,
-        dry_run_only: spec.dry_run_only,
-        allowlisted_for_real_handler,
-        body_schema_id: body_schema.schema_id,
-        body_required_for_real_handler: body_schema.body_required_for_real_handler,
-        body_schema_ready: true,
-        confirmation_contract_ready: true,
-        rollback_contract_ready: true,
-        idempotency_evidence_contract_ready: true,
-        audit_event_contract_ready: true,
-        rate_limit_contract_ready: true,
-        execution_evidence_contract_ready,
-        ready_for_real_handler_wiring: allowlisted_for_real_handler
-            && execution_evidence_contract_ready,
-        current_plan_executes_real_handler: false,
-        real_handler_implemented,
-        blocked_reason: if allowlisted_for_real_handler && real_handler_implemented {
-            "real_handler_gate_disabled"
-        } else if allowlisted_for_real_handler {
-            "real_handler_not_wired"
-        } else {
-            "plan_only_route"
-        },
-    }
 }
 
 pub fn native_post_plan_report(
@@ -2152,7 +1960,7 @@ mod tests {
     }
 
     #[test]
-    fn native_post_execution_readiness_report_is_gateway_owned() {
+    fn native_post_execution_readiness_report_uses_kernel_contract() {
         let report =
             super::native_post_execution_readiness_report(false, Some("task_publish chat_send"));
 

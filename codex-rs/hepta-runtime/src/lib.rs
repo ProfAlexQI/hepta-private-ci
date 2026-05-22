@@ -106,6 +106,7 @@ use events::EventState;
 pub use events::{EventQueryReport, EventRecord};
 pub use hepta_contracts::HeptaRuntimeContractInventory;
 pub use hepta_kernel::{
+    HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT as NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
     HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES as NATIVE_POST_MAX_BODY_BYTES,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV as NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS as NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
@@ -116,6 +117,8 @@ pub use hepta_kernel::{
     HeptaKernelNativePostBodySchema as NativePostBodySchema,
     HeptaKernelNativePostConfirmationContract as NativePostConfirmationContract,
     HeptaKernelNativePostExecutionAdmission as NativePostExecutionAdmission,
+    HeptaKernelNativePostExecutionReadinessResponse as NativePostExecutionReadinessResponse,
+    HeptaKernelNativePostExecutionReadinessRoute as NativePostExecutionReadinessRoute,
     HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
@@ -230,6 +233,16 @@ pub fn native_post_real_handler_scope_selected_kinds(
     handler_scope: Option<&str>,
 ) -> Vec<&'static str> {
     hepta_kernel::hepta_kernel_native_post_real_handler_scope_selected_kinds(handler_scope)
+}
+
+pub fn native_post_execution_readiness_report(
+    real_handler_gate_enabled: bool,
+    handler_scope: Option<&str>,
+) -> NativePostExecutionReadinessResponse {
+    hepta_kernel::hepta_kernel_native_post_execution_readiness_report(
+        real_handler_gate_enabled,
+        handler_scope,
+    )
 }
 pub use memory_context::{
     DEFAULT_MEMORY_CONTEXT_LEDGER_ID, DEFAULT_MEMORY_CONTEXT_LEDGER_PATH, MemoryCitation,
