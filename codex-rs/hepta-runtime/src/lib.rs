@@ -126,6 +126,10 @@ pub use hepta_kernel::{
     HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
+    HeptaKernelNativePostRolloutEvidencePlanKindCount as NativePostRolloutEvidencePlanKindCount,
+    HeptaKernelNativePostRolloutEvidenceRecordSummary as NativePostRolloutEvidenceRecordSummary,
+    HeptaKernelNativePostRolloutEvidenceScan as NativePostRolloutEvidenceScan,
+    HeptaKernelNativePostSelectedHandlerRolloutEvidence as NativePostSelectedHandlerRolloutEvidence,
 };
 pub use inbound_router::{
     DEFAULT_INBOUND_ROUTER_ID, DEFAULT_INBOUND_ROUTER_PATH, InboundEventInput, InboundEventRecord,
@@ -286,6 +290,38 @@ pub fn native_post_execution_store_record(
         audit_event_contract,
         current_plan_executes_real_handler,
         recorded_at_unix_ms,
+    )
+}
+
+pub fn native_post_rollout_evidence_scan_missing() -> NativePostRolloutEvidenceScan {
+    hepta_kernel::hepta_kernel_native_post_rollout_evidence_scan_missing()
+}
+
+pub fn native_post_rollout_evidence_scan_read_failed() -> NativePostRolloutEvidenceScan {
+    hepta_kernel::hepta_kernel_native_post_rollout_evidence_scan_read_failed()
+}
+
+pub fn native_post_rollout_evidence_scan_from_content(
+    content: &str,
+) -> NativePostRolloutEvidenceScan {
+    hepta_kernel::hepta_kernel_native_post_rollout_evidence_scan_from_content(content)
+}
+
+pub fn native_post_selected_handler_rollout_evidence_missing(
+    selected_handler_kind: Option<&str>,
+) -> NativePostSelectedHandlerRolloutEvidence {
+    hepta_kernel::hepta_kernel_native_post_selected_handler_rollout_evidence_missing(
+        selected_handler_kind,
+    )
+}
+
+pub fn native_post_selected_handler_rollout_evidence_from_content(
+    selected_handler_kind: Option<&str>,
+    content: &str,
+) -> NativePostSelectedHandlerRolloutEvidence {
+    hepta_kernel::hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
+        selected_handler_kind,
+        content,
     )
 }
 pub use memory_context::{

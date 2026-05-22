@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -363,6 +364,64 @@ pub struct HeptaKernelNativePostExecutionStoreRecord {
     pub rollback_strategy: &'static str,
     pub rate_limit_bucket: &'static str,
     pub current_plan_executes_real_handler: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostRolloutEvidencePlanKindCount {
+    pub plan_kind: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostRolloutEvidenceRecordSummary {
+    pub recorded_at_unix_ms: Option<u64>,
+    pub route_pattern: Option<String>,
+    pub capability: Option<String>,
+    pub plan_kind: Option<String>,
+    pub body_schema_id: Option<String>,
+    pub body_admission_status: Option<String>,
+    pub rollback_strategy: Option<String>,
+    pub rate_limit_bucket: Option<String>,
+    pub current_plan_executes_real_handler: bool,
+    pub idempotency_key_redacted: bool,
+    pub idempotency_key_fingerprint_present: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostRolloutEvidenceScan {
+    pub jsonl_readable: bool,
+    pub read_error: Option<&'static str>,
+    pub line_count: u64,
+    pub valid_json_line_count: u64,
+    pub invalid_json_line_count: u64,
+    pub record_count: u64,
+    pub dry_run_record_count: u64,
+    pub rollback_anchor_count: u64,
+    pub plan_kind_counts: Vec<HeptaKernelNativePostRolloutEvidencePlanKindCount>,
+    pub latest_record: Option<HeptaKernelNativePostRolloutEvidenceRecordSummary>,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostSelectedHandlerRolloutEvidence {
+    pub selected_handler_kind: Option<String>,
+    pub record_count: u64,
+    pub dry_run_record_count: u64,
+    pub rollback_anchor_count: u64,
+    pub dry_run_record_present: bool,
+    pub rollback_anchor_present: bool,
+    pub latest_record: Option<HeptaKernelNativePostRolloutEvidenceRecordSummary>,
     pub raw_request_body_exposed: bool,
     pub raw_field_values_exposed: bool,
     pub raw_idempotency_key_exposed: bool,
@@ -1247,6 +1306,266 @@ pub fn hepta_kernel_native_post_execution_store_record(
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
     }
+}
+
+pub fn hepta_kernel_native_post_rollout_evidence_scan_missing()
+-> HeptaKernelNativePostRolloutEvidenceScan {
+    hepta_kernel_native_post_empty_rollout_evidence_scan(true, None)
+}
+
+pub fn hepta_kernel_native_post_rollout_evidence_scan_read_failed()
+-> HeptaKernelNativePostRolloutEvidenceScan {
+    hepta_kernel_native_post_empty_rollout_evidence_scan(false, Some("rollback_store_read_failed"))
+}
+
+pub fn hepta_kernel_native_post_rollout_evidence_scan_from_content(
+    content: &str,
+) -> HeptaKernelNativePostRolloutEvidenceScan {
+    let mut line_count = 0_u64;
+    let mut valid_json_line_count = 0_u64;
+    let mut invalid_json_line_count = 0_u64;
+    let mut record_count = 0_u64;
+    let mut dry_run_record_count = 0_u64;
+    let mut rollback_anchor_count = 0_u64;
+    let mut plan_kind_counts = BTreeMap::<String, u64>::new();
+    let mut latest_record: Option<HeptaKernelNativePostRolloutEvidenceRecordSummary> = None;
+    let mut latest_recorded_at = 0_u64;
+    let mut raw_request_body_exposed = false;
+    let mut raw_field_values_exposed = false;
+    let mut raw_idempotency_key_exposed = false;
+    let mut raw_audit_payload_exposed = false;
+
+    for line in content.lines() {
+        line_count = line_count.saturating_add(1);
+        let value = match serde_json::from_str::<Value>(line) {
+            Ok(value) => value,
+            Err(_) => {
+                invalid_json_line_count = invalid_json_line_count.saturating_add(1);
+                continue;
+            }
+        };
+        valid_json_line_count = valid_json_line_count.saturating_add(1);
+        record_count = record_count.saturating_add(1);
+        let plan_kind = value
+            .get("plan_kind")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        *plan_kind_counts.entry(plan_kind).or_insert(0) += 1;
+        let current_plan_executes_real_handler =
+            hepta_kernel_json_bool_field(&value, "current_plan_executes_real_handler");
+        if current_plan_executes_real_handler {
+            dry_run_record_count = dry_run_record_count.saturating_add(1);
+        }
+        if value.get("rollback_strategy").and_then(Value::as_str)
+            == Some("pending_real_handler_rollback_anchor")
+        {
+            rollback_anchor_count = rollback_anchor_count.saturating_add(1);
+        }
+        raw_request_body_exposed |=
+            hepta_kernel_json_bool_field(&value, "raw_request_body_exposed");
+        raw_field_values_exposed |=
+            hepta_kernel_json_bool_field(&value, "raw_field_values_exposed");
+        raw_idempotency_key_exposed |=
+            hepta_kernel_json_bool_field(&value, "raw_idempotency_key_exposed");
+        raw_audit_payload_exposed |=
+            hepta_kernel_json_bool_field(&value, "raw_audit_payload_exposed");
+
+        let recorded_at = value
+            .get("recorded_at_unix_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if latest_record.is_none() || recorded_at >= latest_recorded_at {
+            latest_recorded_at = recorded_at;
+            latest_record = Some(hepta_kernel_native_post_rollout_evidence_record_summary(
+                &value,
+            ));
+        }
+    }
+
+    HeptaKernelNativePostRolloutEvidenceScan {
+        jsonl_readable: true,
+        read_error: None,
+        line_count,
+        valid_json_line_count,
+        invalid_json_line_count,
+        record_count,
+        dry_run_record_count,
+        rollback_anchor_count,
+        plan_kind_counts: plan_kind_counts
+            .into_iter()
+            .map(
+                |(plan_kind, count)| HeptaKernelNativePostRolloutEvidencePlanKindCount {
+                    plan_kind,
+                    count,
+                },
+            )
+            .collect(),
+        latest_record,
+        raw_request_body_exposed,
+        raw_field_values_exposed,
+        raw_idempotency_key_exposed,
+        raw_audit_payload_exposed,
+    }
+}
+
+pub fn hepta_kernel_native_post_selected_handler_rollout_evidence_missing(
+    selected_handler_kind: Option<&str>,
+) -> HeptaKernelNativePostSelectedHandlerRolloutEvidence {
+    hepta_kernel_native_post_empty_selected_handler_rollout_evidence(selected_handler_kind)
+}
+
+pub fn hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
+    selected_handler_kind: Option<&str>,
+    content: &str,
+) -> HeptaKernelNativePostSelectedHandlerRolloutEvidence {
+    let selected_handler_kind_string = selected_handler_kind.map(str::to_string);
+    let mut record_count = 0_u64;
+    let mut dry_run_record_count = 0_u64;
+    let mut rollback_anchor_count = 0_u64;
+    let mut latest_record: Option<HeptaKernelNativePostRolloutEvidenceRecordSummary> = None;
+    let mut latest_recorded_at = 0_u64;
+    let mut raw_request_body_exposed = false;
+    let mut raw_field_values_exposed = false;
+    let mut raw_idempotency_key_exposed = false;
+    let mut raw_audit_payload_exposed = false;
+
+    let Some(selected_handler_kind) = selected_handler_kind else {
+        return hepta_kernel_native_post_empty_selected_handler_rollout_evidence(None);
+    };
+
+    for line in content.lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if value.get("plan_kind").and_then(Value::as_str) != Some(selected_handler_kind) {
+            continue;
+        }
+        record_count = record_count.saturating_add(1);
+        let current_plan_executes_real_handler =
+            hepta_kernel_json_bool_field(&value, "current_plan_executes_real_handler");
+        if current_plan_executes_real_handler {
+            dry_run_record_count = dry_run_record_count.saturating_add(1);
+        }
+        if value.get("rollback_strategy").and_then(Value::as_str)
+            == Some("pending_real_handler_rollback_anchor")
+        {
+            rollback_anchor_count = rollback_anchor_count.saturating_add(1);
+        }
+        raw_request_body_exposed |=
+            hepta_kernel_json_bool_field(&value, "raw_request_body_exposed");
+        raw_field_values_exposed |=
+            hepta_kernel_json_bool_field(&value, "raw_field_values_exposed");
+        raw_idempotency_key_exposed |=
+            hepta_kernel_json_bool_field(&value, "raw_idempotency_key_exposed");
+        raw_audit_payload_exposed |=
+            hepta_kernel_json_bool_field(&value, "raw_audit_payload_exposed");
+
+        let recorded_at = value
+            .get("recorded_at_unix_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if latest_record.is_none() || recorded_at >= latest_recorded_at {
+            latest_recorded_at = recorded_at;
+            latest_record = Some(hepta_kernel_native_post_rollout_evidence_record_summary(
+                &value,
+            ));
+        }
+    }
+
+    HeptaKernelNativePostSelectedHandlerRolloutEvidence {
+        selected_handler_kind: selected_handler_kind_string,
+        record_count,
+        dry_run_record_count,
+        rollback_anchor_count,
+        dry_run_record_present: dry_run_record_count > 0,
+        rollback_anchor_present: rollback_anchor_count > 0,
+        latest_record,
+        raw_request_body_exposed,
+        raw_field_values_exposed,
+        raw_idempotency_key_exposed,
+        raw_audit_payload_exposed,
+    }
+}
+
+fn hepta_kernel_native_post_empty_rollout_evidence_scan(
+    jsonl_readable: bool,
+    read_error: Option<&'static str>,
+) -> HeptaKernelNativePostRolloutEvidenceScan {
+    HeptaKernelNativePostRolloutEvidenceScan {
+        jsonl_readable,
+        read_error,
+        line_count: 0,
+        valid_json_line_count: 0,
+        invalid_json_line_count: 0,
+        record_count: 0,
+        dry_run_record_count: 0,
+        rollback_anchor_count: 0,
+        plan_kind_counts: Vec::new(),
+        latest_record: None,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+    }
+}
+
+fn hepta_kernel_native_post_empty_selected_handler_rollout_evidence(
+    selected_handler_kind: Option<&str>,
+) -> HeptaKernelNativePostSelectedHandlerRolloutEvidence {
+    HeptaKernelNativePostSelectedHandlerRolloutEvidence {
+        selected_handler_kind: selected_handler_kind.map(str::to_string),
+        record_count: 0,
+        dry_run_record_count: 0,
+        rollback_anchor_count: 0,
+        dry_run_record_present: false,
+        rollback_anchor_present: false,
+        latest_record: None,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+    }
+}
+
+fn hepta_kernel_native_post_rollout_evidence_record_summary(
+    value: &Value,
+) -> HeptaKernelNativePostRolloutEvidenceRecordSummary {
+    HeptaKernelNativePostRolloutEvidenceRecordSummary {
+        recorded_at_unix_ms: value.get("recorded_at_unix_ms").and_then(Value::as_u64),
+        route_pattern: hepta_kernel_json_string_field(value, "route_pattern"),
+        capability: hepta_kernel_json_string_field(value, "capability"),
+        plan_kind: hepta_kernel_json_string_field(value, "plan_kind"),
+        body_schema_id: hepta_kernel_json_string_field(value, "body_schema_id"),
+        body_admission_status: hepta_kernel_json_string_field(value, "body_admission_status"),
+        rollback_strategy: hepta_kernel_json_string_field(value, "rollback_strategy"),
+        rate_limit_bucket: hepta_kernel_json_string_field(value, "rate_limit_bucket"),
+        current_plan_executes_real_handler: hepta_kernel_json_bool_field(
+            value,
+            "current_plan_executes_real_handler",
+        ),
+        idempotency_key_redacted: hepta_kernel_json_bool_field(value, "idempotency_key_redacted"),
+        idempotency_key_fingerprint_present: value
+            .get("idempotency_key_fingerprint")
+            .and_then(Value::as_str)
+            .map(|fingerprint| !fingerprint.trim().is_empty())
+            .unwrap_or(false),
+        raw_request_body_exposed: hepta_kernel_json_bool_field(value, "raw_request_body_exposed"),
+        raw_field_values_exposed: hepta_kernel_json_bool_field(value, "raw_field_values_exposed"),
+        raw_idempotency_key_exposed: hepta_kernel_json_bool_field(
+            value,
+            "raw_idempotency_key_exposed",
+        ),
+        raw_audit_payload_exposed: hepta_kernel_json_bool_field(value, "raw_audit_payload_exposed"),
+    }
+}
+
+fn hepta_kernel_json_string_field(value: &Value, field: &str) -> Option<String> {
+    value.get(field).and_then(Value::as_str).map(str::to_string)
+}
+
+fn hepta_kernel_json_bool_field(value: &Value, field: &str) -> bool {
+    value.get(field).and_then(Value::as_bool).unwrap_or(false)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -6942,6 +7261,50 @@ mod tests {
         assert!(record.current_plan_executes_real_handler);
         assert!(!record.raw_request_body_exposed);
         assert!(!record.raw_idempotency_key_exposed);
+    }
+
+    #[test]
+    fn kernel_native_post_rollout_evidence_scan_summarizes_redacted_records() {
+        let content = r#"{"recorded_at_unix_ms":1,"route_pattern":"/api/tasks/publish","capability":"task.publish","plan_kind":"task_publish","body_schema_id":"hepta.post.task_publish.v1","body_admission_status":"ready_for_real_handler","rollback_strategy":"pending_real_handler_rollback_anchor","rate_limit_bucket":"task_publish","current_plan_executes_real_handler":true,"idempotency_key_redacted":true,"idempotency_key_fingerprint":"sha256:abc","raw_request_body_exposed":false,"raw_field_values_exposed":false,"raw_idempotency_key_exposed":false,"raw_audit_payload_exposed":false}
+not-json
+{"recorded_at_unix_ms":2,"plan_kind":"chat_send","current_plan_executes_real_handler":false,"rollback_strategy":"pending_real_handler_rollback_anchor","raw_request_body_exposed":true}"#;
+
+        let scan = hepta_kernel_native_post_rollout_evidence_scan_from_content(content);
+
+        assert!(scan.jsonl_readable);
+        assert_eq!(scan.line_count, 3);
+        assert_eq!(scan.valid_json_line_count, 2);
+        assert_eq!(scan.invalid_json_line_count, 1);
+        assert_eq!(scan.record_count, 2);
+        assert_eq!(scan.dry_run_record_count, 1);
+        assert_eq!(scan.rollback_anchor_count, 2);
+        assert_eq!(scan.plan_kind_counts.len(), 2);
+        assert!(scan.raw_request_body_exposed);
+        let latest = scan.latest_record.expect("latest record");
+        assert_eq!(latest.recorded_at_unix_ms, Some(2));
+        assert_eq!(latest.plan_kind.as_deref(), Some("chat_send"));
+        assert!(latest.raw_request_body_exposed);
+
+        let selected = hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
+            Some("task_publish"),
+            content,
+        );
+        assert_eq!(
+            selected.selected_handler_kind.as_deref(),
+            Some("task_publish")
+        );
+        assert_eq!(selected.record_count, 1);
+        assert!(selected.dry_run_record_present);
+        assert!(selected.rollback_anchor_present);
+        assert!(!selected.raw_request_body_exposed);
+
+        let missing = hepta_kernel_native_post_rollout_evidence_scan_missing();
+        assert!(missing.jsonl_readable);
+        assert_eq!(missing.record_count, 0);
+
+        let read_failed = hepta_kernel_native_post_rollout_evidence_scan_read_failed();
+        assert!(!read_failed.jsonl_readable);
+        assert_eq!(read_failed.read_error, Some("rollback_store_read_failed"));
     }
 
     #[test]

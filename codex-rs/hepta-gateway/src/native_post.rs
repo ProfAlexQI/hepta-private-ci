@@ -1,5 +1,4 @@
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -16,7 +15,9 @@ pub use hepta_runtime::{
     NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
     NativePostExecutionStoreRecord, NativePostIdempotencyEvidence, NativePostPlanRouteSpec,
-    NativePostRollbackContract, native_post_execution_admission_with_scope,
+    NativePostRollbackContract, NativePostRolloutEvidencePlanKindCount,
+    NativePostRolloutEvidenceRecordSummary, NativePostRolloutEvidenceScan,
+    NativePostSelectedHandlerRolloutEvidence, native_post_execution_admission_with_scope,
     native_post_execution_readiness_report, native_post_real_handler_scope_matches,
     native_post_real_handler_scope_selected_kinds,
 };
@@ -292,46 +293,6 @@ pub struct NativePostRolloutEvidenceResponse {
     pub message_sent: bool,
     pub cursor_written: bool,
     pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostRolloutEvidencePlanKindCount {
-    pub plan_kind: String,
-    pub count: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostRolloutEvidenceRecordSummary {
-    pub recorded_at_unix_ms: Option<u64>,
-    pub route_pattern: Option<String>,
-    pub capability: Option<String>,
-    pub plan_kind: Option<String>,
-    pub body_schema_id: Option<String>,
-    pub body_admission_status: Option<String>,
-    pub rollback_strategy: Option<String>,
-    pub rate_limit_bucket: Option<String>,
-    pub current_plan_executes_real_handler: bool,
-    pub idempotency_key_redacted: bool,
-    pub idempotency_key_fingerprint_present: bool,
-    pub raw_request_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
-    pub raw_audit_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostSelectedHandlerRolloutEvidence {
-    pub selected_handler_kind: Option<String>,
-    pub record_count: u64,
-    pub dry_run_record_count: u64,
-    pub rollback_anchor_count: u64,
-    pub dry_run_record_present: bool,
-    pub rollback_anchor_present: bool,
-    pub latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
-    pub raw_request_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
-    pub raw_audit_payload_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1316,171 +1277,13 @@ fn native_post_execution_store_jsonl_health(path: &Path, exists: bool) -> (bool,
     )
 }
 
-struct NativePostRolloutEvidenceScan {
-    jsonl_readable: bool,
-    read_error: Option<&'static str>,
-    line_count: u64,
-    valid_json_line_count: u64,
-    invalid_json_line_count: u64,
-    record_count: u64,
-    dry_run_record_count: u64,
-    rollback_anchor_count: u64,
-    plan_kind_counts: Vec<NativePostRolloutEvidencePlanKindCount>,
-    latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
-    raw_request_body_exposed: bool,
-    raw_field_values_exposed: bool,
-    raw_idempotency_key_exposed: bool,
-    raw_audit_payload_exposed: bool,
-}
-
 fn native_post_rollout_evidence_scan(path: &Path) -> NativePostRolloutEvidenceScan {
-    let mut line_count = 0_u64;
-    let mut valid_json_line_count = 0_u64;
-    let mut invalid_json_line_count = 0_u64;
-    let mut record_count = 0_u64;
-    let mut dry_run_record_count = 0_u64;
-    let mut rollback_anchor_count = 0_u64;
-    let mut plan_kind_counts = BTreeMap::<String, u64>::new();
-    let mut latest_record: Option<NativePostRolloutEvidenceRecordSummary> = None;
-    let mut latest_recorded_at = 0_u64;
-    let mut raw_request_body_exposed = false;
-    let mut raw_field_values_exposed = false;
-    let mut raw_idempotency_key_exposed = false;
-    let mut raw_audit_payload_exposed = false;
-
-    let content = match fs::read_to_string(path) {
-        Ok(content) => content,
+    match fs::read_to_string(path) {
+        Ok(content) => hepta_runtime::native_post_rollout_evidence_scan_from_content(&content),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return NativePostRolloutEvidenceScan {
-                jsonl_readable: true,
-                read_error: None,
-                line_count,
-                valid_json_line_count,
-                invalid_json_line_count,
-                record_count,
-                dry_run_record_count,
-                rollback_anchor_count,
-                plan_kind_counts: Vec::new(),
-                latest_record,
-                raw_request_body_exposed,
-                raw_field_values_exposed,
-                raw_idempotency_key_exposed,
-                raw_audit_payload_exposed,
-            };
+            hepta_runtime::native_post_rollout_evidence_scan_missing()
         }
-        Err(_) => {
-            return NativePostRolloutEvidenceScan {
-                jsonl_readable: false,
-                read_error: Some("rollback_store_read_failed"),
-                line_count,
-                valid_json_line_count,
-                invalid_json_line_count,
-                record_count,
-                dry_run_record_count,
-                rollback_anchor_count,
-                plan_kind_counts: Vec::new(),
-                latest_record,
-                raw_request_body_exposed,
-                raw_field_values_exposed,
-                raw_idempotency_key_exposed,
-                raw_audit_payload_exposed,
-            };
-        }
-    };
-
-    for line in content.lines() {
-        line_count = line_count.saturating_add(1);
-        let value = match serde_json::from_str::<serde_json::Value>(line) {
-            Ok(value) => value,
-            Err(_) => {
-                invalid_json_line_count = invalid_json_line_count.saturating_add(1);
-                continue;
-            }
-        };
-        valid_json_line_count = valid_json_line_count.saturating_add(1);
-        record_count = record_count.saturating_add(1);
-        let plan_kind = value
-            .get("plan_kind")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("unknown")
-            .to_string();
-        *plan_kind_counts.entry(plan_kind).or_insert(0) += 1;
-        let current_plan_executes_real_handler =
-            json_bool_field(&value, "current_plan_executes_real_handler");
-        if current_plan_executes_real_handler {
-            dry_run_record_count = dry_run_record_count.saturating_add(1);
-        }
-        if value
-            .get("rollback_strategy")
-            .and_then(serde_json::Value::as_str)
-            == Some("pending_real_handler_rollback_anchor")
-        {
-            rollback_anchor_count = rollback_anchor_count.saturating_add(1);
-        }
-        raw_request_body_exposed |= json_bool_field(&value, "raw_request_body_exposed");
-        raw_field_values_exposed |= json_bool_field(&value, "raw_field_values_exposed");
-        raw_idempotency_key_exposed |= json_bool_field(&value, "raw_idempotency_key_exposed");
-        raw_audit_payload_exposed |= json_bool_field(&value, "raw_audit_payload_exposed");
-
-        let recorded_at = value
-            .get("recorded_at_unix_ms")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
-        if latest_record.is_none() || recorded_at >= latest_recorded_at {
-            latest_recorded_at = recorded_at;
-            latest_record = Some(native_post_rollout_evidence_record_summary(&value));
-        }
-    }
-
-    NativePostRolloutEvidenceScan {
-        jsonl_readable: true,
-        read_error: None,
-        line_count,
-        valid_json_line_count,
-        invalid_json_line_count,
-        record_count,
-        dry_run_record_count,
-        rollback_anchor_count,
-        plan_kind_counts: plan_kind_counts
-            .into_iter()
-            .map(|(plan_kind, count)| NativePostRolloutEvidencePlanKindCount { plan_kind, count })
-            .collect(),
-        latest_record,
-        raw_request_body_exposed,
-        raw_field_values_exposed,
-        raw_idempotency_key_exposed,
-        raw_audit_payload_exposed,
-    }
-}
-
-fn native_post_rollout_evidence_record_summary(
-    value: &serde_json::Value,
-) -> NativePostRolloutEvidenceRecordSummary {
-    NativePostRolloutEvidenceRecordSummary {
-        recorded_at_unix_ms: value
-            .get("recorded_at_unix_ms")
-            .and_then(serde_json::Value::as_u64),
-        route_pattern: json_string_field(value, "route_pattern"),
-        capability: json_string_field(value, "capability"),
-        plan_kind: json_string_field(value, "plan_kind"),
-        body_schema_id: json_string_field(value, "body_schema_id"),
-        body_admission_status: json_string_field(value, "body_admission_status"),
-        rollback_strategy: json_string_field(value, "rollback_strategy"),
-        rate_limit_bucket: json_string_field(value, "rate_limit_bucket"),
-        current_plan_executes_real_handler: json_bool_field(
-            value,
-            "current_plan_executes_real_handler",
-        ),
-        idempotency_key_redacted: json_bool_field(value, "idempotency_key_redacted"),
-        idempotency_key_fingerprint_present: value
-            .get("idempotency_key_fingerprint")
-            .and_then(serde_json::Value::as_str)
-            .map(|fingerprint| !fingerprint.trim().is_empty())
-            .unwrap_or(false),
-        raw_request_body_exposed: json_bool_field(value, "raw_request_body_exposed"),
-        raw_field_values_exposed: json_bool_field(value, "raw_field_values_exposed"),
-        raw_idempotency_key_exposed: json_bool_field(value, "raw_idempotency_key_exposed"),
-        raw_audit_payload_exposed: json_bool_field(value, "raw_audit_payload_exposed"),
+        Err(_) => hepta_runtime::native_post_rollout_evidence_scan_read_failed(),
     }
 }
 
@@ -1488,115 +1291,15 @@ fn native_post_selected_handler_rollout_evidence(
     path: &Path,
     selected_handler_kind: Option<&str>,
 ) -> NativePostSelectedHandlerRolloutEvidence {
-    let selected_handler_kind_string = selected_handler_kind.map(str::to_string);
-    let mut record_count = 0_u64;
-    let mut dry_run_record_count = 0_u64;
-    let mut rollback_anchor_count = 0_u64;
-    let mut latest_record: Option<NativePostRolloutEvidenceRecordSummary> = None;
-    let mut latest_recorded_at = 0_u64;
-    let mut raw_request_body_exposed = false;
-    let mut raw_field_values_exposed = false;
-    let mut raw_idempotency_key_exposed = false;
-    let mut raw_audit_payload_exposed = false;
-
-    let Some(selected_handler_kind) = selected_handler_kind else {
-        return NativePostSelectedHandlerRolloutEvidence {
-            selected_handler_kind: selected_handler_kind_string,
-            record_count,
-            dry_run_record_count,
-            rollback_anchor_count,
-            dry_run_record_present: false,
-            rollback_anchor_present: false,
-            latest_record,
-            raw_request_body_exposed,
-            raw_field_values_exposed,
-            raw_idempotency_key_exposed,
-            raw_audit_payload_exposed,
-        };
-    };
-
-    let content = match fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(_) => {
-            return NativePostSelectedHandlerRolloutEvidence {
-                selected_handler_kind: selected_handler_kind_string,
-                record_count,
-                dry_run_record_count,
-                rollback_anchor_count,
-                dry_run_record_present: false,
-                rollback_anchor_present: false,
-                latest_record,
-                raw_request_body_exposed,
-                raw_field_values_exposed,
-                raw_idempotency_key_exposed,
-                raw_audit_payload_exposed,
-            };
-        }
-    };
-
-    for line in content.lines() {
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
-        if value.get("plan_kind").and_then(serde_json::Value::as_str) != Some(selected_handler_kind)
-        {
-            continue;
-        }
-        record_count = record_count.saturating_add(1);
-        let current_plan_executes_real_handler =
-            json_bool_field(&value, "current_plan_executes_real_handler");
-        if current_plan_executes_real_handler {
-            dry_run_record_count = dry_run_record_count.saturating_add(1);
-        }
-        if value
-            .get("rollback_strategy")
-            .and_then(serde_json::Value::as_str)
-            == Some("pending_real_handler_rollback_anchor")
-        {
-            rollback_anchor_count = rollback_anchor_count.saturating_add(1);
-        }
-        raw_request_body_exposed |= json_bool_field(&value, "raw_request_body_exposed");
-        raw_field_values_exposed |= json_bool_field(&value, "raw_field_values_exposed");
-        raw_idempotency_key_exposed |= json_bool_field(&value, "raw_idempotency_key_exposed");
-        raw_audit_payload_exposed |= json_bool_field(&value, "raw_audit_payload_exposed");
-
-        let recorded_at = value
-            .get("recorded_at_unix_ms")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
-        if latest_record.is_none() || recorded_at >= latest_recorded_at {
-            latest_recorded_at = recorded_at;
-            latest_record = Some(native_post_rollout_evidence_record_summary(&value));
-        }
+    match fs::read_to_string(path) {
+        Ok(content) => hepta_runtime::native_post_selected_handler_rollout_evidence_from_content(
+            selected_handler_kind,
+            &content,
+        ),
+        Err(_) => hepta_runtime::native_post_selected_handler_rollout_evidence_missing(
+            selected_handler_kind,
+        ),
     }
-
-    NativePostSelectedHandlerRolloutEvidence {
-        selected_handler_kind: selected_handler_kind_string,
-        record_count,
-        dry_run_record_count,
-        rollback_anchor_count,
-        dry_run_record_present: dry_run_record_count > 0,
-        rollback_anchor_present: rollback_anchor_count > 0,
-        latest_record,
-        raw_request_body_exposed,
-        raw_field_values_exposed,
-        raw_idempotency_key_exposed,
-        raw_audit_payload_exposed,
-    }
-}
-
-fn json_string_field(value: &serde_json::Value, field: &str) -> Option<String> {
-    value
-        .get(field)
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-}
-
-fn json_bool_field(value: &serde_json::Value, field: &str) -> bool {
-    value
-        .get(field)
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false)
 }
 
 fn native_post_now_unix_ms() -> u64 {
