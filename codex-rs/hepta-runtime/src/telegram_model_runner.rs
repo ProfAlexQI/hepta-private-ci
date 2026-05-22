@@ -24,7 +24,8 @@ pub use hepta_kernel::{
     HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDrainOnceApiResultInput,
     HeptaKernelTelegramDrainOnceApiResultPlan, HeptaKernelTelegramDrainOncePreflightInput,
     HeptaKernelTelegramDrainOncePreflightPlan, HeptaKernelTelegramDrainOnceShellReadinessInput,
-    HeptaKernelTelegramDrainOnceShellReadinessPlan, HeptaKernelTelegramDuplicateDecision,
+    HeptaKernelTelegramDrainOnceShellReadinessPlan, HeptaKernelTelegramDrainPipelineFinalStatus,
+    HeptaKernelTelegramDrainPipelineOutcome, HeptaKernelTelegramDuplicateDecision,
     HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
     HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
     HeptaKernelTelegramModelExecutionInput, HeptaKernelTelegramModelExecutionOutcome,
@@ -61,7 +62,8 @@ pub use hepta_kernel::{
     extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text,
     extract_hepta_kernel_telegram_candidate_material,
-    extract_hepta_kernel_telegram_config_metadata, hepta_kernel_exec_child_args,
+    extract_hepta_kernel_telegram_config_metadata,
+    finalize_hepta_kernel_telegram_drain_pipeline_status, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
     hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_cursor_body,
     hepta_kernel_telegram_cursor_duplicate_rule_valid, hepta_kernel_telegram_delivery_backoff_ms,
@@ -115,6 +117,8 @@ pub use hepta_kernel::{
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
 pub type NativeTelegramModelRunnerInvocationOutcome = HeptaKernelTelegramRunnerInvocationOutcome;
 pub type NativeTelegramSessionBridgePlan = HeptaKernelTelegramSessionBridgePlan;
+pub type NativeTelegramDrainPipelineOutcome = HeptaKernelTelegramDrainPipelineOutcome;
+pub type NativeTelegramDrainPipelineFinalStatus = HeptaKernelTelegramDrainPipelineFinalStatus;
 pub type NativeTelegramGatewayGateSummary = HeptaKernelTelegramGatewayGateSummary;
 pub type NativeTelegramGatewayGateSummaryInput = HeptaKernelTelegramGatewayGateSummaryInput;
 pub type NativeTelegramExecutionPlan = HeptaKernelTelegramExecutionPlan;
@@ -402,6 +406,20 @@ pub fn native_telegram_drain_final_status(
         send_error,
         model_status,
         model_error,
+        previous_status,
+        previous_error,
+    )
+}
+
+pub fn finalize_native_telegram_drain_pipeline_status(
+    outcome: NativeTelegramDrainPipelineOutcome,
+    model_runner_process_spawned_by_status: bool,
+    previous_status: &'static str,
+    previous_error: Option<String>,
+) -> NativeTelegramDrainPipelineFinalStatus {
+    finalize_hepta_kernel_telegram_drain_pipeline_status(
+        outcome,
+        model_runner_process_spawned_by_status,
         previous_status,
         previous_error,
     )

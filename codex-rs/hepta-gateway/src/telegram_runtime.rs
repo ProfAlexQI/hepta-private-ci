@@ -5,8 +5,7 @@ use serde_json::Value;
 
 use crate::telegram_policy::{
     NativeTelegramGatewayGateSummary, NativeTelegramModelExecutionReport,
-    NativeTelegramModelInvocationRequestPlan, NativeTelegramReplyTargetMaterial,
-    NativeTelegramSendExecutionReport, NativeTelegramSendRequestPlan,
+    NativeTelegramReplyTargetMaterial, NativeTelegramSendRequestPlan,
     first_model_candidate_with_duplicate_decision,
 };
 use crate::telegram_transport::{
@@ -15,26 +14,12 @@ use crate::telegram_transport::{
 
 pub use hepta_runtime::{
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE as NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE,
+    NativeTelegramDrainPipelineFinalStatus, NativeTelegramDrainPipelineOutcome,
     NativeTelegramModelExecutionInput, NativeTelegramModelExecutionOutcome,
     NativeTelegramSessionBridgePlan, execute_native_telegram_model_turn_after_candidate,
-    native_telegram_drain_final_status, native_telegram_model_failure_fallback_allowed,
+    finalize_native_telegram_drain_pipeline_status, native_telegram_model_failure_fallback_allowed,
     native_telegram_model_failure_fallback_message,
 };
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramDrainPipelineOutcome {
-    pub invocation_request: NativeTelegramModelInvocationRequestPlan,
-    pub model_execution: NativeTelegramModelExecutionReport,
-    pub send_request: NativeTelegramSendRequestPlan,
-    pub send_execution: NativeTelegramSendExecutionReport,
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramDrainPipelineFinalStatus {
-    pub status: &'static str,
-    pub error: Option<String>,
-    pub outcome: NativeTelegramDrainPipelineOutcome,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct NativeTelegramDrainPipelineInput<'a> {
@@ -51,30 +36,17 @@ pub struct NativeTelegramDrainPipelineInput<'a> {
 }
 
 pub fn finalize_telegram_drain_pipeline_status(
-    mut outcome: NativeTelegramDrainPipelineOutcome,
+    outcome: NativeTelegramDrainPipelineOutcome,
     model_runner_process_spawned_by_status: bool,
     previous_status: &'static str,
     previous_error: Option<String>,
 ) -> NativeTelegramDrainPipelineFinalStatus {
-    let final_status = native_telegram_drain_final_status(
-        outcome.model_execution.session_runner_invoked,
-        model_runner_process_spawned_by_status,
-        outcome.send_execution.status,
-        outcome.send_execution.error.as_deref(),
-        outcome.model_execution.status,
-        outcome.model_execution.error.as_deref(),
-        previous_status,
-        previous_error.as_deref(),
-    );
-    if final_status.local_process_spawned {
-        outcome.model_execution.local_process_spawned = true;
-    }
-
-    NativeTelegramDrainPipelineFinalStatus {
-        status: final_status.status,
-        error: final_status.error,
+    finalize_native_telegram_drain_pipeline_status(
         outcome,
-    }
+        model_runner_process_spawned_by_status,
+        previous_status,
+        previous_error,
+    )
 }
 
 pub fn execute_telegram_model_turn_after_candidate<F>(
@@ -200,6 +172,9 @@ mod tests {
     use crate::telegram_delivery::telegram_delivery_ledger_status_from_path;
     use crate::telegram_policy::{
         extract_telegram_candidate_material, telegram_duplicate_decision,
+    };
+    use hepta_runtime::{
+        NativeTelegramModelInvocationRequestPlan, NativeTelegramSendExecutionReport,
     };
 
     const MODEL_GATE: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";

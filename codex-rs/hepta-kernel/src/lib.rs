@@ -395,6 +395,21 @@ pub struct HeptaKernelTelegramSendExecutionReport {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramDrainPipelineOutcome {
+    pub invocation_request: HeptaKernelTelegramModelInvocationRequestPlan,
+    pub model_execution: HeptaKernelTelegramModelExecutionReport,
+    pub send_request: HeptaKernelTelegramSendRequestPlan,
+    pub send_execution: HeptaKernelTelegramSendExecutionReport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramDrainPipelineFinalStatus {
+    pub status: &'static str,
+    pub error: Option<String>,
+    pub outcome: HeptaKernelTelegramDrainPipelineOutcome,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaKernelTelegramTransportPlan {
     pub bot_api_transport_plan_ready: bool,
@@ -3194,6 +3209,33 @@ pub fn hepta_kernel_telegram_drain_final_status(
     }
 }
 
+pub fn finalize_hepta_kernel_telegram_drain_pipeline_status(
+    mut outcome: HeptaKernelTelegramDrainPipelineOutcome,
+    model_runner_process_spawned_by_status: bool,
+    previous_status: &'static str,
+    previous_error: Option<String>,
+) -> HeptaKernelTelegramDrainPipelineFinalStatus {
+    let final_status = hepta_kernel_telegram_drain_final_status(
+        outcome.model_execution.session_runner_invoked,
+        model_runner_process_spawned_by_status,
+        outcome.send_execution.status,
+        outcome.send_execution.error.as_deref(),
+        outcome.model_execution.status,
+        outcome.model_execution.error.as_deref(),
+        previous_status,
+        previous_error.as_deref(),
+    );
+    if final_status.local_process_spawned {
+        outcome.model_execution.local_process_spawned = true;
+    }
+
+    HeptaKernelTelegramDrainPipelineFinalStatus {
+        status: final_status.status,
+        error: final_status.error,
+        outcome,
+    }
+}
+
 pub fn build_hepta_kernel_telegram_gateway_gate_summary(
     input: HeptaKernelTelegramGatewayGateSummaryInput,
 ) -> HeptaKernelTelegramGatewayGateSummary {
@@ -5426,6 +5468,74 @@ mod tests {
         assert_eq!(previous.status, "planned");
         assert_eq!(previous.error.as_deref(), Some("previous error"));
         assert!(!previous.local_process_spawned);
+    }
+
+    #[test]
+    fn kernel_drain_pipeline_finalizer_updates_process_and_error_precedence() {
+        let invocation_request =
+            HeptaKernelTelegramModelInvocationRequestPlan::disabled("MODEL_GATE", true);
+        let mut model_execution =
+            HeptaKernelTelegramModelExecutionReport::from_invocation_request(&invocation_request);
+        model_execution.session_runner_invoked = true;
+        let send_request = HeptaKernelTelegramSendRequestPlan::from_model_output(
+            Some("private response text"),
+            true,
+            Some(43),
+            "SEND_GATE",
+            true,
+        );
+        let mut send_execution =
+            HeptaKernelTelegramSendExecutionReport::from_send_request(&send_request);
+        send_execution.status = "delivered";
+        send_execution.error = Some("ignored stale send error".to_string());
+        let delivered = finalize_hepta_kernel_telegram_drain_pipeline_status(
+            HeptaKernelTelegramDrainPipelineOutcome {
+                invocation_request,
+                model_execution,
+                send_request,
+                send_execution,
+            },
+            true,
+            "planned",
+            Some("previous error".to_string()),
+        );
+
+        assert_eq!(delivered.status, "drained");
+        assert_eq!(delivered.error, None);
+        assert!(delivered.outcome.model_execution.local_process_spawned);
+
+        let invocation_request =
+            HeptaKernelTelegramModelInvocationRequestPlan::disabled("MODEL_GATE", true);
+        let mut model_execution =
+            HeptaKernelTelegramModelExecutionReport::from_invocation_request(&invocation_request);
+        model_execution.status = "attention";
+        model_execution.error = Some("model failed".to_string());
+        let send_request = HeptaKernelTelegramSendRequestPlan::from_model_output(
+            None,
+            true,
+            Some(43),
+            "SEND_GATE",
+            true,
+        );
+        let mut send_execution =
+            HeptaKernelTelegramSendExecutionReport::from_send_request(&send_request);
+        send_execution.status = "attention";
+        send_execution.error = Some("send failed".to_string());
+        let attention = finalize_hepta_kernel_telegram_drain_pipeline_status(
+            HeptaKernelTelegramDrainPipelineOutcome {
+                invocation_request,
+                model_execution,
+                send_request,
+                send_execution,
+            },
+            false,
+            "planned",
+            None,
+        );
+
+        assert_eq!(attention.status, "attention");
+        assert_eq!(attention.error.as_deref(), Some("send failed"));
+        assert!(!attention.outcome.model_execution.local_process_spawned);
     }
 
     #[test]
