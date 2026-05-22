@@ -8,14 +8,12 @@ use crate::telegram_policy::{
     NativeTelegramExecutionPlan, NativeTelegramGatewayGateSummary, NativeTelegramIngressInspection,
     NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,
     NativeTelegramModelTurnPlan, NativeTelegramSendExecutionReport, NativeTelegramSendRequestPlan,
-    plan_model_turn_for_updates,
 };
-use crate::telegram_transport::{
-    NativeTelegramSendPlan, NativeTelegramTransportPlan, telegram_redact_token_like_text,
-};
+use crate::telegram_transport::{NativeTelegramSendPlan, telegram_redact_token_like_text};
 use hepta_runtime::{
     build_native_telegram_model_bridge_status, build_native_telegram_model_turn_plan_status,
-    build_native_telegram_poll_loop_status, build_native_telegram_production_guard_status,
+    build_native_telegram_plugin_status, build_native_telegram_poll_loop_status,
+    build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,
     build_native_telegram_receive_once_error_status, build_native_telegram_receive_once_status,
     build_native_telegram_receive_once_status_from_api_result,
@@ -49,6 +47,7 @@ pub use hepta_runtime::{
 pub use hepta_runtime::{
     NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput,
     NativeTelegramModelTurnPlanStatus, NativeTelegramModelTurnPlanStatusInput,
+    NativeTelegramPluginStatus, NativeTelegramPluginStatusInput,
 };
 pub use hepta_runtime::{NativeTelegramSendPlanStatus, NativeTelegramSendPlanStatusInput};
 
@@ -93,31 +92,6 @@ pub fn telegram_soak_max_observed_age_ms_policy(value: Option<u64>) -> u64 {
 
 pub fn telegram_system_time_unix_ms(time: SystemTime) -> u64 {
     native_telegram_system_time_unix_ms(time)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramPluginStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub in_process_supervisor_ready: bool,
-    pub in_process_reply_loop_ready: bool,
-    pub model_turn_bridge_ready: bool,
-    pub bot_api_poll_ready: bool,
-    pub bot_api_send_ready: bool,
-    pub openclaw_gateway_runtime_dependency: bool,
-    pub external_network_read: bool,
-    pub external_send: bool,
-    pub poll_ms: u64,
-    pub allowed_updates: &'static str,
-    pub config: NativeTelegramConfigStatus,
-    pub transport_plan: NativeTelegramTransportPlan,
-    pub ingress_parser: NativeTelegramIngressInspection,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub migration_blocker: Option<&'static str>,
-    pub next_migration_slice: &'static str,
 }
 
 pub fn build_telegram_receive_once_error_status(
@@ -390,100 +364,10 @@ impl NativeTelegramLiveSoakObservationState {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct NativeTelegramPluginStatusInput {
-    pub requested: bool,
-    pub poll_ms: u64,
-    pub allowed_updates: &'static str,
-    pub config: NativeTelegramConfigStatus,
-    pub gates: NativeTelegramGatewayGateSummary,
-    pub poll_loop_gate_enabled: bool,
-}
-
 pub fn build_telegram_plugin_status(
     input: NativeTelegramPluginStatusInput,
 ) -> NativeTelegramPluginStatus {
-    if !input.requested {
-        return NativeTelegramPluginStatus {
-            product: "Hepta",
-            runtime: "hepta-codex",
-            requested: false,
-            status: "disabled",
-            in_process_supervisor_ready: false,
-            in_process_reply_loop_ready: false,
-            model_turn_bridge_ready: false,
-            bot_api_poll_ready: false,
-            bot_api_send_ready: false,
-            openclaw_gateway_runtime_dependency: false,
-            external_network_read: false,
-            external_send: false,
-            poll_ms: input.poll_ms,
-            allowed_updates: input.allowed_updates,
-            config: NativeTelegramConfigStatus::disabled(),
-            transport_plan: NativeTelegramTransportPlan::disabled(),
-            ingress_parser: crate::telegram_policy::inspect_telegram_updates(&[]),
-            cursor_plan: NativeTelegramCursorPlan::disabled(),
-            model_turn_plan: NativeTelegramModelTurnPlan::disabled(),
-            migration_blocker: None,
-            next_migration_slice: "enable --with-telegram-plugin, then wire Bot API polling and model-turn delivery",
-        };
-    }
-
-    let supervisor_ready = input.config.error.is_none();
-    let config_ready = input.config.config_ready();
-    let bot_api_poll_ready = config_ready && input.gates.live_read_gate_enabled;
-    let model_turn_bridge_ready = config_ready && input.gates.model_turn_gate_enabled;
-    let bot_api_send_ready = config_ready && input.gates.send_gate_enabled;
-    let in_process_reply_loop_ready = bot_api_poll_ready
-        && model_turn_bridge_ready
-        && bot_api_send_ready
-        && input.gates.delivery_approval_gate_enabled
-        && input.poll_loop_gate_enabled;
-    let migration_blocker = if in_process_reply_loop_ready {
-        None
-    } else {
-        Some(
-            "enable live read, model, send, poll loop, and delivery approval gates before active reply-loop delivery",
-        )
-    };
-    let next_migration_slice = if in_process_reply_loop_ready {
-        "keep active Telegram live soak green and inspect /api/telegram-live-soak-status for cumulative delivery evidence"
-    } else {
-        "wire native Bot API getUpdates/sendMessage loop behind explicit delivery gates"
-    };
-    let status = if supervisor_ready && config_ready {
-        "native_supervisor_ready"
-    } else {
-        "attention"
-    };
-
-    NativeTelegramPluginStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: true,
-        status,
-        in_process_supervisor_ready: supervisor_ready,
-        in_process_reply_loop_ready,
-        model_turn_bridge_ready,
-        bot_api_poll_ready,
-        bot_api_send_ready,
-        openclaw_gateway_runtime_dependency: false,
-        external_network_read: false,
-        external_send: false,
-        poll_ms: input.poll_ms,
-        allowed_updates: input.allowed_updates,
-        transport_plan: NativeTelegramTransportPlan::for_config_state(
-            input.config.enabled,
-            input.config.token_shape_ok,
-            input.config.binding_ready,
-        ),
-        config: input.config,
-        ingress_parser: crate::telegram_policy::inspect_telegram_updates(&[]),
-        cursor_plan: NativeTelegramCursorPlan::ready(),
-        model_turn_plan: plan_model_turn_for_updates(&[]),
-        migration_blocker,
-        next_migration_slice,
-    }
+    build_native_telegram_plugin_status(input)
 }
 
 pub fn build_telegram_model_turn_plan_status(
@@ -851,7 +735,7 @@ pub fn build_telegram_production_readiness_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hepta_runtime::NativeTelegramModelRunnerPlan;
+    use hepta_runtime::{NativeTelegramModelRunnerPlan, NativeTelegramTransportPlan};
     use std::time::Duration;
 
     const LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";

@@ -366,6 +366,41 @@ pub struct HeptaKernelTelegramModelBridgeStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramPluginStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub in_process_supervisor_ready: bool,
+    pub in_process_reply_loop_ready: bool,
+    pub model_turn_bridge_ready: bool,
+    pub bot_api_poll_ready: bool,
+    pub bot_api_send_ready: bool,
+    pub openclaw_gateway_runtime_dependency: bool,
+    pub external_network_read: bool,
+    pub external_send: bool,
+    pub poll_ms: u64,
+    pub allowed_updates: &'static str,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub transport_plan: HeptaKernelTelegramTransportPlan,
+    pub ingress_parser: HeptaKernelTelegramIngressInspection,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub model_turn_plan: HeptaKernelTelegramModelTurnPlan,
+    pub migration_blocker: Option<&'static str>,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramPluginStatusInput {
+    pub requested: bool,
+    pub poll_ms: u64,
+    pub allowed_updates: &'static str,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub gates: HeptaKernelTelegramGatewayGateSummary,
+    pub poll_loop_gate_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelTelegramModelTurnPlanStatus {
     pub product: &'static str,
     pub runtime: &'static str,
@@ -2368,6 +2403,89 @@ pub fn build_hepta_kernel_telegram_model_bridge_status(
     }
 }
 
+pub fn build_hepta_kernel_telegram_plugin_status(
+    input: HeptaKernelTelegramPluginStatusInput,
+) -> HeptaKernelTelegramPluginStatus {
+    if !input.requested {
+        return HeptaKernelTelegramPluginStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: false,
+            status: "disabled",
+            in_process_supervisor_ready: false,
+            in_process_reply_loop_ready: false,
+            model_turn_bridge_ready: false,
+            bot_api_poll_ready: false,
+            bot_api_send_ready: false,
+            openclaw_gateway_runtime_dependency: false,
+            external_network_read: false,
+            external_send: false,
+            poll_ms: input.poll_ms,
+            allowed_updates: input.allowed_updates,
+            config: HeptaKernelTelegramConfigStatus::disabled(),
+            transport_plan: HeptaKernelTelegramTransportPlan::disabled(),
+            ingress_parser: inspect_hepta_kernel_telegram_updates(&[]),
+            cursor_plan: HeptaKernelTelegramCursorPlan::disabled(),
+            model_turn_plan: HeptaKernelTelegramModelTurnPlan::disabled(),
+            migration_blocker: None,
+            next_migration_slice: "enable --with-telegram-plugin, then wire Bot API polling and model-turn delivery",
+        };
+    }
+
+    let supervisor_ready = input.config.error.is_none();
+    let config_ready = input.config.config_ready();
+    let bot_api_poll_ready = config_ready && input.gates.live_read_gate_enabled;
+    let model_turn_bridge_ready = config_ready && input.gates.model_turn_gate_enabled;
+    let bot_api_send_ready = config_ready && input.gates.send_gate_enabled;
+    let in_process_reply_loop_ready = bot_api_poll_ready
+        && model_turn_bridge_ready
+        && bot_api_send_ready
+        && input.gates.delivery_approval_gate_enabled
+        && input.poll_loop_gate_enabled;
+    let migration_blocker = if in_process_reply_loop_ready {
+        None
+    } else {
+        Some(
+            "enable live read, model, send, poll loop, and delivery approval gates before active reply-loop delivery",
+        )
+    };
+    let next_migration_slice = if in_process_reply_loop_ready {
+        "keep active Telegram live soak green and inspect /api/telegram-live-soak-status for cumulative delivery evidence"
+    } else {
+        "wire native Bot API getUpdates/sendMessage loop behind explicit delivery gates"
+    };
+    let status = if supervisor_ready && config_ready {
+        "native_supervisor_ready"
+    } else {
+        "attention"
+    };
+    let transport_plan = hepta_kernel_telegram_transport_plan_for_config_status(&input.config);
+
+    HeptaKernelTelegramPluginStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: true,
+        status,
+        in_process_supervisor_ready: supervisor_ready,
+        in_process_reply_loop_ready,
+        model_turn_bridge_ready,
+        bot_api_poll_ready,
+        bot_api_send_ready,
+        openclaw_gateway_runtime_dependency: false,
+        external_network_read: false,
+        external_send: false,
+        poll_ms: input.poll_ms,
+        allowed_updates: input.allowed_updates,
+        transport_plan,
+        config: input.config,
+        ingress_parser: inspect_hepta_kernel_telegram_updates(&[]),
+        cursor_plan: HeptaKernelTelegramCursorPlan::ready(),
+        model_turn_plan: hepta_kernel_telegram_model_turn_plan_for_updates(&[]),
+        migration_blocker,
+        next_migration_slice,
+    }
+}
+
 pub fn build_hepta_kernel_telegram_model_turn_plan_status(
     input: HeptaKernelTelegramModelTurnPlanStatusInput,
 ) -> HeptaKernelTelegramModelTurnPlanStatus {
@@ -4233,6 +4351,49 @@ mod tests {
                 .unwrap()
                 .contains("HEPTA_NATIVE_TELEGRAM_MODEL_TURN")
         );
+    }
+
+    #[test]
+    fn kernel_plugin_status_reports_native_supervisor_without_side_effects() {
+        let status =
+            build_hepta_kernel_telegram_plugin_status(HeptaKernelTelegramPluginStatusInput {
+                requested: true,
+                poll_ms: 1_500,
+                allowed_updates: HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES,
+                config: ready_telegram_config(),
+                gates: telegram_kernel_gates(true, true, true, true),
+                poll_loop_gate_enabled: true,
+            });
+
+        assert_eq!(status.status, "native_supervisor_ready");
+        assert!(status.in_process_supervisor_ready);
+        assert!(status.in_process_reply_loop_ready);
+        assert!(status.model_turn_bridge_ready);
+        assert!(status.bot_api_poll_ready);
+        assert!(status.bot_api_send_ready);
+        assert!(!status.openclaw_gateway_runtime_dependency);
+        assert!(!status.external_network_read);
+        assert!(!status.external_send);
+        assert!(status.transport_plan.bot_api_transport_plan_ready);
+        assert!(status.ingress_parser.parser_ready);
+        assert_eq!(status.ingress_parser.update_count, 0);
+        assert!(status.cursor_plan.duplicate_suppression_ready);
+        assert!(status.model_turn_plan.planner_ready);
+        assert!(status.migration_blocker.is_none());
+
+        let disabled =
+            build_hepta_kernel_telegram_plugin_status(HeptaKernelTelegramPluginStatusInput {
+                requested: false,
+                poll_ms: 1_500,
+                allowed_updates: HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES,
+                config: ready_telegram_config(),
+                gates: telegram_kernel_gates(false, false, false, false),
+                poll_loop_gate_enabled: false,
+            });
+        assert_eq!(disabled.status, "disabled");
+        assert!(!disabled.transport_plan.bot_api_transport_plan_ready);
+        assert!(!disabled.cursor_plan.duplicate_suppression_ready);
+        assert!(!disabled.model_turn_plan.planner_ready);
     }
 
     #[test]
