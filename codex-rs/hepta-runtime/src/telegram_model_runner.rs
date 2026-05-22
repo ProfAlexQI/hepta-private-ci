@@ -21,11 +21,11 @@ pub use hepta_kernel::{
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
     HeptaKernelTelegramConfigMetadata, HeptaKernelTelegramConfigStatus,
     HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramCursorPlan,
-    HeptaKernelTelegramCursorStatus, HeptaKernelTelegramDeliveryLedgerStatus,
-    HeptaKernelTelegramDeliveryLedgerStatusInput, HeptaKernelTelegramDrainFinalStatusPlan,
-    HeptaKernelTelegramDrainOnceApiResultInput, HeptaKernelTelegramDrainOnceApiResultPlan,
-    HeptaKernelTelegramDrainOncePreflightInput, HeptaKernelTelegramDrainOncePreflightPlan,
-    HeptaKernelTelegramDrainOnceShellReadinessInput,
+    HeptaKernelTelegramCursorStatus, HeptaKernelTelegramCursorStatusInput,
+    HeptaKernelTelegramDeliveryLedgerStatus, HeptaKernelTelegramDeliveryLedgerStatusInput,
+    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDrainOnceApiResultInput,
+    HeptaKernelTelegramDrainOnceApiResultPlan, HeptaKernelTelegramDrainOncePreflightInput,
+    HeptaKernelTelegramDrainOncePreflightPlan, HeptaKernelTelegramDrainOnceShellReadinessInput,
     HeptaKernelTelegramDrainOnceShellReadinessPlan, HeptaKernelTelegramDrainOnceStatus,
     HeptaKernelTelegramDrainOnceStatusInput, HeptaKernelTelegramDrainPipelineDeliveryInput,
     HeptaKernelTelegramDrainPipelineDeliveryPlan, HeptaKernelTelegramDrainPipelineFinalStatus,
@@ -63,7 +63,7 @@ pub use hepta_kernel::{
     MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, MAX_TELEGRAM_SOAK_MIN_POLLS,
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
-    build_hepta_kernel_telegram_delivery_ledger_status,
+    build_hepta_kernel_telegram_cursor_status, build_hepta_kernel_telegram_delivery_ledger_status,
     build_hepta_kernel_telegram_drain_once_status,
     build_hepta_kernel_telegram_gateway_gate_summary, build_hepta_kernel_telegram_live_soak_status,
     build_hepta_kernel_telegram_model_bridge_status,
@@ -195,6 +195,7 @@ pub type NativeTelegramTokenObservation = HeptaKernelTelegramTokenObservation;
 pub type NativeTelegramConfigMetadata = HeptaKernelTelegramConfigMetadata;
 pub type NativeTelegramCursorPlan = HeptaKernelTelegramCursorPlan;
 pub type NativeTelegramCursorStatus = HeptaKernelTelegramCursorStatus;
+pub type NativeTelegramCursorStatusInput<'a> = HeptaKernelTelegramCursorStatusInput<'a>;
 pub type NativeTelegramDeliveryLedgerStatus = HeptaKernelTelegramDeliveryLedgerStatus;
 pub type NativeTelegramDeliveryLedgerStatusInput<'a> =
     HeptaKernelTelegramDeliveryLedgerStatusInput<'a>;
@@ -525,6 +526,12 @@ pub fn native_telegram_cursor_duplicate_rule_valid() -> bool {
 
 pub fn parse_native_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
     parse_hepta_kernel_telegram_cursor_next_update_offset(raw)
+}
+
+pub fn build_native_telegram_cursor_status(
+    input: NativeTelegramCursorStatusInput<'_>,
+) -> NativeTelegramCursorStatus {
+    build_hepta_kernel_telegram_cursor_status(input)
 }
 
 pub fn native_telegram_cursor_body(offset: i64, updated_at_unix_ms: u64) -> Result<Value, String> {
@@ -1512,6 +1519,19 @@ mod tests {
                 .expect_err("negative cursor should fail")
                 .contains("next_update_offset must be non-negative")
         );
+
+        let status = build_native_telegram_cursor_status(NativeTelegramCursorStatusInput {
+            requested: true,
+            cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+            cursor_file_present: true,
+            cursor_updated_at_unix_ms: Some(1_777_777),
+            raw_json: Some(r#"{"lastDrainedUpdateId": 42}"#),
+            read_error: None,
+        });
+        assert_eq!(status.status, "ready");
+        assert_eq!(status.next_update_offset, Some(43));
+        assert!(status.cursor_parse_ok);
+        assert!(status.durable_cursor_evidence_present);
     }
 
     #[test]

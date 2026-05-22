@@ -3320,6 +3320,117 @@ pub struct HeptaKernelTelegramCursorStatus {
     pub next_migration_slice: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelTelegramCursorStatusInput<'a> {
+    pub requested: bool,
+    pub cursor_path: &'static str,
+    pub cursor_file_present: bool,
+    pub cursor_updated_at_unix_ms: Option<u64>,
+    pub raw_json: Option<&'a str>,
+    pub read_error: Option<&'a str>,
+}
+
+pub fn build_hepta_kernel_telegram_cursor_status(
+    input: HeptaKernelTelegramCursorStatusInput<'_>,
+) -> HeptaKernelTelegramCursorStatus {
+    if !input.requested {
+        return HeptaKernelTelegramCursorStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: false,
+            status: "disabled",
+            cursor_path: input.cursor_path,
+            cursor_file_present: false,
+            cursor_parse_ok: false,
+            next_update_offset: None,
+            cursor_updated_at_unix_ms: None,
+            last_delivered_next_update_offset: None,
+            durable_cursor_evidence_present: false,
+            cursor_represents_next_update_offset: true,
+            duplicate_suppression_rule_valid: true,
+            cursor_write_policy: "disabled",
+            cursor_written: false,
+            raw_update_payload_persisted: false,
+            error: None,
+            next_migration_slice: "enable Telegram plugin before reading cursor state",
+        };
+    }
+
+    let mut status = HeptaKernelTelegramCursorStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: true,
+        status: "missing",
+        cursor_path: input.cursor_path,
+        cursor_file_present: input.cursor_file_present,
+        cursor_parse_ok: false,
+        next_update_offset: None,
+        cursor_updated_at_unix_ms: input.cursor_updated_at_unix_ms,
+        last_delivered_next_update_offset: None,
+        durable_cursor_evidence_present: false,
+        cursor_represents_next_update_offset: true,
+        duplicate_suppression_rule_valid: hepta_kernel_telegram_cursor_duplicate_rule_valid(),
+        cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
+        cursor_written: false,
+        raw_update_payload_persisted: false,
+        error: None,
+        next_migration_slice: "wire cursor write after gated send delivery success",
+    };
+
+    if !input.cursor_file_present {
+        return status;
+    }
+
+    if let Some(error) = input.read_error {
+        status.status = "attention";
+        status.error = Some(redact_hepta_kernel_telegram_token_like_text(error));
+        return status;
+    }
+
+    let Some(raw) = input.raw_json else {
+        status.status = "attention";
+        status.error =
+            Some("Telegram cursor file was present but no JSON was provided".to_string());
+        return status;
+    };
+
+    match parse_hepta_kernel_telegram_cursor_next_update_offset(raw) {
+        Ok(next_update_offset) => {
+            let cursor_json = serde_json::from_str::<Value>(raw).unwrap_or(Value::Null);
+            let raw_update_payload_persisted = cursor_json
+                .get("raw_update_payload_persisted")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let cursor_updated_at_unix_ms = cursor_json
+                .get("updated_at_unix_ms")
+                .and_then(Value::as_u64)
+                .or(input.cursor_updated_at_unix_ms);
+            let last_delivered_next_update_offset = cursor_json
+                .get("last_delivered_next_update_offset")
+                .and_then(Value::as_i64)
+                .filter(|offset| *offset >= 0)
+                .or(Some(next_update_offset));
+
+            status.status = "ready";
+            status.cursor_parse_ok = true;
+            status.next_update_offset = Some(next_update_offset);
+            status.cursor_updated_at_unix_ms = cursor_updated_at_unix_ms;
+            status.last_delivered_next_update_offset = last_delivered_next_update_offset;
+            status.durable_cursor_evidence_present = cursor_updated_at_unix_ms.is_some()
+                && last_delivered_next_update_offset.is_some()
+                && !raw_update_payload_persisted;
+            status.raw_update_payload_persisted = raw_update_payload_persisted;
+            status.next_migration_slice = "cursor is ready; continue active soak and expect writes only after delivery or duplicate suppression";
+        }
+        Err(error) => {
+            status.status = "attention";
+            status.error = Some(redact_hepta_kernel_telegram_token_like_text(&error));
+        }
+    }
+
+    status
+}
+
 pub fn parse_hepta_kernel_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
     let value: Value = serde_json::from_str(raw)
         .map_err(|error| format!("failed to parse Telegram cursor JSON: {error}"))?;
@@ -7882,6 +7993,118 @@ mod tests {
         assert!(body.get("raw_update_payload").is_none());
         assert!(body.get("message").is_none());
         assert!(body.get("chat").is_none());
+    }
+
+    #[test]
+    fn kernel_telegram_cursor_status_summarizes_ready_cursor_without_raw_payload() {
+        let status = build_hepta_kernel_telegram_cursor_status(
+            HeptaKernelTelegramCursorStatusInput {
+                requested: true,
+                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+                cursor_file_present: true,
+                cursor_updated_at_unix_ms: Some(123),
+                raw_json: Some(
+                    r#"{"next_update_offset": 77, "last_delivered_next_update_offset": 77, "raw_update_payload_persisted": false}"#,
+                ),
+                read_error: None,
+            },
+        );
+
+        assert_eq!(status.status, "ready");
+        assert!(status.cursor_parse_ok);
+        assert_eq!(status.next_update_offset, Some(77));
+        assert_eq!(status.cursor_updated_at_unix_ms, Some(123));
+        assert_eq!(status.last_delivered_next_update_offset, Some(77));
+        assert!(status.durable_cursor_evidence_present);
+        assert!(!status.raw_update_payload_persisted);
+        assert!(status.duplicate_suppression_rule_valid);
+        assert!(!status.cursor_written);
+    }
+
+    #[test]
+    fn kernel_telegram_cursor_status_flags_raw_payload_and_invalid_cursor() {
+        let raw_payload_status =
+            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
+                requested: true,
+                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+                cursor_file_present: true,
+                cursor_updated_at_unix_ms: Some(123),
+                raw_json: Some(
+                    r#"{"lastDrainedUpdateId": 6, "raw_update_payload_persisted": true}"#,
+                ),
+                read_error: None,
+            });
+        assert_eq!(raw_payload_status.status, "ready");
+        assert_eq!(raw_payload_status.next_update_offset, Some(7));
+        assert!(raw_payload_status.raw_update_payload_persisted);
+        assert!(!raw_payload_status.durable_cursor_evidence_present);
+
+        let invalid_status =
+            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
+                requested: true,
+                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+                cursor_file_present: true,
+                cursor_updated_at_unix_ms: Some(123),
+                raw_json: Some(r#"{"next_update_offset": -1}"#),
+                read_error: None,
+            });
+        assert_eq!(invalid_status.status, "attention");
+        assert!(!invalid_status.cursor_parse_ok);
+        assert!(
+            invalid_status
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("next_update_offset must be non-negative")
+        );
+    }
+
+    #[test]
+    fn kernel_telegram_cursor_status_handles_disabled_missing_and_read_error() {
+        let disabled =
+            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
+                requested: false,
+                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+                cursor_file_present: true,
+                cursor_updated_at_unix_ms: Some(123),
+                raw_json: Some(r#"{"next_update_offset": 1}"#),
+                read_error: None,
+            });
+        assert_eq!(disabled.status, "disabled");
+        assert!(!disabled.cursor_file_present);
+        assert_eq!(disabled.cursor_updated_at_unix_ms, None);
+
+        let missing =
+            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
+                requested: true,
+                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+                cursor_file_present: false,
+                cursor_updated_at_unix_ms: None,
+                raw_json: None,
+                read_error: None,
+            });
+        assert_eq!(missing.status, "missing");
+        assert!(!missing.cursor_parse_ok);
+
+        let read_error =
+            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
+                requested: true,
+                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
+                cursor_file_present: true,
+                cursor_updated_at_unix_ms: Some(123),
+                raw_json: None,
+                read_error: Some(
+                    "failed to read Telegram cursor file: 123456789:abcdefghijklmnopqrstuvwxyz",
+                ),
+            });
+        assert_eq!(read_error.status, "attention");
+        assert!(
+            read_error
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("[redacted-telegram-token]")
+        );
     }
 
     #[test]

@@ -2,39 +2,25 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde_json::Value;
-
 pub use hepta_runtime::{
     HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH as DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
     NativeTelegramCursorPlan, NativeTelegramCursorStatus,
 };
 use hepta_runtime::{
-    native_telegram_cursor_body, native_telegram_cursor_duplicate_rule_valid,
-    parse_native_telegram_cursor_next_update_offset,
+    NativeTelegramCursorStatusInput, build_native_telegram_cursor_status,
+    native_telegram_cursor_body, parse_native_telegram_cursor_next_update_offset,
 };
 
 pub fn telegram_cursor_status(requested: bool, path: &Path) -> NativeTelegramCursorStatus {
     if !requested {
-        return NativeTelegramCursorStatus {
-            product: "Hepta",
-            runtime: "hepta-codex",
+        return build_native_telegram_cursor_status(NativeTelegramCursorStatusInput {
             requested,
-            status: "disabled",
             cursor_path: DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
             cursor_file_present: false,
-            cursor_parse_ok: false,
-            next_update_offset: None,
             cursor_updated_at_unix_ms: None,
-            last_delivered_next_update_offset: None,
-            durable_cursor_evidence_present: false,
-            cursor_represents_next_update_offset: true,
-            duplicate_suppression_rule_valid: true,
-            cursor_write_policy: "disabled",
-            cursor_written: false,
-            raw_update_payload_persisted: false,
-            error: None,
-            next_migration_slice: "enable Telegram plugin before reading cursor state",
-        };
+            raw_json: None,
+            read_error: None,
+        });
     }
 
     telegram_cursor_status_from_path(path)
@@ -42,70 +28,40 @@ pub fn telegram_cursor_status(requested: bool, path: &Path) -> NativeTelegramCur
 
 pub fn telegram_cursor_status_from_path(path: &Path) -> NativeTelegramCursorStatus {
     let cursor_file_present = path.is_file();
-    let mut status = NativeTelegramCursorStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: true,
-        status: "missing",
-        cursor_path: DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
-        cursor_file_present,
-        cursor_parse_ok: false,
-        next_update_offset: None,
-        cursor_updated_at_unix_ms: None,
-        last_delivered_next_update_offset: None,
-        durable_cursor_evidence_present: false,
-        cursor_represents_next_update_offset: true,
-        duplicate_suppression_rule_valid: native_telegram_cursor_duplicate_rule_valid(),
-        cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
-        cursor_written: false,
-        raw_update_payload_persisted: false,
-        error: None,
-        next_migration_slice: "wire cursor write after gated send delivery success",
+    if !cursor_file_present {
+        return build_native_telegram_cursor_status(NativeTelegramCursorStatusInput {
+            requested: true,
+            cursor_path: DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
+            cursor_file_present,
+            cursor_updated_at_unix_ms: file_modified_unix_ms(path),
+            raw_json: None,
+            read_error: None,
+        });
+    }
+
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) => {
+            let error = format!("failed to read Telegram cursor file: {error}");
+            return build_native_telegram_cursor_status(NativeTelegramCursorStatusInput {
+                requested: true,
+                cursor_path: DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
+                cursor_file_present,
+                cursor_updated_at_unix_ms: file_modified_unix_ms(path),
+                raw_json: None,
+                read_error: Some(&error),
+            });
+        }
     };
 
-    if !cursor_file_present {
-        return status;
-    }
-
-    match fs::read_to_string(path)
-        .map_err(|error| format!("failed to read Telegram cursor file: {error}"))
-        .and_then(|raw| {
-            let next_update_offset = parse_telegram_cursor_next_update_offset(&raw)?;
-            Ok((raw, next_update_offset))
-        }) {
-        Ok((raw, next_update_offset)) => {
-            let cursor_json = serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null);
-            let raw_update_payload_persisted = cursor_json
-                .get("raw_update_payload_persisted")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let cursor_updated_at_unix_ms = cursor_json
-                .get("updated_at_unix_ms")
-                .and_then(Value::as_u64)
-                .or_else(|| file_modified_unix_ms(path));
-            let last_delivered_next_update_offset = cursor_json
-                .get("last_delivered_next_update_offset")
-                .and_then(Value::as_i64)
-                .filter(|offset| *offset >= 0)
-                .or(Some(next_update_offset));
-            status.status = "ready";
-            status.cursor_parse_ok = true;
-            status.next_update_offset = Some(next_update_offset);
-            status.cursor_updated_at_unix_ms = cursor_updated_at_unix_ms;
-            status.last_delivered_next_update_offset = last_delivered_next_update_offset;
-            status.durable_cursor_evidence_present = cursor_updated_at_unix_ms.is_some()
-                && last_delivered_next_update_offset.is_some()
-                && !raw_update_payload_persisted;
-            status.raw_update_payload_persisted = raw_update_payload_persisted;
-            status.next_migration_slice = "cursor is ready; continue active soak and expect writes only after delivery or duplicate suppression";
-        }
-        Err(error) => {
-            status.status = "attention";
-            status.error = Some(error);
-        }
-    }
-
-    status
+    build_native_telegram_cursor_status(NativeTelegramCursorStatusInput {
+        requested: true,
+        cursor_path: DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
+        cursor_file_present,
+        cursor_updated_at_unix_ms: file_modified_unix_ms(path),
+        raw_json: Some(&raw),
+        read_error: None,
+    })
 }
 
 pub fn parse_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
