@@ -69,13 +69,14 @@ pub use native_post::{
     native_post_dispatch_plan_report, native_post_execution_admission_with_scope,
     native_post_execution_readiness_report,
     native_post_execution_store_capacity_allows_append_with_limits,
-    native_post_execution_store_record, native_post_execution_stores_report,
-    native_post_gray_release_evidence_report, native_post_idempotency_evidence,
-    native_post_plan_kind_has_real_handler, native_post_plan_parameter, native_post_plan_report,
-    native_post_plan_route_specs, native_post_real_handler_harness,
-    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
-    native_post_redacted_fingerprint, native_post_rollback_contract,
-    native_post_rollout_evidence_report, persist_native_post_execution_store_record,
+    native_post_execution_store_contracts_ready, native_post_execution_store_record,
+    native_post_execution_stores_report, native_post_gray_release_evidence_report,
+    native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
+    native_post_plan_parameter, native_post_plan_report, native_post_plan_route_specs,
+    native_post_real_handler_harness, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
+    native_post_rollback_contract, native_post_rollout_evidence_report,
+    persist_native_post_execution_store_record,
 };
 pub use report::GatewayPluginResolutionContractReport;
 pub use resolution::{

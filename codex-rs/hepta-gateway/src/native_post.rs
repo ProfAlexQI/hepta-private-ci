@@ -30,7 +30,7 @@ pub use hepta_runtime::{
     native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
     native_post_execution_admission_with_scope, native_post_execution_readiness_report,
     native_post_execution_store_capacity_allows_append, native_post_execution_store_capacity_ok,
-    native_post_execution_store_file_status_report,
+    native_post_execution_store_contracts_ready, native_post_execution_store_file_status_report,
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
     native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_jsonl_valid,
@@ -166,13 +166,7 @@ pub fn native_post_activation_plan_report(
     handler_scope: Option<&str>,
 ) -> NativePostActivationPlanResponse {
     let stores = native_post_execution_stores_report(root, max_store_bytes, max_store_lines);
-    let store_contracts_ready = stores.persistence_implementation_ready
-        && stores.idempotency_store_ready
-        && stores.audit_store_ready
-        && stores.rollback_store_ready
-        && stores.rate_limit_store_ready
-        && stores.store_jsonl_valid
-        && stores.store_capacity_ok;
+    let store_contracts_ready = native_post_execution_store_contracts_ready(&stores);
     hepta_runtime::native_post_activation_plan_report(
         real_handler_gate_enabled,
         operator_approval_enabled,

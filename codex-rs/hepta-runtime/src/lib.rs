@@ -517,6 +517,12 @@ pub fn native_post_execution_stores_report(
     )
 }
 
+pub fn native_post_execution_store_contracts_ready(
+    stores: &NativePostExecutionStoresResponse,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_execution_store_contracts_ready(stores)
+}
+
 pub fn native_post_rollout_evidence_scan_missing() -> NativePostRolloutEvidenceScan {
     hepta_kernel::hepta_kernel_native_post_rollout_evidence_scan_missing()
 }

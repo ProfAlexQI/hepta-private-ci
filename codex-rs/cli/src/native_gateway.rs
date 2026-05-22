@@ -3065,13 +3065,8 @@ fn operator_security_json(
     let post_execution_stores = native_post_execution_stores_report();
     let post_activation_plan = native_post_activation_plan_report();
     let post_gray_release_evidence = native_post_gray_release_evidence_report();
-    let post_execution_stores_ready = post_execution_stores.persistence_implementation_ready
-        && post_execution_stores.idempotency_store_ready
-        && post_execution_stores.audit_store_ready
-        && post_execution_stores.rollback_store_ready
-        && post_execution_stores.rate_limit_store_ready
-        && post_execution_stores.store_jsonl_valid
-        && post_execution_stores.store_capacity_ok;
+    let post_execution_stores_ready =
+        hepta_gateway::native_post_execution_store_contracts_ready(&post_execution_stores);
     let active_post_activation_ready = post_activation_plan.activation_currently_enabled
         && post_activation_plan.single_handler_scope_ready
         && post_activation_plan.execution_evidence_ready

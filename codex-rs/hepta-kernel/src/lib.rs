@@ -2090,6 +2090,18 @@ pub fn hepta_kernel_native_post_execution_stores_report(
     }
 }
 
+pub fn hepta_kernel_native_post_execution_store_contracts_ready(
+    stores: &HeptaKernelNativePostExecutionStoresResponse,
+) -> bool {
+    stores.persistence_implementation_ready
+        && stores.idempotency_store_ready
+        && stores.audit_store_ready
+        && stores.rollback_store_ready
+        && stores.rate_limit_store_ready
+        && stores.store_jsonl_valid
+        && stores.store_capacity_ok
+}
+
 pub fn hepta_kernel_native_post_rollout_evidence_scan_missing()
 -> HeptaKernelNativePostRolloutEvidenceScan {
     hepta_kernel_native_post_empty_rollout_evidence_scan(true, None)
@@ -8561,7 +8573,16 @@ mod tests {
         assert_eq!(report.total_line_count, 3);
         assert!(report.store_jsonl_valid);
         assert!(report.store_capacity_ok);
+        assert!(hepta_kernel_native_post_execution_store_contracts_ready(
+            &report
+        ));
         assert!(!report.raw_request_body_exposed);
+
+        let mut blocked_report = report.clone();
+        blocked_report.store_capacity_ok = false;
+        assert!(!hepta_kernel_native_post_execution_store_contracts_ready(
+            &blocked_report
+        ));
     }
 
     #[test]
