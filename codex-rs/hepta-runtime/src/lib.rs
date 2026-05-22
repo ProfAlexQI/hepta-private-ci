@@ -385,6 +385,32 @@ pub fn native_post_execution_store_specs() -> &'static [NativePostExecutionStore
     hepta_kernel::hepta_kernel_native_post_execution_store_specs()
 }
 
+pub fn native_post_execution_store_file_status_report(
+    spec: &NativePostExecutionStoreFileSpec,
+    path: String,
+    exists: bool,
+    bytes: u64,
+    max_bytes: u64,
+    max_lines: u64,
+    jsonl_readable: bool,
+    line_count: u64,
+    valid_json_line_count: u64,
+    invalid_json_line_count: u64,
+) -> NativePostExecutionStoreFileStatus {
+    hepta_kernel::hepta_kernel_native_post_execution_store_file_status_report(
+        spec,
+        path,
+        exists,
+        bytes,
+        max_bytes,
+        max_lines,
+        jsonl_readable,
+        line_count,
+        valid_json_line_count,
+        invalid_json_line_count,
+    )
+}
+
 pub fn native_post_execution_stores_report(
     store_root: String,
     root_exists: bool,

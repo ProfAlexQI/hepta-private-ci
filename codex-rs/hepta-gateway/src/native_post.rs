@@ -28,11 +28,11 @@ pub use hepta_runtime::{
     NativePostSelectedHandlerRolloutEvidence, native_post_audit_event_contract,
     native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
     native_post_execution_admission_with_scope, native_post_execution_readiness_report,
-    native_post_execution_store_specs, native_post_idempotency_evidence,
-    native_post_plan_kind_has_real_handler, native_post_plan_parameter,
-    native_post_plan_route_specs, native_post_real_handler_scope_matches,
-    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
-    native_post_rollback_contract,
+    native_post_execution_store_file_status_report, native_post_execution_store_specs,
+    native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
+    native_post_plan_parameter, native_post_plan_route_specs,
+    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
+    native_post_redacted_fingerprint, native_post_rollback_contract,
 };
 
 pub fn native_post_plan_report(
@@ -523,28 +523,18 @@ fn native_post_execution_store_file_status(
     let (jsonl_readable, line_count, valid_json_line_count, invalid_json_line_count) =
         native_post_execution_store_jsonl_health(&path, exists);
     let bytes = metadata.as_ref().map(std::fs::Metadata::len).unwrap_or(0);
-    NativePostExecutionStoreFileStatus {
-        store_kind: spec.store_kind,
-        schema_id: spec.schema_id,
-        filename: spec.filename,
-        path: path.display().to_string(),
+    native_post_execution_store_file_status_report(
+        spec,
+        path.display().to_string(),
         exists,
         bytes,
-        max_bytes: max_store_bytes,
-        bytes_within_limit: bytes <= max_store_bytes,
-        append_only: true,
-        jsonl: true,
+        max_store_bytes,
+        max_store_lines,
         jsonl_readable,
-        jsonl_valid: jsonl_readable && invalid_json_line_count == 0,
         line_count,
-        max_lines: max_store_lines,
-        line_count_within_limit: line_count <= max_store_lines,
         valid_json_line_count,
         invalid_json_line_count,
-        raw_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-    }
+    )
 }
 
 fn native_post_execution_store_jsonl_health(path: &Path, exists: bool) -> (bool, u64, u64, u64) {

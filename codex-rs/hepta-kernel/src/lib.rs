@@ -562,6 +562,42 @@ pub fn hepta_kernel_native_post_execution_store_specs()
     ]
 }
 
+pub fn hepta_kernel_native_post_execution_store_file_status_report(
+    spec: &HeptaKernelNativePostExecutionStoreFileSpec,
+    path: String,
+    exists: bool,
+    bytes: u64,
+    max_bytes: u64,
+    max_lines: u64,
+    jsonl_readable: bool,
+    line_count: u64,
+    valid_json_line_count: u64,
+    invalid_json_line_count: u64,
+) -> HeptaKernelNativePostExecutionStoreFileStatus {
+    HeptaKernelNativePostExecutionStoreFileStatus {
+        store_kind: spec.store_kind,
+        schema_id: spec.schema_id,
+        filename: spec.filename,
+        path,
+        exists,
+        bytes,
+        max_bytes,
+        bytes_within_limit: bytes <= max_bytes,
+        append_only: true,
+        jsonl: true,
+        jsonl_readable,
+        jsonl_valid: jsonl_readable && invalid_json_line_count == 0,
+        line_count,
+        max_lines,
+        line_count_within_limit: line_count <= max_lines,
+        valid_json_line_count,
+        invalid_json_line_count,
+        raw_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostExecutionStoresResponse {
     pub product: &'static str,
@@ -8371,6 +8407,38 @@ mod tests {
         assert_eq!(specs[3].store_kind, "rate_limit");
         assert_eq!(specs[3].schema_id, "hepta.post.rate_limit_entry.v1");
         assert_eq!(specs[3].filename, "rate-limit.jsonl");
+    }
+
+    #[test]
+    fn kernel_native_post_execution_store_file_status_report_binds_capacity_and_redaction() {
+        let spec = &hepta_kernel_native_post_execution_store_specs()[0];
+
+        let status = hepta_kernel_native_post_execution_store_file_status_report(
+            spec,
+            ".hepta/native-post-execution/idempotency.jsonl".to_string(),
+            true,
+            99,
+            100,
+            3,
+            true,
+            4,
+            3,
+            1,
+        );
+
+        assert_eq!(status.store_kind, "idempotency");
+        assert_eq!(status.schema_id, "hepta.post.idempotency_entry.v1");
+        assert_eq!(status.filename, "idempotency.jsonl");
+        assert!(status.exists);
+        assert!(status.bytes_within_limit);
+        assert!(!status.line_count_within_limit);
+        assert!(status.jsonl_readable);
+        assert!(!status.jsonl_valid);
+        assert!(status.append_only);
+        assert!(status.jsonl);
+        assert!(!status.raw_body_exposed);
+        assert!(!status.raw_field_values_exposed);
+        assert!(!status.raw_idempotency_key_exposed);
     }
 
     #[test]
