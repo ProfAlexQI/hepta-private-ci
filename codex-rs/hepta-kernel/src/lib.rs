@@ -743,6 +743,64 @@ pub struct HeptaKernelTelegramDrainOnceApiResultPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramDrainOnceStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub gates: HeptaKernelTelegramGatewayGateSummary,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub execution_plan: HeptaKernelTelegramExecutionPlan,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub inspection: HeptaKernelTelegramIngressInspection,
+    pub model_turn_plan: HeptaKernelTelegramModelTurnPlan,
+    pub invocation_request: HeptaKernelTelegramModelInvocationRequestPlan,
+    pub model_execution: HeptaKernelTelegramModelExecutionReport,
+    pub send_plan: HeptaKernelTelegramSendPlan,
+    pub send_request: HeptaKernelTelegramSendRequestPlan,
+    pub send_execution: HeptaKernelTelegramSendExecutionReport,
+    pub bot_api_ok: Option<bool>,
+    pub local_next_update_offset: Option<i64>,
+    pub get_updates_offset: Option<i64>,
+    pub live_read_started: bool,
+    pub model_turn_started: bool,
+    pub send_started: bool,
+    pub cursor_written: bool,
+    pub external_network_read: bool,
+    pub external_network_write: bool,
+    pub external_send: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_token_exposed: bool,
+    pub error: Option<String>,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramDrainOnceStatusInput {
+    pub requested: bool,
+    pub status: &'static str,
+    pub gates: HeptaKernelTelegramGatewayGateSummary,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub execution_plan: HeptaKernelTelegramExecutionPlan,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub inspection: HeptaKernelTelegramIngressInspection,
+    pub model_turn_plan: HeptaKernelTelegramModelTurnPlan,
+    pub invocation_request: HeptaKernelTelegramModelInvocationRequestPlan,
+    pub model_execution: HeptaKernelTelegramModelExecutionReport,
+    pub send_plan: HeptaKernelTelegramSendPlan,
+    pub send_request: HeptaKernelTelegramSendRequestPlan,
+    pub send_execution: HeptaKernelTelegramSendExecutionReport,
+    pub bot_api_ok: Option<bool>,
+    pub local_next_update_offset: Option<i64>,
+    pub get_updates_offset: Option<i64>,
+    pub live_read_started: bool,
+    pub external_network_read: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelTelegramConfigStatus {
     pub config_path: Option<String>,
     pub config_found: bool,
@@ -2205,6 +2263,50 @@ pub fn plan_hepta_kernel_telegram_drain_once_api_result(
                 ),
             }
         }
+    }
+}
+
+pub fn build_hepta_kernel_telegram_drain_once_status(
+    input: HeptaKernelTelegramDrainOnceStatusInput,
+) -> HeptaKernelTelegramDrainOnceStatus {
+    let model_turn_started = input.model_execution.session_runner_invoked;
+    let send_started = input.send_execution.send_attempted;
+    let cursor_written = input.send_execution.cursor_written;
+    let external_network_write = input.send_execution.external_network_write;
+    let external_send = input.send_execution.external_send;
+
+    HeptaKernelTelegramDrainOnceStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: input.requested,
+        status: input.status,
+        gates: input.gates,
+        config: input.config,
+        execution_plan: input.execution_plan,
+        cursor_plan: input.cursor_plan,
+        inspection: input.inspection,
+        model_turn_plan: input.model_turn_plan,
+        invocation_request: input.invocation_request,
+        model_execution: input.model_execution,
+        send_plan: input.send_plan,
+        send_request: input.send_request,
+        send_execution: input.send_execution,
+        bot_api_ok: input.bot_api_ok,
+        local_next_update_offset: input.local_next_update_offset,
+        get_updates_offset: input.get_updates_offset,
+        live_read_started: input.live_read_started,
+        model_turn_started,
+        send_started,
+        cursor_written,
+        external_network_read: input.external_network_read,
+        external_network_write,
+        external_send,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        raw_token_exposed: false,
+        error: input.error,
+        next_migration_slice: "continue live production soak with bounded retries, typing keepalive, fallback, and send throttling",
     }
 }
 
@@ -5855,6 +5957,62 @@ mod tests {
         assert_eq!(conflict.status, "busy");
         assert!(!conflict.should_execute_pipeline);
         assert!(!conflict.invocation_request.candidate_present);
+    }
+
+    #[test]
+    fn kernel_telegram_drain_once_status_summarizes_pipeline_without_payload_leaks() {
+        let gates = telegram_kernel_gates(true, true, true, true);
+        let plan = plan_hepta_kernel_telegram_drain_once_preflight(
+            HeptaKernelTelegramDrainOncePreflightInput {
+                requested: true,
+                gates: &gates,
+            },
+        );
+        let mut model_execution = plan.model_execution.clone();
+        model_execution.session_runner_invoked = true;
+        let mut send_execution = plan.send_execution.clone();
+        send_execution.send_attempted = true;
+        send_execution.cursor_written = true;
+        send_execution.external_network_write = true;
+        send_execution.external_send = true;
+
+        let status = build_hepta_kernel_telegram_drain_once_status(
+            HeptaKernelTelegramDrainOnceStatusInput {
+                requested: true,
+                status: "drained",
+                gates,
+                config: ready_telegram_config(),
+                execution_plan: plan.execution_plan,
+                cursor_plan: plan.cursor_plan,
+                inspection: plan.inspection,
+                model_turn_plan: plan.model_turn_plan,
+                invocation_request: plan.invocation_request,
+                model_execution,
+                send_plan: plan.send_plan,
+                send_request: plan.send_request,
+                send_execution,
+                bot_api_ok: Some(true),
+                local_next_update_offset: Some(48),
+                get_updates_offset: Some(47),
+                live_read_started: true,
+                external_network_read: true,
+                error: None,
+            },
+        );
+
+        assert_eq!(status.status, "drained");
+        assert!(status.model_turn_started);
+        assert!(status.send_started);
+        assert!(status.cursor_written);
+        assert!(status.external_network_read);
+        assert!(status.external_network_write);
+        assert!(status.external_send);
+        assert_eq!(status.bot_api_ok, Some(true));
+        assert_eq!(status.local_next_update_offset, Some(48));
+        assert!(!status.raw_update_payload_exposed);
+        assert!(!status.raw_prompt_text_exposed);
+        assert!(!status.raw_response_text_exposed);
+        assert!(!status.raw_token_exposed);
     }
 
     #[test]

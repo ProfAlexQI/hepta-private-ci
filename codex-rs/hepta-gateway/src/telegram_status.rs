@@ -1,19 +1,13 @@
 use serde::Serialize;
 use std::time::SystemTime;
 
-use crate::telegram_config::NativeTelegramConfigStatus;
-use crate::telegram_cursor::{NativeTelegramCursorPlan, NativeTelegramCursorStatus};
+use crate::telegram_cursor::NativeTelegramCursorStatus;
 use crate::telegram_delivery::NativeTelegramDeliveryLedgerStatus;
-use crate::telegram_policy::{
-    NativeTelegramExecutionPlan, NativeTelegramGatewayGateSummary, NativeTelegramIngressInspection,
-    NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,
-    NativeTelegramModelTurnPlan, NativeTelegramSendExecutionReport, NativeTelegramSendRequestPlan,
-};
-use crate::telegram_transport::{NativeTelegramSendPlan, telegram_redact_token_like_text};
+use crate::telegram_transport::telegram_redact_token_like_text;
 use hepta_runtime::{
-    build_native_telegram_model_bridge_status, build_native_telegram_model_turn_plan_status,
-    build_native_telegram_plugin_status, build_native_telegram_poll_loop_status,
-    build_native_telegram_production_guard_status,
+    build_native_telegram_drain_once_status, build_native_telegram_model_bridge_status,
+    build_native_telegram_model_turn_plan_status, build_native_telegram_plugin_status,
+    build_native_telegram_poll_loop_status, build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,
     build_native_telegram_receive_once_error_status, build_native_telegram_receive_once_status,
     build_native_telegram_receive_once_status_from_api_result,
@@ -38,6 +32,7 @@ pub use hepta_runtime::{
     NativeTelegramDrainOnceApiResultInput, NativeTelegramDrainOnceApiResultPlan,
     NativeTelegramDrainOncePreflightInput, NativeTelegramDrainOncePreflightPlan,
     NativeTelegramDrainOnceShellReadinessInput, NativeTelegramDrainOnceShellReadinessPlan,
+    NativeTelegramDrainOnceStatus, NativeTelegramDrainOnceStatusInput,
     NativeTelegramReceiveOnceApiResultInput, NativeTelegramReceiveOnceErrorInput,
     NativeTelegramReceiveOncePreflightInput, NativeTelegramReceiveOnceShellReadinessInput,
     NativeTelegramReceiveOnceShellReadinessPlan, NativeTelegramReceiveOnceStatus,
@@ -122,41 +117,6 @@ pub fn build_telegram_receive_once_status_from_api_result(
     input: NativeTelegramReceiveOnceApiResultInput<'_>,
 ) -> NativeTelegramReceiveOnceStatus {
     build_native_telegram_receive_once_status_from_api_result(input)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramDrainOnceStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub gates: NativeTelegramGatewayGateSummary,
-    pub config: NativeTelegramConfigStatus,
-    pub execution_plan: NativeTelegramExecutionPlan,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub inspection: NativeTelegramIngressInspection,
-    pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub invocation_request: NativeTelegramModelInvocationRequestPlan,
-    pub model_execution: NativeTelegramModelExecutionReport,
-    pub send_plan: NativeTelegramSendPlan,
-    pub send_request: NativeTelegramSendRequestPlan,
-    pub send_execution: NativeTelegramSendExecutionReport,
-    pub bot_api_ok: Option<bool>,
-    pub local_next_update_offset: Option<i64>,
-    pub get_updates_offset: Option<i64>,
-    pub live_read_started: bool,
-    pub model_turn_started: bool,
-    pub send_started: bool,
-    pub cursor_written: bool,
-    pub external_network_read: bool,
-    pub external_network_write: bool,
-    pub external_send: bool,
-    pub raw_update_payload_exposed: bool,
-    pub raw_prompt_text_exposed: bool,
-    pub raw_response_text_exposed: bool,
-    pub raw_token_exposed: bool,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -388,29 +348,6 @@ pub fn build_telegram_send_plan_status(
     build_native_telegram_send_plan_status(input)
 }
 
-#[derive(Debug, Clone)]
-pub struct NativeTelegramDrainOnceStatusInput {
-    pub requested: bool,
-    pub status: &'static str,
-    pub gates: NativeTelegramGatewayGateSummary,
-    pub config: NativeTelegramConfigStatus,
-    pub execution_plan: NativeTelegramExecutionPlan,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub inspection: NativeTelegramIngressInspection,
-    pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub invocation_request: NativeTelegramModelInvocationRequestPlan,
-    pub model_execution: NativeTelegramModelExecutionReport,
-    pub send_plan: NativeTelegramSendPlan,
-    pub send_request: NativeTelegramSendRequestPlan,
-    pub send_execution: NativeTelegramSendExecutionReport,
-    pub bot_api_ok: Option<bool>,
-    pub local_next_update_offset: Option<i64>,
-    pub get_updates_offset: Option<i64>,
-    pub live_read_started: bool,
-    pub external_network_read: bool,
-    pub error: Option<String>,
-}
-
 pub fn plan_telegram_drain_once_preflight(
     input: NativeTelegramDrainOncePreflightInput<'_>,
 ) -> NativeTelegramDrainOncePreflightPlan {
@@ -432,45 +369,7 @@ pub fn plan_telegram_drain_once_api_result(
 pub fn build_telegram_drain_once_status(
     input: NativeTelegramDrainOnceStatusInput,
 ) -> NativeTelegramDrainOnceStatus {
-    let model_turn_started = input.model_execution.session_runner_invoked;
-    let send_started = input.send_execution.send_attempted;
-    let cursor_written = input.send_execution.cursor_written;
-    let external_network_write = input.send_execution.external_network_write;
-    let external_send = input.send_execution.external_send;
-
-    NativeTelegramDrainOnceStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: input.requested,
-        status: input.status,
-        gates: input.gates,
-        config: input.config,
-        execution_plan: input.execution_plan,
-        cursor_plan: input.cursor_plan,
-        inspection: input.inspection,
-        model_turn_plan: input.model_turn_plan,
-        invocation_request: input.invocation_request,
-        model_execution: input.model_execution,
-        send_plan: input.send_plan,
-        send_request: input.send_request,
-        send_execution: input.send_execution,
-        bot_api_ok: input.bot_api_ok,
-        local_next_update_offset: input.local_next_update_offset,
-        get_updates_offset: input.get_updates_offset,
-        live_read_started: input.live_read_started,
-        model_turn_started,
-        send_started,
-        cursor_written,
-        external_network_read: input.external_network_read,
-        external_network_write,
-        external_send,
-        raw_update_payload_exposed: false,
-        raw_prompt_text_exposed: false,
-        raw_response_text_exposed: false,
-        raw_token_exposed: false,
-        error: input.error,
-        next_migration_slice: "continue live production soak with bounded retries, typing keepalive, fallback, and send throttling",
-    }
+    build_native_telegram_drain_once_status(input)
 }
 
 pub fn build_telegram_poll_loop_status(
@@ -735,7 +634,13 @@ pub fn build_telegram_production_readiness_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hepta_runtime::{NativeTelegramModelRunnerPlan, NativeTelegramTransportPlan};
+    use hepta_runtime::{
+        NativeTelegramConfigStatus, NativeTelegramCursorPlan, NativeTelegramGatewayGateSummary,
+        NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,
+        NativeTelegramModelRunnerPlan, NativeTelegramModelTurnPlan,
+        NativeTelegramSendExecutionReport, NativeTelegramSendPlan, NativeTelegramSendRequestPlan,
+        NativeTelegramTransportPlan,
+    };
     use std::time::Duration;
 
     const LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
