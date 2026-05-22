@@ -14,7 +14,8 @@ pub use hepta_runtime::{
     NativePostAuditEventContract, NativePostBodyAdmission, NativePostBodySchema,
     NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
-    NativePostExecutionStoreRecord, NativePostGrayReleaseEvidenceResponse,
+    NativePostExecutionStoreFileStatus, NativePostExecutionStoreRecord,
+    NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
     NativePostIdempotencyEvidence, NativePostPlanRouteSpec, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceScan, NativePostSelectedHandlerRolloutEvidence,
@@ -166,83 +167,6 @@ pub struct NativePostExecutionStoreLimits {
     pub max_store_bytes: u64,
     pub max_store_lines: u64,
     pub rate_limit_window_ms: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostExecutionStoresResponse {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub status: &'static str,
-    pub endpoint: &'static str,
-    pub source_command: &'static str,
-    pub native_route: bool,
-    pub compatibility_mode: &'static str,
-    pub side_effect_free: bool,
-    pub store_root_env: &'static str,
-    pub store_root: String,
-    pub root_exists: bool,
-    pub root_is_dir: bool,
-    pub store_file_count: usize,
-    pub existing_file_count: usize,
-    pub max_store_bytes_env: &'static str,
-    pub max_store_bytes: u64,
-    pub max_store_lines_env: &'static str,
-    pub max_store_lines: u64,
-    pub total_bytes: u64,
-    pub store_jsonl_valid: bool,
-    pub store_capacity_ok: bool,
-    pub total_line_count: u64,
-    pub valid_json_line_count: u64,
-    pub invalid_json_line_count: u64,
-    pub stores: Vec<NativePostExecutionStoreFileStatus>,
-    pub persistence_implementation_ready: bool,
-    pub idempotency_store_ready: bool,
-    pub audit_store_ready: bool,
-    pub rollback_store_ready: bool,
-    pub rate_limit_store_ready: bool,
-    pub status_probe_creates_directory: bool,
-    pub status_probe_writes_files: bool,
-    pub current_plan_executes_real_handler: bool,
-    pub raw_request_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
-    pub raw_audit_payload_exposed: bool,
-    pub action_dispatched: bool,
-    pub command_executed: bool,
-    pub approval_applied: bool,
-    pub task_published: bool,
-    pub chat_mutated: bool,
-    pub external_side_effects: bool,
-    pub gateway_mutation_performed: bool,
-    pub telegram_read_performed: bool,
-    pub model_invoked: bool,
-    pub message_sent: bool,
-    pub cursor_written: bool,
-    pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostExecutionStoreFileStatus {
-    pub store_kind: &'static str,
-    pub schema_id: &'static str,
-    pub filename: &'static str,
-    pub path: String,
-    pub exists: bool,
-    pub bytes: u64,
-    pub max_bytes: u64,
-    pub bytes_within_limit: bool,
-    pub append_only: bool,
-    pub jsonl: bool,
-    pub jsonl_readable: bool,
-    pub jsonl_valid: bool,
-    pub line_count: u64,
-    pub max_lines: u64,
-    pub line_count_within_limit: bool,
-    pub valid_json_line_count: u64,
-    pub invalid_json_line_count: u64,
-    pub raw_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -490,78 +414,14 @@ pub fn native_post_execution_stores_report(
         native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
     let root_exists = root.exists();
     let root_is_dir = root.is_dir();
-    let existing_file_count = store_files.iter().filter(|file| file.exists).count();
-    let total_bytes = store_files.iter().map(|file| file.bytes).sum::<u64>();
-    let total_line_count = store_files.iter().map(|file| file.line_count).sum::<u64>();
-    let valid_json_line_count = store_files
-        .iter()
-        .map(|file| file.valid_json_line_count)
-        .sum::<u64>();
-    let invalid_json_line_count = store_files
-        .iter()
-        .map(|file| file.invalid_json_line_count)
-        .sum::<u64>();
-    let store_jsonl_valid = store_files
-        .iter()
-        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
-    let store_capacity_ok = store_files
-        .iter()
-        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
-    NativePostExecutionStoresResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if store_jsonl_valid && store_capacity_ok {
-            "ready"
-        } else {
-            "attention"
-        },
-        endpoint: NATIVE_POST_EXECUTION_STORES_ENDPOINT,
-        source_command: "/native-post-execution-stores --json",
-        native_route: true,
-        compatibility_mode: "native_post_execution_stores",
-        side_effect_free: true,
-        store_root_env: NATIVE_POST_EXECUTION_STORE_DIR_ENV,
-        store_root: root.display().to_string(),
+    hepta_runtime::native_post_execution_stores_report(
+        root.display().to_string(),
         root_exists,
         root_is_dir,
-        store_file_count: store_files.len(),
-        existing_file_count,
-        max_store_bytes_env: NATIVE_POST_STORE_MAX_BYTES_ENV,
         max_store_bytes,
-        max_store_lines_env: NATIVE_POST_STORE_MAX_LINES_ENV,
         max_store_lines,
-        total_bytes,
-        store_jsonl_valid,
-        store_capacity_ok,
-        total_line_count,
-        valid_json_line_count,
-        invalid_json_line_count,
-        stores: store_files,
-        persistence_implementation_ready: true,
-        idempotency_store_ready: true,
-        audit_store_ready: true,
-        rollback_store_ready: true,
-        rate_limit_store_ready: true,
-        status_probe_creates_directory: false,
-        status_probe_writes_files: false,
-        current_plan_executes_real_handler: false,
-        raw_request_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-        action_dispatched: false,
-        command_executed: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        next_migration_slice: "wire a first low-risk real handler only after these stores are called under HEPTA_NATIVE_POST_REAL_HANDLERS with operator approval",
-    }
+        store_files,
+    )
 }
 
 pub fn native_post_activation_plan_report(

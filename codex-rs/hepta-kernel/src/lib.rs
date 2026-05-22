@@ -78,12 +78,16 @@ pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str =
     "/api/native-post-execution-readiness";
 pub const HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT: &str =
     "/api/native-post-activation-plan";
+pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORES_ENDPOINT: &str =
+    "/api/native-post-execution-stores";
 pub const HEPTA_KERNEL_NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT: &str =
     "/api/native-post-rollout-evidence";
 pub const HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT: &str =
     "/api/native-post-gray-release-evidence";
 pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str =
     "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
+pub const HEPTA_KERNEL_NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
+pub const HEPTA_KERNEL_NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HeptaKernelNativePostPlanRouteSpec {
@@ -374,6 +378,83 @@ pub struct HeptaKernelNativePostExecutionStoreRecord {
     pub raw_field_values_exposed: bool,
     pub raw_idempotency_key_exposed: bool,
     pub raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionStoreFileStatus {
+    pub store_kind: &'static str,
+    pub schema_id: &'static str,
+    pub filename: &'static str,
+    pub path: String,
+    pub exists: bool,
+    pub bytes: u64,
+    pub max_bytes: u64,
+    pub bytes_within_limit: bool,
+    pub append_only: bool,
+    pub jsonl: bool,
+    pub jsonl_readable: bool,
+    pub jsonl_valid: bool,
+    pub line_count: u64,
+    pub max_lines: u64,
+    pub line_count_within_limit: bool,
+    pub valid_json_line_count: u64,
+    pub invalid_json_line_count: u64,
+    pub raw_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionStoresResponse {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub endpoint: &'static str,
+    pub source_command: &'static str,
+    pub native_route: bool,
+    pub compatibility_mode: &'static str,
+    pub side_effect_free: bool,
+    pub store_root_env: &'static str,
+    pub store_root: String,
+    pub root_exists: bool,
+    pub root_is_dir: bool,
+    pub store_file_count: usize,
+    pub existing_file_count: usize,
+    pub max_store_bytes_env: &'static str,
+    pub max_store_bytes: u64,
+    pub max_store_lines_env: &'static str,
+    pub max_store_lines: u64,
+    pub total_bytes: u64,
+    pub store_jsonl_valid: bool,
+    pub store_capacity_ok: bool,
+    pub total_line_count: u64,
+    pub valid_json_line_count: u64,
+    pub invalid_json_line_count: u64,
+    pub stores: Vec<HeptaKernelNativePostExecutionStoreFileStatus>,
+    pub persistence_implementation_ready: bool,
+    pub idempotency_store_ready: bool,
+    pub audit_store_ready: bool,
+    pub rollback_store_ready: bool,
+    pub rate_limit_store_ready: bool,
+    pub status_probe_creates_directory: bool,
+    pub status_probe_writes_files: bool,
+    pub current_plan_executes_real_handler: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+    pub action_dispatched: bool,
+    pub command_executed: bool,
+    pub approval_applied: bool,
+    pub task_published: bool,
+    pub chat_mutated: bool,
+    pub external_side_effects: bool,
+    pub gateway_mutation_performed: bool,
+    pub telegram_read_performed: bool,
+    pub model_invoked: bool,
+    pub message_sent: bool,
+    pub cursor_written: bool,
+    pub next_migration_slice: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1365,6 +1446,89 @@ pub fn hepta_kernel_native_post_execution_store_record(
         raw_field_values_exposed: false,
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
+    }
+}
+
+pub fn hepta_kernel_native_post_execution_stores_report(
+    store_root: String,
+    root_exists: bool,
+    root_is_dir: bool,
+    max_store_bytes: u64,
+    max_store_lines: u64,
+    stores: Vec<HeptaKernelNativePostExecutionStoreFileStatus>,
+) -> HeptaKernelNativePostExecutionStoresResponse {
+    let existing_file_count = stores.iter().filter(|file| file.exists).count();
+    let total_bytes = stores.iter().map(|file| file.bytes).sum::<u64>();
+    let total_line_count = stores.iter().map(|file| file.line_count).sum::<u64>();
+    let valid_json_line_count = stores
+        .iter()
+        .map(|file| file.valid_json_line_count)
+        .sum::<u64>();
+    let invalid_json_line_count = stores
+        .iter()
+        .map(|file| file.invalid_json_line_count)
+        .sum::<u64>();
+    let store_jsonl_valid = stores
+        .iter()
+        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
+    let store_capacity_ok = stores
+        .iter()
+        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
+
+    HeptaKernelNativePostExecutionStoresResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if store_jsonl_valid && store_capacity_ok {
+            "ready"
+        } else {
+            "attention"
+        },
+        endpoint: HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORES_ENDPOINT,
+        source_command: "/native-post-execution-stores --json",
+        native_route: true,
+        compatibility_mode: "native_post_execution_stores",
+        side_effect_free: true,
+        store_root_env: HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR_ENV,
+        store_root,
+        root_exists,
+        root_is_dir,
+        store_file_count: stores.len(),
+        existing_file_count,
+        max_store_bytes_env: HEPTA_KERNEL_NATIVE_POST_STORE_MAX_BYTES_ENV,
+        max_store_bytes,
+        max_store_lines_env: HEPTA_KERNEL_NATIVE_POST_STORE_MAX_LINES_ENV,
+        max_store_lines,
+        total_bytes,
+        store_jsonl_valid,
+        store_capacity_ok,
+        total_line_count,
+        valid_json_line_count,
+        invalid_json_line_count,
+        stores,
+        persistence_implementation_ready: true,
+        idempotency_store_ready: true,
+        audit_store_ready: true,
+        rollback_store_ready: true,
+        rate_limit_store_ready: true,
+        status_probe_creates_directory: false,
+        status_probe_writes_files: false,
+        current_plan_executes_real_handler: false,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+        action_dispatched: false,
+        command_executed: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "wire a first low-risk real handler only after these stores are called under HEPTA_NATIVE_POST_REAL_HANDLERS with operator approval",
     }
 }
 
@@ -7450,6 +7614,78 @@ mod tests {
         assert!(record.current_plan_executes_real_handler);
         assert!(!record.raw_request_body_exposed);
         assert!(!record.raw_idempotency_key_exposed);
+    }
+
+    #[test]
+    fn kernel_native_post_execution_stores_report_summarizes_file_statuses() {
+        let stores = vec![
+            HeptaKernelNativePostExecutionStoreFileStatus {
+                store_kind: "idempotency",
+                schema_id: "hepta.post.idempotency_entry.v1",
+                filename: "idempotency.jsonl",
+                path: ".hepta/native-post-execution/idempotency.jsonl".to_string(),
+                exists: true,
+                bytes: 10,
+                max_bytes: 100,
+                bytes_within_limit: true,
+                append_only: true,
+                jsonl: true,
+                jsonl_readable: true,
+                jsonl_valid: true,
+                line_count: 1,
+                max_lines: 10,
+                line_count_within_limit: true,
+                valid_json_line_count: 1,
+                invalid_json_line_count: 0,
+                raw_body_exposed: false,
+                raw_field_values_exposed: false,
+                raw_idempotency_key_exposed: false,
+            },
+            HeptaKernelNativePostExecutionStoreFileStatus {
+                store_kind: "rollback",
+                schema_id: "hepta.post.rollback_anchor.v1",
+                filename: "rollback.jsonl",
+                path: ".hepta/native-post-execution/rollback.jsonl".to_string(),
+                exists: true,
+                bytes: 12,
+                max_bytes: 100,
+                bytes_within_limit: true,
+                append_only: true,
+                jsonl: true,
+                jsonl_readable: true,
+                jsonl_valid: true,
+                line_count: 2,
+                max_lines: 10,
+                line_count_within_limit: true,
+                valid_json_line_count: 2,
+                invalid_json_line_count: 0,
+                raw_body_exposed: false,
+                raw_field_values_exposed: false,
+                raw_idempotency_key_exposed: false,
+            },
+        ];
+
+        let report = hepta_kernel_native_post_execution_stores_report(
+            ".hepta/native-post-execution".to_string(),
+            true,
+            true,
+            100,
+            10,
+            stores,
+        );
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.endpoint,
+            HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORES_ENDPOINT
+        );
+        assert_eq!(report.store_file_count, 2);
+        assert_eq!(report.existing_file_count, 2);
+        assert_eq!(report.total_bytes, 22);
+        assert_eq!(report.total_line_count, 3);
+        assert!(report.store_jsonl_valid);
+        assert!(report.store_capacity_ok);
+        assert!(!report.raw_request_body_exposed);
     }
 
     #[test]

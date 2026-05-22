@@ -108,6 +108,7 @@ pub use hepta_contracts::HeptaRuntimeContractInventory;
 pub use hepta_kernel::{
     HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT as NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
     HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT as NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
+    HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORES_ENDPOINT as NATIVE_POST_EXECUTION_STORES_ENDPOINT,
     HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT as NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
     HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES as NATIVE_POST_MAX_BODY_BYTES,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV as NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
@@ -124,7 +125,9 @@ pub use hepta_kernel::{
     HeptaKernelNativePostExecutionAdmission as NativePostExecutionAdmission,
     HeptaKernelNativePostExecutionReadinessResponse as NativePostExecutionReadinessResponse,
     HeptaKernelNativePostExecutionReadinessRoute as NativePostExecutionReadinessRoute,
+    HeptaKernelNativePostExecutionStoreFileStatus as NativePostExecutionStoreFileStatus,
     HeptaKernelNativePostExecutionStoreRecord as NativePostExecutionStoreRecord,
+    HeptaKernelNativePostExecutionStoresResponse as NativePostExecutionStoresResponse,
     HeptaKernelNativePostGrayReleaseEvidenceResponse as NativePostGrayReleaseEvidenceResponse,
     HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
@@ -293,6 +296,24 @@ pub fn native_post_execution_store_record(
         audit_event_contract,
         current_plan_executes_real_handler,
         recorded_at_unix_ms,
+    )
+}
+
+pub fn native_post_execution_stores_report(
+    store_root: String,
+    root_exists: bool,
+    root_is_dir: bool,
+    max_store_bytes: u64,
+    max_store_lines: u64,
+    stores: Vec<NativePostExecutionStoreFileStatus>,
+) -> NativePostExecutionStoresResponse {
+    hepta_kernel::hepta_kernel_native_post_execution_stores_report(
+        store_root,
+        root_exists,
+        root_is_dir,
+        max_store_bytes,
+        max_store_lines,
+        stores,
     )
 }
 
