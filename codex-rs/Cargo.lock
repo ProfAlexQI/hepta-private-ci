@@ -7156,7 +7156,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
 ]
 
@@ -7178,6 +7177,7 @@ dependencies = [
  "hepta-plugins",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

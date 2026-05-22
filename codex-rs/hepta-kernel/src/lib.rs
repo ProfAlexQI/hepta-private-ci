@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -64,6 +65,7 @@ pub const DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 1;
 pub const MAX_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 5;
 pub const DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 700;
 pub const MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 30_000;
+pub const HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
     &["approval_apply", "task_publish", "chat_send"];
 
@@ -88,6 +90,33 @@ pub struct HeptaKernelNativePostBodySchema {
     pub required_fields: Vec<&'static str>,
     pub optional_fields: Vec<&'static str>,
     pub body_read_during_plan: bool,
+    pub raw_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostBodyAdmission {
+    pub admission_status: &'static str,
+    pub body_received: bool,
+    pub request_body_read: bool,
+    pub request_body_redacted: bool,
+    pub body_size_bytes: usize,
+    pub max_body_bytes: usize,
+    pub body_size_within_limit: bool,
+    pub json_parse_attempted: bool,
+    pub json_parse_ok: Option<bool>,
+    pub json_object_present: bool,
+    pub required_fields_present: bool,
+    pub missing_required_fields: Vec<&'static str>,
+    pub optional_field_count_present: usize,
+    pub confirm_field_present: bool,
+    pub confirm_field_truthy: bool,
+    pub dry_run_field_present: bool,
+    pub dry_run_first_satisfied: bool,
+    pub idempotency_key_required: bool,
+    pub idempotency_key_present: bool,
+    pub idempotency_key_fingerprint: Option<String>,
+    pub ready_for_real_handler_input: bool,
     pub raw_body_exposed: bool,
     pub raw_field_values_exposed: bool,
 }
@@ -347,6 +376,148 @@ pub fn hepta_kernel_native_post_body_schema(
         body_read_during_plan,
         raw_body_exposed: false,
         raw_field_values_exposed: false,
+    }
+}
+
+pub fn hepta_kernel_native_post_body_admission(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    schema: &HeptaKernelNativePostBodySchema,
+    request_body: Option<&str>,
+) -> HeptaKernelNativePostBodyAdmission {
+    let body_received = request_body
+        .map(str::trim)
+        .map(|body| !body.is_empty())
+        .unwrap_or(false);
+    let request_body_read = request_body.is_some();
+    let body_size_bytes = request_body.map(str::len).unwrap_or(0);
+    let body_size_within_limit = body_size_bytes <= HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES;
+    let json_parse_attempted = body_received && body_size_within_limit;
+    let parsed_body = if json_parse_attempted {
+        request_body.and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
+    } else {
+        None
+    };
+    let json_parse_ok = json_parse_attempted.then_some(parsed_body.is_some());
+    let object = parsed_body.as_ref().and_then(serde_json::Value::as_object);
+    let json_object_present = object.is_some();
+    let missing_required_fields = if schema.body_required_for_real_handler || body_received {
+        schema
+            .required_fields
+            .iter()
+            .copied()
+            .filter(|field| {
+                object
+                    .map(|object| !object.contains_key(*field))
+                    .unwrap_or(true)
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let required_fields_present = missing_required_fields.is_empty();
+    let optional_field_count_present = object
+        .map(|object| {
+            schema
+                .optional_fields
+                .iter()
+                .filter(|field| object.contains_key(**field))
+                .count()
+        })
+        .unwrap_or(0);
+    let confirm_field = object.and_then(|object| object.get("confirm"));
+    let confirm_field_present = confirm_field.is_some();
+    let confirm_field_truthy = hepta_kernel_native_post_json_field_truthy(confirm_field);
+    let dry_run_field = object.and_then(|object| object.get("dry_run"));
+    let dry_run_field_present = dry_run_field.is_some();
+    let dry_run_first_satisfied = !spec.confirmation_required_for_real_mutation
+        || hepta_kernel_native_post_json_field_truthy(dry_run_field);
+    let idempotency_key_required = spec.confirmation_required_for_real_mutation;
+    let idempotency_key_value = object
+        .and_then(|object| object.get("idempotency_key"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let idempotency_key_present = idempotency_key_value.is_some();
+    let idempotency_key_fingerprint =
+        idempotency_key_value.map(hepta_kernel_native_post_redacted_fingerprint);
+
+    let admission_status = if !body_received && schema.body_required_for_real_handler {
+        "missing_body"
+    } else if !body_size_within_limit {
+        "body_too_large"
+    } else if json_parse_attempted && json_parse_ok != Some(true) {
+        "invalid_json"
+    } else if body_received && !json_object_present {
+        "body_not_json_object"
+    } else if !required_fields_present {
+        "missing_required_fields"
+    } else if spec.confirmation_required_for_real_mutation && !confirm_field_truthy {
+        "confirmation_missing"
+    } else if idempotency_key_required && !idempotency_key_present {
+        "idempotency_key_missing"
+    } else if spec.confirmation_required_for_real_mutation && !dry_run_first_satisfied {
+        "dry_run_first_required"
+    } else if spec.confirmation_required_for_real_mutation {
+        "ready_for_real_handler"
+    } else if body_received {
+        "validated_plan_input"
+    } else {
+        "not_required"
+    };
+    let ready_for_real_handler_input = admission_status == "ready_for_real_handler";
+
+    HeptaKernelNativePostBodyAdmission {
+        admission_status,
+        body_received,
+        request_body_read,
+        request_body_redacted: true,
+        body_size_bytes,
+        max_body_bytes: HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES,
+        body_size_within_limit,
+        json_parse_attempted,
+        json_parse_ok,
+        json_object_present,
+        required_fields_present,
+        missing_required_fields,
+        optional_field_count_present,
+        confirm_field_present,
+        confirm_field_truthy,
+        dry_run_field_present,
+        dry_run_first_satisfied,
+        idempotency_key_required,
+        idempotency_key_present,
+        idempotency_key_fingerprint,
+        ready_for_real_handler_input,
+        raw_body_exposed: false,
+        raw_field_values_exposed: false,
+    }
+}
+
+pub fn hepta_kernel_native_post_redacted_fingerprint(value: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"hepta-native-post-idempotency-v1:");
+    hasher.update(value.as_bytes());
+    let digest = hasher.finalize();
+    let mut encoded = String::with_capacity("sha256:".len() + digest.len() * 2);
+    encoded.push_str("sha256:");
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+fn hepta_kernel_native_post_json_field_truthy(value: Option<&serde_json::Value>) -> bool {
+    match value {
+        Some(serde_json::Value::Bool(true)) => true,
+        Some(serde_json::Value::String(value)) => {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        }
+        Some(serde_json::Value::Number(value)) => value.as_i64() == Some(1),
+        _ => false,
     }
 }
 
@@ -5748,6 +5919,54 @@ mod tests {
         assert_eq!(unknown.schema_id, "hepta.post.unknown.v1");
         assert!(!unknown.body_required_for_real_handler);
         assert_eq!(unknown.optional_fields, vec!["dry_run"]);
+    }
+
+    #[test]
+    fn kernel_native_post_body_admission_redacts_and_gates_real_handler_input() {
+        let task_publish = hepta_kernel_native_post_plan_route_specs()
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let schema = hepta_kernel_native_post_body_schema(task_publish.plan_kind, true);
+        let admission = hepta_kernel_native_post_body_admission(
+            task_publish,
+            &schema,
+            Some(r#"{"task":"ship","confirm":"yes","dry_run":true,"idempotency_key":"same-key"}"#),
+        );
+
+        assert_eq!(admission.admission_status, "ready_for_real_handler");
+        assert!(admission.ready_for_real_handler_input);
+        assert!(admission.confirm_field_truthy);
+        assert!(admission.dry_run_first_satisfied);
+        assert!(admission.idempotency_key_present);
+        assert!(
+            admission
+                .idempotency_key_fingerprint
+                .as_deref()
+                .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
+        );
+        assert!(!admission.raw_body_exposed);
+        assert!(!admission.raw_field_values_exposed);
+
+        let missing_key = hepta_kernel_native_post_body_admission(
+            task_publish,
+            &schema,
+            Some(r#"{"task":"ship","confirm":true,"dry_run":true}"#),
+        );
+        assert_eq!(missing_key.admission_status, "idempotency_key_missing");
+
+        let plan_only = hepta_kernel_native_post_plan_route_specs()
+            .iter()
+            .find(|spec| spec.plan_kind == "readonly_command")
+            .expect("readonly command spec");
+        let plan_schema = hepta_kernel_native_post_body_schema(plan_only.plan_kind, true);
+        let plan_admission = hepta_kernel_native_post_body_admission(
+            plan_only,
+            &plan_schema,
+            Some(r#"{"command_args":["status"]}"#),
+        );
+        assert_eq!(plan_admission.admission_status, "validated_plan_input");
+        assert!(!plan_admission.idempotency_key_required);
     }
 
     #[test]

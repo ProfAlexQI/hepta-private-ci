@@ -106,7 +106,9 @@ use events::EventState;
 pub use events::{EventQueryReport, EventRecord};
 pub use hepta_contracts::HeptaRuntimeContractInventory;
 pub use hepta_kernel::{
+    HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES as NATIVE_POST_MAX_BODY_BYTES,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS as NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
+    HeptaKernelNativePostBodyAdmission as NativePostBodyAdmission,
     HeptaKernelNativePostBodySchema as NativePostBodySchema,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
 };
@@ -144,6 +146,18 @@ pub fn native_post_body_schema(
     body_read_during_plan: bool,
 ) -> NativePostBodySchema {
     hepta_kernel::hepta_kernel_native_post_body_schema(plan_kind, body_read_during_plan)
+}
+
+pub fn native_post_body_admission(
+    spec: &NativePostPlanRouteSpec,
+    schema: &NativePostBodySchema,
+    request_body: Option<&str>,
+) -> NativePostBodyAdmission {
+    hepta_kernel::hepta_kernel_native_post_body_admission(spec, schema, request_body)
+}
+
+pub fn native_post_redacted_fingerprint(value: &str) -> String {
+    hepta_kernel::hepta_kernel_native_post_redacted_fingerprint(value)
 }
 pub use memory_context::{
     DEFAULT_MEMORY_CONTEXT_LEDGER_ID, DEFAULT_MEMORY_CONTEXT_LEDGER_PATH, MemoryCitation,
