@@ -436,6 +436,38 @@ pub struct HeptaKernelTelegramSendExecutionReport {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramSendPlanStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub send_gate_env: &'static str,
+    pub send_gate_enabled: bool,
+    pub bot_api_send_ready: bool,
+    pub external_network_write: bool,
+    pub external_send: bool,
+    pub cursor_written: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+    pub raw_token_exposed: bool,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub transport_plan: HeptaKernelTelegramTransportPlan,
+    pub send_plan: HeptaKernelTelegramSendPlan,
+    pub send_request: HeptaKernelTelegramSendRequestPlan,
+    pub error: Option<String>,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramSendPlanStatusInput {
+    pub requested: bool,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub send_gate_env: &'static str,
+    pub send_gate_enabled: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeptaKernelTelegramDrainPipelineOutcome {
     pub invocation_request: HeptaKernelTelegramModelInvocationRequestPlan,
@@ -2306,6 +2338,75 @@ pub fn build_hepta_kernel_telegram_model_bridge_status(
     }
 }
 
+pub fn build_hepta_kernel_telegram_send_plan_status(
+    input: HeptaKernelTelegramSendPlanStatusInput,
+) -> HeptaKernelTelegramSendPlanStatus {
+    let transport_plan = HeptaKernelTelegramTransportPlan::for_config_state(
+        input.config.enabled,
+        input.config.token_shape_ok,
+        input.config.binding_ready,
+    );
+    let send_plan = if input.requested {
+        HeptaKernelTelegramSendPlan::ready()
+    } else {
+        HeptaKernelTelegramSendPlan::disabled()
+    };
+    let send_request = if input.requested {
+        HeptaKernelTelegramSendRequestPlan::from_model_output(
+            None,
+            false,
+            None,
+            input.send_gate_env,
+            input.send_gate_enabled,
+        )
+    } else {
+        HeptaKernelTelegramSendRequestPlan::disabled(input.send_gate_env, input.send_gate_enabled)
+    };
+    let config_ready = input.requested && input.config.config_ready();
+    let status = if !input.requested {
+        "disabled"
+    } else if !input.send_gate_enabled {
+        "gated"
+    } else if config_ready {
+        "planned"
+    } else {
+        "attention"
+    };
+    let error = if input.requested && !input.send_gate_enabled {
+        Some(format!(
+            "Telegram send is gated; set {}=1 only after model-turn delivery wiring is ready",
+            input.send_gate_env
+        ))
+    } else if input.requested && !config_ready {
+        Some("Telegram config, token shape, or binding is not ready".to_string())
+    } else {
+        None
+    };
+
+    HeptaKernelTelegramSendPlanStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: input.requested,
+        status,
+        send_gate_env: input.send_gate_env,
+        send_gate_enabled: input.send_gate_enabled,
+        bot_api_send_ready: input.requested && input.send_gate_enabled && config_ready,
+        external_network_write: false,
+        external_send: false,
+        cursor_written: false,
+        raw_response_text_exposed: false,
+        raw_chat_id_exposed: false,
+        raw_message_id_exposed: false,
+        raw_token_exposed: false,
+        config: input.config,
+        transport_plan,
+        send_plan,
+        send_request,
+        error,
+        next_migration_slice: "wire sendMessage execution after model output, then commit cursor only after delivery success",
+    }
+}
+
 pub fn hepta_kernel_telegram_update_already_drained(
     update_id: i64,
     next_update_offset: Option<i64>,
@@ -4050,6 +4151,34 @@ mod tests {
                 .unwrap()
                 .contains("HEPTA_NATIVE_TELEGRAM_MODEL_TURN")
         );
+    }
+
+    #[test]
+    fn kernel_send_plan_status_is_gated_and_side_effect_free() {
+        let status =
+            build_hepta_kernel_telegram_send_plan_status(HeptaKernelTelegramSendPlanStatusInput {
+                requested: true,
+                config: ready_telegram_config(),
+                send_gate_env: "HEPTA_NATIVE_TELEGRAM_SEND",
+                send_gate_enabled: false,
+            });
+
+        assert_eq!(status.status, "gated");
+        assert_eq!(status.send_gate_env, "HEPTA_NATIVE_TELEGRAM_SEND");
+        assert!(!status.send_gate_enabled);
+        assert!(!status.bot_api_send_ready);
+        assert!(!status.external_network_write);
+        assert!(!status.external_send);
+        assert!(!status.cursor_written);
+        assert!(!status.raw_response_text_exposed);
+        assert!(!status.raw_chat_id_exposed);
+        assert!(!status.raw_message_id_exposed);
+        assert!(!status.raw_token_exposed);
+        assert!(status.transport_plan.bot_api_transport_plan_ready);
+        assert!(status.send_plan.send_plan_ready);
+        assert!(status.send_request.request_builder_ready);
+        assert!(!status.send_request.send_allowed);
+        assert!(status.error.unwrap().contains("HEPTA_NATIVE_TELEGRAM_SEND"));
     }
 
     #[test]

@@ -41,6 +41,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramReceiveOnceStatusInput, HeptaKernelTelegramReplyTargetMaterial,
     HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
     HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendPlan,
+    HeptaKernelTelegramSendPlanStatus, HeptaKernelTelegramSendPlanStatusInput,
     HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
     HeptaKernelTelegramTokenObservation, HeptaKernelTelegramTokenObservationInput,
     HeptaKernelTelegramTransportPlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
@@ -59,7 +60,7 @@ pub use hepta_kernel::{
     build_hepta_kernel_telegram_receive_once_error_status,
     build_hepta_kernel_telegram_receive_once_status,
     build_hepta_kernel_telegram_receive_once_status_from_api_result,
-    classify_hepta_kernel_telegram_runner_error,
+    build_hepta_kernel_telegram_send_plan_status, classify_hepta_kernel_telegram_runner_error,
     execute_hepta_kernel_telegram_model_turn_after_candidate,
     extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text,
@@ -140,6 +141,8 @@ pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
 pub type NativeTelegramTransportPlan = HeptaKernelTelegramTransportPlan;
 pub type NativeTelegramSendPlan = HeptaKernelTelegramSendPlan;
+pub type NativeTelegramSendPlanStatus = HeptaKernelTelegramSendPlanStatus;
+pub type NativeTelegramSendPlanStatusInput = HeptaKernelTelegramSendPlanStatusInput;
 pub type NativeTelegramReceiveOnceShellReadinessInput<'a> =
     HeptaKernelTelegramReceiveOnceShellReadinessInput<'a>;
 pub type NativeTelegramReceiveOnceShellReadinessPlan =
@@ -433,6 +436,12 @@ pub fn build_native_telegram_model_bridge_status(
     input: NativeTelegramModelBridgeStatusInput<'_>,
 ) -> NativeTelegramModelBridgeStatus {
     build_hepta_kernel_telegram_model_bridge_status(input)
+}
+
+pub fn build_native_telegram_send_plan_status(
+    input: NativeTelegramSendPlanStatusInput,
+) -> NativeTelegramSendPlanStatus {
+    build_hepta_kernel_telegram_send_plan_status(input)
 }
 
 pub fn native_telegram_update_already_drained(

@@ -19,8 +19,9 @@ use hepta_runtime::{
     build_native_telegram_production_guard_status_from_policy,
     build_native_telegram_receive_once_error_status, build_native_telegram_receive_once_status,
     build_native_telegram_receive_once_status_from_api_result,
-    native_telegram_poll_loop_interval_ms_policy, native_telegram_poll_loop_should_spawn,
-    native_telegram_receive_limit_policy, native_telegram_soak_max_attention_count_policy,
+    build_native_telegram_send_plan_status, native_telegram_poll_loop_interval_ms_policy,
+    native_telegram_poll_loop_should_spawn, native_telegram_receive_limit_policy,
+    native_telegram_soak_max_attention_count_policy,
     native_telegram_soak_max_observed_age_ms_policy,
     native_telegram_soak_min_poll_iterations_policy, native_telegram_system_time_unix_ms,
     plan_native_telegram_drain_once_api_result, plan_native_telegram_drain_once_preflight,
@@ -46,6 +47,7 @@ pub use hepta_runtime::{
 };
 
 pub use hepta_runtime::{NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput};
+pub use hepta_runtime::{NativeTelegramSendPlanStatus, NativeTelegramSendPlanStatusInput};
 
 pub use hepta_runtime::{
     DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION, DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
@@ -165,30 +167,6 @@ pub struct NativeTelegramModelTurnPlanStatus {
     pub cursor_plan: NativeTelegramCursorPlan,
     pub inspection: NativeTelegramIngressInspection,
     pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramSendPlanStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub send_gate_env: &'static str,
-    pub send_gate_enabled: bool,
-    pub bot_api_send_ready: bool,
-    pub external_network_write: bool,
-    pub external_send: bool,
-    pub cursor_written: bool,
-    pub raw_response_text_exposed: bool,
-    pub raw_chat_id_exposed: bool,
-    pub raw_message_id_exposed: bool,
-    pub raw_token_exposed: bool,
-    pub config: NativeTelegramConfigStatus,
-    pub transport_plan: NativeTelegramTransportPlan,
-    pub send_plan: NativeTelegramSendPlan,
-    pub send_request: NativeTelegramSendRequestPlan,
     pub error: Option<String>,
     pub next_migration_slice: &'static str,
 }
@@ -593,81 +571,10 @@ pub fn build_telegram_model_bridge_status(
     build_native_telegram_model_bridge_status(input)
 }
 
-#[derive(Debug, Clone)]
-pub struct NativeTelegramSendPlanStatusInput {
-    pub requested: bool,
-    pub config: NativeTelegramConfigStatus,
-    pub send_gate_env: &'static str,
-    pub send_gate_enabled: bool,
-}
-
 pub fn build_telegram_send_plan_status(
     input: NativeTelegramSendPlanStatusInput,
 ) -> NativeTelegramSendPlanStatus {
-    let transport_plan = NativeTelegramTransportPlan::for_config_state(
-        input.config.enabled,
-        input.config.token_shape_ok,
-        input.config.binding_ready,
-    );
-    let send_plan = if input.requested {
-        NativeTelegramSendPlan::ready()
-    } else {
-        NativeTelegramSendPlan::disabled()
-    };
-    let send_request = if input.requested {
-        NativeTelegramSendRequestPlan::from_model_output(
-            None,
-            false,
-            None,
-            input.send_gate_env,
-            input.send_gate_enabled,
-        )
-    } else {
-        NativeTelegramSendRequestPlan::disabled(input.send_gate_env, input.send_gate_enabled)
-    };
-    let config_ready = input.requested && input.config.config_ready();
-    let status = if !input.requested {
-        "disabled"
-    } else if !input.send_gate_enabled {
-        "gated"
-    } else if config_ready {
-        "planned"
-    } else {
-        "attention"
-    };
-    let error = if input.requested && !input.send_gate_enabled {
-        Some(format!(
-            "Telegram send is gated; set {}=1 only after model-turn delivery wiring is ready",
-            input.send_gate_env
-        ))
-    } else if input.requested && !config_ready {
-        Some("Telegram config, token shape, or binding is not ready".to_string())
-    } else {
-        None
-    };
-
-    NativeTelegramSendPlanStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: input.requested,
-        status,
-        send_gate_env: input.send_gate_env,
-        send_gate_enabled: input.send_gate_enabled,
-        bot_api_send_ready: input.requested && input.send_gate_enabled && config_ready,
-        external_network_write: false,
-        external_send: false,
-        cursor_written: false,
-        raw_response_text_exposed: false,
-        raw_chat_id_exposed: false,
-        raw_message_id_exposed: false,
-        raw_token_exposed: false,
-        config: input.config,
-        transport_plan,
-        send_plan,
-        send_request,
-        error,
-        next_migration_slice: "wire sendMessage execution after model output, then commit cursor only after delivery success",
-    }
+    build_native_telegram_send_plan_status(input)
 }
 
 #[derive(Debug, Clone)]
