@@ -127,10 +127,12 @@ pub use hepta_kernel::{
     HeptaKernelNativePostExecutionReadinessRoute as NativePostExecutionReadinessRoute,
     HeptaKernelNativePostExecutionStoreFileStatus as NativePostExecutionStoreFileStatus,
     HeptaKernelNativePostExecutionStoreRecord as NativePostExecutionStoreRecord,
+    HeptaKernelNativePostExecutionStoreWriteReport as NativePostExecutionStoreWriteReport,
     HeptaKernelNativePostExecutionStoresResponse as NativePostExecutionStoresResponse,
     HeptaKernelNativePostGrayReleaseEvidenceResponse as NativePostGrayReleaseEvidenceResponse,
     HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
+    HeptaKernelNativePostRealHandlerHarness as NativePostRealHandlerHarness,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
     HeptaKernelNativePostRolloutEvidencePlanKindCount as NativePostRolloutEvidencePlanKindCount,
     HeptaKernelNativePostRolloutEvidenceRecordSummary as NativePostRolloutEvidenceRecordSummary,
@@ -296,6 +298,45 @@ pub fn native_post_execution_store_record(
         audit_event_contract,
         current_plan_executes_real_handler,
         recorded_at_unix_ms,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn native_post_real_handler_harness(
+    spec: &NativePostPlanRouteSpec,
+    execution_admission: &NativePostExecutionAdmission,
+    duplicate_check_performed: bool,
+    duplicate_found: bool,
+    duplicate_check_error: Option<&'static str>,
+    rate_limit_check_performed: bool,
+    rate_limited: bool,
+    rate_limit_window_ms: u64,
+    rate_limit_check_error: Option<&'static str>,
+    capacity_check_performed: bool,
+    store_capacity_ok: bool,
+    store_capacity_check_error: Option<&'static str>,
+    store_write_attempted: bool,
+    store_write_succeeded: bool,
+    store_write_report: Option<NativePostExecutionStoreWriteReport>,
+    store_write_error: Option<&'static str>,
+) -> NativePostRealHandlerHarness {
+    hepta_kernel::hepta_kernel_native_post_real_handler_harness(
+        spec,
+        execution_admission,
+        duplicate_check_performed,
+        duplicate_found,
+        duplicate_check_error,
+        rate_limit_check_performed,
+        rate_limited,
+        rate_limit_window_ms,
+        rate_limit_check_error,
+        capacity_check_performed,
+        store_capacity_ok,
+        store_capacity_check_error,
+        store_write_attempted,
+        store_write_succeeded,
+        store_write_report,
+        store_write_error,
     )
 }
 

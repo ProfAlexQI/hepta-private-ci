@@ -15,8 +15,9 @@ pub use hepta_runtime::{
     NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
     NativePostExecutionStoreFileStatus, NativePostExecutionStoreRecord,
-    NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
-    NativePostIdempotencyEvidence, NativePostPlanRouteSpec, NativePostRollbackContract,
+    NativePostExecutionStoreWriteReport, NativePostExecutionStoresResponse,
+    NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanRouteSpec,
+    NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceScan, NativePostSelectedHandlerRolloutEvidence,
     native_post_execution_admission_with_scope, native_post_execution_readiness_report,
@@ -103,63 +104,6 @@ pub struct NativePostPlanResponse {
     pub message_sent: bool,
     pub cursor_written: bool,
     pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostRealHandlerHarness {
-    pub status: &'static str,
-    pub handler_kind: &'static str,
-    pub dry_run_only: bool,
-    pub handler_implemented: bool,
-    pub dual_gate_satisfied: bool,
-    pub enablement_gate_env: &'static str,
-    pub enablement_gate_enabled: bool,
-    pub operator_approval_env: &'static str,
-    pub operator_approval_enabled: bool,
-    pub handler_scope_env: &'static str,
-    pub handler_scope: Option<String>,
-    pub handler_scope_configured: bool,
-    pub handler_scope_required: bool,
-    pub handler_scope_matches: bool,
-    pub duplicate_check_performed: bool,
-    pub duplicate_found: bool,
-    pub duplicate_suppressed: bool,
-    pub duplicate_check_error: Option<&'static str>,
-    pub rate_limit_check_performed: bool,
-    pub rate_limited: bool,
-    pub rate_limit_suppressed: bool,
-    pub rate_limit_window_ms: u64,
-    pub rate_limit_check_error: Option<&'static str>,
-    pub capacity_check_performed: bool,
-    pub store_capacity_ok: bool,
-    pub store_capacity_check_error: Option<&'static str>,
-    pub store_write_attempted: bool,
-    pub store_write_succeeded: bool,
-    pub store_write_report: Option<NativePostExecutionStoreWriteReport>,
-    pub store_write_error: Option<&'static str>,
-    pub task_published: bool,
-    pub external_side_effects: bool,
-    pub gateway_mutation_performed: bool,
-    pub telegram_read_performed: bool,
-    pub model_invoked: bool,
-    pub message_sent: bool,
-    pub cursor_written: bool,
-    pub raw_request_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
-    pub raw_audit_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostExecutionStoreWriteReport {
-    pub status: &'static str,
-    pub root: String,
-    pub written_file_count: usize,
-    pub written_files: Vec<String>,
-    pub raw_request_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
-    pub raw_audit_payload_exposed: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -584,8 +528,6 @@ pub fn native_post_real_handler_harness(
     store_root: &Path,
     store_limits: NativePostExecutionStoreLimits,
 ) -> NativePostRealHandlerHarness {
-    let dual_gate_satisfied = execution_admission.enablement_gate_enabled
-        && execution_admission.operator_approval_enabled;
     let duplicate_check_performed = execution_admission.current_plan_executes_real_handler
         && idempotency_evidence.key_fingerprint.is_some();
     let (duplicate_found, duplicate_check_error) = if duplicate_check_performed {
@@ -664,53 +606,15 @@ pub fn native_post_real_handler_harness(
     } else {
         (false, None, None)
     };
-    NativePostRealHandlerHarness {
-        status: if !execution_admission.allowlisted_for_real_handler {
-            "plan_only_route"
-        } else if !execution_admission.real_handler_implemented {
-            "not_implemented"
-        } else if !store_write_attempted {
-            if duplicate_suppressed {
-                "duplicate_suppressed"
-            } else if duplicate_check_error.is_some() {
-                "idempotency_check_failed"
-            } else if rate_limited {
-                "rate_limited"
-            } else if rate_limit_check_error.is_some() {
-                "rate_limit_check_failed"
-            } else if !store_capacity_ok {
-                "store_capacity_blocked"
-            } else if store_capacity_check_error.is_some() {
-                "store_capacity_check_failed"
-            } else {
-                "blocked"
-            }
-        } else if store_write_succeeded {
-            "dry_run_recorded"
-        } else {
-            "store_write_failed"
-        },
-        handler_kind: spec.plan_kind,
-        dry_run_only: true,
-        handler_implemented: execution_admission.real_handler_implemented,
-        dual_gate_satisfied,
-        enablement_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
-        enablement_gate_enabled: execution_admission.enablement_gate_enabled,
-        operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
-        operator_approval_enabled: execution_admission.operator_approval_enabled,
-        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        handler_scope: execution_admission.handler_scope.clone(),
-        handler_scope_configured: execution_admission.handler_scope_configured,
-        handler_scope_required: execution_admission.handler_scope_required,
-        handler_scope_matches: execution_admission.handler_scope_matches,
+    hepta_runtime::native_post_real_handler_harness(
+        spec,
+        execution_admission,
         duplicate_check_performed,
         duplicate_found,
-        duplicate_suppressed,
         duplicate_check_error,
         rate_limit_check_performed,
         rate_limited,
-        rate_limit_suppressed: rate_limit_check_performed && rate_limited,
-        rate_limit_window_ms: store_limits.rate_limit_window_ms,
+        store_limits.rate_limit_window_ms,
         rate_limit_check_error,
         capacity_check_performed,
         store_capacity_ok,
@@ -719,18 +623,7 @@ pub fn native_post_real_handler_harness(
         store_write_succeeded,
         store_write_report,
         store_write_error,
-        task_published: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        raw_request_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-    }
+    )
 }
 
 pub fn native_post_execution_store_record(

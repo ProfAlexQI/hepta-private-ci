@@ -381,6 +381,63 @@ pub struct HeptaKernelNativePostExecutionStoreRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionStoreWriteReport {
+    pub status: &'static str,
+    pub root: String,
+    pub written_file_count: usize,
+    pub written_files: Vec<String>,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostRealHandlerHarness {
+    pub status: &'static str,
+    pub handler_kind: &'static str,
+    pub dry_run_only: bool,
+    pub handler_implemented: bool,
+    pub dual_gate_satisfied: bool,
+    pub enablement_gate_env: &'static str,
+    pub enablement_gate_enabled: bool,
+    pub operator_approval_env: &'static str,
+    pub operator_approval_enabled: bool,
+    pub handler_scope_env: &'static str,
+    pub handler_scope: Option<String>,
+    pub handler_scope_configured: bool,
+    pub handler_scope_required: bool,
+    pub handler_scope_matches: bool,
+    pub duplicate_check_performed: bool,
+    pub duplicate_found: bool,
+    pub duplicate_suppressed: bool,
+    pub duplicate_check_error: Option<&'static str>,
+    pub rate_limit_check_performed: bool,
+    pub rate_limited: bool,
+    pub rate_limit_suppressed: bool,
+    pub rate_limit_window_ms: u64,
+    pub rate_limit_check_error: Option<&'static str>,
+    pub capacity_check_performed: bool,
+    pub store_capacity_ok: bool,
+    pub store_capacity_check_error: Option<&'static str>,
+    pub store_write_attempted: bool,
+    pub store_write_succeeded: bool,
+    pub store_write_report: Option<HeptaKernelNativePostExecutionStoreWriteReport>,
+    pub store_write_error: Option<&'static str>,
+    pub task_published: bool,
+    pub external_side_effects: bool,
+    pub gateway_mutation_performed: bool,
+    pub telegram_read_performed: bool,
+    pub model_invoked: bool,
+    pub message_sent: bool,
+    pub cursor_written: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostExecutionStoreFileStatus {
     pub store_kind: &'static str,
     pub schema_id: &'static str,
@@ -1442,6 +1499,98 @@ pub fn hepta_kernel_native_post_execution_store_record(
         rollback_strategy: "pending_real_handler_rollback_anchor",
         rate_limit_bucket: spec.plan_kind,
         current_plan_executes_real_handler,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn hepta_kernel_native_post_real_handler_harness(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    execution_admission: &HeptaKernelNativePostExecutionAdmission,
+    duplicate_check_performed: bool,
+    duplicate_found: bool,
+    duplicate_check_error: Option<&'static str>,
+    rate_limit_check_performed: bool,
+    rate_limited: bool,
+    rate_limit_window_ms: u64,
+    rate_limit_check_error: Option<&'static str>,
+    capacity_check_performed: bool,
+    store_capacity_ok: bool,
+    store_capacity_check_error: Option<&'static str>,
+    store_write_attempted: bool,
+    store_write_succeeded: bool,
+    store_write_report: Option<HeptaKernelNativePostExecutionStoreWriteReport>,
+    store_write_error: Option<&'static str>,
+) -> HeptaKernelNativePostRealHandlerHarness {
+    let duplicate_suppressed = duplicate_check_performed && duplicate_found;
+    let dual_gate_satisfied = execution_admission.enablement_gate_enabled
+        && execution_admission.operator_approval_enabled;
+
+    HeptaKernelNativePostRealHandlerHarness {
+        status: if !execution_admission.allowlisted_for_real_handler {
+            "plan_only_route"
+        } else if !execution_admission.real_handler_implemented {
+            "not_implemented"
+        } else if !store_write_attempted {
+            if duplicate_suppressed {
+                "duplicate_suppressed"
+            } else if duplicate_check_error.is_some() {
+                "idempotency_check_failed"
+            } else if rate_limited {
+                "rate_limited"
+            } else if rate_limit_check_error.is_some() {
+                "rate_limit_check_failed"
+            } else if !store_capacity_ok {
+                "store_capacity_blocked"
+            } else if store_capacity_check_error.is_some() {
+                "store_capacity_check_failed"
+            } else {
+                "blocked"
+            }
+        } else if store_write_succeeded {
+            "dry_run_recorded"
+        } else {
+            "store_write_failed"
+        },
+        handler_kind: spec.plan_kind,
+        dry_run_only: true,
+        handler_implemented: execution_admission.real_handler_implemented,
+        dual_gate_satisfied,
+        enablement_gate_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV,
+        enablement_gate_enabled: execution_admission.enablement_gate_enabled,
+        operator_approval_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+        operator_approval_enabled: execution_admission.operator_approval_enabled,
+        handler_scope_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        handler_scope: execution_admission.handler_scope.clone(),
+        handler_scope_configured: execution_admission.handler_scope_configured,
+        handler_scope_required: execution_admission.handler_scope_required,
+        handler_scope_matches: execution_admission.handler_scope_matches,
+        duplicate_check_performed,
+        duplicate_found,
+        duplicate_suppressed,
+        duplicate_check_error,
+        rate_limit_check_performed,
+        rate_limited,
+        rate_limit_suppressed: rate_limit_check_performed && rate_limited,
+        rate_limit_window_ms,
+        rate_limit_check_error,
+        capacity_check_performed,
+        store_capacity_ok,
+        store_capacity_check_error,
+        store_write_attempted,
+        store_write_succeeded,
+        store_write_report,
+        store_write_error,
+        task_published: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
         raw_request_body_exposed: false,
         raw_field_values_exposed: false,
         raw_idempotency_key_exposed: false,
@@ -7614,6 +7763,104 @@ mod tests {
         assert!(record.current_plan_executes_real_handler);
         assert!(!record.raw_request_body_exposed);
         assert!(!record.raw_idempotency_key_exposed);
+    }
+
+    #[test]
+    fn kernel_native_post_real_handler_harness_summarizes_gateway_observations() {
+        let task_publish = hepta_kernel_native_post_plan_route_specs()
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let schema = hepta_kernel_native_post_body_schema(task_publish.plan_kind, true);
+        let admission = hepta_kernel_native_post_body_admission(
+            task_publish,
+            &schema,
+            Some(r#"{"task":"ship","confirm":true,"dry_run":true,"idempotency_key":"idem-1"}"#),
+        );
+        let idempotency = hepta_kernel_native_post_idempotency_evidence(task_publish, &admission);
+        let audit = hepta_kernel_native_post_audit_event_contract(
+            task_publish,
+            &schema,
+            &admission,
+            &idempotency,
+        );
+        let execution = hepta_kernel_native_post_execution_admission_with_scope(
+            task_publish,
+            &admission,
+            &idempotency,
+            &audit,
+            true,
+            true,
+            Some("task_publish"),
+        );
+        let write_report = HeptaKernelNativePostExecutionStoreWriteReport {
+            status: "persisted",
+            root: ".hepta/native-post-execution".to_string(),
+            written_file_count: 4,
+            written_files: vec!["idempotency.jsonl".to_string()],
+            raw_request_body_exposed: false,
+            raw_field_values_exposed: false,
+            raw_idempotency_key_exposed: false,
+            raw_audit_payload_exposed: false,
+        };
+
+        let recorded = hepta_kernel_native_post_real_handler_harness(
+            task_publish,
+            &execution,
+            true,
+            false,
+            None,
+            true,
+            false,
+            1_000,
+            None,
+            true,
+            true,
+            None,
+            true,
+            true,
+            Some(write_report),
+            None,
+        );
+
+        assert_eq!(recorded.status, "dry_run_recorded");
+        assert_eq!(recorded.handler_kind, "task_publish");
+        assert!(recorded.dual_gate_satisfied);
+        assert!(recorded.handler_scope_matches);
+        assert!(recorded.store_write_succeeded);
+        assert_eq!(
+            recorded
+                .store_write_report
+                .as_ref()
+                .unwrap()
+                .written_file_count,
+            4
+        );
+        assert!(!recorded.raw_request_body_exposed);
+        assert!(!recorded.gateway_mutation_performed);
+
+        let duplicate = hepta_kernel_native_post_real_handler_harness(
+            task_publish,
+            &execution,
+            true,
+            true,
+            None,
+            false,
+            false,
+            1_000,
+            None,
+            false,
+            true,
+            None,
+            false,
+            false,
+            None,
+            None,
+        );
+
+        assert_eq!(duplicate.status, "duplicate_suppressed");
+        assert!(duplicate.duplicate_suppressed);
+        assert!(!duplicate.store_write_attempted);
     }
 
     #[test]
