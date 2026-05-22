@@ -506,6 +506,13 @@ pub struct HeptaKernelNativePostPlanResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionStoreFileSpec {
+    pub store_kind: &'static str,
+    pub schema_id: &'static str,
+    pub filename: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostExecutionStoreFileStatus {
     pub store_kind: &'static str,
     pub schema_id: &'static str,
@@ -527,6 +534,32 @@ pub struct HeptaKernelNativePostExecutionStoreFileStatus {
     pub raw_body_exposed: bool,
     pub raw_field_values_exposed: bool,
     pub raw_idempotency_key_exposed: bool,
+}
+
+pub fn hepta_kernel_native_post_execution_store_specs()
+-> &'static [HeptaKernelNativePostExecutionStoreFileSpec] {
+    &[
+        HeptaKernelNativePostExecutionStoreFileSpec {
+            store_kind: "idempotency",
+            schema_id: "hepta.post.idempotency_entry.v1",
+            filename: "idempotency.jsonl",
+        },
+        HeptaKernelNativePostExecutionStoreFileSpec {
+            store_kind: "audit",
+            schema_id: "hepta.post.execution_audit.v1",
+            filename: "audit.jsonl",
+        },
+        HeptaKernelNativePostExecutionStoreFileSpec {
+            store_kind: "rollback",
+            schema_id: "hepta.post.rollback_anchor.v1",
+            filename: "rollback.jsonl",
+        },
+        HeptaKernelNativePostExecutionStoreFileSpec {
+            store_kind: "rate_limit",
+            schema_id: "hepta.post.rate_limit_entry.v1",
+            filename: "rate-limit.jsonl",
+        },
+    ]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -8319,6 +8352,25 @@ mod tests {
         assert_eq!(limits.max_store_bytes, 10 * 1024 * 1024);
         assert_eq!(limits.max_store_lines, 100_000);
         assert_eq!(limits.rate_limit_window_ms, 1_000);
+    }
+
+    #[test]
+    fn kernel_native_post_execution_store_specs_freeze_store_files() {
+        let specs = hepta_kernel_native_post_execution_store_specs();
+
+        assert_eq!(specs.len(), 4);
+        assert_eq!(specs[0].store_kind, "idempotency");
+        assert_eq!(specs[0].schema_id, "hepta.post.idempotency_entry.v1");
+        assert_eq!(specs[0].filename, "idempotency.jsonl");
+        assert_eq!(specs[1].store_kind, "audit");
+        assert_eq!(specs[1].schema_id, "hepta.post.execution_audit.v1");
+        assert_eq!(specs[1].filename, "audit.jsonl");
+        assert_eq!(specs[2].store_kind, "rollback");
+        assert_eq!(specs[2].schema_id, "hepta.post.rollback_anchor.v1");
+        assert_eq!(specs[2].filename, "rollback.jsonl");
+        assert_eq!(specs[3].store_kind, "rate_limit");
+        assert_eq!(specs[3].schema_id, "hepta.post.rate_limit_entry.v1");
+        assert_eq!(specs[3].filename, "rate-limit.jsonl");
     }
 
     #[test]

@@ -133,6 +133,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostExecutionAdmission as NativePostExecutionAdmission,
     HeptaKernelNativePostExecutionReadinessResponse as NativePostExecutionReadinessResponse,
     HeptaKernelNativePostExecutionReadinessRoute as NativePostExecutionReadinessRoute,
+    HeptaKernelNativePostExecutionStoreFileSpec as NativePostExecutionStoreFileSpec,
     HeptaKernelNativePostExecutionStoreFileStatus as NativePostExecutionStoreFileStatus,
     HeptaKernelNativePostExecutionStoreLimits as NativePostExecutionStoreLimits,
     HeptaKernelNativePostExecutionStoreRecord as NativePostExecutionStoreRecord,
@@ -378,6 +379,10 @@ pub fn native_post_plan_response(
         execution_admission,
         real_handler_harness,
     )
+}
+
+pub fn native_post_execution_store_specs() -> &'static [NativePostExecutionStoreFileSpec] {
+    hepta_kernel::hepta_kernel_native_post_execution_store_specs()
 }
 
 pub fn native_post_execution_stores_report(

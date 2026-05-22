@@ -18,20 +18,21 @@ pub use hepta_runtime::{
     NativePostActivationPlanResponse, NativePostAuditEventContract, NativePostBodyAdmission,
     NativePostBodySchema, NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
-    NativePostExecutionStoreFileStatus, NativePostExecutionStoreLimits,
-    NativePostExecutionStoreRecord, NativePostExecutionStoreWriteReport,
-    NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
-    NativePostIdempotencyEvidence, NativePostPlanResponse, NativePostPlanRouteSpec,
-    NativePostRealHandlerHarness, NativePostRollbackContract,
+    NativePostExecutionStoreFileSpec, NativePostExecutionStoreFileStatus,
+    NativePostExecutionStoreLimits, NativePostExecutionStoreRecord,
+    NativePostExecutionStoreWriteReport, NativePostExecutionStoresResponse,
+    NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanResponse,
+    NativePostPlanRouteSpec, NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
     NativePostSelectedHandlerRolloutEvidence, native_post_audit_event_contract,
     native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
     native_post_execution_admission_with_scope, native_post_execution_readiness_report,
-    native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
-    native_post_plan_parameter, native_post_plan_route_specs,
-    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
-    native_post_redacted_fingerprint, native_post_rollback_contract,
+    native_post_execution_store_specs, native_post_idempotency_evidence,
+    native_post_plan_kind_has_real_handler, native_post_plan_parameter,
+    native_post_plan_route_specs, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
+    native_post_rollback_contract,
 };
 
 pub fn native_post_plan_report(
@@ -495,37 +496,6 @@ fn native_post_rate_limit_recent_present(
         }
     }
     Ok(false)
-}
-
-struct NativePostExecutionStoreFileSpec {
-    store_kind: &'static str,
-    schema_id: &'static str,
-    filename: &'static str,
-}
-
-fn native_post_execution_store_specs() -> &'static [NativePostExecutionStoreFileSpec] {
-    &[
-        NativePostExecutionStoreFileSpec {
-            store_kind: "idempotency",
-            schema_id: "hepta.post.idempotency_entry.v1",
-            filename: "idempotency.jsonl",
-        },
-        NativePostExecutionStoreFileSpec {
-            store_kind: "audit",
-            schema_id: "hepta.post.execution_audit.v1",
-            filename: "audit.jsonl",
-        },
-        NativePostExecutionStoreFileSpec {
-            store_kind: "rollback",
-            schema_id: "hepta.post.rollback_anchor.v1",
-            filename: "rollback.jsonl",
-        },
-        NativePostExecutionStoreFileSpec {
-            store_kind: "rate_limit",
-            schema_id: "hepta.post.rate_limit_entry.v1",
-            filename: "rate-limit.jsonl",
-        },
-    ]
 }
 
 fn native_post_execution_store_file_statuses(
