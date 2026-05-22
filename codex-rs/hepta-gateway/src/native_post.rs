@@ -9,7 +9,9 @@ use std::path::Path;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-pub use hepta_runtime::{NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NativePostPlanRouteSpec};
+pub use hepta_runtime::{
+    NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NativePostBodySchema, NativePostPlanRouteSpec,
+};
 
 pub const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 pub const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
@@ -97,18 +99,6 @@ pub struct NativePostPlanResponse {
     pub message_sent: bool,
     pub cursor_written: bool,
     pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostBodySchema {
-    pub schema_id: &'static str,
-    pub content_type: &'static str,
-    pub body_required_for_real_handler: bool,
-    pub required_fields: Vec<&'static str>,
-    pub optional_fields: Vec<&'static str>,
-    pub body_read_during_plan: bool,
-    pub raw_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -666,99 +656,7 @@ pub fn native_post_body_schema(
     plan_kind: &str,
     body_read_during_plan: bool,
 ) -> NativePostBodySchema {
-    let (schema_id, body_required_for_real_handler, required_fields, optional_fields) =
-        match plan_kind {
-            "ui_action" => (
-                "hepta.post.ui_action.v1",
-                false,
-                vec![],
-                vec!["action_payload", "dry_run", "confirm", "reason"],
-            ),
-            "readonly_command" => (
-                "hepta.post.readonly_command.v1",
-                false,
-                vec![],
-                vec!["command_args", "dry_run"],
-            ),
-            "approval_apply" => (
-                "hepta.post.approval_apply.v1",
-                true,
-                vec!["approval_id", "confirm"],
-                vec!["dry_run", "reason", "idempotency_key"],
-            ),
-            "task_plan" => (
-                "hepta.post.task_plan.v1",
-                false,
-                vec![],
-                vec!["task", "channel", "delivery", "dry_run"],
-            ),
-            "task_publish" => (
-                "hepta.post.task_publish.v1",
-                true,
-                vec!["task", "confirm"],
-                vec![
-                    "delivery",
-                    "timeout_seconds",
-                    "rollback_hint",
-                    "dry_run",
-                    "idempotency_key",
-                ],
-            ),
-            "chat_register" => (
-                "hepta.post.chat_register.v1",
-                true,
-                vec!["chat_id"],
-                vec!["label", "metadata"],
-            ),
-            "chat_archive" => (
-                "hepta.post.chat_archive.v1",
-                true,
-                vec!["chat_id"],
-                vec!["reason"],
-            ),
-            "chat_unarchive" => (
-                "hepta.post.chat_unarchive.v1",
-                true,
-                vec!["chat_id"],
-                vec!["reason"],
-            ),
-            "chat_delete" => (
-                "hepta.post.chat_delete.v1",
-                true,
-                vec!["chat_id"],
-                vec!["reason", "confirm"],
-            ),
-            "chat_plan" => (
-                "hepta.post.chat_plan.v1",
-                false,
-                vec![],
-                vec!["chat_id", "message", "dry_run"],
-            ),
-            "chat_send" => (
-                "hepta.post.chat_send.v1",
-                true,
-                vec!["chat_id", "message", "confirm"],
-                vec![
-                    "thread_id",
-                    "delivery",
-                    "rollback_hint",
-                    "dry_run",
-                    "idempotency_key",
-                ],
-            ),
-            _ => ("hepta.post.unknown.v1", false, vec![], vec!["dry_run"]),
-        };
-
-    NativePostBodySchema {
-        schema_id,
-        content_type: "application/json",
-        body_required_for_real_handler,
-        required_fields,
-        optional_fields,
-        body_read_during_plan,
-        raw_body_exposed: false,
-        raw_field_values_exposed: false,
-    }
+    hepta_runtime::native_post_body_schema(plan_kind, body_read_during_plan)
 }
 
 pub fn native_post_body_admission(

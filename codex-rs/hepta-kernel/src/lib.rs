@@ -80,6 +80,18 @@ pub struct HeptaKernelNativePostPlanRouteSpec {
     pub confirmation_required_for_real_mutation: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostBodySchema {
+    pub schema_id: &'static str,
+    pub content_type: &'static str,
+    pub body_required_for_real_handler: bool,
+    pub required_fields: Vec<&'static str>,
+    pub optional_fields: Vec<&'static str>,
+    pub body_read_during_plan: bool,
+    pub raw_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+}
+
 pub const HEPTA_KERNEL_NATIVE_POST_PLAN_ROUTE_SPECS: &[HeptaKernelNativePostPlanRouteSpec] = &[
     HeptaKernelNativePostPlanRouteSpec {
         pattern: "/api/actions/<action>",
@@ -237,6 +249,105 @@ pub fn hepta_kernel_native_post_plan_parameter<'a>(
 
 pub fn hepta_kernel_native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS.contains(&plan_kind)
+}
+
+pub fn hepta_kernel_native_post_body_schema(
+    plan_kind: &str,
+    body_read_during_plan: bool,
+) -> HeptaKernelNativePostBodySchema {
+    let (schema_id, body_required_for_real_handler, required_fields, optional_fields) =
+        match plan_kind {
+            "ui_action" => (
+                "hepta.post.ui_action.v1",
+                false,
+                vec![],
+                vec!["action_payload", "dry_run", "confirm", "reason"],
+            ),
+            "readonly_command" => (
+                "hepta.post.readonly_command.v1",
+                false,
+                vec![],
+                vec!["command_args", "dry_run"],
+            ),
+            "approval_apply" => (
+                "hepta.post.approval_apply.v1",
+                true,
+                vec!["approval_id", "confirm"],
+                vec!["dry_run", "reason", "idempotency_key"],
+            ),
+            "task_plan" => (
+                "hepta.post.task_plan.v1",
+                false,
+                vec![],
+                vec!["task", "channel", "delivery", "dry_run"],
+            ),
+            "task_publish" => (
+                "hepta.post.task_publish.v1",
+                true,
+                vec!["task", "confirm"],
+                vec![
+                    "delivery",
+                    "timeout_seconds",
+                    "rollback_hint",
+                    "dry_run",
+                    "idempotency_key",
+                ],
+            ),
+            "chat_register" => (
+                "hepta.post.chat_register.v1",
+                true,
+                vec!["chat_id"],
+                vec!["label", "metadata"],
+            ),
+            "chat_archive" => (
+                "hepta.post.chat_archive.v1",
+                true,
+                vec!["chat_id"],
+                vec!["reason"],
+            ),
+            "chat_unarchive" => (
+                "hepta.post.chat_unarchive.v1",
+                true,
+                vec!["chat_id"],
+                vec!["reason"],
+            ),
+            "chat_delete" => (
+                "hepta.post.chat_delete.v1",
+                true,
+                vec!["chat_id"],
+                vec!["reason", "confirm"],
+            ),
+            "chat_plan" => (
+                "hepta.post.chat_plan.v1",
+                false,
+                vec![],
+                vec!["chat_id", "message", "dry_run"],
+            ),
+            "chat_send" => (
+                "hepta.post.chat_send.v1",
+                true,
+                vec!["chat_id", "message", "confirm"],
+                vec![
+                    "thread_id",
+                    "delivery",
+                    "rollback_hint",
+                    "dry_run",
+                    "idempotency_key",
+                ],
+            ),
+            _ => ("hepta.post.unknown.v1", false, vec![], vec!["dry_run"]),
+        };
+
+    HeptaKernelNativePostBodySchema {
+        schema_id,
+        content_type: "application/json",
+        body_required_for_real_handler,
+        required_fields,
+        optional_fields,
+        body_read_during_plan,
+        raw_body_exposed: false,
+        raw_field_values_exposed: false,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -5613,6 +5724,30 @@ mod tests {
         assert!(!hepta_kernel_native_post_plan_kind_has_real_handler(
             "readonly_command"
         ));
+    }
+
+    #[test]
+    fn kernel_native_post_body_schema_covers_real_handler_input_contracts() {
+        let task_publish = hepta_kernel_native_post_body_schema("task_publish", true);
+        assert_eq!(task_publish.schema_id, "hepta.post.task_publish.v1");
+        assert!(task_publish.body_required_for_real_handler);
+        assert_eq!(task_publish.content_type, "application/json");
+        assert!(task_publish.required_fields.contains(&"task"));
+        assert!(task_publish.required_fields.contains(&"confirm"));
+        assert!(task_publish.optional_fields.contains(&"idempotency_key"));
+        assert!(task_publish.body_read_during_plan);
+        assert!(!task_publish.raw_body_exposed);
+        assert!(!task_publish.raw_field_values_exposed);
+
+        let readonly = hepta_kernel_native_post_body_schema("readonly_command", false);
+        assert_eq!(readonly.schema_id, "hepta.post.readonly_command.v1");
+        assert!(!readonly.body_required_for_real_handler);
+        assert!(readonly.required_fields.is_empty());
+
+        let unknown = hepta_kernel_native_post_body_schema("not_registered", false);
+        assert_eq!(unknown.schema_id, "hepta.post.unknown.v1");
+        assert!(!unknown.body_required_for_real_handler);
+        assert_eq!(unknown.optional_fields, vec!["dry_run"]);
     }
 
     #[test]

@@ -107,6 +107,7 @@ pub use events::{EventQueryReport, EventRecord};
 pub use hepta_contracts::HeptaRuntimeContractInventory;
 pub use hepta_kernel::{
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS as NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
+    HeptaKernelNativePostBodySchema as NativePostBodySchema,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
 };
 pub use inbound_router::{
@@ -136,6 +137,13 @@ pub fn native_post_plan_parameter<'a>(
 
 pub fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
     hepta_kernel::hepta_kernel_native_post_plan_kind_has_real_handler(plan_kind)
+}
+
+pub fn native_post_body_schema(
+    plan_kind: &str,
+    body_read_during_plan: bool,
+) -> NativePostBodySchema {
+    hepta_kernel::hepta_kernel_native_post_body_schema(plan_kind, body_read_during_plan)
 }
 pub use memory_context::{
     DEFAULT_MEMORY_CONTEXT_LEDGER_ID, DEFAULT_MEMORY_CONTEXT_LEDGER_PATH, MemoryCitation,
