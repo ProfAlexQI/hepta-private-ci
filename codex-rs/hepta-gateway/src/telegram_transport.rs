@@ -28,7 +28,7 @@ use hepta_runtime::{
     native_telegram_transport_plan_for_config_status,
     native_telegram_typing_keepalive_interval_policy,
     native_telegram_typing_keepalive_should_start, plan_native_telegram_send_execution_preflight,
-    redact_native_telegram_token_like_text,
+    plan_native_telegram_send_provider_result, redact_native_telegram_token_like_text,
 };
 
 pub use hepta_runtime::{
@@ -38,7 +38,8 @@ pub use hepta_runtime::{
     MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
     MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramSendExecutionPreflightInput,
-    NativeTelegramSendPlan, NativeTelegramTransportPlan, TELEGRAM_ALLOWED_UPDATES,
+    NativeTelegramSendPlan, NativeTelegramSendProviderResultInput, NativeTelegramTransportPlan,
+    TELEGRAM_ALLOWED_UPDATES,
 };
 const TELEGRAM_BOT_API_BASE_URL: &str = "https://api.telegram.org";
 static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
@@ -340,33 +341,31 @@ where
             reply_target.reply_to_message_id,
         ) {
             Ok(api) => {
-                let ok = api.get("ok").and_then(Value::as_bool).unwrap_or(false);
-                report.bot_api_ack = Some(ok);
-                let provider_message_id_present = api
-                    .pointer("/result/message_id")
-                    .and_then(Value::as_i64)
-                    .is_some();
-                if !ok {
-                    let error = api
-                        .get("description")
-                        .and_then(Value::as_str)
-                        .map(telegram_redact_token_like_text)
-                        .unwrap_or_else(|| {
-                            "Telegram Bot API sendMessage returned ok=false".to_string()
-                        });
-                    if telegram_send_should_retry(attempt, max_attempts, &error) {
-                        thread::sleep(input.send_retry_backoff);
-                        continue;
-                    }
+                let provider_result = plan_native_telegram_send_provider_result(
+                    NativeTelegramSendProviderResultInput {
+                        attempt,
+                        max_attempts,
+                        api_result: Ok(&api),
+                    },
+                );
+                report.bot_api_ack = provider_result.bot_api_ack;
+                if provider_result.should_retry {
+                    thread::sleep(input.send_retry_backoff);
+                    continue;
+                }
+                if !provider_result.external_send {
+                    let error = provider_result.error.unwrap_or_else(|| {
+                        "Telegram Bot API sendMessage returned ok=false".to_string()
+                    });
                     if let Err(ledger_error) = append_telegram_delivery_lifecycle_record(
                         input.delivery_ledger_path,
                         &telegram_delivery_lifecycle_record(
-                            "failed",
+                            provider_result.delivery_ledger_stage.unwrap_or("failed"),
                             input.candidate_next_update_offset,
                             report.model_output_present,
                             true,
                             Some(false),
-                            provider_message_id_present,
+                            provider_result.provider_message_id_present,
                             Some(&error),
                         ),
                     ) {
@@ -381,16 +380,16 @@ where
                     return report;
                 }
 
-                report.external_send = true;
+                report.external_send = provider_result.external_send;
                 match append_telegram_delivery_lifecycle_record(
                     input.delivery_ledger_path,
                     &telegram_delivery_lifecycle_record(
-                        "acked",
+                        provider_result.delivery_ledger_stage.unwrap_or("acked"),
                         input.candidate_next_update_offset,
                         report.model_output_present,
                         true,
                         Some(true),
-                        provider_message_id_present,
+                        provider_result.provider_message_id_present,
                         None,
                     ),
                 ) {
@@ -422,20 +421,27 @@ where
                 return report;
             }
             Err(error) => {
-                let error = telegram_redact_token_like_text(&error);
-                if telegram_send_should_retry(attempt, max_attempts, &error) {
+                let provider_result = plan_native_telegram_send_provider_result(
+                    NativeTelegramSendProviderResultInput {
+                        attempt,
+                        max_attempts,
+                        api_result: Err(&error),
+                    },
+                );
+                if provider_result.should_retry {
                     thread::sleep(input.send_retry_backoff);
                     continue;
                 }
+                let error = provider_result.error.unwrap_or(error);
                 if let Err(ledger_error) = append_telegram_delivery_lifecycle_record(
                     input.delivery_ledger_path,
                     &telegram_delivery_lifecycle_record(
-                        "failed",
+                        provider_result.delivery_ledger_stage.unwrap_or("failed"),
                         input.candidate_next_update_offset,
                         report.model_output_present,
                         true,
                         None,
-                        false,
+                        provider_result.provider_message_id_present,
                         Some(&error),
                     ),
                 ) {

@@ -4173,6 +4173,96 @@ pub fn hepta_kernel_telegram_bot_api_http_status_error(
     format!("Telegram Bot API {method} HTTP status {status_code}; description={description}")
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct HeptaKernelTelegramSendProviderResultInput<'a> {
+    pub attempt: u64,
+    pub max_attempts: u64,
+    pub api_result: Result<&'a Value, &'a str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramSendProviderResultPlan {
+    pub bot_api_ack: Option<bool>,
+    pub provider_message_id_present: bool,
+    pub external_send: bool,
+    pub should_retry: bool,
+    pub delivery_ledger_stage: Option<&'static str>,
+    pub report_status: &'static str,
+    pub error: Option<String>,
+    pub raw_response_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+    pub raw_token_exposed: bool,
+}
+
+pub fn plan_hepta_kernel_telegram_send_provider_result(
+    input: HeptaKernelTelegramSendProviderResultInput<'_>,
+) -> HeptaKernelTelegramSendProviderResultPlan {
+    match input.api_result {
+        Ok(api) => {
+            let ok = api.get("ok").and_then(Value::as_bool).unwrap_or(false);
+            let provider_message_id_present = api
+                .pointer("/result/message_id")
+                .and_then(Value::as_i64)
+                .is_some();
+            if ok {
+                return HeptaKernelTelegramSendProviderResultPlan {
+                    bot_api_ack: Some(true),
+                    provider_message_id_present,
+                    external_send: true,
+                    should_retry: false,
+                    delivery_ledger_stage: Some("acked"),
+                    report_status: "provider_acked",
+                    error: None,
+                    raw_response_text_exposed: false,
+                    raw_chat_id_exposed: false,
+                    raw_message_id_exposed: false,
+                    raw_token_exposed: false,
+                };
+            }
+
+            let error = api
+                .get("description")
+                .and_then(Value::as_str)
+                .map(redact_hepta_kernel_telegram_token_like_text)
+                .unwrap_or_else(|| "Telegram Bot API sendMessage returned ok=false".to_string());
+            let should_retry =
+                hepta_kernel_telegram_send_should_retry(input.attempt, input.max_attempts, &error);
+            HeptaKernelTelegramSendProviderResultPlan {
+                bot_api_ack: Some(false),
+                provider_message_id_present,
+                external_send: false,
+                should_retry,
+                delivery_ledger_stage: (!should_retry).then_some("failed"),
+                report_status: if should_retry { "sending" } else { "attention" },
+                error: Some(error),
+                raw_response_text_exposed: false,
+                raw_chat_id_exposed: false,
+                raw_message_id_exposed: false,
+                raw_token_exposed: false,
+            }
+        }
+        Err(error) => {
+            let error = redact_hepta_kernel_telegram_token_like_text(error);
+            let should_retry =
+                hepta_kernel_telegram_send_should_retry(input.attempt, input.max_attempts, &error);
+            HeptaKernelTelegramSendProviderResultPlan {
+                bot_api_ack: None,
+                provider_message_id_present: false,
+                external_send: false,
+                should_retry,
+                delivery_ledger_stage: (!should_retry).then_some("failed"),
+                report_status: if should_retry { "sending" } else { "attention" },
+                error: Some(error),
+                raw_response_text_exposed: false,
+                raw_chat_id_exposed: false,
+                raw_message_id_exposed: false,
+                raw_token_exposed: false,
+            }
+        }
+    }
+}
+
 pub fn hepta_kernel_telegram_typing_keepalive_should_start(
     enabled: bool,
     token: &str,
@@ -6560,6 +6650,51 @@ mod tests {
         assert_eq!(
             hepta_kernel_telegram_bot_api_http_status_error("getUpdates", 500, None),
             "Telegram Bot API getUpdates HTTP status 500; description=missing"
+        );
+        let acked = plan_hepta_kernel_telegram_send_provider_result(
+            HeptaKernelTelegramSendProviderResultInput {
+                attempt: 1,
+                max_attempts: 3,
+                api_result: Ok(&json!({"ok": true, "result": {"message_id": 99}})),
+            },
+        );
+        assert_eq!(acked.bot_api_ack, Some(true));
+        assert!(acked.external_send);
+        assert!(!acked.should_retry);
+        assert_eq!(acked.delivery_ledger_stage, Some("acked"));
+        assert!(acked.provider_message_id_present);
+
+        let retrying = plan_hepta_kernel_telegram_send_provider_result(
+            HeptaKernelTelegramSendProviderResultInput {
+                attempt: 1,
+                max_attempts: 3,
+                api_result: Ok(&json!({"ok": false, "description": "Too Many Requests"})),
+            },
+        );
+        assert_eq!(retrying.bot_api_ack, Some(false));
+        assert!(retrying.should_retry);
+        assert_eq!(retrying.delivery_ledger_stage, None);
+        assert_eq!(retrying.report_status, "sending");
+
+        let terminal = plan_hepta_kernel_telegram_send_provider_result(
+            HeptaKernelTelegramSendProviderResultInput {
+                attempt: 3,
+                max_attempts: 3,
+                api_result: Err(
+                    "Telegram Bot API sendMessage HTTP status 503; token=123456789:abcdefghijklmnopqrstuvwxyz",
+                ),
+            },
+        );
+        assert_eq!(terminal.bot_api_ack, None);
+        assert!(!terminal.should_retry);
+        assert_eq!(terminal.delivery_ledger_stage, Some("failed"));
+        assert_eq!(terminal.report_status, "attention");
+        assert!(
+            terminal
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("[redacted-telegram-token]")
         );
         let conflict = "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request";
         let auth_error = "Telegram Bot API sendMessage HTTP status 401";

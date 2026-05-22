@@ -52,6 +52,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramSendExecutionPreflightInput, HeptaKernelTelegramSendExecutionPreflightPlan,
     HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendPlan,
     HeptaKernelTelegramSendPlanStatus, HeptaKernelTelegramSendPlanStatusInput,
+    HeptaKernelTelegramSendProviderResultInput, HeptaKernelTelegramSendProviderResultPlan,
     HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
     HeptaKernelTelegramTokenObservation, HeptaKernelTelegramTokenObservationInput,
     HeptaKernelTelegramTransportPlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
@@ -128,7 +129,8 @@ pub use hepta_kernel::{
     plan_hepta_kernel_telegram_drain_pipeline_delivery,
     plan_hepta_kernel_telegram_receive_once_preflight_status,
     plan_hepta_kernel_telegram_receive_once_shell_readiness,
-    plan_hepta_kernel_telegram_send_execution_preflight, plan_hepta_kernel_telegram_session_bridge,
+    plan_hepta_kernel_telegram_send_execution_preflight,
+    plan_hepta_kernel_telegram_send_provider_result, plan_hepta_kernel_telegram_session_bridge,
     plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
     redact_hepta_kernel_telegram_token_like_text,
     resolve_hepta_kernel_telegram_secret_provider_path, select_hepta_kernel_telegram_runner,
@@ -164,6 +166,8 @@ pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
 pub type NativeTelegramSendExecutionPreflightInput = HeptaKernelTelegramSendExecutionPreflightInput;
 pub type NativeTelegramSendExecutionPreflightPlan = HeptaKernelTelegramSendExecutionPreflightPlan;
+pub type NativeTelegramSendProviderResultInput<'a> = HeptaKernelTelegramSendProviderResultInput<'a>;
+pub type NativeTelegramSendProviderResultPlan = HeptaKernelTelegramSendProviderResultPlan;
 pub type NativeTelegramTransportPlan = HeptaKernelTelegramTransportPlan;
 pub type NativeTelegramSendPlan = HeptaKernelTelegramSendPlan;
 pub type NativeTelegramSendPlanStatus = HeptaKernelTelegramSendPlanStatus;
@@ -511,6 +515,12 @@ pub fn plan_native_telegram_send_execution_preflight(
     input: NativeTelegramSendExecutionPreflightInput,
 ) -> NativeTelegramSendExecutionPreflightPlan {
     plan_hepta_kernel_telegram_send_execution_preflight(input)
+}
+
+pub fn plan_native_telegram_send_provider_result(
+    input: NativeTelegramSendProviderResultInput<'_>,
+) -> NativeTelegramSendProviderResultPlan {
+    plan_hepta_kernel_telegram_send_provider_result(input)
 }
 
 pub fn native_telegram_update_already_drained(
@@ -1307,6 +1317,18 @@ mod tests {
             ),
             "Telegram Bot API sendMessage HTTP status 401; description=Unauthorized [redacted-telegram-token]"
         );
+        let provider_result =
+            plan_native_telegram_send_provider_result(NativeTelegramSendProviderResultInput {
+                attempt: 1,
+                max_attempts: 2,
+                api_result: Ok(&serde_json::json!({
+                    "ok": true,
+                    "result": {"message_id": 99}
+                })),
+            });
+        assert_eq!(provider_result.delivery_ledger_stage, Some("acked"));
+        assert!(provider_result.external_send);
+        assert!(provider_result.provider_message_id_present);
     }
 
     #[test]
