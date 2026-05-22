@@ -25,75 +25,14 @@ pub use hepta_runtime::{
     NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
-    NativePostSelectedHandlerRolloutEvidence, native_post_execution_admission_with_scope,
-    native_post_execution_readiness_report, native_post_real_handler_scope_matches,
-    native_post_real_handler_scope_selected_kinds,
+    NativePostSelectedHandlerRolloutEvidence, native_post_audit_event_contract,
+    native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
+    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
+    native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
+    native_post_plan_parameter, native_post_plan_route_specs,
+    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
+    native_post_redacted_fingerprint, native_post_rollback_contract,
 };
-
-pub fn native_post_plan_route_specs() -> &'static [NativePostPlanRouteSpec] {
-    hepta_runtime::native_post_plan_route_specs()
-}
-
-pub fn native_post_plan_parameter<'a>(
-    spec: &NativePostPlanRouteSpec,
-    path: &'a str,
-) -> Option<Option<&'a str>> {
-    hepta_runtime::native_post_plan_parameter(spec, path)
-}
-
-pub fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
-    hepta_runtime::native_post_plan_kind_has_real_handler(plan_kind)
-}
-
-pub fn native_post_body_schema(
-    plan_kind: &str,
-    body_read_during_plan: bool,
-) -> NativePostBodySchema {
-    hepta_runtime::native_post_body_schema(plan_kind, body_read_during_plan)
-}
-
-pub fn native_post_body_admission(
-    spec: &NativePostPlanRouteSpec,
-    schema: &NativePostBodySchema,
-    request_body: Option<&str>,
-) -> NativePostBodyAdmission {
-    hepta_runtime::native_post_body_admission(spec, schema, request_body)
-}
-
-pub fn native_post_redacted_fingerprint(value: &str) -> String {
-    hepta_runtime::native_post_redacted_fingerprint(value)
-}
-
-pub fn native_post_confirmation_contract(
-    spec: &NativePostPlanRouteSpec,
-) -> NativePostConfirmationContract {
-    hepta_runtime::native_post_confirmation_contract(spec)
-}
-
-pub fn native_post_rollback_contract() -> NativePostRollbackContract {
-    hepta_runtime::native_post_rollback_contract()
-}
-
-pub fn native_post_idempotency_evidence(
-    spec: &NativePostPlanRouteSpec,
-    body_admission: &NativePostBodyAdmission,
-) -> NativePostIdempotencyEvidence {
-    hepta_runtime::native_post_idempotency_evidence(spec, body_admission)
-}
-
-pub fn native_post_audit_event_contract(
-    spec: &NativePostPlanRouteSpec,
-    body_schema: &NativePostBodySchema,
-    body_admission: &NativePostBodyAdmission,
-    idempotency_evidence: &NativePostIdempotencyEvidence,
-) -> NativePostAuditEventContract {
-    hepta_runtime::native_post_audit_event_contract(
-        spec,
-        body_schema,
-        body_admission,
-        idempotency_evidence,
-    )
-}
 
 pub fn native_post_plan_report(
     spec: &NativePostPlanRouteSpec,
