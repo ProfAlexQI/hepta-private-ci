@@ -10,7 +10,6 @@ use crate::telegram_policy::{
     NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,
     NativeTelegramModelTurnPlan, NativeTelegramSendExecutionReport, NativeTelegramSendRequestPlan,
     build_model_invocation_request_plan, plan_model_turn_for_updates,
-    telegram_drain_execution_plan,
 };
 use crate::telegram_runtime::NativeTelegramSessionBridgePlan;
 use crate::telegram_transport::{
@@ -25,7 +24,8 @@ use hepta_runtime::{
     native_telegram_receive_limit_policy, native_telegram_soak_max_attention_count_policy,
     native_telegram_soak_max_observed_age_ms_policy,
     native_telegram_soak_min_poll_iterations_policy, native_telegram_system_time_unix_ms,
-    plan_hepta_kernel_telegram_session_bridge, plan_native_telegram_drain_once_shell_readiness,
+    plan_hepta_kernel_telegram_session_bridge, plan_native_telegram_drain_once_api_result,
+    plan_native_telegram_drain_once_preflight, plan_native_telegram_drain_once_shell_readiness,
     plan_native_telegram_receive_once_shell_readiness,
 };
 
@@ -36,6 +36,8 @@ pub use hepta_runtime::{
 };
 
 pub use hepta_runtime::{
+    NativeTelegramDrainOnceApiResultInput, NativeTelegramDrainOnceApiResultPlan,
+    NativeTelegramDrainOncePreflightInput, NativeTelegramDrainOncePreflightPlan,
     NativeTelegramDrainOnceShellReadinessInput, NativeTelegramDrainOnceShellReadinessPlan,
     NativeTelegramReceiveOnceShellReadinessInput, NativeTelegramReceiveOnceShellReadinessPlan,
 };
@@ -1134,145 +1136,10 @@ pub struct NativeTelegramDrainOnceStatusInput {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct NativeTelegramDrainOncePreflightInput<'a> {
-    pub requested: bool,
-    pub gates: &'a NativeTelegramGatewayGateSummary,
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramDrainOncePreflightPlan {
-    pub status: &'static str,
-    pub error: Option<String>,
-    pub execution_plan: NativeTelegramExecutionPlan,
-    pub status_probe_executes_pipeline: bool,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub inspection: NativeTelegramIngressInspection,
-    pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub invocation_request: NativeTelegramModelInvocationRequestPlan,
-    pub model_execution: NativeTelegramModelExecutionReport,
-    pub send_plan: NativeTelegramSendPlan,
-    pub send_request: NativeTelegramSendRequestPlan,
-    pub send_execution: NativeTelegramSendExecutionReport,
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramDrainOnceApiResultInput<'a> {
-    pub requested: bool,
-    pub gates: &'a NativeTelegramGatewayGateSummary,
-    pub next_update_offset: Option<i64>,
-    pub api_result: Result<&'a Value, &'a str>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramDrainOnceApiResultPlan {
-    pub status: &'static str,
-    pub error: Option<String>,
-    pub should_execute_pipeline: bool,
-    pub bot_api_ok: Option<bool>,
-    pub local_next_update_offset: Option<i64>,
-    pub inspection: NativeTelegramIngressInspection,
-    pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub invocation_request: NativeTelegramModelInvocationRequestPlan,
-}
-
 pub fn plan_telegram_drain_once_preflight(
     input: NativeTelegramDrainOncePreflightInput<'_>,
 ) -> NativeTelegramDrainOncePreflightPlan {
-    let cursor_plan = if input.requested {
-        NativeTelegramCursorPlan::ready()
-    } else {
-        NativeTelegramCursorPlan::disabled()
-    };
-    let inspection = crate::telegram_policy::inspect_telegram_updates(&[]);
-    let model_turn_plan = if input.requested {
-        plan_model_turn_for_updates(&[])
-    } else {
-        NativeTelegramModelTurnPlan::disabled()
-    };
-    let invocation_request = if input.requested {
-        build_model_invocation_request_plan(
-            &[],
-            None,
-            input.gates.model_turn_gate_env,
-            input.gates.model_turn_gate_enabled,
-        )
-    } else {
-        NativeTelegramModelInvocationRequestPlan::disabled(
-            input.gates.model_turn_gate_env,
-            input.gates.model_turn_gate_enabled,
-        )
-    };
-    let send_plan = if input.requested {
-        NativeTelegramSendPlan::ready()
-    } else {
-        NativeTelegramSendPlan::disabled()
-    };
-    let send_request = if input.requested {
-        NativeTelegramSendRequestPlan::from_model_output(
-            None,
-            false,
-            None,
-            input.gates.send_gate_env,
-            input.gates.send_gate_enabled,
-        )
-    } else {
-        NativeTelegramSendRequestPlan::disabled(
-            input.gates.send_gate_env,
-            input.gates.send_gate_enabled,
-        )
-    };
-    let send_execution = if input.requested {
-        NativeTelegramSendExecutionReport::from_send_request(&send_request)
-    } else {
-        NativeTelegramSendExecutionReport::disabled(
-            input.gates.send_gate_env,
-            input.gates.send_gate_enabled,
-        )
-    };
-    let model_execution = if input.requested {
-        NativeTelegramModelExecutionReport::from_invocation_request(&invocation_request)
-    } else {
-        NativeTelegramModelExecutionReport::disabled(
-            input.gates.model_turn_gate_env,
-            input.gates.model_turn_gate_enabled,
-        )
-    };
-    let execution_plan = telegram_drain_execution_plan(input.requested, input.gates);
-    let first_missing_gate = execution_plan.first_missing_gate;
-    let all_required_gates_enabled = execution_plan.all_required_gates_enabled;
-    let status_probe_executes_pipeline = execution_plan.status_probe_executes_pipeline;
-    let status = if !input.requested {
-        "disabled"
-    } else if all_required_gates_enabled {
-        "planned"
-    } else {
-        "gated"
-    };
-    let error = if input.requested {
-        first_missing_gate.map(|gate| {
-            format!(
-                "Telegram drain-once pipeline is gated before side effects; first missing gate: {gate}"
-            )
-        })
-    } else {
-        None
-    };
-
-    NativeTelegramDrainOncePreflightPlan {
-        status,
-        error,
-        execution_plan,
-        status_probe_executes_pipeline,
-        cursor_plan,
-        inspection,
-        model_turn_plan,
-        invocation_request,
-        model_execution,
-        send_plan,
-        send_request,
-        send_execution,
-    }
+    plan_native_telegram_drain_once_preflight(input)
 }
 
 pub fn plan_telegram_drain_once_shell_readiness(
@@ -1284,77 +1151,7 @@ pub fn plan_telegram_drain_once_shell_readiness(
 pub fn plan_telegram_drain_once_api_result(
     input: NativeTelegramDrainOnceApiResultInput<'_>,
 ) -> NativeTelegramDrainOnceApiResultPlan {
-    match input.api_result {
-        Ok(api) => {
-            let bot_api_ok = api.get("ok").and_then(Value::as_bool);
-            let updates = api
-                .get("result")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let inspection = crate::telegram_policy::inspect_telegram_updates(&updates);
-            let model_turn_plan = plan_model_turn_for_updates(&updates);
-            let invocation_request = build_model_invocation_request_plan(
-                &updates,
-                input.next_update_offset,
-                input.gates.model_turn_gate_env,
-                input.gates.model_turn_gate_enabled,
-            );
-            if bot_api_ok == Some(false) {
-                return NativeTelegramDrainOnceApiResultPlan {
-                    status: "attention",
-                    error: api
-                        .get("description")
-                        .and_then(Value::as_str)
-                        .map(telegram_redact_token_like_text)
-                        .or_else(|| {
-                            Some("Telegram Bot API getUpdates returned ok=false".to_string())
-                        }),
-                    should_execute_pipeline: false,
-                    bot_api_ok,
-                    local_next_update_offset: inspection.latest_allowed_next_update_offset,
-                    inspection,
-                    model_turn_plan,
-                    invocation_request,
-                };
-            }
-
-            NativeTelegramDrainOnceApiResultPlan {
-                status: "planned",
-                error: None,
-                should_execute_pipeline: true,
-                bot_api_ok,
-                local_next_update_offset: inspection.latest_allowed_next_update_offset,
-                inspection,
-                model_turn_plan,
-                invocation_request,
-            }
-        }
-        Err(error) => {
-            let redacted_error = telegram_redact_token_like_text(error);
-            let status = if telegram_get_updates_error_is_conflict(&redacted_error) {
-                "busy"
-            } else {
-                "attention"
-            };
-            let updates = Vec::new();
-            NativeTelegramDrainOnceApiResultPlan {
-                status,
-                error: Some(redacted_error),
-                should_execute_pipeline: false,
-                bot_api_ok: None,
-                local_next_update_offset: None,
-                inspection: crate::telegram_policy::inspect_telegram_updates(&updates),
-                model_turn_plan: plan_model_turn_for_updates(&updates),
-                invocation_request: build_model_invocation_request_plan(
-                    &updates,
-                    input.next_update_offset,
-                    input.gates.model_turn_gate_env,
-                    input.gates.model_turn_gate_enabled,
-                ),
-            }
-        }
-    }
+    plan_native_telegram_drain_once_api_result(input)
 }
 
 pub fn build_telegram_drain_once_status(

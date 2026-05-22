@@ -21,7 +21,9 @@ pub use hepta_kernel::{
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
     HeptaKernelTelegramConfigMetadata, HeptaKernelTelegramConfigStatus,
     HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramCursorPlan,
-    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDrainOnceShellReadinessInput,
+    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDrainOnceApiResultInput,
+    HeptaKernelTelegramDrainOnceApiResultPlan, HeptaKernelTelegramDrainOncePreflightInput,
+    HeptaKernelTelegramDrainOncePreflightPlan, HeptaKernelTelegramDrainOnceShellReadinessInput,
     HeptaKernelTelegramDrainOnceShellReadinessPlan, HeptaKernelTelegramDuplicateDecision,
     HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
     HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
@@ -91,6 +93,8 @@ pub use hepta_kernel::{
     hepta_kernel_telegram_update_already_drained, inspect_hepta_kernel_telegram_updates,
     invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
     parse_hepta_kernel_telegram_cursor_next_update_offset,
+    plan_hepta_kernel_telegram_drain_once_api_result,
+    plan_hepta_kernel_telegram_drain_once_preflight,
     plan_hepta_kernel_telegram_drain_once_shell_readiness,
     plan_hepta_kernel_telegram_receive_once_shell_readiness,
     plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
@@ -123,6 +127,10 @@ pub type NativeTelegramReceiveOnceShellReadinessPlan =
 pub type NativeTelegramDrainOnceShellReadinessInput<'a> =
     HeptaKernelTelegramDrainOnceShellReadinessInput<'a>;
 pub type NativeTelegramDrainOnceShellReadinessPlan = HeptaKernelTelegramDrainOnceShellReadinessPlan;
+pub type NativeTelegramDrainOncePreflightInput<'a> = HeptaKernelTelegramDrainOncePreflightInput<'a>;
+pub type NativeTelegramDrainOncePreflightPlan = HeptaKernelTelegramDrainOncePreflightPlan;
+pub type NativeTelegramDrainOnceApiResultInput<'a> = HeptaKernelTelegramDrainOnceApiResultInput<'a>;
+pub type NativeTelegramDrainOnceApiResultPlan = HeptaKernelTelegramDrainOnceApiResultPlan;
 pub type NativeTelegramConfigStatus = HeptaKernelTelegramConfigStatus;
 pub type NativeTelegramConfigStatusInput = HeptaKernelTelegramConfigStatusInput;
 pub type NativeTelegramTokenObservationInput = HeptaKernelTelegramTokenObservationInput;
@@ -145,6 +153,18 @@ pub fn plan_native_telegram_drain_once_shell_readiness(
     input: NativeTelegramDrainOnceShellReadinessInput<'_>,
 ) -> NativeTelegramDrainOnceShellReadinessPlan {
     plan_hepta_kernel_telegram_drain_once_shell_readiness(input)
+}
+
+pub fn plan_native_telegram_drain_once_preflight(
+    input: NativeTelegramDrainOncePreflightInput<'_>,
+) -> NativeTelegramDrainOncePreflightPlan {
+    plan_hepta_kernel_telegram_drain_once_preflight(input)
+}
+
+pub fn plan_native_telegram_drain_once_api_result(
+    input: NativeTelegramDrainOnceApiResultInput<'_>,
+) -> NativeTelegramDrainOnceApiResultPlan {
+    plan_hepta_kernel_telegram_drain_once_api_result(input)
 }
 
 pub fn native_telegram_transport_plan_for_config_status(

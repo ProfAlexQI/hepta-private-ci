@@ -445,6 +445,48 @@ pub struct HeptaKernelTelegramDrainOnceShellReadinessPlan {
     pub may_call_bot_api: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelTelegramDrainOncePreflightInput<'a> {
+    pub requested: bool,
+    pub gates: &'a HeptaKernelTelegramGatewayGateSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramDrainOncePreflightPlan {
+    pub status: &'static str,
+    pub error: Option<String>,
+    pub execution_plan: HeptaKernelTelegramExecutionPlan,
+    pub status_probe_executes_pipeline: bool,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub inspection: HeptaKernelTelegramIngressInspection,
+    pub model_turn_plan: HeptaKernelTelegramModelTurnPlan,
+    pub invocation_request: HeptaKernelTelegramModelInvocationRequestPlan,
+    pub model_execution: HeptaKernelTelegramModelExecutionReport,
+    pub send_plan: HeptaKernelTelegramSendPlan,
+    pub send_request: HeptaKernelTelegramSendRequestPlan,
+    pub send_execution: HeptaKernelTelegramSendExecutionReport,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramDrainOnceApiResultInput<'a> {
+    pub requested: bool,
+    pub gates: &'a HeptaKernelTelegramGatewayGateSummary,
+    pub next_update_offset: Option<i64>,
+    pub api_result: Result<&'a Value, &'a str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramDrainOnceApiResultPlan {
+    pub status: &'static str,
+    pub error: Option<String>,
+    pub should_execute_pipeline: bool,
+    pub bot_api_ok: Option<bool>,
+    pub local_next_update_offset: Option<i64>,
+    pub inspection: HeptaKernelTelegramIngressInspection,
+    pub model_turn_plan: HeptaKernelTelegramModelTurnPlan,
+    pub invocation_request: HeptaKernelTelegramModelInvocationRequestPlan,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelTelegramConfigStatus {
     pub config_path: Option<String>,
@@ -1324,6 +1366,183 @@ pub fn plan_hepta_kernel_telegram_drain_once_shell_readiness(
         status: "planned",
         error: None,
         may_call_bot_api: true,
+    }
+}
+
+pub fn plan_hepta_kernel_telegram_drain_once_preflight(
+    input: HeptaKernelTelegramDrainOncePreflightInput<'_>,
+) -> HeptaKernelTelegramDrainOncePreflightPlan {
+    let cursor_plan = if input.requested {
+        HeptaKernelTelegramCursorPlan::ready()
+    } else {
+        HeptaKernelTelegramCursorPlan::disabled()
+    };
+    let updates = Vec::new();
+    let inspection = inspect_hepta_kernel_telegram_updates(&updates);
+    let model_turn_plan = if input.requested {
+        hepta_kernel_telegram_model_turn_plan_for_updates(&updates)
+    } else {
+        HeptaKernelTelegramModelTurnPlan::disabled()
+    };
+    let invocation_request = if input.requested {
+        hepta_kernel_telegram_model_invocation_request_plan_for_updates(
+            &updates,
+            None,
+            input.gates.model_turn_gate_env,
+            input.gates.model_turn_gate_enabled,
+        )
+    } else {
+        HeptaKernelTelegramModelInvocationRequestPlan::disabled(
+            input.gates.model_turn_gate_env,
+            input.gates.model_turn_gate_enabled,
+        )
+    };
+    let send_plan = if input.requested {
+        HeptaKernelTelegramSendPlan::ready()
+    } else {
+        HeptaKernelTelegramSendPlan::disabled()
+    };
+    let send_request = if input.requested {
+        HeptaKernelTelegramSendRequestPlan::from_model_output(
+            None,
+            false,
+            None,
+            input.gates.send_gate_env,
+            input.gates.send_gate_enabled,
+        )
+    } else {
+        HeptaKernelTelegramSendRequestPlan::disabled(
+            input.gates.send_gate_env,
+            input.gates.send_gate_enabled,
+        )
+    };
+    let send_execution = if input.requested {
+        HeptaKernelTelegramSendExecutionReport::from_send_request(&send_request)
+    } else {
+        HeptaKernelTelegramSendExecutionReport::disabled(
+            input.gates.send_gate_env,
+            input.gates.send_gate_enabled,
+        )
+    };
+    let model_execution = if input.requested {
+        HeptaKernelTelegramModelExecutionReport::from_invocation_request(&invocation_request)
+    } else {
+        HeptaKernelTelegramModelExecutionReport::disabled(
+            input.gates.model_turn_gate_env,
+            input.gates.model_turn_gate_enabled,
+        )
+    };
+    let execution_plan = hepta_kernel_telegram_drain_execution_plan(input.requested, input.gates);
+    let first_missing_gate = execution_plan.first_missing_gate;
+    let all_required_gates_enabled = execution_plan.all_required_gates_enabled;
+    let status_probe_executes_pipeline = execution_plan.status_probe_executes_pipeline;
+    let status = if !input.requested {
+        "disabled"
+    } else if all_required_gates_enabled {
+        "planned"
+    } else {
+        "gated"
+    };
+    let error = if input.requested {
+        first_missing_gate.map(|gate| {
+            format!(
+                "Telegram drain-once pipeline is gated before side effects; first missing gate: {gate}"
+            )
+        })
+    } else {
+        None
+    };
+
+    HeptaKernelTelegramDrainOncePreflightPlan {
+        status,
+        error,
+        execution_plan,
+        status_probe_executes_pipeline,
+        cursor_plan,
+        inspection,
+        model_turn_plan,
+        invocation_request,
+        model_execution,
+        send_plan,
+        send_request,
+        send_execution,
+    }
+}
+
+pub fn plan_hepta_kernel_telegram_drain_once_api_result(
+    input: HeptaKernelTelegramDrainOnceApiResultInput<'_>,
+) -> HeptaKernelTelegramDrainOnceApiResultPlan {
+    match input.api_result {
+        Ok(api) => {
+            let bot_api_ok = api.get("ok").and_then(Value::as_bool);
+            let updates = api
+                .get("result")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let inspection = inspect_hepta_kernel_telegram_updates(&updates);
+            let model_turn_plan = hepta_kernel_telegram_model_turn_plan_for_updates(&updates);
+            let invocation_request =
+                hepta_kernel_telegram_model_invocation_request_plan_for_updates(
+                    &updates,
+                    input.next_update_offset,
+                    input.gates.model_turn_gate_env,
+                    input.gates.model_turn_gate_enabled,
+                );
+            if bot_api_ok == Some(false) {
+                return HeptaKernelTelegramDrainOnceApiResultPlan {
+                    status: "attention",
+                    error: api
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .map(redact_hepta_kernel_telegram_token_like_text)
+                        .or_else(|| {
+                            Some("Telegram Bot API getUpdates returned ok=false".to_string())
+                        }),
+                    should_execute_pipeline: false,
+                    bot_api_ok,
+                    local_next_update_offset: inspection.latest_allowed_next_update_offset,
+                    inspection,
+                    model_turn_plan,
+                    invocation_request,
+                };
+            }
+
+            HeptaKernelTelegramDrainOnceApiResultPlan {
+                status: "planned",
+                error: None,
+                should_execute_pipeline: true,
+                bot_api_ok,
+                local_next_update_offset: inspection.latest_allowed_next_update_offset,
+                inspection,
+                model_turn_plan,
+                invocation_request,
+            }
+        }
+        Err(error) => {
+            let redacted_error = redact_hepta_kernel_telegram_token_like_text(error);
+            let status = if hepta_kernel_telegram_get_updates_error_is_conflict(&redacted_error) {
+                "busy"
+            } else {
+                "attention"
+            };
+            let updates = Vec::new();
+            HeptaKernelTelegramDrainOnceApiResultPlan {
+                status,
+                error: Some(redacted_error),
+                should_execute_pipeline: false,
+                bot_api_ok: None,
+                local_next_update_offset: None,
+                inspection: inspect_hepta_kernel_telegram_updates(&updates),
+                model_turn_plan: hepta_kernel_telegram_model_turn_plan_for_updates(&updates),
+                invocation_request: hepta_kernel_telegram_model_invocation_request_plan_for_updates(
+                    &updates,
+                    input.next_update_offset,
+                    input.gates.model_turn_gate_env,
+                    input.gates.model_turn_gate_enabled,
+                ),
+            }
+        }
     }
 }
 
@@ -4210,6 +4429,121 @@ mod tests {
         assert_eq!(ready.status, "planned");
         assert!(ready.error.is_none());
         assert!(ready.may_call_bot_api);
+    }
+
+    #[test]
+    fn kernel_telegram_drain_once_preflight_plans_pipeline_without_side_effects() {
+        let gated = telegram_kernel_gates(true, true, false, true);
+        let gated_plan = plan_hepta_kernel_telegram_drain_once_preflight(
+            HeptaKernelTelegramDrainOncePreflightInput {
+                requested: true,
+                gates: &gated,
+            },
+        );
+
+        assert_eq!(gated_plan.status, "gated");
+        assert!(
+            gated_plan
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("HEPTA_NATIVE_TELEGRAM_MODEL_TURN")
+        );
+        assert!(gated_plan.cursor_plan.duplicate_suppression_ready);
+        assert_eq!(gated_plan.inspection.update_count, 0);
+        assert_eq!(gated_plan.model_turn_plan.candidate_count, 0);
+        assert!(gated_plan.invocation_request.request_builder_ready);
+        assert!(!gated_plan.invocation_request.runner_invocation_allowed);
+        assert_eq!(gated_plan.model_execution.status, "gated");
+        assert!(gated_plan.send_plan.send_plan_ready);
+        assert_eq!(gated_plan.send_execution.status, "waiting_model_output");
+        assert!(gated_plan.status_probe_executes_pipeline);
+        assert!(!gated_plan.send_execution.external_send);
+        assert!(!gated_plan.send_execution.cursor_written);
+
+        let ready = telegram_kernel_gates(true, true, true, true);
+        let ready_plan = plan_hepta_kernel_telegram_drain_once_preflight(
+            HeptaKernelTelegramDrainOncePreflightInput {
+                requested: true,
+                gates: &ready,
+            },
+        );
+        assert_eq!(ready_plan.status, "planned");
+        assert!(ready_plan.error.is_none());
+        assert!(ready_plan.status_probe_executes_pipeline);
+        assert_eq!(ready_plan.model_execution.status, "waiting_candidate");
+    }
+
+    #[test]
+    fn kernel_telegram_drain_once_api_result_redacts_and_preserves_candidate_plan() {
+        let gates = telegram_kernel_gates(true, true, true, true);
+        let api = json!({
+            "ok": true,
+            "result": [{
+                "update_id": 47,
+                "message": {
+                    "message_id": 9,
+                    "chat": { "id": 6476198178i64 },
+                    "text": "private prompt"
+                }
+            }]
+        });
+
+        let plan = plan_hepta_kernel_telegram_drain_once_api_result(
+            HeptaKernelTelegramDrainOnceApiResultInput {
+                requested: true,
+                gates: &gates,
+                next_update_offset: Some(47),
+                api_result: Ok(&api),
+            },
+        );
+
+        assert_eq!(plan.status, "planned");
+        assert!(plan.should_execute_pipeline);
+        assert_eq!(plan.bot_api_ok, Some(true));
+        assert_eq!(plan.local_next_update_offset, Some(48));
+        assert_eq!(plan.inspection.allowed_update_count, 1);
+        assert_eq!(plan.model_turn_plan.text_candidate_count, 1);
+        assert!(plan.invocation_request.candidate_present);
+        assert_eq!(
+            plan.invocation_request.duplicate_decision,
+            "model_candidate"
+        );
+        assert!(plan.invocation_request.prompt_material_in_memory);
+        assert!(!plan.invocation_request.prompt_material_serialized);
+        assert!(!plan.invocation_request.raw_prompt_text_exposed);
+
+        let ok_false = json!({
+            "ok": false,
+            "description": "bad token 123456789:abcdefghijklmnopqrstuvwxyz"
+        });
+        let blocked = plan_hepta_kernel_telegram_drain_once_api_result(
+            HeptaKernelTelegramDrainOnceApiResultInput {
+                requested: true,
+                gates: &gates,
+                next_update_offset: Some(47),
+                api_result: Ok(&ok_false),
+            },
+        );
+        assert_eq!(blocked.status, "attention");
+        assert!(!blocked.should_execute_pipeline);
+        let error = blocked.error.expect("redacted error");
+        assert!(error.contains("[redacted-telegram-token]"));
+        assert!(!error.contains("abcdefghijklmnopqrstuvwxyz"));
+
+        let conflict = plan_hepta_kernel_telegram_drain_once_api_result(
+            HeptaKernelTelegramDrainOnceApiResultInput {
+                requested: true,
+                gates: &gates,
+                next_update_offset: Some(47),
+                api_result: Err(
+                    "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request",
+                ),
+            },
+        );
+        assert_eq!(conflict.status, "busy");
+        assert!(!conflict.should_execute_pipeline);
+        assert!(!conflict.invocation_request.candidate_present);
     }
 
     #[test]
