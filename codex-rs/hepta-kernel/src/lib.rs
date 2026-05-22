@@ -75,6 +75,8 @@ pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
     &["approval_apply", "task_publish", "chat_send"];
 pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str =
     "/api/native-post-execution-readiness";
+pub const HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT: &str =
+    "/api/native-post-activation-plan";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HeptaKernelNativePostPlanRouteSpec {
@@ -281,6 +283,65 @@ pub struct HeptaKernelNativePostExecutionReadinessRoute {
     pub current_plan_executes_real_handler: bool,
     pub real_handler_implemented: bool,
     pub blocked_reason: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostActivationPlanResponse {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub endpoint: &'static str,
+    pub source_command: &'static str,
+    pub native_route: bool,
+    pub compatibility_mode: &'static str,
+    pub side_effect_free: bool,
+    pub activation_preflight_ready: bool,
+    pub activation_currently_enabled: bool,
+    pub activation_blocked_reason: &'static str,
+    pub handler_candidate_count: usize,
+    pub handler_implemented_count: usize,
+    pub all_handlers_implemented: bool,
+    pub handler_scope_env: &'static str,
+    pub handler_scope: Option<String>,
+    pub handler_scope_configured: bool,
+    pub single_handler_scope_ready: bool,
+    pub selected_handler_count: usize,
+    pub selected_handler_kinds: Vec<&'static str>,
+    pub execution_evidence_ready: bool,
+    pub store_contracts_ready: bool,
+    pub store_jsonl_valid: bool,
+    pub store_capacity_ok: bool,
+    pub required_gates: Vec<HeptaKernelNativePostActivationGate>,
+    pub rollback_ready: bool,
+    pub rollback_anchor_required: bool,
+    pub rollback_store_kind: &'static str,
+    pub rollback_store_file: &'static str,
+    pub rollback_schema_id: &'static str,
+    pub rollback_actions: Vec<&'static str>,
+    pub dry_run_only: bool,
+    pub real_mutation_performed: bool,
+    pub store_write_attempted: bool,
+    pub approval_applied: bool,
+    pub task_published: bool,
+    pub chat_mutated: bool,
+    pub external_side_effects: bool,
+    pub gateway_mutation_performed: bool,
+    pub telegram_read_performed: bool,
+    pub model_invoked: bool,
+    pub message_sent: bool,
+    pub cursor_written: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostActivationGate {
+    pub env: &'static str,
+    pub enabled: bool,
+    pub required_for_activation: bool,
+    pub purpose: &'static str,
 }
 
 pub const HEPTA_KERNEL_NATIVE_POST_PLAN_ROUTE_SPECS: &[HeptaKernelNativePostPlanRouteSpec] = &[
@@ -1002,6 +1063,130 @@ fn hepta_kernel_native_post_execution_readiness_route(
         } else {
             "plan_only_route"
         },
+    }
+}
+
+pub fn hepta_kernel_native_post_activation_plan_report(
+    real_handler_gate_enabled: bool,
+    operator_approval_enabled: bool,
+    handler_scope: Option<&str>,
+    store_contracts_ready: bool,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    rollback_store_ready: bool,
+) -> HeptaKernelNativePostActivationPlanResponse {
+    let readiness = hepta_kernel_native_post_execution_readiness_report(
+        real_handler_gate_enabled,
+        handler_scope,
+    );
+    let handler_scope = readiness.real_handler_scope.clone();
+    let selected_handler_kinds = readiness.selected_handler_kinds.clone();
+    let selected_handler_count = readiness.selected_handler_count;
+    let handler_scope_configured = readiness.real_handler_scope_configured;
+    let single_handler_scope_ready = readiness.single_handler_scope_ready;
+    let all_handlers_implemented =
+        readiness.real_handler_implemented_count == readiness.real_handler_candidate_count;
+    let activation_preflight_ready =
+        readiness.all_evidence_contracts_ready && all_handlers_implemented && store_contracts_ready;
+    let activation_currently_enabled = activation_preflight_ready
+        && real_handler_gate_enabled
+        && operator_approval_enabled
+        && single_handler_scope_ready;
+    let activation_blocked_reason = if !readiness.all_evidence_contracts_ready {
+        "execution_evidence_not_ready"
+    } else if !all_handlers_implemented {
+        "real_handler_not_implemented"
+    } else if !store_contracts_ready {
+        "store_contract_not_ready"
+    } else if !real_handler_gate_enabled {
+        "real_handler_gate_disabled"
+    } else if !operator_approval_enabled {
+        "operator_approval_required"
+    } else if !handler_scope_configured {
+        "handler_scope_not_selected"
+    } else if !single_handler_scope_ready {
+        "handler_scope_not_single"
+    } else {
+        "single_handler_scope_satisfied_dry_run_harness_only"
+    };
+    let rollback_ready = activation_preflight_ready && rollback_store_ready;
+
+    HeptaKernelNativePostActivationPlanResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if activation_preflight_ready {
+            "ready"
+        } else {
+            "attention"
+        },
+        endpoint: HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
+        source_command: "/native-post-activation-plan --json",
+        native_route: true,
+        compatibility_mode: "native_post_activation_plan",
+        side_effect_free: true,
+        activation_preflight_ready,
+        activation_currently_enabled,
+        activation_blocked_reason,
+        handler_candidate_count: readiness.real_handler_candidate_count,
+        handler_implemented_count: readiness.real_handler_implemented_count,
+        all_handlers_implemented,
+        handler_scope_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        handler_scope,
+        handler_scope_configured,
+        single_handler_scope_ready,
+        selected_handler_count,
+        selected_handler_kinds,
+        execution_evidence_ready: readiness.all_evidence_contracts_ready,
+        store_contracts_ready,
+        store_jsonl_valid,
+        store_capacity_ok,
+        required_gates: vec![
+            HeptaKernelNativePostActivationGate {
+                env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV,
+                enabled: real_handler_gate_enabled,
+                required_for_activation: true,
+                purpose: "allow native POST real-handler harness execution",
+            },
+            HeptaKernelNativePostActivationGate {
+                env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+                enabled: operator_approval_enabled,
+                required_for_activation: true,
+                purpose: "operator approval for confirm-required native POST mutations",
+            },
+            HeptaKernelNativePostActivationGate {
+                env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+                enabled: single_handler_scope_ready,
+                required_for_activation: true,
+                purpose: "select exactly one native POST handler for canary dry-run harness execution",
+            },
+        ],
+        rollback_ready,
+        rollback_anchor_required: true,
+        rollback_store_kind: "rollback",
+        rollback_store_file: "rollback.jsonl",
+        rollback_schema_id: "hepta.post.rollback_anchor.v1",
+        rollback_actions: vec![
+            "unset HEPTA_NATIVE_POST_REAL_HANDLERS, HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED, and HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE",
+            "restart ai.hepta.gateway through launchctl kickstart",
+            "inspect /api/native-post-execution-stores for valid rollback anchors",
+            "restore the latest hepta-codex binary/plist backup if gateway health regresses",
+        ],
+        dry_run_only: true,
+        real_mutation_performed: false,
+        store_write_attempted: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        raw_request_body_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+        next_migration_slice: "activate one handler only under dual gate after this plan remains ready and rollback anchors are observed",
     }
 }
 
@@ -6587,6 +6772,65 @@ mod tests {
                 && route.ready_for_real_handler_wiring
                 && route.blocked_reason == "real_handler_gate_disabled"
         }));
+    }
+
+    #[test]
+    fn kernel_native_post_activation_plan_requires_dual_gate_and_single_scope() {
+        let gated = hepta_kernel_native_post_activation_plan_report(
+            false,
+            false,
+            Some("task_publish"),
+            true,
+            true,
+            true,
+            true,
+        );
+        assert_eq!(gated.status, "ready");
+        assert_eq!(
+            gated.endpoint,
+            HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT
+        );
+        assert!(gated.activation_preflight_ready);
+        assert!(!gated.activation_currently_enabled);
+        assert_eq!(
+            gated.activation_blocked_reason,
+            "real_handler_gate_disabled"
+        );
+        assert!(gated.rollback_ready);
+        assert_eq!(gated.selected_handler_kinds, vec!["task_publish"]);
+        assert_eq!(gated.required_gates.len(), 3);
+        assert!(!gated.external_side_effects);
+        assert!(!gated.gateway_mutation_performed);
+
+        let live_ready = hepta_kernel_native_post_activation_plan_report(
+            true,
+            true,
+            Some("task_publish"),
+            true,
+            true,
+            true,
+            true,
+        );
+        assert!(live_ready.activation_currently_enabled);
+        assert_eq!(
+            live_ready.activation_blocked_reason,
+            "single_handler_scope_satisfied_dry_run_harness_only"
+        );
+
+        let ambiguous_scope = hepta_kernel_native_post_activation_plan_report(
+            true,
+            true,
+            Some("task_publish chat_send"),
+            true,
+            true,
+            true,
+            true,
+        );
+        assert!(!ambiguous_scope.activation_currently_enabled);
+        assert_eq!(
+            ambiguous_scope.activation_blocked_reason,
+            "handler_scope_not_single"
+        );
     }
 
     #[test]

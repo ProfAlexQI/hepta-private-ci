@@ -106,12 +106,15 @@ use events::EventState;
 pub use events::{EventQueryReport, EventRecord};
 pub use hepta_contracts::HeptaRuntimeContractInventory;
 pub use hepta_kernel::{
+    HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT as NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
     HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT as NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
     HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES as NATIVE_POST_MAX_BODY_BYTES,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV as NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS as NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV as NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV as NATIVE_POST_REAL_HANDLERS_ENV,
+    HeptaKernelNativePostActivationGate as NativePostActivationGate,
+    HeptaKernelNativePostActivationPlanResponse as NativePostActivationPlanResponse,
     HeptaKernelNativePostAuditEventContract as NativePostAuditEventContract,
     HeptaKernelNativePostBodyAdmission as NativePostBodyAdmission,
     HeptaKernelNativePostBodySchema as NativePostBodySchema,
@@ -242,6 +245,26 @@ pub fn native_post_execution_readiness_report(
     hepta_kernel::hepta_kernel_native_post_execution_readiness_report(
         real_handler_gate_enabled,
         handler_scope,
+    )
+}
+
+pub fn native_post_activation_plan_report(
+    real_handler_gate_enabled: bool,
+    operator_approval_enabled: bool,
+    handler_scope: Option<&str>,
+    store_contracts_ready: bool,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    rollback_store_ready: bool,
+) -> NativePostActivationPlanResponse {
+    hepta_kernel::hepta_kernel_native_post_activation_plan_report(
+        real_handler_gate_enabled,
+        operator_approval_enabled,
+        handler_scope,
+        store_contracts_ready,
+        store_jsonl_valid,
+        store_capacity_ok,
+        rollback_store_ready,
     )
 }
 pub use memory_context::{
