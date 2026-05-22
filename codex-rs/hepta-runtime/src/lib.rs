@@ -108,9 +108,13 @@ pub use hepta_contracts::HeptaRuntimeContractInventory;
 pub use hepta_kernel::{
     HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES as NATIVE_POST_MAX_BODY_BYTES,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS as NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
+    HeptaKernelNativePostAuditEventContract as NativePostAuditEventContract,
     HeptaKernelNativePostBodyAdmission as NativePostBodyAdmission,
     HeptaKernelNativePostBodySchema as NativePostBodySchema,
+    HeptaKernelNativePostConfirmationContract as NativePostConfirmationContract,
+    HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
+    HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
 };
 pub use inbound_router::{
     DEFAULT_INBOUND_ROUTER_ID, DEFAULT_INBOUND_ROUTER_PATH, InboundEventInput, InboundEventRecord,
@@ -158,6 +162,37 @@ pub fn native_post_body_admission(
 
 pub fn native_post_redacted_fingerprint(value: &str) -> String {
     hepta_kernel::hepta_kernel_native_post_redacted_fingerprint(value)
+}
+
+pub fn native_post_confirmation_contract(
+    spec: &NativePostPlanRouteSpec,
+) -> NativePostConfirmationContract {
+    hepta_kernel::hepta_kernel_native_post_confirmation_contract(spec)
+}
+
+pub fn native_post_rollback_contract() -> NativePostRollbackContract {
+    hepta_kernel::hepta_kernel_native_post_rollback_contract()
+}
+
+pub fn native_post_idempotency_evidence(
+    spec: &NativePostPlanRouteSpec,
+    body_admission: &NativePostBodyAdmission,
+) -> NativePostIdempotencyEvidence {
+    hepta_kernel::hepta_kernel_native_post_idempotency_evidence(spec, body_admission)
+}
+
+pub fn native_post_audit_event_contract(
+    spec: &NativePostPlanRouteSpec,
+    body_schema: &NativePostBodySchema,
+    body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+) -> NativePostAuditEventContract {
+    hepta_kernel::hepta_kernel_native_post_audit_event_contract(
+        spec,
+        body_schema,
+        body_admission,
+        idempotency_evidence,
+    )
 }
 pub use memory_context::{
     DEFAULT_MEMORY_CONTEXT_LEDGER_ID, DEFAULT_MEMORY_CONTEXT_LEDGER_PATH, MemoryCitation,

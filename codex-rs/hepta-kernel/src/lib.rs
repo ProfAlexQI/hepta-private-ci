@@ -121,6 +121,62 @@ pub struct HeptaKernelNativePostBodyAdmission {
     pub raw_field_values_exposed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostConfirmationContract {
+    pub current_plan_requires_confirmation: bool,
+    pub real_mutation_requires_confirmation: bool,
+    pub accepted_confirmation_field: Option<&'static str>,
+    pub operator_approval_required: bool,
+    pub confirmation_mechanism: &'static str,
+    pub raw_confirmation_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostRollbackContract {
+    pub current_plan_noop: bool,
+    pub state_written_by_plan: bool,
+    pub current_plan_rollback_strategy: &'static str,
+    pub real_handler_requires_rollback_contract: bool,
+    pub destructive_without_rollback: bool,
+    pub rollback_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostIdempotencyEvidence {
+    pub required: bool,
+    pub key_present: bool,
+    pub key_redacted: bool,
+    pub key_fingerprint: Option<String>,
+    pub key_shape_valid: bool,
+    pub lookup_required_before_real_handler: bool,
+    pub duplicate_suppression_required: bool,
+    pub durable_store_required: bool,
+    pub current_plan_lookup_performed: bool,
+    pub current_plan_store_written: bool,
+    pub raw_key_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostAuditEventContract {
+    pub required: bool,
+    pub schema_id: &'static str,
+    pub event_kind: &'static str,
+    pub body_schema_id: &'static str,
+    pub route_pattern_recorded: bool,
+    pub capability_recorded: bool,
+    pub body_admission_status_recorded: bool,
+    pub idempotency_evidence_recorded: bool,
+    pub rollback_contract_recorded: bool,
+    pub operator_approval_recorded: bool,
+    pub ready_for_real_handler: bool,
+    pub current_plan_emits_audit_event: bool,
+    pub current_plan_persists_audit_event: bool,
+    pub raw_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_parameter_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+}
+
 pub const HEPTA_KERNEL_NATIVE_POST_PLAN_ROUTE_SPECS: &[HeptaKernelNativePostPlanRouteSpec] = &[
     HeptaKernelNativePostPlanRouteSpec {
         pattern: "/api/actions/<action>",
@@ -518,6 +574,86 @@ fn hepta_kernel_native_post_json_field_truthy(value: Option<&serde_json::Value>)
         }
         Some(serde_json::Value::Number(value)) => value.as_i64() == Some(1),
         _ => false,
+    }
+}
+
+pub fn hepta_kernel_native_post_confirmation_contract(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+) -> HeptaKernelNativePostConfirmationContract {
+    HeptaKernelNativePostConfirmationContract {
+        current_plan_requires_confirmation: false,
+        real_mutation_requires_confirmation: spec.confirmation_required_for_real_mutation,
+        accepted_confirmation_field: spec
+            .confirmation_required_for_real_mutation
+            .then_some("confirm"),
+        operator_approval_required: spec.confirmation_required_for_real_mutation,
+        confirmation_mechanism: if spec.confirmation_required_for_real_mutation {
+            "explicit_confirm_field_plus_operator_approval"
+        } else {
+            "not_required_for_plan_only_route"
+        },
+        raw_confirmation_payload_exposed: false,
+    }
+}
+
+pub fn hepta_kernel_native_post_rollback_contract() -> HeptaKernelNativePostRollbackContract {
+    HeptaKernelNativePostRollbackContract {
+        current_plan_noop: true,
+        state_written_by_plan: false,
+        current_plan_rollback_strategy: "noop_no_state_written",
+        real_handler_requires_rollback_contract: true,
+        destructive_without_rollback: false,
+        rollback_payload_exposed: false,
+    }
+}
+
+pub fn hepta_kernel_native_post_idempotency_evidence(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    body_admission: &HeptaKernelNativePostBodyAdmission,
+) -> HeptaKernelNativePostIdempotencyEvidence {
+    let required = spec.confirmation_required_for_real_mutation;
+    HeptaKernelNativePostIdempotencyEvidence {
+        required,
+        key_present: body_admission.idempotency_key_present,
+        key_redacted: body_admission.idempotency_key_present,
+        key_fingerprint: body_admission.idempotency_key_fingerprint.clone(),
+        key_shape_valid: !required || body_admission.idempotency_key_present,
+        lookup_required_before_real_handler: required,
+        duplicate_suppression_required: required,
+        durable_store_required: required,
+        current_plan_lookup_performed: false,
+        current_plan_store_written: false,
+        raw_key_exposed: false,
+    }
+}
+
+pub fn hepta_kernel_native_post_audit_event_contract(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    body_schema: &HeptaKernelNativePostBodySchema,
+    body_admission: &HeptaKernelNativePostBodyAdmission,
+    idempotency_evidence: &HeptaKernelNativePostIdempotencyEvidence,
+) -> HeptaKernelNativePostAuditEventContract {
+    let required = spec.confirmation_required_for_real_mutation;
+    HeptaKernelNativePostAuditEventContract {
+        required,
+        schema_id: "hepta.post.execution_audit.v1",
+        event_kind: spec.plan_kind,
+        body_schema_id: body_schema.schema_id,
+        route_pattern_recorded: true,
+        capability_recorded: true,
+        body_admission_status_recorded: true,
+        idempotency_evidence_recorded: required,
+        rollback_contract_recorded: required,
+        operator_approval_recorded: required,
+        ready_for_real_handler: !required
+            || (body_admission.ready_for_real_handler_input
+                && idempotency_evidence.key_shape_valid),
+        current_plan_emits_audit_event: false,
+        current_plan_persists_audit_event: false,
+        raw_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_parameter_exposed: false,
+        raw_idempotency_key_exposed: false,
     }
 }
 
@@ -5967,6 +6103,44 @@ mod tests {
         );
         assert_eq!(plan_admission.admission_status, "validated_plan_input");
         assert!(!plan_admission.idempotency_key_required);
+    }
+
+    #[test]
+    fn kernel_native_post_evidence_contracts_gate_real_handler_readiness() {
+        let chat_send = hepta_kernel_native_post_plan_route_specs()
+            .iter()
+            .find(|spec| spec.plan_kind == "chat_send")
+            .expect("chat send spec");
+        let schema = hepta_kernel_native_post_body_schema(chat_send.plan_kind, true);
+        let admission = hepta_kernel_native_post_body_admission(
+            chat_send,
+            &schema,
+            Some(
+                r#"{"chat_id":"c1","message":"hello","confirm":true,"dry_run":true,"idempotency_key":"idem"}"#,
+            ),
+        );
+        let confirmation = hepta_kernel_native_post_confirmation_contract(chat_send);
+        let rollback = hepta_kernel_native_post_rollback_contract();
+        let idempotency = hepta_kernel_native_post_idempotency_evidence(chat_send, &admission);
+        let audit = hepta_kernel_native_post_audit_event_contract(
+            chat_send,
+            &schema,
+            &admission,
+            &idempotency,
+        );
+
+        assert!(confirmation.real_mutation_requires_confirmation);
+        assert_eq!(confirmation.accepted_confirmation_field, Some("confirm"));
+        assert!(!confirmation.raw_confirmation_payload_exposed);
+        assert!(rollback.current_plan_noop);
+        assert!(rollback.real_handler_requires_rollback_contract);
+        assert!(idempotency.required);
+        assert!(idempotency.key_shape_valid);
+        assert!(idempotency.duplicate_suppression_required);
+        assert!(audit.required);
+        assert!(audit.ready_for_real_handler);
+        assert!(!audit.current_plan_emits_audit_event);
+        assert!(!audit.raw_idempotency_key_exposed);
     }
 
     #[test]

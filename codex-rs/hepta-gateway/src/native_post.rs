@@ -8,8 +8,9 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 pub use hepta_runtime::{
-    NATIVE_POST_MAX_BODY_BYTES, NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NativePostBodyAdmission,
-    NativePostBodySchema, NativePostPlanRouteSpec,
+    NATIVE_POST_MAX_BODY_BYTES, NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NativePostAuditEventContract,
+    NativePostBodyAdmission, NativePostBodySchema, NativePostConfirmationContract,
+    NativePostIdempotencyEvidence, NativePostPlanRouteSpec, NativePostRollbackContract,
 };
 
 pub const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
@@ -97,62 +98,6 @@ pub struct NativePostPlanResponse {
     pub message_sent: bool,
     pub cursor_written: bool,
     pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostConfirmationContract {
-    pub current_plan_requires_confirmation: bool,
-    pub real_mutation_requires_confirmation: bool,
-    pub accepted_confirmation_field: Option<&'static str>,
-    pub operator_approval_required: bool,
-    pub confirmation_mechanism: &'static str,
-    pub raw_confirmation_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostRollbackContract {
-    pub current_plan_noop: bool,
-    pub state_written_by_plan: bool,
-    pub current_plan_rollback_strategy: &'static str,
-    pub real_handler_requires_rollback_contract: bool,
-    pub destructive_without_rollback: bool,
-    pub rollback_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostIdempotencyEvidence {
-    pub required: bool,
-    pub key_present: bool,
-    pub key_redacted: bool,
-    pub key_fingerprint: Option<String>,
-    pub key_shape_valid: bool,
-    pub lookup_required_before_real_handler: bool,
-    pub duplicate_suppression_required: bool,
-    pub durable_store_required: bool,
-    pub current_plan_lookup_performed: bool,
-    pub current_plan_store_written: bool,
-    pub raw_key_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostAuditEventContract {
-    pub required: bool,
-    pub schema_id: &'static str,
-    pub event_kind: &'static str,
-    pub body_schema_id: &'static str,
-    pub route_pattern_recorded: bool,
-    pub capability_recorded: bool,
-    pub body_admission_status_recorded: bool,
-    pub idempotency_evidence_recorded: bool,
-    pub rollback_contract_recorded: bool,
-    pub operator_approval_recorded: bool,
-    pub ready_for_real_handler: bool,
-    pub current_plan_emits_audit_event: bool,
-    pub current_plan_persists_audit_event: bool,
-    pub raw_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_parameter_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -645,51 +590,18 @@ pub fn native_post_redacted_fingerprint(value: &str) -> String {
 pub fn native_post_confirmation_contract(
     spec: &NativePostPlanRouteSpec,
 ) -> NativePostConfirmationContract {
-    NativePostConfirmationContract {
-        current_plan_requires_confirmation: false,
-        real_mutation_requires_confirmation: spec.confirmation_required_for_real_mutation,
-        accepted_confirmation_field: spec
-            .confirmation_required_for_real_mutation
-            .then_some("confirm"),
-        operator_approval_required: spec.confirmation_required_for_real_mutation,
-        confirmation_mechanism: if spec.confirmation_required_for_real_mutation {
-            "explicit_confirm_field_plus_operator_approval"
-        } else {
-            "not_required_for_plan_only_route"
-        },
-        raw_confirmation_payload_exposed: false,
-    }
+    hepta_runtime::native_post_confirmation_contract(spec)
 }
 
 pub fn native_post_rollback_contract() -> NativePostRollbackContract {
-    NativePostRollbackContract {
-        current_plan_noop: true,
-        state_written_by_plan: false,
-        current_plan_rollback_strategy: "noop_no_state_written",
-        real_handler_requires_rollback_contract: true,
-        destructive_without_rollback: false,
-        rollback_payload_exposed: false,
-    }
+    hepta_runtime::native_post_rollback_contract()
 }
 
 pub fn native_post_idempotency_evidence(
     spec: &NativePostPlanRouteSpec,
     body_admission: &NativePostBodyAdmission,
 ) -> NativePostIdempotencyEvidence {
-    let required = spec.confirmation_required_for_real_mutation;
-    NativePostIdempotencyEvidence {
-        required,
-        key_present: body_admission.idempotency_key_present,
-        key_redacted: body_admission.idempotency_key_present,
-        key_fingerprint: body_admission.idempotency_key_fingerprint.clone(),
-        key_shape_valid: !required || body_admission.idempotency_key_present,
-        lookup_required_before_real_handler: required,
-        duplicate_suppression_required: required,
-        durable_store_required: required,
-        current_plan_lookup_performed: false,
-        current_plan_store_written: false,
-        raw_key_exposed: false,
-    }
+    hepta_runtime::native_post_idempotency_evidence(spec, body_admission)
 }
 
 pub fn native_post_audit_event_contract(
@@ -698,28 +610,12 @@ pub fn native_post_audit_event_contract(
     body_admission: &NativePostBodyAdmission,
     idempotency_evidence: &NativePostIdempotencyEvidence,
 ) -> NativePostAuditEventContract {
-    let required = spec.confirmation_required_for_real_mutation;
-    NativePostAuditEventContract {
-        required,
-        schema_id: "hepta.post.execution_audit.v1",
-        event_kind: spec.plan_kind,
-        body_schema_id: body_schema.schema_id,
-        route_pattern_recorded: true,
-        capability_recorded: true,
-        body_admission_status_recorded: true,
-        idempotency_evidence_recorded: required,
-        rollback_contract_recorded: required,
-        operator_approval_recorded: required,
-        ready_for_real_handler: !required
-            || (body_admission.ready_for_real_handler_input
-                && idempotency_evidence.key_shape_valid),
-        current_plan_emits_audit_event: false,
-        current_plan_persists_audit_event: false,
-        raw_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_parameter_exposed: false,
-        raw_idempotency_key_exposed: false,
-    }
+    hepta_runtime::native_post_audit_event_contract(
+        spec,
+        body_schema,
+        body_admission,
+        idempotency_evidence,
+    )
 }
 
 pub fn native_post_execution_admission_with_scope(
