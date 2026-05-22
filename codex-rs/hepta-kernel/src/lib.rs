@@ -334,6 +334,22 @@ pub struct HeptaKernelTelegramModelExecutionReport {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramModelExecutionInput {
+    pub candidate: Option<HeptaKernelTelegramCandidateMaterial>,
+    pub duplicate_decision: Option<HeptaKernelTelegramDuplicateDecision>,
+    pub model_turn_gate_env: &'static str,
+    pub model_turn_gate_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramModelExecutionOutcome {
+    pub report: HeptaKernelTelegramModelExecutionReport,
+    pub model_output: Option<String>,
+    pub reply_target: Option<HeptaKernelTelegramReplyTargetMaterial>,
+    pub candidate_next_update_offset: Option<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaKernelTelegramSendRequestPlan {
     pub request_builder_ready: bool,
@@ -1161,6 +1177,146 @@ impl HeptaKernelTelegramModelExecutionReport {
             raw_sender_id_exposed: false,
             raw_message_id_exposed: false,
             error: None,
+        }
+    }
+}
+
+pub fn execute_hepta_kernel_telegram_model_turn_after_candidate<F>(
+    input: HeptaKernelTelegramModelExecutionInput,
+    run_model: F,
+) -> HeptaKernelTelegramModelExecutionOutcome
+where
+    F: FnOnce(&str) -> Result<String, String>,
+{
+    let invocation_request = match (input.candidate.clone(), input.duplicate_decision.clone()) {
+        (Some(candidate), Some(decision)) if candidate.requires_model => {
+            HeptaKernelTelegramModelInvocationRequestPlan::from_candidate(
+                candidate,
+                decision,
+                input.model_turn_gate_env,
+                input.model_turn_gate_enabled,
+            )
+        }
+        (Some(candidate), _) if !candidate.requires_model => {
+            HeptaKernelTelegramModelInvocationRequestPlan::attention(
+                candidate,
+                "not_model_candidate",
+                None,
+                input.model_turn_gate_env,
+                input.model_turn_gate_enabled,
+            )
+        }
+        (Some(candidate), None) if candidate.requires_model => {
+            HeptaKernelTelegramModelInvocationRequestPlan::attention(
+                candidate,
+                "missing_update_id",
+                None,
+                input.model_turn_gate_env,
+                input.model_turn_gate_enabled,
+            )
+        }
+        _ => HeptaKernelTelegramModelInvocationRequestPlan::empty(
+            input.model_turn_gate_env,
+            input.model_turn_gate_enabled,
+        ),
+    };
+    let mut report =
+        HeptaKernelTelegramModelExecutionReport::from_invocation_request(&invocation_request);
+
+    if !input.model_turn_gate_enabled {
+        report.error = Some(format!(
+            "Telegram model execution is gated by {}",
+            input.model_turn_gate_env
+        ));
+        return HeptaKernelTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: None,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    }
+
+    let Some(candidate) = input.candidate else {
+        report.error = Some("Telegram model execution requires a candidate".to_string());
+        return HeptaKernelTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: None,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    };
+
+    if invocation_request.should_record_duplicate {
+        return HeptaKernelTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: candidate.reply_target,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    }
+
+    let Some(prompt_text) = candidate
+        .prompt_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        report.status = "attention";
+        report.error =
+            Some("Telegram model execution requires non-empty prompt material".to_string());
+        return HeptaKernelTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: candidate.reply_target,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    };
+
+    if !invocation_request.runner_invocation_allowed {
+        report.status = "attention";
+        report.error = Some("Telegram model execution request is not runner-eligible".to_string());
+        return HeptaKernelTelegramModelExecutionOutcome {
+            report,
+            model_output: None,
+            reply_target: candidate.reply_target,
+            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+        };
+    }
+
+    report.status = "running";
+    report.session_runner_invoked = true;
+    match run_model(prompt_text) {
+        Ok(output) => {
+            let output = output.trim().to_string();
+            if output.is_empty() {
+                report.status = "attention";
+                report.error = Some("Telegram model execution returned empty output".to_string());
+                HeptaKernelTelegramModelExecutionOutcome {
+                    report,
+                    model_output: None,
+                    reply_target: candidate.reply_target,
+                    candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+                }
+            } else {
+                report.status = "completed";
+                report.model_output_present = true;
+                HeptaKernelTelegramModelExecutionOutcome {
+                    report,
+                    model_output: Some(output),
+                    reply_target: candidate.reply_target,
+                    candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+                }
+            }
+        }
+        Err(error) => {
+            report.status = "attention";
+            report.error = Some(redact_hepta_kernel_telegram_runner_error(&error));
+            HeptaKernelTelegramModelExecutionOutcome {
+                report,
+                model_output: None,
+                reply_target: candidate.reply_target,
+                candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+            }
         }
     }
 }
@@ -5846,5 +6002,121 @@ mod tests {
         assert!(!ready_report.external_send);
         assert!(!ready_report.cursor_written);
         assert!(!ready_report.raw_response_text_exposed);
+    }
+
+    #[test]
+    fn kernel_model_execution_runs_runner_without_serializing_private_material() {
+        let candidate = HeptaKernelTelegramCandidateMaterial {
+            update_id: Some(48),
+            kind: "message:text".to_string(),
+            prompt_text: Some("private model prompt".to_string()),
+            has_reply_target: true,
+            reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                chat_id: 6476198178,
+                reply_to_message_id: Some(13),
+                raw_identifiers_exposed: false,
+            }),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let decision = hepta_kernel_telegram_duplicate_decision(48, Some(48));
+
+        let outcome = execute_hepta_kernel_telegram_model_turn_after_candidate(
+            HeptaKernelTelegramModelExecutionInput {
+                candidate: Some(candidate),
+                duplicate_decision: Some(decision),
+                model_turn_gate_env: "MODEL_GATE",
+                model_turn_gate_enabled: true,
+            },
+            |prompt| {
+                assert_eq!(prompt, "private model prompt");
+                Ok(" private model response text ".to_string())
+            },
+        );
+
+        assert_eq!(outcome.report.status, "completed");
+        assert!(outcome.report.execution_ready);
+        assert!(outcome.report.runner_invocation_allowed);
+        assert!(outcome.report.session_runner_invoked);
+        assert!(outcome.report.model_output_present);
+        assert_eq!(outcome.candidate_next_update_offset, Some(49));
+        assert_eq!(
+            outcome.model_output.as_deref(),
+            Some("private model response text")
+        );
+        assert!(outcome.reply_target.is_some());
+
+        let serialized = serde_json::to_string(&outcome.report).expect("serialize report");
+        assert!(!serialized.contains("private model prompt"));
+        assert!(!serialized.contains("private model response text"));
+        assert!(!serialized.contains("6476198178"));
+    }
+
+    #[test]
+    fn kernel_model_execution_respects_gate_before_runner() {
+        let candidate = HeptaKernelTelegramCandidateMaterial {
+            update_id: Some(48),
+            kind: "message:text".to_string(),
+            prompt_text: Some("private model prompt".to_string()),
+            has_reply_target: true,
+            reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                chat_id: 6476198178,
+                reply_to_message_id: Some(13),
+                raw_identifiers_exposed: false,
+            }),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let decision = hepta_kernel_telegram_duplicate_decision(48, Some(48));
+
+        let outcome = execute_hepta_kernel_telegram_model_turn_after_candidate(
+            HeptaKernelTelegramModelExecutionInput {
+                candidate: Some(candidate),
+                duplicate_decision: Some(decision),
+                model_turn_gate_env: "MODEL_GATE",
+                model_turn_gate_enabled: false,
+            },
+            |_| panic!("model runner must not run while gated"),
+        );
+
+        assert_eq!(outcome.report.status, "gated");
+        assert!(!outcome.report.runner_invocation_allowed);
+        assert!(!outcome.report.session_runner_invoked);
+        assert_eq!(outcome.model_output, None);
+        assert!(outcome.report.error.unwrap().contains("MODEL_GATE"));
+    }
+
+    #[test]
+    fn kernel_model_execution_suppresses_duplicate_before_runner() {
+        let candidate = HeptaKernelTelegramCandidateMaterial {
+            update_id: Some(48),
+            kind: "message:text".to_string(),
+            prompt_text: Some("private duplicate prompt".to_string()),
+            has_reply_target: true,
+            reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                chat_id: 6476198178,
+                reply_to_message_id: Some(13),
+                raw_identifiers_exposed: false,
+            }),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let decision = hepta_kernel_telegram_duplicate_decision(48, Some(49));
+
+        let outcome = execute_hepta_kernel_telegram_model_turn_after_candidate(
+            HeptaKernelTelegramModelExecutionInput {
+                candidate: Some(candidate),
+                duplicate_decision: Some(decision),
+                model_turn_gate_env: "MODEL_GATE",
+                model_turn_gate_enabled: true,
+            },
+            |_| panic!("duplicate candidate must not invoke model runner"),
+        );
+
+        assert_eq!(outcome.report.status, "duplicate_suppressed");
+        assert!(!outcome.report.runner_invocation_allowed);
+        assert!(!outcome.report.session_runner_invoked);
+        assert_eq!(outcome.model_output, None);
+        assert_eq!(outcome.candidate_next_update_offset, Some(49));
     }
 }

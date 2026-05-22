@@ -27,6 +27,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramDrainOnceShellReadinessPlan, HeptaKernelTelegramDuplicateDecision,
     HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
     HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
+    HeptaKernelTelegramModelExecutionInput, HeptaKernelTelegramModelExecutionOutcome,
     HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
     HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramPollLoopStatus,
     HeptaKernelTelegramPollLoopStatusInput, HeptaKernelTelegramProductionGuardPolicyInput,
@@ -55,7 +56,9 @@ pub use hepta_kernel::{
     build_hepta_kernel_telegram_receive_once_error_status,
     build_hepta_kernel_telegram_receive_once_status,
     build_hepta_kernel_telegram_receive_once_status_from_api_result,
-    classify_hepta_kernel_telegram_runner_error, extract_hepta_kernel_exec_child_final_message,
+    classify_hepta_kernel_telegram_runner_error,
+    execute_hepta_kernel_telegram_model_turn_after_candidate,
+    extract_hepta_kernel_exec_child_final_message,
     extract_hepta_kernel_openai_chat_completion_text,
     extract_hepta_kernel_telegram_candidate_material,
     extract_hepta_kernel_telegram_config_metadata, hepta_kernel_exec_child_args,
@@ -123,6 +126,8 @@ pub type NativeTelegramCandidateMaterial = HeptaKernelTelegramCandidateMaterial;
 pub type NativeTelegramReplyTargetMaterial = HeptaKernelTelegramReplyTargetMaterial;
 pub type NativeTelegramModelInvocationRequestPlan = HeptaKernelTelegramModelInvocationRequestPlan;
 pub type NativeTelegramModelExecutionReport = HeptaKernelTelegramModelExecutionReport;
+pub type NativeTelegramModelExecutionInput = HeptaKernelTelegramModelExecutionInput;
+pub type NativeTelegramModelExecutionOutcome = HeptaKernelTelegramModelExecutionOutcome;
 pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
 pub type NativeTelegramTransportPlan = HeptaKernelTelegramTransportPlan;
@@ -230,6 +235,16 @@ where
         run_in_process,
         run_child_process,
     )
+}
+
+pub fn execute_native_telegram_model_turn_after_candidate<F>(
+    input: NativeTelegramModelExecutionInput,
+    run_model: F,
+) -> NativeTelegramModelExecutionOutcome
+where
+    F: FnOnce(&str) -> Result<String, String>,
+{
+    execute_hepta_kernel_telegram_model_turn_after_candidate(input, run_model)
 }
 
 pub fn classify_native_telegram_model_runner_error(error: &str) -> &'static str {

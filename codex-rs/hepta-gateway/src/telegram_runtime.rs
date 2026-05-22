@@ -4,7 +4,6 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::telegram_policy::{
-    NativeTelegramCandidateMaterial, NativeTelegramDuplicateDecision,
     NativeTelegramGatewayGateSummary, NativeTelegramModelExecutionReport,
     NativeTelegramModelInvocationRequestPlan, NativeTelegramReplyTargetMaterial,
     NativeTelegramSendExecutionReport, NativeTelegramSendRequestPlan,
@@ -13,29 +12,14 @@ use crate::telegram_policy::{
 use crate::telegram_transport::{
     NativeTelegramSendExecutionInput, execute_telegram_send_after_model_output,
 };
-use hepta_runtime::redact_native_telegram_model_runner_error;
 
 pub use hepta_runtime::{
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE as NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE,
-    NativeTelegramSessionBridgePlan, native_telegram_drain_final_status,
-    native_telegram_model_failure_fallback_allowed, native_telegram_model_failure_fallback_message,
+    NativeTelegramModelExecutionInput, NativeTelegramModelExecutionOutcome,
+    NativeTelegramSessionBridgePlan, execute_native_telegram_model_turn_after_candidate,
+    native_telegram_drain_final_status, native_telegram_model_failure_fallback_allowed,
+    native_telegram_model_failure_fallback_message,
 };
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramModelExecutionInput {
-    pub candidate: Option<NativeTelegramCandidateMaterial>,
-    pub duplicate_decision: Option<NativeTelegramDuplicateDecision>,
-    pub model_turn_gate_env: &'static str,
-    pub model_turn_gate_enabled: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeTelegramModelExecutionOutcome {
-    pub report: NativeTelegramModelExecutionReport,
-    pub model_output: Option<String>,
-    pub reply_target: Option<NativeTelegramReplyTargetMaterial>,
-    pub candidate_next_update_offset: Option<i64>,
-}
 
 #[derive(Debug, Clone)]
 pub struct NativeTelegramDrainPipelineOutcome {
@@ -100,134 +84,7 @@ pub fn execute_telegram_model_turn_after_candidate<F>(
 where
     F: FnOnce(&str) -> Result<String, String>,
 {
-    let invocation_request = match (input.candidate.clone(), input.duplicate_decision.clone()) {
-        (Some(candidate), Some(decision)) if candidate.requires_model => {
-            NativeTelegramModelInvocationRequestPlan::from_candidate(
-                candidate,
-                decision,
-                input.model_turn_gate_env,
-                input.model_turn_gate_enabled,
-            )
-        }
-        (Some(candidate), _) if !candidate.requires_model => {
-            NativeTelegramModelInvocationRequestPlan::attention(
-                candidate,
-                "not_model_candidate",
-                None,
-                input.model_turn_gate_env,
-                input.model_turn_gate_enabled,
-            )
-        }
-        (Some(candidate), None) if candidate.requires_model => {
-            NativeTelegramModelInvocationRequestPlan::attention(
-                candidate,
-                "missing_update_id",
-                None,
-                input.model_turn_gate_env,
-                input.model_turn_gate_enabled,
-            )
-        }
-        _ => NativeTelegramModelInvocationRequestPlan::empty(
-            input.model_turn_gate_env,
-            input.model_turn_gate_enabled,
-        ),
-    };
-    let mut report =
-        NativeTelegramModelExecutionReport::from_invocation_request(&invocation_request);
-
-    if !input.model_turn_gate_enabled {
-        report.error = Some(format!(
-            "Telegram model execution is gated by {}",
-            input.model_turn_gate_env
-        ));
-        return NativeTelegramModelExecutionOutcome {
-            report,
-            model_output: None,
-            reply_target: None,
-            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-        };
-    }
-
-    let Some(candidate) = input.candidate else {
-        report.error = Some("Telegram model execution requires a candidate".to_string());
-        return NativeTelegramModelExecutionOutcome {
-            report,
-            model_output: None,
-            reply_target: None,
-            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-        };
-    };
-    if invocation_request.should_record_duplicate {
-        return NativeTelegramModelExecutionOutcome {
-            report,
-            model_output: None,
-            reply_target: candidate.reply_target,
-            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-        };
-    }
-    let Some(prompt_text) = candidate
-        .prompt_text
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        report.status = "attention";
-        report.error =
-            Some("Telegram model execution requires non-empty prompt material".to_string());
-        return NativeTelegramModelExecutionOutcome {
-            report,
-            model_output: None,
-            reply_target: candidate.reply_target,
-            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-        };
-    };
-    if !invocation_request.runner_invocation_allowed {
-        report.status = "attention";
-        report.error = Some("Telegram model execution request is not runner-eligible".to_string());
-        return NativeTelegramModelExecutionOutcome {
-            report,
-            model_output: None,
-            reply_target: candidate.reply_target,
-            candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-        };
-    }
-
-    report.status = "running";
-    report.session_runner_invoked = true;
-    match run_model(prompt_text) {
-        Ok(output) => {
-            let output = output.trim().to_string();
-            if output.is_empty() {
-                report.status = "attention";
-                report.error = Some("Telegram model execution returned empty output".to_string());
-                NativeTelegramModelExecutionOutcome {
-                    report,
-                    model_output: None,
-                    reply_target: candidate.reply_target,
-                    candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-                }
-            } else {
-                report.status = "completed";
-                report.model_output_present = true;
-                NativeTelegramModelExecutionOutcome {
-                    report,
-                    model_output: Some(output),
-                    reply_target: candidate.reply_target,
-                    candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-                }
-            }
-        }
-        Err(error) => {
-            report.status = "attention";
-            report.error = Some(redact_native_telegram_model_runner_error(&error));
-            NativeTelegramModelExecutionOutcome {
-                report,
-                model_output: None,
-                reply_target: candidate.reply_target,
-                candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-            }
-        }
-    }
+    execute_native_telegram_model_turn_after_candidate(input, run_model)
 }
 
 pub fn execute_telegram_drain_pipeline_for_updates<F, S>(
