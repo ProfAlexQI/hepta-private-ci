@@ -1547,6 +1547,14 @@ pub fn hepta_kernel_native_post_real_handler_scope_selected_kinds(
         .collect()
 }
 
+pub fn hepta_kernel_native_post_real_handler_scope_single_selected_kind(
+    handler_scope: Option<&str>,
+) -> Option<&'static str> {
+    let selected_handler_kinds =
+        hepta_kernel_native_post_real_handler_scope_selected_kinds(handler_scope);
+    (selected_handler_kinds.len() == 1).then(|| selected_handler_kinds[0])
+}
+
 fn hepta_kernel_native_post_real_handler_scope_tokens(handler_scope: &str) -> Vec<&str> {
     handler_scope
         .split(|ch: char| matches!(ch, ',' | ';' | ' ' | '\t' | '\n' | '\r'))
@@ -2362,7 +2370,8 @@ pub fn hepta_kernel_native_post_gray_release_evidence_report(
         hepta_kernel_native_post_real_handler_scope_selected_kinds(handler_scope);
     let selected_handler_count = selected_handler_kinds.len();
     let single_handler_scope_ready = selected_handler_count == 1;
-    let selected_handler_kind = single_handler_scope_ready.then(|| selected_handler_kinds[0]);
+    let selected_handler_kind =
+        hepta_kernel_native_post_real_handler_scope_single_selected_kind(handler_scope);
     let activation_currently_enabled = activation_preflight_ready
         && real_handler_gate_enabled
         && operator_approval_enabled
@@ -8091,6 +8100,20 @@ mod tests {
         ));
 
         assert_eq!(selected, vec!["approval_apply", "chat_send"]);
+        assert_eq!(
+            hepta_kernel_native_post_real_handler_scope_single_selected_kind(Some("task_publish")),
+            Some("task_publish")
+        );
+        assert_eq!(
+            hepta_kernel_native_post_real_handler_scope_single_selected_kind(Some(
+                "approval_apply chat_send"
+            )),
+            None
+        );
+        assert_eq!(
+            hepta_kernel_native_post_real_handler_scope_single_selected_kind(None),
+            None
+        );
         assert!(hepta_kernel_native_post_real_handler_scope_matches(
             "chat_send",
             Some("task_publish,chat_send")

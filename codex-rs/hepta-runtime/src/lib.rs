@@ -264,6 +264,12 @@ pub fn native_post_real_handler_scope_selected_kinds(
     hepta_kernel::hepta_kernel_native_post_real_handler_scope_selected_kinds(handler_scope)
 }
 
+pub fn native_post_real_handler_scope_single_selected_kind(
+    handler_scope: Option<&str>,
+) -> Option<&'static str> {
+    hepta_kernel::hepta_kernel_native_post_real_handler_scope_single_selected_kind(handler_scope)
+}
+
 pub fn native_post_execution_readiness_report(
     real_handler_gate_enabled: bool,
     handler_scope: Option<&str>,

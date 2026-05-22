@@ -40,7 +40,8 @@ pub use hepta_runtime::{
     native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
     native_post_plan_parameter, native_post_plan_route_specs,
     native_post_rate_limit_recent_present_in_content, native_post_real_handler_scope_matches,
-    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
+    native_post_real_handler_scope_selected_kinds,
+    native_post_real_handler_scope_single_selected_kind, native_post_redacted_fingerprint,
     native_post_rollback_contract,
 };
 
@@ -216,9 +217,7 @@ pub fn native_post_gray_release_evidence_report(
         native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
     let store_jsonl_valid = native_post_execution_store_jsonl_valid(&store_files);
     let store_capacity_ok = native_post_execution_store_capacity_ok(&store_files);
-    let selected_handler_kinds = native_post_real_handler_scope_selected_kinds(handler_scope);
-    let selected_handler_kind =
-        (selected_handler_kinds.len() == 1).then(|| selected_handler_kinds[0]);
+    let selected_handler_kind = native_post_real_handler_scope_single_selected_kind(handler_scope);
     let rollout_evidence =
         native_post_rollout_evidence_report(root, max_store_bytes, max_store_lines, handler_scope);
     let selected_handler_evidence = native_post_selected_handler_rollout_evidence(
@@ -689,6 +688,16 @@ mod tests {
             super::native_post_real_handler_scope_selected_kinds(Some("approval_apply chat_send"));
 
         assert_eq!(selected, vec!["approval_apply", "chat_send"]);
+        assert_eq!(
+            super::native_post_real_handler_scope_single_selected_kind(Some("task_publish")),
+            Some("task_publish")
+        );
+        assert_eq!(
+            super::native_post_real_handler_scope_single_selected_kind(Some(
+                "approval_apply chat_send"
+            )),
+            None
+        );
         assert!(super::native_post_real_handler_scope_matches(
             "chat_send",
             Some("task_publish,chat_send")
