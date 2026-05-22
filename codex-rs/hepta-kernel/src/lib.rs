@@ -4100,6 +4100,173 @@ pub struct HeptaKernelTelegramDeliveryLedgerStatus {
     pub next_migration_slice: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelTelegramDeliveryLedgerStatusInput<'a> {
+    pub requested: bool,
+    pub ledger_path: &'static str,
+    pub ledger_file_present: bool,
+    pub ledger_updated_at_unix_ms: Option<u64>,
+    pub raw_jsonl: Option<&'a str>,
+    pub read_error: Option<&'a str>,
+}
+
+pub fn build_hepta_kernel_telegram_delivery_ledger_status(
+    input: HeptaKernelTelegramDeliveryLedgerStatusInput<'_>,
+) -> HeptaKernelTelegramDeliveryLedgerStatus {
+    if !input.requested {
+        return HeptaKernelTelegramDeliveryLedgerStatus {
+            product: "Hepta",
+            runtime: "hepta-codex",
+            requested: false,
+            status: "disabled",
+            ledger_path: input.ledger_path,
+            ledger_file_present: false,
+            jsonl_readable: false,
+            jsonl_valid: false,
+            line_count: 0,
+            valid_json_line_count: 0,
+            invalid_json_line_count: 0,
+            acked_count: 0,
+            failed_count: 0,
+            latest_stage: None,
+            latest_created_unix_seconds: None,
+            latest_acked_created_unix_seconds: None,
+            ledger_updated_at_unix_ms: None,
+            provider_message_id_present: false,
+            durable_delivery_evidence_present: false,
+            raw_response_text_logged: false,
+            raw_chat_id_logged: false,
+            raw_message_id_logged: false,
+            raw_token_logged: false,
+            error: None,
+            next_migration_slice: "enable Telegram plugin before reading delivery ledger state",
+        };
+    }
+
+    let mut status = HeptaKernelTelegramDeliveryLedgerStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: true,
+        status: "missing",
+        ledger_path: input.ledger_path,
+        ledger_file_present: input.ledger_file_present,
+        jsonl_readable: false,
+        jsonl_valid: false,
+        line_count: 0,
+        valid_json_line_count: 0,
+        invalid_json_line_count: 0,
+        acked_count: 0,
+        failed_count: 0,
+        latest_stage: None,
+        latest_created_unix_seconds: None,
+        latest_acked_created_unix_seconds: None,
+        ledger_updated_at_unix_ms: input.ledger_updated_at_unix_ms,
+        provider_message_id_present: false,
+        durable_delivery_evidence_present: false,
+        raw_response_text_logged: false,
+        raw_chat_id_logged: false,
+        raw_message_id_logged: false,
+        raw_token_logged: false,
+        error: None,
+        next_migration_slice: "delivery ledger is empty until native Telegram send is approved and delivered",
+    };
+
+    if !input.ledger_file_present {
+        return status;
+    }
+    if let Some(error) = input.read_error {
+        status.status = "attention";
+        status.error = Some(redact_hepta_kernel_telegram_token_like_text(error));
+        return status;
+    }
+
+    let Some(raw) = input.raw_jsonl else {
+        return status;
+    };
+    status.jsonl_readable = true;
+    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+        status.line_count = status.line_count.saturating_add(1);
+        let Ok(record) = serde_json::from_str::<Value>(line) else {
+            status.invalid_json_line_count = status.invalid_json_line_count.saturating_add(1);
+            continue;
+        };
+        status.valid_json_line_count = status.valid_json_line_count.saturating_add(1);
+        let stage = record
+            .get("stage")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        let record_created_unix_seconds =
+            record.get("created_unix_seconds").and_then(Value::as_u64);
+        if stage == "acked" {
+            status.acked_count = status.acked_count.saturating_add(1);
+            if let Some(created) = record_created_unix_seconds {
+                status.latest_acked_created_unix_seconds = Some(
+                    status
+                        .latest_acked_created_unix_seconds
+                        .map_or(created, |latest| latest.max(created)),
+                );
+            }
+        } else if stage == "failed" {
+            status.failed_count = status.failed_count.saturating_add(1);
+        }
+        status.latest_stage = Some(stage);
+        if let Some(created) = record_created_unix_seconds {
+            status.latest_created_unix_seconds = Some(
+                status
+                    .latest_created_unix_seconds
+                    .map_or(created, |latest| latest.max(created)),
+            );
+        }
+        status.provider_message_id_present |= record
+            .get("provider_message_id_present")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        status.raw_response_text_logged |= record
+            .get("content_logged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || record
+                .get("message_text_logged")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+        status.raw_chat_id_logged |= record
+            .get("raw_chat_id_logged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        status.raw_message_id_logged |= record
+            .get("raw_message_id_logged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        status.raw_token_logged |= record
+            .get("raw_token_logged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+    }
+
+    status.jsonl_valid = status.invalid_json_line_count == 0;
+    status.durable_delivery_evidence_present =
+        status.acked_count > 0 && status.provider_message_id_present && status.jsonl_valid;
+    status.status = if !status.jsonl_valid
+        || status.raw_response_text_logged
+        || status.raw_chat_id_logged
+        || status.raw_message_id_logged
+        || status.raw_token_logged
+    {
+        "attention"
+    } else if status.durable_delivery_evidence_present {
+        "ready"
+    } else {
+        "empty"
+    };
+    status.next_migration_slice = if status.status == "ready" {
+        "delivery ledger has durable redacted ack evidence; keep it aligned with cursor commits"
+    } else {
+        "write redacted enqueued/acked delivery records before committing Telegram cursor offsets"
+    };
+    status
+}
+
 pub fn hepta_kernel_telegram_delivery_lifecycle_record(
     stage: &'static str,
     candidate_next_update_offset: Option<i64>,
@@ -6325,6 +6492,114 @@ mod tests {
         assert_eq!(
             record["error"],
             "transient [redacted-telegram-token] timeout"
+        );
+    }
+
+    #[test]
+    fn kernel_telegram_delivery_ledger_status_summarizes_redacted_ack_evidence() {
+        let raw = concat!(
+            r#"{"stage":"enqueued","created_unix_seconds":1,"provider_message_id_present":false,"content_logged":false,"raw_chat_id_logged":false,"raw_message_id_logged":false,"raw_token_logged":false}"#,
+            "\n",
+            r#"{"stage":"acked","created_unix_seconds":2,"provider_message_id_present":true,"content_logged":false,"raw_chat_id_logged":false,"raw_message_id_logged":false,"raw_token_logged":false}"#,
+            "\n",
+        );
+
+        let status = build_hepta_kernel_telegram_delivery_ledger_status(
+            HeptaKernelTelegramDeliveryLedgerStatusInput {
+                requested: true,
+                ledger_path: ".hepta/telegram/delivery-ledger.jsonl",
+                ledger_file_present: true,
+                ledger_updated_at_unix_ms: Some(42),
+                raw_jsonl: Some(raw),
+                read_error: None,
+            },
+        );
+
+        assert_eq!(status.status, "ready");
+        assert_eq!(status.ledger_updated_at_unix_ms, Some(42));
+        assert_eq!(status.line_count, 2);
+        assert_eq!(status.valid_json_line_count, 2);
+        assert_eq!(status.acked_count, 1);
+        assert_eq!(status.failed_count, 0);
+        assert_eq!(status.latest_stage.as_deref(), Some("acked"));
+        assert_eq!(status.latest_created_unix_seconds, Some(2));
+        assert_eq!(status.latest_acked_created_unix_seconds, Some(2));
+        assert!(status.provider_message_id_present);
+        assert!(status.durable_delivery_evidence_present);
+        assert!(!status.raw_response_text_logged);
+        assert!(!status.raw_chat_id_logged);
+        assert!(!status.raw_message_id_logged);
+        assert!(!status.raw_token_logged);
+    }
+
+    #[test]
+    fn kernel_telegram_delivery_ledger_status_flags_invalid_or_raw_logging() {
+        let raw = concat!(
+            r#"{"stage":"acked","created_unix_seconds":2,"provider_message_id_present":true,"content_logged":true}"#,
+            "\n",
+            "not-json",
+            "\n",
+        );
+
+        let status = build_hepta_kernel_telegram_delivery_ledger_status(
+            HeptaKernelTelegramDeliveryLedgerStatusInput {
+                requested: true,
+                ledger_path: ".hepta/telegram/delivery-ledger.jsonl",
+                ledger_file_present: true,
+                ledger_updated_at_unix_ms: None,
+                raw_jsonl: Some(raw),
+                read_error: None,
+            },
+        );
+
+        assert_eq!(status.status, "attention");
+        assert!(!status.jsonl_valid);
+        assert_eq!(status.invalid_json_line_count, 1);
+        assert!(status.raw_response_text_logged);
+    }
+
+    #[test]
+    fn kernel_telegram_delivery_ledger_status_handles_disabled_missing_and_read_error() {
+        let disabled = build_hepta_kernel_telegram_delivery_ledger_status(
+            HeptaKernelTelegramDeliveryLedgerStatusInput {
+                requested: false,
+                ledger_path: ".hepta/telegram/delivery-ledger.jsonl",
+                ledger_file_present: true,
+                ledger_updated_at_unix_ms: Some(42),
+                raw_jsonl: Some("ignored"),
+                read_error: None,
+            },
+        );
+        assert_eq!(disabled.status, "disabled");
+        assert!(!disabled.ledger_file_present);
+        assert_eq!(disabled.line_count, 0);
+
+        let missing = build_hepta_kernel_telegram_delivery_ledger_status(
+            HeptaKernelTelegramDeliveryLedgerStatusInput {
+                requested: true,
+                ledger_path: ".hepta/telegram/delivery-ledger.jsonl",
+                ledger_file_present: false,
+                ledger_updated_at_unix_ms: None,
+                raw_jsonl: None,
+                read_error: None,
+            },
+        );
+        assert_eq!(missing.status, "missing");
+
+        let read_error = build_hepta_kernel_telegram_delivery_ledger_status(
+            HeptaKernelTelegramDeliveryLedgerStatusInput {
+                requested: true,
+                ledger_path: ".hepta/telegram/delivery-ledger.jsonl",
+                ledger_file_present: true,
+                ledger_updated_at_unix_ms: Some(7),
+                raw_jsonl: None,
+                read_error: Some("failed token=123456789:abcdefghijklmnopqrstuvwxyz"),
+            },
+        );
+        assert_eq!(read_error.status, "attention");
+        assert_eq!(
+            read_error.error.as_deref(),
+            Some("failed [redacted-telegram-token]")
         );
     }
 

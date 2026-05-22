@@ -10,8 +10,9 @@ pub use hepta_runtime::{
     NativeTelegramDeliveryLedgerStatus,
 };
 use hepta_runtime::{
+    NativeTelegramDeliveryLedgerStatusInput, build_native_telegram_delivery_ledger_status,
     native_telegram_delivery_backoff_ms, native_telegram_delivery_error_is_permanent,
-    native_telegram_delivery_lifecycle_record, redact_native_telegram_token_like_text,
+    native_telegram_delivery_lifecycle_record,
 };
 
 pub fn telegram_delivery_ledger_status(
@@ -20,33 +21,16 @@ pub fn telegram_delivery_ledger_status(
     logical_path: &'static str,
 ) -> NativeTelegramDeliveryLedgerStatus {
     if !requested {
-        return NativeTelegramDeliveryLedgerStatus {
-            product: "Hepta",
-            runtime: "hepta-codex",
-            requested,
-            status: "disabled",
-            ledger_path: logical_path,
-            ledger_file_present: false,
-            jsonl_readable: false,
-            jsonl_valid: false,
-            line_count: 0,
-            valid_json_line_count: 0,
-            invalid_json_line_count: 0,
-            acked_count: 0,
-            failed_count: 0,
-            latest_stage: None,
-            latest_created_unix_seconds: None,
-            latest_acked_created_unix_seconds: None,
-            ledger_updated_at_unix_ms: None,
-            provider_message_id_present: false,
-            durable_delivery_evidence_present: false,
-            raw_response_text_logged: false,
-            raw_chat_id_logged: false,
-            raw_message_id_logged: false,
-            raw_token_logged: false,
-            error: None,
-            next_migration_slice: "enable Telegram plugin before reading delivery ledger state",
-        };
+        return build_native_telegram_delivery_ledger_status(
+            NativeTelegramDeliveryLedgerStatusInput {
+                requested,
+                ledger_path: logical_path,
+                ledger_file_present: false,
+                ledger_updated_at_unix_ms: None,
+                raw_jsonl: None,
+                read_error: None,
+            },
+        );
     }
 
     telegram_delivery_ledger_status_from_path(path, logical_path)
@@ -57,130 +41,43 @@ pub fn telegram_delivery_ledger_status_from_path(
     logical_path: &'static str,
 ) -> NativeTelegramDeliveryLedgerStatus {
     let ledger_file_present = path.is_file();
-    let mut status = NativeTelegramDeliveryLedgerStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: true,
-        status: "missing",
-        ledger_path: logical_path,
-        ledger_file_present,
-        jsonl_readable: false,
-        jsonl_valid: false,
-        line_count: 0,
-        valid_json_line_count: 0,
-        invalid_json_line_count: 0,
-        acked_count: 0,
-        failed_count: 0,
-        latest_stage: None,
-        latest_created_unix_seconds: None,
-        latest_acked_created_unix_seconds: None,
-        ledger_updated_at_unix_ms: file_modified_unix_ms(path),
-        provider_message_id_present: false,
-        durable_delivery_evidence_present: false,
-        raw_response_text_logged: false,
-        raw_chat_id_logged: false,
-        raw_message_id_logged: false,
-        raw_token_logged: false,
-        error: None,
-        next_migration_slice: "delivery ledger is empty until native Telegram send is approved and delivered",
-    };
-
     if !ledger_file_present {
-        return status;
+        return build_native_telegram_delivery_ledger_status(
+            NativeTelegramDeliveryLedgerStatusInput {
+                requested: true,
+                ledger_path: logical_path,
+                ledger_file_present,
+                ledger_updated_at_unix_ms: file_modified_unix_ms(path),
+                raw_jsonl: None,
+                read_error: None,
+            },
+        );
     }
 
     let raw = match fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(error) => {
-            status.status = "attention";
-            status.error = Some(redact_native_telegram_token_like_text(&format!(
-                "failed to read Telegram delivery ledger: {error}"
-            )));
-            return status;
-        }
-    };
-    status.jsonl_readable = true;
-    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
-        status.line_count = status.line_count.saturating_add(1);
-        let Ok(record) = serde_json::from_str::<Value>(line) else {
-            status.invalid_json_line_count = status.invalid_json_line_count.saturating_add(1);
-            continue;
-        };
-        status.valid_json_line_count = status.valid_json_line_count.saturating_add(1);
-        let stage = record
-            .get("stage")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown")
-            .to_string();
-        let record_created_unix_seconds =
-            record.get("created_unix_seconds").and_then(Value::as_u64);
-        if stage == "acked" {
-            status.acked_count = status.acked_count.saturating_add(1);
-            if let Some(created) = record_created_unix_seconds {
-                status.latest_acked_created_unix_seconds = Some(
-                    status
-                        .latest_acked_created_unix_seconds
-                        .map_or(created, |latest| latest.max(created)),
-                );
-            }
-        } else if stage == "failed" {
-            status.failed_count = status.failed_count.saturating_add(1);
-        }
-        status.latest_stage = Some(stage);
-        if let Some(created) = record_created_unix_seconds {
-            status.latest_created_unix_seconds = Some(
-                status
-                    .latest_created_unix_seconds
-                    .map_or(created, |latest| latest.max(created)),
+            let error = format!("failed to read Telegram delivery ledger: {error}");
+            return build_native_telegram_delivery_ledger_status(
+                NativeTelegramDeliveryLedgerStatusInput {
+                    requested: true,
+                    ledger_path: logical_path,
+                    ledger_file_present,
+                    ledger_updated_at_unix_ms: file_modified_unix_ms(path),
+                    raw_jsonl: None,
+                    read_error: Some(&error),
+                },
             );
         }
-        status.provider_message_id_present |= record
-            .get("provider_message_id_present")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        status.raw_response_text_logged |= record
-            .get("content_logged")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-            || record
-                .get("message_text_logged")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-        status.raw_chat_id_logged |= record
-            .get("raw_chat_id_logged")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        status.raw_message_id_logged |= record
-            .get("raw_message_id_logged")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        status.raw_token_logged |= record
-            .get("raw_token_logged")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-    }
-
-    status.jsonl_valid = status.invalid_json_line_count == 0;
-    status.durable_delivery_evidence_present =
-        status.acked_count > 0 && status.provider_message_id_present && status.jsonl_valid;
-    status.status = if !status.jsonl_valid
-        || status.raw_response_text_logged
-        || status.raw_chat_id_logged
-        || status.raw_message_id_logged
-        || status.raw_token_logged
-    {
-        "attention"
-    } else if status.durable_delivery_evidence_present {
-        "ready"
-    } else {
-        "empty"
     };
-    status.next_migration_slice = if status.status == "ready" {
-        "delivery ledger has durable redacted ack evidence; keep it aligned with cursor commits"
-    } else {
-        "write redacted enqueued/acked delivery records before committing Telegram cursor offsets"
-    };
-    status
+    build_native_telegram_delivery_ledger_status(NativeTelegramDeliveryLedgerStatusInput {
+        requested: true,
+        ledger_path: logical_path,
+        ledger_file_present,
+        ledger_updated_at_unix_ms: file_modified_unix_ms(path),
+        raw_jsonl: Some(&raw),
+        read_error: None,
+    })
 }
 
 pub fn append_telegram_delivery_lifecycle_record(

@@ -22,9 +22,10 @@ pub use hepta_kernel::{
     HeptaKernelTelegramConfigMetadata, HeptaKernelTelegramConfigStatus,
     HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramCursorPlan,
     HeptaKernelTelegramCursorStatus, HeptaKernelTelegramDeliveryLedgerStatus,
-    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDrainOnceApiResultInput,
-    HeptaKernelTelegramDrainOnceApiResultPlan, HeptaKernelTelegramDrainOncePreflightInput,
-    HeptaKernelTelegramDrainOncePreflightPlan, HeptaKernelTelegramDrainOnceShellReadinessInput,
+    HeptaKernelTelegramDeliveryLedgerStatusInput, HeptaKernelTelegramDrainFinalStatusPlan,
+    HeptaKernelTelegramDrainOnceApiResultInput, HeptaKernelTelegramDrainOnceApiResultPlan,
+    HeptaKernelTelegramDrainOncePreflightInput, HeptaKernelTelegramDrainOncePreflightPlan,
+    HeptaKernelTelegramDrainOnceShellReadinessInput,
     HeptaKernelTelegramDrainOnceShellReadinessPlan, HeptaKernelTelegramDrainOnceStatus,
     HeptaKernelTelegramDrainOnceStatusInput, HeptaKernelTelegramDrainPipelineDeliveryInput,
     HeptaKernelTelegramDrainPipelineDeliveryPlan, HeptaKernelTelegramDrainPipelineFinalStatus,
@@ -62,6 +63,7 @@ pub use hepta_kernel::{
     MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, MAX_TELEGRAM_SOAK_MIN_POLLS,
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
+    build_hepta_kernel_telegram_delivery_ledger_status,
     build_hepta_kernel_telegram_drain_once_status,
     build_hepta_kernel_telegram_gateway_gate_summary, build_hepta_kernel_telegram_live_soak_status,
     build_hepta_kernel_telegram_model_bridge_status,
@@ -194,6 +196,8 @@ pub type NativeTelegramConfigMetadata = HeptaKernelTelegramConfigMetadata;
 pub type NativeTelegramCursorPlan = HeptaKernelTelegramCursorPlan;
 pub type NativeTelegramCursorStatus = HeptaKernelTelegramCursorStatus;
 pub type NativeTelegramDeliveryLedgerStatus = HeptaKernelTelegramDeliveryLedgerStatus;
+pub type NativeTelegramDeliveryLedgerStatusInput<'a> =
+    HeptaKernelTelegramDeliveryLedgerStatusInput<'a>;
 pub type NativeTelegramProductionGuardStatus = HeptaKernelTelegramProductionGuardStatus;
 pub type NativeTelegramProductionGuardStatusInput = HeptaKernelTelegramProductionGuardStatusInput;
 pub type NativeTelegramProductionGuardPolicyInput = HeptaKernelTelegramProductionGuardPolicyInput;
@@ -785,6 +789,12 @@ pub fn native_telegram_delivery_lifecycle_record(
         error,
         created_unix_seconds,
     )
+}
+
+pub fn build_native_telegram_delivery_ledger_status(
+    input: NativeTelegramDeliveryLedgerStatusInput<'_>,
+) -> NativeTelegramDeliveryLedgerStatus {
+    build_hepta_kernel_telegram_delivery_ledger_status(input)
 }
 
 pub fn native_telegram_delivery_backoff_ms(next_retry_count: u32) -> u64 {
@@ -1448,6 +1458,20 @@ mod tests {
             record["error"],
             "transient [redacted-telegram-token] timeout"
         );
+        let status = build_native_telegram_delivery_ledger_status(
+            NativeTelegramDeliveryLedgerStatusInput {
+                requested: true,
+                ledger_path: ".hepta/telegram/delivery-ledger.jsonl",
+                ledger_file_present: true,
+                ledger_updated_at_unix_ms: Some(1_777),
+                raw_jsonl: Some(
+                    r#"{"stage":"acked","created_unix_seconds":2,"provider_message_id_present":true}"#,
+                ),
+                read_error: None,
+            },
+        );
+        assert_eq!(status.status, "ready");
+        assert!(status.durable_delivery_evidence_present);
         assert!(native_telegram_delivery_error_is_permanent(Some(
             "Forbidden: bot was blocked by the user"
         )));
