@@ -662,6 +662,16 @@ pub fn hepta_kernel_native_post_execution_store_capacity_allows_append(
     })
 }
 
+pub fn hepta_kernel_native_post_idempotency_duplicate_present_in_content(
+    content: &str,
+    key_fingerprint: Option<&str>,
+) -> bool {
+    let Some(key_fingerprint) = key_fingerprint else {
+        return false;
+    };
+    content.lines().any(|line| line.contains(key_fingerprint))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostExecutionStoresResponse {
     pub product: &'static str,
@@ -8584,6 +8594,26 @@ mod tests {
         assert!(
             !hepta_kernel_native_post_execution_store_capacity_allows_append(&[invalid], 1, 100, 3)
         );
+    }
+
+    #[test]
+    fn kernel_native_post_idempotency_duplicate_scan_uses_redacted_fingerprint() {
+        let content =
+            "{\"key_fingerprint\":\"sha256:abc123\"}\n{\"key_fingerprint\":\"sha256:def456\"}\n";
+
+        assert!(
+            hepta_kernel_native_post_idempotency_duplicate_present_in_content(
+                content,
+                Some("sha256:abc123")
+            )
+        );
+        assert!(
+            !hepta_kernel_native_post_idempotency_duplicate_present_in_content(
+                content,
+                Some("sha256:missing")
+            )
+        );
+        assert!(!hepta_kernel_native_post_idempotency_duplicate_present_in_content(content, None));
     }
 
     #[test]

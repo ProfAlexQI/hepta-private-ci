@@ -34,10 +34,11 @@ pub use hepta_runtime::{
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
     native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_specs,
-    native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
-    native_post_plan_parameter, native_post_plan_route_specs,
-    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
-    native_post_redacted_fingerprint, native_post_rollback_contract,
+    native_post_idempotency_duplicate_present_in_content, native_post_idempotency_evidence,
+    native_post_plan_kind_has_real_handler, native_post_plan_parameter,
+    native_post_plan_route_specs, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
+    native_post_rollback_contract,
 };
 
 pub fn native_post_plan_report(
@@ -444,7 +445,10 @@ fn native_post_idempotency_duplicate_present(
     };
     let path = root.join("idempotency.jsonl");
     match fs::read_to_string(&path) {
-        Ok(content) => Ok(content.lines().any(|line| line.contains(key_fingerprint))),
+        Ok(content) => Ok(native_post_idempotency_duplicate_present_in_content(
+            &content,
+            Some(key_fingerprint),
+        )),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(format!(
             "failed to read native POST idempotency store {}: {error}",

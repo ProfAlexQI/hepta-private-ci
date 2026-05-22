@@ -441,6 +441,16 @@ pub fn native_post_execution_store_capacity_allows_append(
     )
 }
 
+pub fn native_post_idempotency_duplicate_present_in_content(
+    content: &str,
+    key_fingerprint: Option<&str>,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_idempotency_duplicate_present_in_content(
+        content,
+        key_fingerprint,
+    )
+}
+
 pub fn native_post_execution_stores_report(
     store_root: String,
     root_exists: bool,
