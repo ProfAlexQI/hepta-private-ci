@@ -648,6 +648,20 @@ pub fn hepta_kernel_native_post_execution_store_file_status_report(
     }
 }
 
+pub fn hepta_kernel_native_post_execution_store_capacity_allows_append(
+    stores: &[HeptaKernelNativePostExecutionStoreFileStatus],
+    projected_line_bytes: u64,
+    max_store_bytes: u64,
+    max_store_lines: u64,
+) -> bool {
+    stores.iter().all(|status| {
+        status.jsonl_readable
+            && status.jsonl_valid
+            && status.bytes.saturating_add(projected_line_bytes) <= max_store_bytes
+            && status.line_count.saturating_add(1) <= max_store_lines
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostExecutionStoresResponse {
     pub product: &'static str,
@@ -8512,6 +8526,64 @@ mod tests {
         assert_eq!(health.line_count, 3);
         assert_eq!(health.valid_json_line_count, 2);
         assert_eq!(health.invalid_json_line_count, 1);
+    }
+
+    #[test]
+    fn kernel_native_post_execution_store_capacity_allows_append_projects_limits() {
+        let spec = &hepta_kernel_native_post_execution_store_specs()[0];
+        let ready = hepta_kernel_native_post_execution_store_file_status_report(
+            spec,
+            ".hepta/native-post-execution/idempotency.jsonl".to_string(),
+            true,
+            80,
+            100,
+            3,
+            true,
+            2,
+            2,
+            0,
+        );
+
+        assert!(
+            hepta_kernel_native_post_execution_store_capacity_allows_append(
+                &[ready.clone()],
+                20,
+                100,
+                3
+            )
+        );
+        assert!(
+            !hepta_kernel_native_post_execution_store_capacity_allows_append(
+                &[ready.clone()],
+                21,
+                100,
+                3
+            )
+        );
+        assert!(
+            !hepta_kernel_native_post_execution_store_capacity_allows_append(
+                &[ready.clone()],
+                20,
+                100,
+                2
+            )
+        );
+
+        let invalid = hepta_kernel_native_post_execution_store_file_status_report(
+            spec,
+            ".hepta/native-post-execution/idempotency.jsonl".to_string(),
+            true,
+            1,
+            100,
+            3,
+            true,
+            1,
+            0,
+            1,
+        );
+        assert!(
+            !hepta_kernel_native_post_execution_store_capacity_allows_append(&[invalid], 1, 100, 3)
+        );
     }
 
     #[test]

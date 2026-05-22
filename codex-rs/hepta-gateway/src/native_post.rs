@@ -29,6 +29,7 @@ pub use hepta_runtime::{
     NativePostSelectedHandlerRolloutEvidence, native_post_audit_event_contract,
     native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
     native_post_execution_admission_with_scope, native_post_execution_readiness_report,
+    native_post_execution_store_capacity_allows_append,
     native_post_execution_store_file_status_report,
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
@@ -380,20 +381,13 @@ pub fn native_post_execution_store_capacity_allows_append_with_limits(
     let line = serde_json::to_string(record)
         .map_err(|error| format!("failed to serialize native POST execution record: {error}"))?;
     let projected_line_bytes = line.len() as u64 + 1;
-    for spec in native_post_execution_store_specs() {
-        let status =
-            native_post_execution_store_file_status(root, spec, max_store_bytes, max_store_lines);
-        if !status.jsonl_readable || !status.jsonl_valid {
-            return Ok(false);
-        }
-        if status.bytes.saturating_add(projected_line_bytes) > max_store_bytes {
-            return Ok(false);
-        }
-        if status.line_count.saturating_add(1) > max_store_lines {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+    let stores = native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
+    Ok(native_post_execution_store_capacity_allows_append(
+        &stores,
+        projected_line_bytes,
+        max_store_bytes,
+        max_store_lines,
+    ))
 }
 
 pub fn persist_native_post_execution_store_record(

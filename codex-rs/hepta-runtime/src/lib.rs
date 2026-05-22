@@ -427,6 +427,20 @@ pub fn native_post_execution_store_file_status_report(
     )
 }
 
+pub fn native_post_execution_store_capacity_allows_append(
+    stores: &[NativePostExecutionStoreFileStatus],
+    projected_line_bytes: u64,
+    max_store_bytes: u64,
+    max_store_lines: u64,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_execution_store_capacity_allows_append(
+        stores,
+        projected_line_bytes,
+        max_store_bytes,
+        max_store_lines,
+    )
+}
+
 pub fn native_post_execution_stores_report(
     store_root: String,
     root_exists: bool,
