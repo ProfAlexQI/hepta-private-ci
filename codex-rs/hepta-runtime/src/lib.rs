@@ -262,6 +262,7 @@ pub use telegram_model_runner::{
     build_native_telegram_cursor_status, build_native_telegram_delivery_ledger_status,
     build_native_telegram_drain_once_status, build_native_telegram_gateway_gate_summary,
     build_native_telegram_live_soak_status, build_native_telegram_model_bridge_status,
+    build_native_telegram_model_execution_outcome_without_runner,
     build_native_telegram_model_turn_plan_status, build_native_telegram_plugin_status,
     build_native_telegram_poll_loop_status, build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,

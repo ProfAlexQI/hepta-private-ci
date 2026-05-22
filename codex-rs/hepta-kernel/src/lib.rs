@@ -1878,6 +1878,25 @@ impl HeptaKernelTelegramModelExecutionReport {
     }
 }
 
+pub fn build_hepta_kernel_telegram_model_execution_outcome_without_runner(
+    invocation_request: HeptaKernelTelegramModelInvocationRequestPlan,
+    reply_target: Option<HeptaKernelTelegramReplyTargetMaterial>,
+) -> HeptaKernelTelegramModelExecutionOutcome {
+    let mut report =
+        HeptaKernelTelegramModelExecutionReport::from_invocation_request(&invocation_request);
+    if invocation_request.duplicate_decision == "missing_update_id" {
+        report.status = "attention";
+        report.error =
+            Some("Telegram model execution requires an update id for cursor safety".to_string());
+    }
+    HeptaKernelTelegramModelExecutionOutcome {
+        report,
+        model_output: None,
+        reply_target,
+        candidate_next_update_offset: invocation_request.candidate_next_update_offset,
+    }
+}
+
 pub fn execute_hepta_kernel_telegram_model_turn_after_candidate<F>(
     input: HeptaKernelTelegramModelExecutionInput,
     run_model: F,
@@ -8797,6 +8816,36 @@ mod tests {
         assert!(!ready_report.external_send);
         assert!(!ready_report.cursor_written);
         assert!(!ready_report.raw_response_text_exposed);
+
+        let missing_id_candidate = HeptaKernelTelegramCandidateMaterial {
+            update_id: None,
+            kind: "message:text".to_string(),
+            prompt_text: Some("private prompt text".to_string()),
+            has_reply_target: true,
+            reply_target: Some(HeptaKernelTelegramReplyTargetMaterial {
+                chat_id: 123,
+                reply_to_message_id: Some(456),
+                raw_identifiers_exposed: false,
+            }),
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let missing_id_request = HeptaKernelTelegramModelInvocationRequestPlan::attention(
+            missing_id_candidate,
+            "missing_update_id",
+            None,
+            "MODEL_GATE",
+            true,
+        );
+        let missing_id_outcome = build_hepta_kernel_telegram_model_execution_outcome_without_runner(
+            missing_id_request,
+            None,
+        );
+        assert_eq!(missing_id_outcome.report.status, "attention");
+        assert_eq!(
+            missing_id_outcome.report.error.as_deref(),
+            Some("Telegram model execution requires an update id for cursor safety")
+        );
     }
 
     #[test]

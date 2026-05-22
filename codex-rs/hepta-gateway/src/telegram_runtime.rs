@@ -4,8 +4,8 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::telegram_policy::{
-    NativeTelegramGatewayGateSummary, NativeTelegramModelExecutionReport,
-    NativeTelegramReplyTargetMaterial, first_model_candidate_with_duplicate_decision,
+    NativeTelegramGatewayGateSummary, NativeTelegramReplyTargetMaterial,
+    first_model_candidate_with_duplicate_decision,
 };
 use crate::telegram_transport::{
     NativeTelegramSendExecutionInput, execute_telegram_send_after_model_output,
@@ -16,6 +16,7 @@ pub use hepta_runtime::{
     NativeTelegramDrainPipelineDeliveryInput, NativeTelegramDrainPipelineFinalStatus,
     NativeTelegramDrainPipelineOutcome, NativeTelegramModelExecutionInput,
     NativeTelegramModelExecutionOutcome, NativeTelegramSessionBridgePlan,
+    build_native_telegram_model_execution_outcome_without_runner,
     execute_native_telegram_model_turn_after_candidate,
     finalize_native_telegram_drain_pipeline_status, native_telegram_model_failure_fallback_message,
     plan_native_telegram_drain_pipeline_delivery,
@@ -89,21 +90,10 @@ where
             },
             |prompt| run_model(typing_reply_target.as_ref(), prompt),
         ),
-        _ => {
-            let mut report =
-                NativeTelegramModelExecutionReport::from_invocation_request(&invocation_request);
-            if invocation_request.duplicate_decision == "missing_update_id" {
-                report.status = "attention";
-                report.error =
-                    Some("Telegram model execution requires an update id for cursor safety".into());
-            }
-            NativeTelegramModelExecutionOutcome {
-                report,
-                model_output: None,
-                reply_target: candidate.and_then(|candidate| candidate.reply_target),
-                candidate_next_update_offset: invocation_request.candidate_next_update_offset,
-            }
-        }
+        _ => build_native_telegram_model_execution_outcome_without_runner(
+            invocation_request.clone(),
+            candidate.and_then(|candidate| candidate.reply_target),
+        ),
     };
 
     let delivery_plan =
@@ -159,8 +149,8 @@ mod tests {
         extract_telegram_candidate_material, telegram_duplicate_decision,
     };
     use hepta_runtime::{
-        NativeTelegramModelInvocationRequestPlan, NativeTelegramSendExecutionReport,
-        NativeTelegramSendRequestPlan,
+        NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,
+        NativeTelegramSendExecutionReport, NativeTelegramSendRequestPlan,
     };
 
     const MODEL_GATE: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";

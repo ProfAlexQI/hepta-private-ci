@@ -69,6 +69,7 @@ pub use hepta_kernel::{
     build_hepta_kernel_telegram_drain_once_status,
     build_hepta_kernel_telegram_gateway_gate_summary, build_hepta_kernel_telegram_live_soak_status,
     build_hepta_kernel_telegram_model_bridge_status,
+    build_hepta_kernel_telegram_model_execution_outcome_without_runner,
     build_hepta_kernel_telegram_model_turn_plan_status, build_hepta_kernel_telegram_plugin_status,
     build_hepta_kernel_telegram_poll_loop_status,
     build_hepta_kernel_telegram_production_guard_status,
@@ -320,6 +321,16 @@ where
     F: FnOnce(&str) -> Result<String, String>,
 {
     execute_hepta_kernel_telegram_model_turn_after_candidate(input, run_model)
+}
+
+pub fn build_native_telegram_model_execution_outcome_without_runner(
+    invocation_request: NativeTelegramModelInvocationRequestPlan,
+    reply_target: Option<NativeTelegramReplyTargetMaterial>,
+) -> NativeTelegramModelExecutionOutcome {
+    build_hepta_kernel_telegram_model_execution_outcome_without_runner(
+        invocation_request,
+        reply_target,
+    )
 }
 
 pub fn classify_native_telegram_model_runner_error(error: &str) -> &'static str {
@@ -1122,6 +1133,33 @@ mod tests {
             native_telegram_model_timeout(Some(999_999_999)),
             Duration::from_millis(MAX_TELEGRAM_MODEL_TIMEOUT_MS)
         );
+    }
+
+    #[test]
+    fn model_execution_without_runner_delegates_to_kernel() {
+        let candidate = NativeTelegramCandidateMaterial {
+            update_id: None,
+            kind: "message:text".to_string(),
+            prompt_text: Some("private prompt".to_string()),
+            has_reply_target: false,
+            reply_target: None,
+            requires_model: true,
+            raw_identifiers_exposed: false,
+        };
+        let request = NativeTelegramModelInvocationRequestPlan::attention(
+            candidate,
+            "missing_update_id",
+            None,
+            "MODEL",
+            true,
+        );
+        let outcome = build_native_telegram_model_execution_outcome_without_runner(request, None);
+        assert_eq!(outcome.report.status, "attention");
+        assert_eq!(
+            outcome.report.error.as_deref(),
+            Some("Telegram model execution requires an update id for cursor safety")
+        );
+        assert!(outcome.model_output.is_none());
     }
 
     #[test]
