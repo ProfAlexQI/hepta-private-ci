@@ -612,6 +612,56 @@ pub struct HeptaKernelNativePostRolloutEvidenceScan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostRolloutEvidenceResponse {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub endpoint: &'static str,
+    pub source_command: &'static str,
+    pub native_route: bool,
+    pub compatibility_mode: &'static str,
+    pub side_effect_free: bool,
+    pub store_root_env: &'static str,
+    pub store_root: String,
+    pub rollback_store_file: &'static str,
+    pub store_jsonl_valid: bool,
+    pub store_capacity_ok: bool,
+    pub rollout_evidence_ready: bool,
+    pub activation_scope_env: &'static str,
+    pub activation_scope: Option<String>,
+    pub single_handler_scope_ready: bool,
+    pub selected_handler_count: usize,
+    pub selected_handler_kinds: Vec<&'static str>,
+    pub rollback_anchor_present: bool,
+    pub dry_run_record_present: bool,
+    pub record_count: u64,
+    pub dry_run_record_count: u64,
+    pub rollback_anchor_count: u64,
+    pub line_count: u64,
+    pub valid_json_line_count: u64,
+    pub invalid_json_line_count: u64,
+    pub jsonl_readable: bool,
+    pub read_error: Option<&'static str>,
+    pub plan_kind_counts: Vec<HeptaKernelNativePostRolloutEvidencePlanKindCount>,
+    pub latest_record: Option<HeptaKernelNativePostRolloutEvidenceRecordSummary>,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+    pub real_mutation_performed: bool,
+    pub approval_applied: bool,
+    pub task_published: bool,
+    pub chat_mutated: bool,
+    pub external_side_effects: bool,
+    pub gateway_mutation_performed: bool,
+    pub telegram_read_performed: bool,
+    pub model_invoked: bool,
+    pub message_sent: bool,
+    pub cursor_written: bool,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostSelectedHandlerRolloutEvidence {
     pub selected_handler_kind: Option<String>,
     pub record_count: u64,
@@ -1905,6 +1955,79 @@ pub fn hepta_kernel_native_post_rollout_evidence_scan_from_content(
         raw_field_values_exposed,
         raw_idempotency_key_exposed,
         raw_audit_payload_exposed,
+    }
+}
+
+pub fn hepta_kernel_native_post_rollout_evidence_report(
+    store_root: String,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    handler_scope: Option<&str>,
+    scan: HeptaKernelNativePostRolloutEvidenceScan,
+) -> HeptaKernelNativePostRolloutEvidenceResponse {
+    let rollout_evidence_ready = store_jsonl_valid
+        && store_capacity_ok
+        && scan.jsonl_readable
+        && scan.invalid_json_line_count == 0;
+    let activation_scope = handler_scope
+        .map(str::trim)
+        .filter(|scope| !scope.is_empty())
+        .map(str::to_string);
+    let selected_handler_kinds =
+        hepta_kernel_native_post_real_handler_scope_selected_kinds(activation_scope.as_deref());
+    let selected_handler_count = selected_handler_kinds.len();
+
+    HeptaKernelNativePostRolloutEvidenceResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if rollout_evidence_ready {
+            "ready"
+        } else {
+            "attention"
+        },
+        endpoint: HEPTA_KERNEL_NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
+        source_command: "/native-post-rollout-evidence --json",
+        native_route: true,
+        compatibility_mode: "native_post_rollout_evidence",
+        side_effect_free: true,
+        store_root_env: HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR_ENV,
+        store_root,
+        rollback_store_file: "rollback.jsonl",
+        store_jsonl_valid,
+        store_capacity_ok,
+        rollout_evidence_ready,
+        activation_scope_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        activation_scope,
+        single_handler_scope_ready: selected_handler_count == 1,
+        selected_handler_count,
+        selected_handler_kinds,
+        rollback_anchor_present: scan.rollback_anchor_count > 0,
+        dry_run_record_present: scan.dry_run_record_count > 0,
+        record_count: scan.record_count,
+        dry_run_record_count: scan.dry_run_record_count,
+        rollback_anchor_count: scan.rollback_anchor_count,
+        line_count: scan.line_count,
+        valid_json_line_count: scan.valid_json_line_count,
+        invalid_json_line_count: scan.invalid_json_line_count,
+        jsonl_readable: scan.jsonl_readable,
+        read_error: scan.read_error,
+        plan_kind_counts: scan.plan_kind_counts,
+        latest_record: scan.latest_record,
+        raw_request_body_exposed: scan.raw_request_body_exposed,
+        raw_field_values_exposed: scan.raw_field_values_exposed,
+        raw_idempotency_key_exposed: scan.raw_idempotency_key_exposed,
+        raw_audit_payload_exposed: scan.raw_audit_payload_exposed,
+        real_mutation_performed: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "run one scoped dry-run canary until rollback evidence is present, then decide whether to wire a real handler behind the same scope gate",
     }
 }
 
@@ -8185,6 +8308,25 @@ not-json
         let read_failed = hepta_kernel_native_post_rollout_evidence_scan_read_failed();
         assert!(!read_failed.jsonl_readable);
         assert_eq!(read_failed.read_error, Some("rollback_store_read_failed"));
+
+        let report = hepta_kernel_native_post_rollout_evidence_report(
+            ".hepta/native-post-execution".to_string(),
+            true,
+            true,
+            Some("task_publish"),
+            hepta_kernel_native_post_rollout_evidence_scan_from_content(content),
+        );
+        assert_eq!(report.status, "attention");
+        assert_eq!(
+            report.endpoint,
+            HEPTA_KERNEL_NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT
+        );
+        assert!(report.single_handler_scope_ready);
+        assert_eq!(report.selected_handler_kinds, vec!["task_publish"]);
+        assert!(report.rollback_anchor_present);
+        assert!(report.dry_run_record_present);
+        assert!(report.raw_request_body_exposed);
+        assert!(!report.external_side_effects);
     }
 
     #[test]

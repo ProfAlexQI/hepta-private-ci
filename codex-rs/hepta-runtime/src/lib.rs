@@ -137,6 +137,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
     HeptaKernelNativePostRolloutEvidencePlanKindCount as NativePostRolloutEvidencePlanKindCount,
     HeptaKernelNativePostRolloutEvidenceRecordSummary as NativePostRolloutEvidenceRecordSummary,
+    HeptaKernelNativePostRolloutEvidenceResponse as NativePostRolloutEvidenceResponse,
     HeptaKernelNativePostRolloutEvidenceScan as NativePostRolloutEvidenceScan,
     HeptaKernelNativePostSelectedHandlerRolloutEvidence as NativePostSelectedHandlerRolloutEvidence,
 };
@@ -400,6 +401,22 @@ pub fn native_post_rollout_evidence_scan_from_content(
     content: &str,
 ) -> NativePostRolloutEvidenceScan {
     hepta_kernel::hepta_kernel_native_post_rollout_evidence_scan_from_content(content)
+}
+
+pub fn native_post_rollout_evidence_report(
+    store_root: String,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    handler_scope: Option<&str>,
+    scan: NativePostRolloutEvidenceScan,
+) -> NativePostRolloutEvidenceResponse {
+    hepta_kernel::hepta_kernel_native_post_rollout_evidence_report(
+        store_root,
+        store_jsonl_valid,
+        store_capacity_ok,
+        handler_scope,
+        scan,
+    )
 }
 
 pub fn native_post_selected_handler_rollout_evidence_missing(

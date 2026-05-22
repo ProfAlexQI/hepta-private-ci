@@ -1,4 +1,3 @@
-use serde::Serialize;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -19,9 +18,10 @@ pub use hepta_runtime::{
     NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanResponse,
     NativePostPlanRouteSpec, NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
-    NativePostRolloutEvidenceScan, NativePostSelectedHandlerRolloutEvidence,
-    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
-    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
+    NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
+    NativePostSelectedHandlerRolloutEvidence, native_post_execution_admission_with_scope,
+    native_post_execution_readiness_report, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds,
 };
 
 pub const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
@@ -57,56 +57,6 @@ pub struct NativePostExecutionStoreLimits {
     pub max_store_bytes: u64,
     pub max_store_lines: u64,
     pub rate_limit_window_ms: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostRolloutEvidenceResponse {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub status: &'static str,
-    pub endpoint: &'static str,
-    pub source_command: &'static str,
-    pub native_route: bool,
-    pub compatibility_mode: &'static str,
-    pub side_effect_free: bool,
-    pub store_root_env: &'static str,
-    pub store_root: String,
-    pub rollback_store_file: &'static str,
-    pub store_jsonl_valid: bool,
-    pub store_capacity_ok: bool,
-    pub rollout_evidence_ready: bool,
-    pub activation_scope_env: &'static str,
-    pub activation_scope: Option<String>,
-    pub single_handler_scope_ready: bool,
-    pub selected_handler_count: usize,
-    pub selected_handler_kinds: Vec<&'static str>,
-    pub rollback_anchor_present: bool,
-    pub dry_run_record_present: bool,
-    pub record_count: u64,
-    pub dry_run_record_count: u64,
-    pub rollback_anchor_count: u64,
-    pub line_count: u64,
-    pub valid_json_line_count: u64,
-    pub invalid_json_line_count: u64,
-    pub jsonl_readable: bool,
-    pub read_error: Option<&'static str>,
-    pub plan_kind_counts: Vec<NativePostRolloutEvidencePlanKindCount>,
-    pub latest_record: Option<NativePostRolloutEvidenceRecordSummary>,
-    pub raw_request_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
-    pub raw_audit_payload_exposed: bool,
-    pub real_mutation_performed: bool,
-    pub approval_applied: bool,
-    pub task_published: bool,
-    pub chat_mutated: bool,
-    pub external_side_effects: bool,
-    pub gateway_mutation_performed: bool,
-    pub telegram_read_performed: bool,
-    pub model_invoked: bool,
-    pub message_sent: bool,
-    pub cursor_written: bool,
-    pub next_migration_slice: &'static str,
 }
 
 pub fn native_post_body_schema(
@@ -314,70 +264,13 @@ pub fn native_post_rollout_evidence_report(
         .all(|file| file.bytes_within_limit && file.line_count_within_limit);
     let rollback_path = root.join("rollback.jsonl");
     let scan = native_post_rollout_evidence_scan(&rollback_path);
-    let rollout_evidence_ready = store_jsonl_valid
-        && store_capacity_ok
-        && scan.jsonl_readable
-        && scan.invalid_json_line_count == 0;
-    let activation_scope = handler_scope
-        .map(str::trim)
-        .filter(|scope| !scope.is_empty())
-        .map(str::to_string);
-    let selected_handler_kinds =
-        native_post_real_handler_scope_selected_kinds(activation_scope.as_deref());
-    let selected_handler_count = selected_handler_kinds.len();
-
-    NativePostRolloutEvidenceResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if rollout_evidence_ready {
-            "ready"
-        } else {
-            "attention"
-        },
-        endpoint: NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
-        source_command: "/native-post-rollout-evidence --json",
-        native_route: true,
-        compatibility_mode: "native_post_rollout_evidence",
-        side_effect_free: true,
-        store_root_env: NATIVE_POST_EXECUTION_STORE_DIR_ENV,
-        store_root: root.display().to_string(),
-        rollback_store_file: "rollback.jsonl",
+    hepta_runtime::native_post_rollout_evidence_report(
+        root.display().to_string(),
         store_jsonl_valid,
         store_capacity_ok,
-        rollout_evidence_ready,
-        activation_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        activation_scope,
-        single_handler_scope_ready: selected_handler_count == 1,
-        selected_handler_count,
-        selected_handler_kinds,
-        rollback_anchor_present: scan.rollback_anchor_count > 0,
-        dry_run_record_present: scan.dry_run_record_count > 0,
-        record_count: scan.record_count,
-        dry_run_record_count: scan.dry_run_record_count,
-        rollback_anchor_count: scan.rollback_anchor_count,
-        line_count: scan.line_count,
-        valid_json_line_count: scan.valid_json_line_count,
-        invalid_json_line_count: scan.invalid_json_line_count,
-        jsonl_readable: scan.jsonl_readable,
-        read_error: scan.read_error,
-        plan_kind_counts: scan.plan_kind_counts,
-        latest_record: scan.latest_record,
-        raw_request_body_exposed: scan.raw_request_body_exposed,
-        raw_field_values_exposed: scan.raw_field_values_exposed,
-        raw_idempotency_key_exposed: scan.raw_idempotency_key_exposed,
-        raw_audit_payload_exposed: scan.raw_audit_payload_exposed,
-        real_mutation_performed: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        model_invoked: false,
-        message_sent: false,
-        cursor_written: false,
-        next_migration_slice: "run one scoped dry-run canary until rollback evidence is present, then decide whether to wire a real handler behind the same scope gate",
-    }
+        handler_scope,
+        scan,
+    )
 }
 
 pub fn native_post_gray_release_evidence_report(
