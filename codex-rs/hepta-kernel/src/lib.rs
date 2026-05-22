@@ -86,6 +86,8 @@ pub const HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT: &str =
     "/api/native-post-gray-release-evidence";
 pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str =
     "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
+pub const DEFAULT_HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR: &str =
+    ".hepta/native-post-execution";
 pub const HEPTA_KERNEL_NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
 pub const HEPTA_KERNEL_NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
 pub const HEPTA_KERNEL_NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV: &str =
@@ -8297,6 +8299,22 @@ mod tests {
         assert_eq!(
             HEPTA_KERNEL_NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV,
             "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS"
+        );
+        assert_eq!(
+            DEFAULT_HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR,
+            ".hepta/native-post-execution"
+        );
+        assert_eq!(
+            HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORES_ENDPOINT,
+            "/api/native-post-execution-stores"
+        );
+        assert_eq!(
+            HEPTA_KERNEL_NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
+            "/api/native-post-rollout-evidence"
+        );
+        assert_eq!(
+            HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
+            "/api/native-post-gray-release-evidence"
         );
         assert_eq!(limits.max_store_bytes, 10 * 1024 * 1024);
         assert_eq!(limits.max_store_lines, 100_000);
