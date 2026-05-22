@@ -6,17 +6,21 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 pub use hepta_runtime::{
-    NATIVE_POST_ACTIVATION_PLAN_ENDPOINT, NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
-    NATIVE_POST_MAX_BODY_BYTES, NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
-    NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-    NATIVE_POST_REAL_HANDLERS_ENV, NativePostActivationGate, NativePostActivationPlanResponse,
-    NativePostAuditEventContract, NativePostBodyAdmission, NativePostBodySchema,
-    NativePostConfirmationContract, NativePostExecutionAdmission,
+    DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS, DEFAULT_NATIVE_POST_STORE_MAX_BYTES,
+    DEFAULT_NATIVE_POST_STORE_MAX_LINES, NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
+    NATIVE_POST_EXECUTION_READINESS_ENDPOINT, NATIVE_POST_EXECUTION_STORE_DIR_ENV,
+    NATIVE_POST_MAX_BODY_BYTES, NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV,
+    NATIVE_POST_REAL_HANDLER_APPROVAL_ENV, NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
+    NATIVE_POST_REAL_HANDLER_SCOPE_ENV, NATIVE_POST_REAL_HANDLERS_ENV,
+    NATIVE_POST_STORE_MAX_BYTES_ENV, NATIVE_POST_STORE_MAX_LINES_ENV, NativePostActivationGate,
+    NativePostActivationPlanResponse, NativePostAuditEventContract, NativePostBodyAdmission,
+    NativePostBodySchema, NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
-    NativePostExecutionStoreFileStatus, NativePostExecutionStoreRecord,
-    NativePostExecutionStoreWriteReport, NativePostExecutionStoresResponse,
-    NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanResponse,
-    NativePostPlanRouteSpec, NativePostRealHandlerHarness, NativePostRollbackContract,
+    NativePostExecutionStoreFileStatus, NativePostExecutionStoreLimits,
+    NativePostExecutionStoreRecord, NativePostExecutionStoreWriteReport,
+    NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
+    NativePostIdempotencyEvidence, NativePostPlanResponse, NativePostPlanRouteSpec,
+    NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
     NativePostSelectedHandlerRolloutEvidence, native_post_execution_admission_with_scope,
@@ -24,17 +28,10 @@ pub use hepta_runtime::{
     native_post_real_handler_scope_selected_kinds,
 };
 
-pub const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
-pub const NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
-pub const NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
-pub const NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV: &str = "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS";
 pub const NATIVE_POST_EXECUTION_STORES_ENDPOINT: &str = "/api/native-post-execution-stores";
 pub const NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT: &str = "/api/native-post-rollout-evidence";
 pub const NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT: &str =
     "/api/native-post-gray-release-evidence";
-pub const DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS: u64 = 1_000;
-pub const DEFAULT_NATIVE_POST_STORE_MAX_BYTES: u64 = 10 * 1024 * 1024;
-pub const DEFAULT_NATIVE_POST_STORE_MAX_LINES: u64 = 100_000;
 pub const DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR: &str = ".hepta/native-post-execution";
 
 pub fn native_post_plan_route_specs() -> &'static [NativePostPlanRouteSpec] {
@@ -50,13 +47,6 @@ pub fn native_post_plan_parameter<'a>(
 
 pub fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
     hepta_runtime::native_post_plan_kind_has_real_handler(plan_kind)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NativePostExecutionStoreLimits {
-    pub max_store_bytes: u64,
-    pub max_store_lines: u64,
-    pub rate_limit_window_ms: u64,
 }
 
 pub fn native_post_body_schema(

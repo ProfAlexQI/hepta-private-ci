@@ -88,6 +88,18 @@ pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str =
     "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
 pub const HEPTA_KERNEL_NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
 pub const HEPTA_KERNEL_NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
+pub const HEPTA_KERNEL_NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV: &str =
+    "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS";
+pub const DEFAULT_HEPTA_KERNEL_NATIVE_POST_RATE_LIMIT_WINDOW_MS: u64 = 1_000;
+pub const DEFAULT_HEPTA_KERNEL_NATIVE_POST_STORE_MAX_BYTES: u64 = 10 * 1024 * 1024;
+pub const DEFAULT_HEPTA_KERNEL_NATIVE_POST_STORE_MAX_LINES: u64 = 100_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelNativePostExecutionStoreLimits {
+    pub max_store_bytes: u64,
+    pub max_store_lines: u64,
+    pub rate_limit_window_ms: u64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HeptaKernelNativePostPlanRouteSpec {
@@ -8264,6 +8276,31 @@ mod tests {
         assert!(report.store_jsonl_valid);
         assert!(report.store_capacity_ok);
         assert!(!report.raw_request_body_exposed);
+    }
+
+    #[test]
+    fn kernel_native_post_execution_store_limits_freeze_public_defaults() {
+        let limits = HeptaKernelNativePostExecutionStoreLimits {
+            max_store_bytes: DEFAULT_HEPTA_KERNEL_NATIVE_POST_STORE_MAX_BYTES,
+            max_store_lines: DEFAULT_HEPTA_KERNEL_NATIVE_POST_STORE_MAX_LINES,
+            rate_limit_window_ms: DEFAULT_HEPTA_KERNEL_NATIVE_POST_RATE_LIMIT_WINDOW_MS,
+        };
+
+        assert_eq!(
+            HEPTA_KERNEL_NATIVE_POST_STORE_MAX_BYTES_ENV,
+            "HEPTA_NATIVE_POST_STORE_MAX_BYTES"
+        );
+        assert_eq!(
+            HEPTA_KERNEL_NATIVE_POST_STORE_MAX_LINES_ENV,
+            "HEPTA_NATIVE_POST_STORE_MAX_LINES"
+        );
+        assert_eq!(
+            HEPTA_KERNEL_NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV,
+            "HEPTA_NATIVE_POST_RATE_LIMIT_WINDOW_MS"
+        );
+        assert_eq!(limits.max_store_bytes, 10 * 1024 * 1024);
+        assert_eq!(limits.max_store_lines, 100_000);
+        assert_eq!(limits.rate_limit_window_ms, 1_000);
     }
 
     #[test]
