@@ -83,9 +83,9 @@ pub use hepta_kernel::{
     extract_hepta_kernel_telegram_config_metadata,
     finalize_hepta_kernel_telegram_drain_pipeline_status, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_bot_token_shape_ok, hepta_kernel_telegram_cursor_body,
-    hepta_kernel_telegram_cursor_duplicate_rule_valid, hepta_kernel_telegram_delivery_backoff_ms,
-    hepta_kernel_telegram_delivery_error_is_permanent,
+    hepta_kernel_telegram_bot_api_http_status_error, hepta_kernel_telegram_bot_token_shape_ok,
+    hepta_kernel_telegram_cursor_body, hepta_kernel_telegram_cursor_duplicate_rule_valid,
+    hepta_kernel_telegram_delivery_backoff_ms, hepta_kernel_telegram_delivery_error_is_permanent,
     hepta_kernel_telegram_delivery_lifecycle_record, hepta_kernel_telegram_drain_execution_plan,
     hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_drain_first_missing_gate,
     hepta_kernel_telegram_drain_status_probe_executes_pipeline,
@@ -753,6 +753,14 @@ pub fn native_telegram_send_chat_action_request_body(chat_id: i64) -> Result<Val
     hepta_kernel_telegram_send_chat_action_request_body(chat_id)
 }
 
+pub fn native_telegram_bot_api_http_status_error(
+    method: &str,
+    status_code: u16,
+    description: Option<&str>,
+) -> String {
+    hepta_kernel_telegram_bot_api_http_status_error(method, status_code, description)
+}
+
 pub fn native_telegram_send_message_request_body(
     message_text: &str,
     chat_id: i64,
@@ -1290,6 +1298,14 @@ mod tests {
             native_telegram_send_chat_action_request_body(0)
                 .expect_err("bad chat id rejected")
                 .contains("chat id must be non-zero")
+        );
+        assert_eq!(
+            native_telegram_bot_api_http_status_error(
+                "sendMessage",
+                401,
+                Some("Unauthorized token=123456789:abcdefghijklmnopqrstuvwxyz")
+            ),
+            "Telegram Bot API sendMessage HTTP status 401; description=Unauthorized [redacted-telegram-token]"
         );
     }
 

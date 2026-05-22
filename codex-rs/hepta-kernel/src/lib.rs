@@ -4162,6 +4162,17 @@ pub fn hepta_kernel_telegram_send_message_request_body(
     Ok(body)
 }
 
+pub fn hepta_kernel_telegram_bot_api_http_status_error(
+    method: &str,
+    status_code: u16,
+    description: Option<&str>,
+) -> String {
+    let description = description
+        .map(redact_hepta_kernel_telegram_token_like_text)
+        .unwrap_or_else(|| "missing".to_string());
+    format!("Telegram Bot API {method} HTTP status {status_code}; description={description}")
+}
+
 pub fn hepta_kernel_telegram_typing_keepalive_should_start(
     enabled: bool,
     token: &str,
@@ -6537,6 +6548,18 @@ mod tests {
                 "failed token=123456789:abcdefghijklmnopqrstuvwxyz!"
             ),
             "failed [redacted-telegram-token]"
+        );
+        assert_eq!(
+            hepta_kernel_telegram_bot_api_http_status_error(
+                "sendMessage",
+                401,
+                Some("Unauthorized token=123456789:abcdefghijklmnopqrstuvwxyz")
+            ),
+            "Telegram Bot API sendMessage HTTP status 401; description=Unauthorized [redacted-telegram-token]"
+        );
+        assert_eq!(
+            hepta_kernel_telegram_bot_api_http_status_error("getUpdates", 500, None),
+            "Telegram Bot API getUpdates HTTP status 500; description=missing"
         );
         let conflict = "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request";
         let auth_error = "Telegram Bot API sendMessage HTTP status 401";

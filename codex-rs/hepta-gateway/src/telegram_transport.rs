@@ -17,14 +17,15 @@ use crate::telegram_policy::{
     NativeTelegramSendRequestPlan,
 };
 use hepta_runtime::{
-    native_telegram_bot_token_shape_ok, native_telegram_get_updates_error_is_conflict,
-    native_telegram_get_updates_error_is_transient, native_telegram_get_updates_query,
-    native_telegram_get_updates_should_retry, native_telegram_read_max_attempts_policy,
-    native_telegram_read_retry_backoff_policy, native_telegram_send_chat_action_request_body,
-    native_telegram_send_error_is_transient, native_telegram_send_max_attempts_policy,
-    native_telegram_send_message_request_body, native_telegram_send_min_interval_policy,
-    native_telegram_send_rate_limit_sleep_for, native_telegram_send_retry_backoff_policy,
-    native_telegram_send_should_retry, native_telegram_transport_plan_for_config_status,
+    native_telegram_bot_api_http_status_error, native_telegram_bot_token_shape_ok,
+    native_telegram_get_updates_error_is_conflict, native_telegram_get_updates_error_is_transient,
+    native_telegram_get_updates_query, native_telegram_get_updates_should_retry,
+    native_telegram_read_max_attempts_policy, native_telegram_read_retry_backoff_policy,
+    native_telegram_send_chat_action_request_body, native_telegram_send_error_is_transient,
+    native_telegram_send_max_attempts_policy, native_telegram_send_message_request_body,
+    native_telegram_send_min_interval_policy, native_telegram_send_rate_limit_sleep_for,
+    native_telegram_send_retry_backoff_policy, native_telegram_send_should_retry,
+    native_telegram_transport_plan_for_config_status,
     native_telegram_typing_keepalive_interval_policy,
     native_telegram_typing_keepalive_should_start, plan_native_telegram_send_execution_preflight,
     redact_native_telegram_token_like_text,
@@ -525,13 +526,10 @@ fn telegram_bot_api_json_response(
     if status.is_success() {
         Ok(body)
     } else {
-        Err(format!(
-            "Telegram Bot API {method} HTTP status {}; description={}",
+        Err(native_telegram_bot_api_http_status_error(
+            method,
             status.as_u16(),
-            body.get("description")
-                .and_then(Value::as_str)
-                .map(telegram_redact_token_like_text)
-                .unwrap_or_else(|| "missing".to_string())
+            body.get("description").and_then(Value::as_str),
         ))
     }
 }
