@@ -5,8 +5,7 @@ use serde_json::Value;
 
 use crate::telegram_policy::{
     NativeTelegramGatewayGateSummary, NativeTelegramModelExecutionReport,
-    NativeTelegramReplyTargetMaterial, NativeTelegramSendRequestPlan,
-    first_model_candidate_with_duplicate_decision,
+    NativeTelegramReplyTargetMaterial, first_model_candidate_with_duplicate_decision,
 };
 use crate::telegram_transport::{
     NativeTelegramSendExecutionInput, execute_telegram_send_after_model_output,
@@ -14,11 +13,12 @@ use crate::telegram_transport::{
 
 pub use hepta_runtime::{
     HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE as NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE,
-    NativeTelegramDrainPipelineFinalStatus, NativeTelegramDrainPipelineOutcome,
-    NativeTelegramModelExecutionInput, NativeTelegramModelExecutionOutcome,
-    NativeTelegramSessionBridgePlan, execute_native_telegram_model_turn_after_candidate,
-    finalize_native_telegram_drain_pipeline_status, native_telegram_model_failure_fallback_allowed,
-    native_telegram_model_failure_fallback_message,
+    NativeTelegramDrainPipelineDeliveryInput, NativeTelegramDrainPipelineFinalStatus,
+    NativeTelegramDrainPipelineOutcome, NativeTelegramModelExecutionInput,
+    NativeTelegramModelExecutionOutcome, NativeTelegramSessionBridgePlan,
+    execute_native_telegram_model_turn_after_candidate,
+    finalize_native_telegram_drain_pipeline_status, native_telegram_model_failure_fallback_message,
+    plan_native_telegram_drain_pipeline_delivery,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -106,23 +106,26 @@ where
         }
     };
 
-    let fallback_output = telegram_model_failure_fallback_output(
-        &model_outcome,
-        input.model_failure_fallback_enabled,
-    )
-    .map(|_| input.model_failure_fallback_message.to_string());
+    let delivery_plan =
+        plan_native_telegram_drain_pipeline_delivery(NativeTelegramDrainPipelineDeliveryInput {
+            model_output_present: model_outcome.model_output.is_some(),
+            model_failure_fallback_enabled: input.model_failure_fallback_enabled,
+            model_execution_session_runner_invoked: model_outcome.report.session_runner_invoked,
+            model_execution_status: model_outcome.report.status,
+            reply_target_available: model_outcome.reply_target.is_some(),
+            candidate_next_update_offset: model_outcome.candidate_next_update_offset,
+            send_gate_env: input.gates.send_gate_env,
+            send_gate_enabled: input.gates.send_gate_enabled,
+        });
+    let fallback_output = delivery_plan
+        .model_failure_fallback_allowed
+        .then(|| input.model_failure_fallback_message.to_string());
     let delivery_output = model_outcome
         .model_output
         .as_deref()
         .or(fallback_output.as_deref());
 
-    let send_request = NativeTelegramSendRequestPlan::from_model_output(
-        delivery_output,
-        model_outcome.reply_target.is_some(),
-        model_outcome.candidate_next_update_offset,
-        input.gates.send_gate_env,
-        input.gates.send_gate_enabled,
-    );
+    let send_request = delivery_plan.send_request;
     let send_execution = execute_telegram_send_after_model_output(
         NativeTelegramSendExecutionInput {
             token: input.token,
@@ -147,24 +150,6 @@ where
     }
 }
 
-fn telegram_model_failure_fallback_output(
-    outcome: &NativeTelegramModelExecutionOutcome,
-    enabled: bool,
-) -> Option<()> {
-    let report = &outcome.report;
-    if native_telegram_model_failure_fallback_allowed(
-        enabled,
-        report.session_runner_invoked,
-        report.status,
-        outcome.reply_target.is_some(),
-        outcome.candidate_next_update_offset.is_some(),
-    ) {
-        Some(())
-    } else {
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +160,7 @@ mod tests {
     };
     use hepta_runtime::{
         NativeTelegramModelInvocationRequestPlan, NativeTelegramSendExecutionReport,
+        NativeTelegramSendRequestPlan,
     };
 
     const MODEL_GATE: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";

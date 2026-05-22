@@ -558,6 +558,25 @@ pub struct HeptaKernelTelegramDrainPipelineOutcome {
     pub send_execution: HeptaKernelTelegramSendExecutionReport,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelTelegramDrainPipelineDeliveryInput {
+    pub model_output_present: bool,
+    pub model_failure_fallback_enabled: bool,
+    pub model_execution_session_runner_invoked: bool,
+    pub model_execution_status: &'static str,
+    pub reply_target_available: bool,
+    pub candidate_next_update_offset: Option<i64>,
+    pub send_gate_env: &'static str,
+    pub send_gate_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelTelegramDrainPipelineDeliveryPlan {
+    pub model_failure_fallback_allowed: bool,
+    pub delivery_output_present: bool,
+    pub send_request: HeptaKernelTelegramSendRequestPlan,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeptaKernelTelegramDrainPipelineFinalStatus {
     pub status: &'static str,
@@ -4288,6 +4307,32 @@ pub fn hepta_kernel_telegram_model_failure_fallback_allowed(
         && candidate_next_update_offset_present
 }
 
+pub fn plan_hepta_kernel_telegram_drain_pipeline_delivery(
+    input: HeptaKernelTelegramDrainPipelineDeliveryInput,
+) -> HeptaKernelTelegramDrainPipelineDeliveryPlan {
+    let model_failure_fallback_allowed = hepta_kernel_telegram_model_failure_fallback_allowed(
+        input.model_failure_fallback_enabled,
+        input.model_execution_session_runner_invoked,
+        input.model_execution_status,
+        input.reply_target_available,
+        input.candidate_next_update_offset.is_some(),
+    );
+    let delivery_output_present = input.model_output_present || model_failure_fallback_allowed;
+    let send_request = HeptaKernelTelegramSendRequestPlan::from_model_output_presence(
+        delivery_output_present,
+        input.reply_target_available,
+        input.candidate_next_update_offset,
+        input.send_gate_env,
+        input.send_gate_enabled,
+    );
+
+    HeptaKernelTelegramDrainPipelineDeliveryPlan {
+        model_failure_fallback_allowed,
+        delivery_output_present,
+        send_request,
+    }
+}
+
 pub fn hepta_kernel_telegram_drain_final_status(
     model_session_runner_invoked: bool,
     model_runner_process_spawned_by_status: bool,
@@ -7136,6 +7181,73 @@ mod tests {
         assert!(
             HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE
                 .contains("本地模型这次响应超时或失败了")
+        );
+    }
+
+    #[test]
+    fn kernel_drain_pipeline_delivery_plan_uses_model_output_first() {
+        let plan = plan_hepta_kernel_telegram_drain_pipeline_delivery(
+            HeptaKernelTelegramDrainPipelineDeliveryInput {
+                model_output_present: true,
+                model_failure_fallback_enabled: true,
+                model_execution_session_runner_invoked: true,
+                model_execution_status: "completed",
+                reply_target_available: true,
+                candidate_next_update_offset: Some(43),
+                send_gate_env: "HEPTA_NATIVE_TELEGRAM_SEND",
+                send_gate_enabled: true,
+            },
+        );
+
+        assert!(!plan.model_failure_fallback_allowed);
+        assert!(plan.delivery_output_present);
+        assert!(plan.send_request.send_allowed);
+        assert!(plan.send_request.model_output_present);
+        assert!(plan.send_request.cursor_commit_allowed_after_delivery);
+        assert!(!plan.send_request.raw_response_text_exposed);
+        assert!(!plan.send_request.raw_chat_id_exposed);
+        assert!(!plan.send_request.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_drain_pipeline_delivery_plan_allows_bounded_fallback_only_when_safe() {
+        let fallback = plan_hepta_kernel_telegram_drain_pipeline_delivery(
+            HeptaKernelTelegramDrainPipelineDeliveryInput {
+                model_output_present: false,
+                model_failure_fallback_enabled: true,
+                model_execution_session_runner_invoked: true,
+                model_execution_status: "attention",
+                reply_target_available: true,
+                candidate_next_update_offset: Some(43),
+                send_gate_env: "HEPTA_NATIVE_TELEGRAM_SEND",
+                send_gate_enabled: true,
+            },
+        );
+        assert!(fallback.model_failure_fallback_allowed);
+        assert!(fallback.delivery_output_present);
+        assert!(fallback.send_request.send_allowed);
+
+        let unsafe_missing_reply = plan_hepta_kernel_telegram_drain_pipeline_delivery(
+            HeptaKernelTelegramDrainPipelineDeliveryInput {
+                model_output_present: false,
+                model_failure_fallback_enabled: true,
+                model_execution_session_runner_invoked: true,
+                model_execution_status: "attention",
+                reply_target_available: false,
+                candidate_next_update_offset: Some(43),
+                send_gate_env: "HEPTA_NATIVE_TELEGRAM_SEND",
+                send_gate_enabled: true,
+            },
+        );
+        assert!(!unsafe_missing_reply.model_failure_fallback_allowed);
+        assert!(!unsafe_missing_reply.delivery_output_present);
+        assert!(!unsafe_missing_reply.send_request.send_allowed);
+        assert_eq!(
+            HeptaKernelTelegramSendExecutionReport::from_send_request(
+                &unsafe_missing_reply.send_request
+            )
+            .status,
+            "waiting_model_output"
         );
     }
 
