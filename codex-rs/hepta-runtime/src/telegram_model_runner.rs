@@ -85,7 +85,10 @@ pub use hepta_kernel::{
     extract_hepta_kernel_telegram_config_metadata,
     finalize_hepta_kernel_telegram_drain_pipeline_status, hepta_kernel_exec_child_args,
     hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_bot_api_http_status_error, hepta_kernel_telegram_bot_token_shape_ok,
+    hepta_kernel_telegram_bot_api_client_build_error,
+    hepta_kernel_telegram_bot_api_http_status_error,
+    hepta_kernel_telegram_bot_api_json_parse_error,
+    hepta_kernel_telegram_bot_api_request_failed_error, hepta_kernel_telegram_bot_token_shape_ok,
     hepta_kernel_telegram_cursor_body, hepta_kernel_telegram_cursor_duplicate_rule_valid,
     hepta_kernel_telegram_delivery_backoff_ms, hepta_kernel_telegram_delivery_error_is_permanent,
     hepta_kernel_telegram_delivery_lifecycle_record, hepta_kernel_telegram_drain_execution_plan,
@@ -783,6 +786,18 @@ pub fn native_telegram_bot_api_http_status_error(
     hepta_kernel_telegram_bot_api_http_status_error(method, status_code, description)
 }
 
+pub fn native_telegram_bot_api_request_failed_error(method: &str, error: &str) -> String {
+    hepta_kernel_telegram_bot_api_request_failed_error(method, error)
+}
+
+pub fn native_telegram_bot_api_client_build_error(method: &str, error: &str) -> String {
+    hepta_kernel_telegram_bot_api_client_build_error(method, error)
+}
+
+pub fn native_telegram_bot_api_json_parse_error(method: &str, error: &str) -> String {
+    hepta_kernel_telegram_bot_api_json_parse_error(method, error)
+}
+
 pub fn native_telegram_send_message_request_body(
     message_text: &str,
     chat_id: i64,
@@ -1328,6 +1343,27 @@ mod tests {
                 Some("Unauthorized token=123456789:abcdefghijklmnopqrstuvwxyz")
             ),
             "Telegram Bot API sendMessage HTTP status 401; description=Unauthorized [redacted-telegram-token]"
+        );
+        assert_eq!(
+            native_telegram_bot_api_request_failed_error(
+                "getUpdates",
+                "connection reset token=123456789:abcdefghijklmnopqrstuvwxyz"
+            ),
+            "Telegram Bot API getUpdates request failed: connection reset [redacted-telegram-token]"
+        );
+        assert_eq!(
+            native_telegram_bot_api_client_build_error(
+                "sendMessage",
+                "bad proxy 123456789:abcdefghijklmnopqrstuvwxyz"
+            ),
+            "failed to build Telegram Bot API sendMessage client: bad proxy [redacted-telegram-token]"
+        );
+        assert_eq!(
+            native_telegram_bot_api_json_parse_error(
+                "sendMessage",
+                "bad json 123456789:abcdefghijklmnopqrstuvwxyz"
+            ),
+            "failed to parse Telegram Bot API sendMessage response JSON: bad json [redacted-telegram-token]"
         );
         let provider_result =
             plan_native_telegram_send_provider_result(NativeTelegramSendProviderResultInput {

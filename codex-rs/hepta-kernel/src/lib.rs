@@ -4173,6 +4173,21 @@ pub fn hepta_kernel_telegram_bot_api_http_status_error(
     format!("Telegram Bot API {method} HTTP status {status_code}; description={description}")
 }
 
+pub fn hepta_kernel_telegram_bot_api_request_failed_error(method: &str, error: &str) -> String {
+    let error = redact_hepta_kernel_telegram_token_like_text(error);
+    format!("Telegram Bot API {method} request failed: {error}")
+}
+
+pub fn hepta_kernel_telegram_bot_api_client_build_error(method: &str, error: &str) -> String {
+    let error = redact_hepta_kernel_telegram_token_like_text(error);
+    format!("failed to build Telegram Bot API {method} client: {error}")
+}
+
+pub fn hepta_kernel_telegram_bot_api_json_parse_error(method: &str, error: &str) -> String {
+    let error = redact_hepta_kernel_telegram_token_like_text(error);
+    format!("failed to parse Telegram Bot API {method} response JSON: {error}")
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct HeptaKernelTelegramSendProviderResultInput<'a> {
     pub attempt: u64,
@@ -6708,6 +6723,27 @@ mod tests {
         assert_eq!(
             hepta_kernel_telegram_bot_api_http_status_error("getUpdates", 500, None),
             "Telegram Bot API getUpdates HTTP status 500; description=missing"
+        );
+        assert_eq!(
+            hepta_kernel_telegram_bot_api_request_failed_error(
+                "getUpdates",
+                "connection reset token=123456789:abcdefghijklmnopqrstuvwxyz"
+            ),
+            "Telegram Bot API getUpdates request failed: connection reset [redacted-telegram-token]"
+        );
+        assert_eq!(
+            hepta_kernel_telegram_bot_api_client_build_error(
+                "sendMessage",
+                "bad proxy 123456789:abcdefghijklmnopqrstuvwxyz"
+            ),
+            "failed to build Telegram Bot API sendMessage client: bad proxy [redacted-telegram-token]"
+        );
+        assert_eq!(
+            hepta_kernel_telegram_bot_api_json_parse_error(
+                "sendMessage",
+                "bad json 123456789:abcdefghijklmnopqrstuvwxyz"
+            ),
+            "failed to parse Telegram Bot API sendMessage response JSON: bad json [redacted-telegram-token]"
         );
         let acked = plan_hepta_kernel_telegram_send_provider_result(
             HeptaKernelTelegramSendProviderResultInput {

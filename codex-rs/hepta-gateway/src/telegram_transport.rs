@@ -17,15 +17,16 @@ use crate::telegram_policy::{
     NativeTelegramSendRequestPlan,
 };
 use hepta_runtime::{
-    native_telegram_bot_api_http_status_error, native_telegram_bot_token_shape_ok,
-    native_telegram_get_updates_error_is_conflict, native_telegram_get_updates_error_is_transient,
-    native_telegram_get_updates_query, native_telegram_get_updates_should_retry,
-    native_telegram_read_max_attempts_policy, native_telegram_read_retry_backoff_policy,
-    native_telegram_send_chat_action_request_body, native_telegram_send_error_is_transient,
-    native_telegram_send_max_attempts_policy, native_telegram_send_message_request_body,
-    native_telegram_send_min_interval_policy, native_telegram_send_rate_limit_sleep_for,
-    native_telegram_send_retry_backoff_policy, native_telegram_send_should_retry,
-    native_telegram_transport_plan_for_config_status,
+    native_telegram_bot_api_client_build_error, native_telegram_bot_api_http_status_error,
+    native_telegram_bot_api_json_parse_error, native_telegram_bot_api_request_failed_error,
+    native_telegram_bot_token_shape_ok, native_telegram_get_updates_error_is_conflict,
+    native_telegram_get_updates_error_is_transient, native_telegram_get_updates_query,
+    native_telegram_get_updates_should_retry, native_telegram_read_max_attempts_policy,
+    native_telegram_read_retry_backoff_policy, native_telegram_send_chat_action_request_body,
+    native_telegram_send_error_is_transient, native_telegram_send_max_attempts_policy,
+    native_telegram_send_message_request_body, native_telegram_send_min_interval_policy,
+    native_telegram_send_rate_limit_sleep_for, native_telegram_send_retry_backoff_policy,
+    native_telegram_send_should_retry, native_telegram_transport_plan_for_config_status,
     native_telegram_typing_keepalive_interval_policy,
     native_telegram_typing_keepalive_should_start,
     plan_native_telegram_get_updates_provider_result,
@@ -133,10 +134,7 @@ pub fn telegram_call_get_updates_once(
     let query = telegram_get_updates_query(limit, offset);
     let client = telegram_blocking_client(timeout, "getUpdates")?;
     let response = client.get(endpoint).query(&query).send().map_err(|error| {
-        format!(
-            "Telegram Bot API getUpdates request failed: {}",
-            error.without_url()
-        )
+        native_telegram_bot_api_request_failed_error("getUpdates", &error.without_url().to_string())
     })?;
     telegram_bot_api_json_response(response, "getUpdates")
 }
@@ -152,9 +150,9 @@ pub fn telegram_call_send_message(
     let body = telegram_send_message_request_body(message_text, chat_id, reply_to_message_id)?;
     let client = telegram_blocking_client(timeout, "sendMessage")?;
     let response = client.post(endpoint).json(&body).send().map_err(|error| {
-        format!(
-            "Telegram Bot API sendMessage request failed: {}",
-            error.without_url()
+        native_telegram_bot_api_request_failed_error(
+            "sendMessage",
+            &error.without_url().to_string(),
         )
     })?;
     telegram_bot_api_json_response(response, "sendMessage")
@@ -169,9 +167,9 @@ pub fn telegram_call_send_chat_action(
     let body = telegram_send_chat_action_request_body(chat_id)?;
     let client = telegram_blocking_client(timeout, "sendChatAction")?;
     let response = client.post(endpoint).json(&body).send().map_err(|error| {
-        format!(
-            "Telegram Bot API sendChatAction request failed: {}",
-            error.without_url()
+        native_telegram_bot_api_request_failed_error(
+            "sendChatAction",
+            &error.without_url().to_string(),
         )
     })?;
     telegram_bot_api_json_response(response, "sendChatAction")
@@ -539,7 +537,7 @@ fn telegram_blocking_client(
     reqwest::blocking::Client::builder()
         .timeout(timeout)
         .build()
-        .map_err(|error| format!("failed to build Telegram Bot API {method} client: {error}"))
+        .map_err(|error| native_telegram_bot_api_client_build_error(method, &error.to_string()))
 }
 
 fn telegram_bot_api_json_response(
@@ -547,9 +545,9 @@ fn telegram_bot_api_json_response(
     method: &str,
 ) -> Result<Value, String> {
     let status = response.status();
-    let body = response.json::<Value>().map_err(|error| {
-        format!("failed to parse Telegram Bot API {method} response JSON: {error}")
-    })?;
+    let body = response
+        .json::<Value>()
+        .map_err(|error| native_telegram_bot_api_json_parse_error(method, &error.to_string()))?;
     if status.is_success() {
         Ok(body)
     } else {
