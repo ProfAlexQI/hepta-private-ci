@@ -107,11 +107,15 @@ pub use events::{EventQueryReport, EventRecord};
 pub use hepta_contracts::HeptaRuntimeContractInventory;
 pub use hepta_kernel::{
     HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES as NATIVE_POST_MAX_BODY_BYTES,
+    HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV as NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS as NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
+    HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV as NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+    HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV as NATIVE_POST_REAL_HANDLERS_ENV,
     HeptaKernelNativePostAuditEventContract as NativePostAuditEventContract,
     HeptaKernelNativePostBodyAdmission as NativePostBodyAdmission,
     HeptaKernelNativePostBodySchema as NativePostBodySchema,
     HeptaKernelNativePostConfirmationContract as NativePostConfirmationContract,
+    HeptaKernelNativePostExecutionAdmission as NativePostExecutionAdmission,
     HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
@@ -193,6 +197,39 @@ pub fn native_post_audit_event_contract(
         body_admission,
         idempotency_evidence,
     )
+}
+
+pub fn native_post_execution_admission_with_scope(
+    spec: &NativePostPlanRouteSpec,
+    body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+    audit_event_contract: &NativePostAuditEventContract,
+    enablement_gate_enabled: bool,
+    operator_approval_enabled: bool,
+    handler_scope: Option<&str>,
+) -> NativePostExecutionAdmission {
+    hepta_kernel::hepta_kernel_native_post_execution_admission_with_scope(
+        spec,
+        body_admission,
+        idempotency_evidence,
+        audit_event_contract,
+        enablement_gate_enabled,
+        operator_approval_enabled,
+        handler_scope,
+    )
+}
+
+pub fn native_post_real_handler_scope_matches(
+    plan_kind: &str,
+    handler_scope: Option<&str>,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_real_handler_scope_matches(plan_kind, handler_scope)
+}
+
+pub fn native_post_real_handler_scope_selected_kinds(
+    handler_scope: Option<&str>,
+) -> Vec<&'static str> {
+    hepta_kernel::hepta_kernel_native_post_real_handler_scope_selected_kinds(handler_scope)
 }
 pub use memory_context::{
     DEFAULT_MEMORY_CONTEXT_LEDGER_ID, DEFAULT_MEMORY_CONTEXT_LEDGER_PATH, MemoryCitation,

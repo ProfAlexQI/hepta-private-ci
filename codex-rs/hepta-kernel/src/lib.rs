@@ -66,6 +66,11 @@ pub const MAX_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 5;
 pub const DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 700;
 pub const MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 30_000;
 pub const HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
+pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
+pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str =
+    "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
+pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV: &str =
+    "HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE";
 pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
     &["approval_apply", "task_publish", "chat_send"];
 
@@ -175,6 +180,37 @@ pub struct HeptaKernelNativePostAuditEventContract {
     pub raw_field_values_exposed: bool,
     pub raw_parameter_exposed: bool,
     pub raw_idempotency_key_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionAdmission {
+    pub admission_status: &'static str,
+    pub current_plan_executes_real_handler: bool,
+    pub real_handler_currently_enabled: bool,
+    pub real_handler_implemented: bool,
+    pub allowlisted_for_real_handler: bool,
+    pub enablement_gate_env: &'static str,
+    pub enablement_gate_enabled: bool,
+    pub operator_approval_env: &'static str,
+    pub operator_approval_enabled: bool,
+    pub handler_scope_env: &'static str,
+    pub handler_scope: Option<String>,
+    pub handler_scope_configured: bool,
+    pub handler_scope_required: bool,
+    pub handler_scope_matches: bool,
+    pub request_body_admission_status: &'static str,
+    pub request_body_ready_for_real_handler: bool,
+    pub requires_body_schema: bool,
+    pub requires_confirmation_contract: bool,
+    pub requires_rollback_contract: bool,
+    pub requires_idempotency_key: bool,
+    pub idempotency_evidence_ready: bool,
+    pub requires_audit_event: bool,
+    pub audit_event_contract_ready: bool,
+    pub requires_rate_limit: bool,
+    pub requires_dry_run_first: bool,
+    pub external_side_effects_possible: bool,
+    pub blocked_reason: &'static str,
 }
 
 pub const HEPTA_KERNEL_NATIVE_POST_PLAN_ROUTE_SPECS: &[HeptaKernelNativePostPlanRouteSpec] = &[
@@ -655,6 +691,122 @@ pub fn hepta_kernel_native_post_audit_event_contract(
         raw_parameter_exposed: false,
         raw_idempotency_key_exposed: false,
     }
+}
+
+pub fn hepta_kernel_native_post_execution_admission_with_scope(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    body_admission: &HeptaKernelNativePostBodyAdmission,
+    idempotency_evidence: &HeptaKernelNativePostIdempotencyEvidence,
+    audit_event_contract: &HeptaKernelNativePostAuditEventContract,
+    enablement_gate_enabled: bool,
+    operator_approval_enabled: bool,
+    handler_scope: Option<&str>,
+) -> HeptaKernelNativePostExecutionAdmission {
+    let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
+    let real_handler_implemented =
+        hepta_kernel_native_post_plan_kind_has_real_handler(spec.plan_kind);
+    let handler_scope_configured = handler_scope
+        .map(str::trim)
+        .map(|scope| !scope.is_empty())
+        .unwrap_or(false);
+    let handler_scope_matches = !allowlisted_for_real_handler
+        || hepta_kernel_native_post_real_handler_scope_matches(spec.plan_kind, handler_scope);
+    let handler_scope_required = allowlisted_for_real_handler && real_handler_implemented;
+    let request_body_ready_for_real_handler =
+        !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
+    let execution_evidence_ready = !allowlisted_for_real_handler
+        || (idempotency_evidence.key_shape_valid && audit_event_contract.ready_for_real_handler);
+    let current_plan_executes_real_handler = allowlisted_for_real_handler
+        && request_body_ready_for_real_handler
+        && execution_evidence_ready
+        && real_handler_implemented
+        && enablement_gate_enabled
+        && operator_approval_enabled
+        && (!handler_scope_required || handler_scope_matches);
+
+    HeptaKernelNativePostExecutionAdmission {
+        admission_status: if current_plan_executes_real_handler {
+            "harness_ready"
+        } else {
+            "blocked"
+        },
+        current_plan_executes_real_handler,
+        real_handler_currently_enabled: enablement_gate_enabled,
+        real_handler_implemented,
+        allowlisted_for_real_handler,
+        enablement_gate_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV,
+        enablement_gate_enabled,
+        operator_approval_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+        operator_approval_enabled,
+        handler_scope_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        handler_scope: handler_scope
+            .map(str::trim)
+            .filter(|scope| !scope.is_empty())
+            .map(str::to_string),
+        handler_scope_configured,
+        handler_scope_required,
+        handler_scope_matches,
+        request_body_admission_status: body_admission.admission_status,
+        request_body_ready_for_real_handler,
+        requires_body_schema: allowlisted_for_real_handler,
+        requires_confirmation_contract: allowlisted_for_real_handler,
+        requires_rollback_contract: allowlisted_for_real_handler,
+        requires_idempotency_key: allowlisted_for_real_handler,
+        idempotency_evidence_ready: execution_evidence_ready,
+        requires_audit_event: allowlisted_for_real_handler,
+        audit_event_contract_ready: execution_evidence_ready,
+        requires_rate_limit: allowlisted_for_real_handler,
+        requires_dry_run_first: true,
+        external_side_effects_possible: allowlisted_for_real_handler,
+        blocked_reason: if allowlisted_for_real_handler && !request_body_ready_for_real_handler {
+            "body_admission_not_ready"
+        } else if allowlisted_for_real_handler && !execution_evidence_ready {
+            "execution_evidence_not_ready"
+        } else if allowlisted_for_real_handler && !real_handler_implemented {
+            "real_handler_not_wired"
+        } else if allowlisted_for_real_handler && !enablement_gate_enabled {
+            "real_handler_gate_disabled"
+        } else if allowlisted_for_real_handler && !operator_approval_enabled {
+            "operator_approval_required"
+        } else if allowlisted_for_real_handler && handler_scope_required && !handler_scope_matches {
+            "handler_scope_not_selected"
+        } else if allowlisted_for_real_handler {
+            "real_handler_harness_dry_run_only"
+        } else {
+            "plan_only_route"
+        },
+    }
+}
+
+pub fn hepta_kernel_native_post_real_handler_scope_matches(
+    plan_kind: &str,
+    handler_scope: Option<&str>,
+) -> bool {
+    handler_scope
+        .map(hepta_kernel_native_post_real_handler_scope_tokens)
+        .unwrap_or_default()
+        .iter()
+        .any(|token| *token == plan_kind)
+}
+
+pub fn hepta_kernel_native_post_real_handler_scope_selected_kinds(
+    handler_scope: Option<&str>,
+) -> Vec<&'static str> {
+    HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS
+        .iter()
+        .copied()
+        .filter(|plan_kind| {
+            hepta_kernel_native_post_real_handler_scope_matches(plan_kind, handler_scope)
+        })
+        .collect()
+}
+
+fn hepta_kernel_native_post_real_handler_scope_tokens(handler_scope: &str) -> Vec<&str> {
+    handler_scope
+        .split(|ch: char| matches!(ch, ',' | ';' | ' ' | '\t' | '\n' | '\r'))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -6141,6 +6293,77 @@ mod tests {
         assert!(audit.ready_for_real_handler);
         assert!(!audit.current_plan_emits_audit_event);
         assert!(!audit.raw_idempotency_key_exposed);
+    }
+
+    #[test]
+    fn kernel_native_post_execution_admission_requires_matching_scope() {
+        let chat_send = hepta_kernel_native_post_plan_route_specs()
+            .iter()
+            .find(|spec| spec.plan_kind == "chat_send")
+            .expect("chat send spec");
+        let schema = hepta_kernel_native_post_body_schema(chat_send.plan_kind, true);
+        let admission = hepta_kernel_native_post_body_admission(
+            chat_send,
+            &schema,
+            Some(
+                r#"{"chat_id":"c1","message":"hello","confirm":true,"dry_run":true,"idempotency_key":"idem"}"#,
+            ),
+        );
+        let idempotency = hepta_kernel_native_post_idempotency_evidence(chat_send, &admission);
+        let audit = hepta_kernel_native_post_audit_event_contract(
+            chat_send,
+            &schema,
+            &admission,
+            &idempotency,
+        );
+
+        let mismatched = hepta_kernel_native_post_execution_admission_with_scope(
+            chat_send,
+            &admission,
+            &idempotency,
+            &audit,
+            true,
+            true,
+            Some("task_publish"),
+        );
+        assert_eq!(mismatched.admission_status, "blocked");
+        assert_eq!(mismatched.blocked_reason, "handler_scope_not_selected");
+        assert!(!mismatched.current_plan_executes_real_handler);
+        assert_eq!(
+            mismatched.handler_scope_env,
+            HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV
+        );
+
+        let matched = hepta_kernel_native_post_execution_admission_with_scope(
+            chat_send,
+            &admission,
+            &idempotency,
+            &audit,
+            true,
+            true,
+            Some("task_publish, chat_send"),
+        );
+        assert_eq!(matched.admission_status, "harness_ready");
+        assert_eq!(matched.blocked_reason, "real_handler_harness_dry_run_only");
+        assert!(matched.current_plan_executes_real_handler);
+        assert!(matched.handler_scope_matches);
+    }
+
+    #[test]
+    fn kernel_native_post_real_handler_scope_selection_uses_kernel_registry() {
+        let selected = hepta_kernel_native_post_real_handler_scope_selected_kinds(Some(
+            "approval_apply chat_send",
+        ));
+
+        assert_eq!(selected, vec!["approval_apply", "chat_send"]);
+        assert!(hepta_kernel_native_post_real_handler_scope_matches(
+            "chat_send",
+            Some("task_publish,chat_send")
+        ));
+        assert!(!hepta_kernel_native_post_real_handler_scope_matches(
+            "approval_apply",
+            Some("task_publish,chat_send")
+        ));
     }
 
     #[test]

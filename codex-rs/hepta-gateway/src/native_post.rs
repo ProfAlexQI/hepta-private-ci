@@ -8,14 +8,15 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 pub use hepta_runtime::{
-    NATIVE_POST_MAX_BODY_BYTES, NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NativePostAuditEventContract,
-    NativePostBodyAdmission, NativePostBodySchema, NativePostConfirmationContract,
+    NATIVE_POST_MAX_BODY_BYTES, NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+    NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+    NATIVE_POST_REAL_HANDLERS_ENV, NativePostAuditEventContract, NativePostBodyAdmission,
+    NativePostBodySchema, NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostIdempotencyEvidence, NativePostPlanRouteSpec, NativePostRollbackContract,
+    native_post_execution_admission_with_scope, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds,
 };
 
-pub const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
-pub const NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
-pub const NATIVE_POST_REAL_HANDLER_SCOPE_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE";
 pub const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
 pub const NATIVE_POST_STORE_MAX_BYTES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_BYTES";
 pub const NATIVE_POST_STORE_MAX_LINES_ENV: &str = "HEPTA_NATIVE_POST_STORE_MAX_LINES";
@@ -98,37 +99,6 @@ pub struct NativePostPlanResponse {
     pub message_sent: bool,
     pub cursor_written: bool,
     pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostExecutionAdmission {
-    pub admission_status: &'static str,
-    pub current_plan_executes_real_handler: bool,
-    pub real_handler_currently_enabled: bool,
-    pub real_handler_implemented: bool,
-    pub allowlisted_for_real_handler: bool,
-    pub enablement_gate_env: &'static str,
-    pub enablement_gate_enabled: bool,
-    pub operator_approval_env: &'static str,
-    pub operator_approval_enabled: bool,
-    pub handler_scope_env: &'static str,
-    pub handler_scope: Option<String>,
-    pub handler_scope_configured: bool,
-    pub handler_scope_required: bool,
-    pub handler_scope_matches: bool,
-    pub request_body_admission_status: &'static str,
-    pub request_body_ready_for_real_handler: bool,
-    pub requires_body_schema: bool,
-    pub requires_confirmation_contract: bool,
-    pub requires_rollback_contract: bool,
-    pub requires_idempotency_key: bool,
-    pub idempotency_evidence_ready: bool,
-    pub requires_audit_event: bool,
-    pub audit_event_contract_ready: bool,
-    pub requires_rate_limit: bool,
-    pub requires_dry_run_first: bool,
-    pub external_side_effects_possible: bool,
-    pub blocked_reason: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -616,118 +586,6 @@ pub fn native_post_audit_event_contract(
         body_admission,
         idempotency_evidence,
     )
-}
-
-pub fn native_post_execution_admission_with_scope(
-    spec: &NativePostPlanRouteSpec,
-    body_admission: &NativePostBodyAdmission,
-    idempotency_evidence: &NativePostIdempotencyEvidence,
-    audit_event_contract: &NativePostAuditEventContract,
-    enablement_gate_enabled: bool,
-    operator_approval_enabled: bool,
-    handler_scope: Option<&str>,
-) -> NativePostExecutionAdmission {
-    let allowlisted_for_real_handler = spec.confirmation_required_for_real_mutation;
-    let real_handler_implemented = native_post_plan_kind_has_real_handler(spec.plan_kind);
-    let handler_scope_configured = handler_scope
-        .map(str::trim)
-        .map(|scope| !scope.is_empty())
-        .unwrap_or(false);
-    let handler_scope_matches = !allowlisted_for_real_handler
-        || native_post_real_handler_scope_matches(spec.plan_kind, handler_scope);
-    let handler_scope_required = allowlisted_for_real_handler && real_handler_implemented;
-    let request_body_ready_for_real_handler =
-        !allowlisted_for_real_handler || body_admission.ready_for_real_handler_input;
-    let execution_evidence_ready = !allowlisted_for_real_handler
-        || (idempotency_evidence.key_shape_valid && audit_event_contract.ready_for_real_handler);
-    let current_plan_executes_real_handler = allowlisted_for_real_handler
-        && request_body_ready_for_real_handler
-        && execution_evidence_ready
-        && real_handler_implemented
-        && enablement_gate_enabled
-        && operator_approval_enabled
-        && (!handler_scope_required || handler_scope_matches);
-    NativePostExecutionAdmission {
-        admission_status: if current_plan_executes_real_handler {
-            "harness_ready"
-        } else {
-            "blocked"
-        },
-        current_plan_executes_real_handler,
-        real_handler_currently_enabled: enablement_gate_enabled,
-        real_handler_implemented,
-        allowlisted_for_real_handler,
-        enablement_gate_env: NATIVE_POST_REAL_HANDLERS_ENV,
-        enablement_gate_enabled,
-        operator_approval_env: NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
-        operator_approval_enabled,
-        handler_scope_env: NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-        handler_scope: handler_scope
-            .map(str::trim)
-            .filter(|scope| !scope.is_empty())
-            .map(str::to_string),
-        handler_scope_configured,
-        handler_scope_required,
-        handler_scope_matches,
-        request_body_admission_status: body_admission.admission_status,
-        request_body_ready_for_real_handler,
-        requires_body_schema: allowlisted_for_real_handler,
-        requires_confirmation_contract: allowlisted_for_real_handler,
-        requires_rollback_contract: allowlisted_for_real_handler,
-        requires_idempotency_key: allowlisted_for_real_handler,
-        idempotency_evidence_ready: execution_evidence_ready,
-        requires_audit_event: allowlisted_for_real_handler,
-        audit_event_contract_ready: execution_evidence_ready,
-        requires_rate_limit: allowlisted_for_real_handler,
-        requires_dry_run_first: true,
-        external_side_effects_possible: allowlisted_for_real_handler,
-        blocked_reason: if allowlisted_for_real_handler && !request_body_ready_for_real_handler {
-            "body_admission_not_ready"
-        } else if allowlisted_for_real_handler && !execution_evidence_ready {
-            "execution_evidence_not_ready"
-        } else if allowlisted_for_real_handler && !real_handler_implemented {
-            "real_handler_not_wired"
-        } else if allowlisted_for_real_handler && !enablement_gate_enabled {
-            "real_handler_gate_disabled"
-        } else if allowlisted_for_real_handler && !operator_approval_enabled {
-            "operator_approval_required"
-        } else if allowlisted_for_real_handler && handler_scope_required && !handler_scope_matches {
-            "handler_scope_not_selected"
-        } else if allowlisted_for_real_handler {
-            "real_handler_harness_dry_run_only"
-        } else {
-            "plan_only_route"
-        },
-    }
-}
-
-pub fn native_post_real_handler_scope_matches(
-    plan_kind: &str,
-    handler_scope: Option<&str>,
-) -> bool {
-    handler_scope
-        .map(native_post_real_handler_scope_tokens)
-        .unwrap_or_default()
-        .iter()
-        .any(|token| *token == plan_kind)
-}
-
-pub fn native_post_real_handler_scope_selected_kinds(
-    handler_scope: Option<&str>,
-) -> Vec<&'static str> {
-    NATIVE_POST_REAL_HANDLER_PLAN_KINDS
-        .iter()
-        .copied()
-        .filter(|plan_kind| native_post_real_handler_scope_matches(plan_kind, handler_scope))
-        .collect()
-}
-
-fn native_post_real_handler_scope_tokens(handler_scope: &str) -> Vec<&str> {
-    handler_scope
-        .split(|ch: char| matches!(ch, ',' | ';' | ' ' | '\t' | '\n' | '\r'))
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .collect()
 }
 
 pub fn native_post_execution_readiness_report(
