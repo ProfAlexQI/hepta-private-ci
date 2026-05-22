@@ -27,8 +27,10 @@ use hepta_runtime::{
     native_telegram_send_retry_backoff_policy, native_telegram_send_should_retry,
     native_telegram_transport_plan_for_config_status,
     native_telegram_typing_keepalive_interval_policy,
-    native_telegram_typing_keepalive_should_start, plan_native_telegram_send_execution_preflight,
-    plan_native_telegram_send_provider_result, redact_native_telegram_token_like_text,
+    native_telegram_typing_keepalive_should_start,
+    plan_native_telegram_get_updates_provider_result,
+    plan_native_telegram_send_execution_preflight, plan_native_telegram_send_provider_result,
+    redact_native_telegram_token_like_text,
 };
 
 pub use hepta_runtime::{
@@ -37,9 +39,9 @@ pub use hepta_runtime::{
     DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MAX_TELEGRAM_READ_MAX_ATTEMPTS,
     MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
     MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramSendExecutionPreflightInput,
-    NativeTelegramSendPlan, NativeTelegramSendProviderResultInput, NativeTelegramTransportPlan,
-    TELEGRAM_ALLOWED_UPDATES,
+    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramGetUpdatesProviderResultInput,
+    NativeTelegramSendExecutionPreflightInput, NativeTelegramSendPlan,
+    NativeTelegramSendProviderResultInput, NativeTelegramTransportPlan, TELEGRAM_ALLOWED_UPDATES,
 };
 const TELEGRAM_BOT_API_BASE_URL: &str = "https://api.telegram.org";
 static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
@@ -471,14 +473,33 @@ where
 {
     for attempt in 1..=max_attempts {
         match call_once() {
-            Ok(api) => return Ok(api),
-            Err(error) => {
-                let error = telegram_redact_token_like_text(&error);
-                if telegram_get_updates_should_retry(attempt, max_attempts, &error) {
+            Ok(api) => {
+                let provider_result = plan_native_telegram_get_updates_provider_result(
+                    NativeTelegramGetUpdatesProviderResultInput {
+                        attempt,
+                        max_attempts,
+                        api_result: Ok(&api),
+                    },
+                );
+                if provider_result.should_retry {
                     thread::sleep(retry_backoff);
                     continue;
                 }
-                return Err(error);
+                return Ok(api);
+            }
+            Err(error) => {
+                let provider_result = plan_native_telegram_get_updates_provider_result(
+                    NativeTelegramGetUpdatesProviderResultInput {
+                        attempt,
+                        max_attempts,
+                        api_result: Err(&error),
+                    },
+                );
+                if provider_result.should_retry {
+                    thread::sleep(retry_backoff);
+                    continue;
+                }
+                return Err(provider_result.error.unwrap_or(error));
             }
         }
     }
