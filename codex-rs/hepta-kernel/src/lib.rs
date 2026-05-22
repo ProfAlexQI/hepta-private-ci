@@ -685,6 +685,22 @@ pub fn hepta_kernel_native_post_execution_store_capacity_allows_append(
     })
 }
 
+pub fn hepta_kernel_native_post_execution_store_jsonl_valid(
+    stores: &[HeptaKernelNativePostExecutionStoreFileStatus],
+) -> bool {
+    stores
+        .iter()
+        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0)
+}
+
+pub fn hepta_kernel_native_post_execution_store_capacity_ok(
+    stores: &[HeptaKernelNativePostExecutionStoreFileStatus],
+) -> bool {
+    stores
+        .iter()
+        .all(|file| file.bytes_within_limit && file.line_count_within_limit)
+}
+
 pub fn hepta_kernel_native_post_idempotency_duplicate_present_in_content(
     content: &str,
     key_fingerprint: Option<&str>,
@@ -1999,12 +2015,8 @@ pub fn hepta_kernel_native_post_execution_stores_report(
         .iter()
         .map(|file| file.invalid_json_line_count)
         .sum::<u64>();
-    let store_jsonl_valid = stores
-        .iter()
-        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
-    let store_capacity_ok = stores
-        .iter()
-        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
+    let store_jsonl_valid = hepta_kernel_native_post_execution_store_jsonl_valid(&stores);
+    let store_capacity_ok = hepta_kernel_native_post_execution_store_capacity_ok(&stores);
 
     HeptaKernelNativePostExecutionStoresResponse {
         product: "Hepta",
@@ -8687,8 +8699,44 @@ mod tests {
             1,
         );
         assert!(
-            !hepta_kernel_native_post_execution_store_capacity_allows_append(&[invalid], 1, 100, 3)
+            !hepta_kernel_native_post_execution_store_capacity_allows_append(
+                &[invalid.clone()],
+                1,
+                100,
+                3
+            )
         );
+        assert!(hepta_kernel_native_post_execution_store_jsonl_valid(&[
+            ready.clone()
+        ]));
+        assert!(hepta_kernel_native_post_execution_store_capacity_ok(&[
+            ready.clone()
+        ]));
+        assert!(!hepta_kernel_native_post_execution_store_jsonl_valid(&[
+            invalid.clone()
+        ]));
+        assert!(hepta_kernel_native_post_execution_store_capacity_ok(&[
+            invalid.clone()
+        ]));
+
+        let full = hepta_kernel_native_post_execution_store_file_status_report(
+            spec,
+            ".hepta/native-post-execution/idempotency.jsonl".to_string(),
+            true,
+            101,
+            100,
+            3,
+            true,
+            4,
+            4,
+            0,
+        );
+        assert!(hepta_kernel_native_post_execution_store_jsonl_valid(&[
+            full.clone()
+        ]));
+        assert!(!hepta_kernel_native_post_execution_store_capacity_ok(&[
+            full
+        ]));
     }
 
     #[test]

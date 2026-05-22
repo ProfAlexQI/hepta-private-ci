@@ -29,11 +29,11 @@ pub use hepta_runtime::{
     NativePostSelectedHandlerRolloutEvidence, native_post_audit_event_contract,
     native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
     native_post_execution_admission_with_scope, native_post_execution_readiness_report,
-    native_post_execution_store_capacity_allows_append,
+    native_post_execution_store_capacity_allows_append, native_post_execution_store_capacity_ok,
     native_post_execution_store_file_status_report,
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
-    native_post_execution_store_jsonl_health_read_failed,
+    native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_jsonl_valid,
     native_post_execution_store_record_json_line, native_post_execution_store_specs,
     native_post_execution_store_write_report, native_post_idempotency_duplicate_present_in_content,
     native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
@@ -190,12 +190,8 @@ pub fn native_post_rollout_evidence_report(
 ) -> NativePostRolloutEvidenceResponse {
     let store_files =
         native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
-    let store_jsonl_valid = store_files
-        .iter()
-        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
-    let store_capacity_ok = store_files
-        .iter()
-        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
+    let store_jsonl_valid = native_post_execution_store_jsonl_valid(&store_files);
+    let store_capacity_ok = native_post_execution_store_capacity_ok(&store_files);
     let rollback_path = root.join("rollback.jsonl");
     let scan = native_post_rollout_evidence_scan(&rollback_path);
     hepta_runtime::native_post_rollout_evidence_report(
@@ -217,12 +213,8 @@ pub fn native_post_gray_release_evidence_report(
 ) -> NativePostGrayReleaseEvidenceResponse {
     let store_files =
         native_post_execution_store_file_statuses(root, max_store_bytes, max_store_lines);
-    let store_jsonl_valid = store_files
-        .iter()
-        .all(|file| file.jsonl_readable && file.invalid_json_line_count == 0);
-    let store_capacity_ok = store_files
-        .iter()
-        .all(|file| file.bytes_within_limit && file.line_count_within_limit);
+    let store_jsonl_valid = native_post_execution_store_jsonl_valid(&store_files);
+    let store_capacity_ok = native_post_execution_store_capacity_ok(&store_files);
     let selected_handler_kinds = native_post_real_handler_scope_selected_kinds(handler_scope);
     let selected_handler_kind =
         (selected_handler_kinds.len() == 1).then(|| selected_handler_kinds[0]);

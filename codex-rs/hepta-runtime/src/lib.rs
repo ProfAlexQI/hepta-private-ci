@@ -454,6 +454,18 @@ pub fn native_post_execution_store_capacity_allows_append(
     )
 }
 
+pub fn native_post_execution_store_jsonl_valid(
+    stores: &[NativePostExecutionStoreFileStatus],
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_execution_store_jsonl_valid(stores)
+}
+
+pub fn native_post_execution_store_capacity_ok(
+    stores: &[NativePostExecutionStoreFileStatus],
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_execution_store_capacity_ok(stores)
+}
+
 pub fn native_post_idempotency_duplicate_present_in_content(
     content: &str,
     key_fingerprint: Option<&str>,
