@@ -1,12 +1,10 @@
-use serde::Serialize;
 use std::time::SystemTime;
 
-use crate::telegram_cursor::NativeTelegramCursorStatus;
-use crate::telegram_delivery::NativeTelegramDeliveryLedgerStatus;
 use hepta_runtime::{
-    build_native_telegram_drain_once_status, build_native_telegram_model_bridge_status,
-    build_native_telegram_model_turn_plan_status, build_native_telegram_plugin_status,
-    build_native_telegram_poll_loop_status, build_native_telegram_production_guard_status,
+    build_native_telegram_drain_once_status, build_native_telegram_live_soak_status,
+    build_native_telegram_model_bridge_status, build_native_telegram_model_turn_plan_status,
+    build_native_telegram_plugin_status, build_native_telegram_poll_loop_status,
+    build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,
     build_native_telegram_production_readiness_status,
     build_native_telegram_receive_once_error_status, build_native_telegram_receive_once_status,
@@ -42,6 +40,7 @@ pub use hepta_runtime::{
 
 pub use hepta_runtime::{
     NativeTelegramLiveSoakObservationReport, NativeTelegramLiveSoakObservationState,
+    NativeTelegramLiveSoakStatus, NativeTelegramLiveSoakStatusInput,
     NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput,
     NativeTelegramModelTurnPlanStatus, NativeTelegramModelTurnPlanStatusInput,
     NativeTelegramPluginStatus, NativeTelegramPluginStatusInput,
@@ -121,28 +120,6 @@ pub fn build_telegram_receive_once_status_from_api_result(
     build_native_telegram_receive_once_status_from_api_result(input)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramLiveSoakStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub side_effect_free: bool,
-    pub endpoint: &'static str,
-    pub poll_loop_status: NativeTelegramPollLoopStatus,
-    pub cursor_status: NativeTelegramCursorStatus,
-    pub delivery_ledger_status: NativeTelegramDeliveryLedgerStatus,
-    pub production_guards: NativeTelegramProductionGuardStatus,
-    pub production_readiness: NativeTelegramProductionReadinessStatus,
-    pub observation: NativeTelegramLiveSoakObservationReport,
-    pub health_ready: bool,
-    pub raw_update_payload_exposed: bool,
-    pub raw_prompt_text_exposed: bool,
-    pub raw_response_text_exposed: bool,
-    pub raw_token_exposed: bool,
-    pub next_migration_slice: &'static str,
-}
-
 pub fn build_telegram_production_guard_status(
     input: NativeTelegramProductionGuardStatusInput,
 ) -> NativeTelegramProductionGuardStatus {
@@ -215,63 +192,17 @@ pub fn build_telegram_poll_loop_status(
     build_native_telegram_poll_loop_status(input)
 }
 
-#[derive(Debug, Clone)]
-pub struct NativeTelegramLiveSoakStatusInput {
-    pub requested: bool,
-    pub poll_loop_status: NativeTelegramPollLoopStatus,
-    pub cursor_status: NativeTelegramCursorStatus,
-    pub delivery_ledger_status: NativeTelegramDeliveryLedgerStatus,
-    pub production_guards: NativeTelegramProductionGuardStatus,
-    pub production_readiness: NativeTelegramProductionReadinessStatus,
-    pub observation: NativeTelegramLiveSoakObservationReport,
-}
-
 pub fn build_telegram_live_soak_status(
     input: NativeTelegramLiveSoakStatusInput,
 ) -> NativeTelegramLiveSoakStatus {
-    let last_status = input.observation.last_status.as_deref();
-    let status = if !input.requested {
-        "disabled"
-    } else if !input.poll_loop_status.loop_invokes_drain_once {
-        "gated"
-    } else if input.cursor_status.status == "attention"
-        || last_status == Some("attention")
-        || !input.production_readiness.attention_budget_ok
-    {
-        "attention"
-    } else if input.observation.poll_iterations == 0 {
-        "warming"
-    } else if !input.production_readiness.production_guards_ready {
-        "attention"
-    } else {
-        "soaking"
-    };
-
-    NativeTelegramLiveSoakStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: input.requested,
-        status,
-        side_effect_free: true,
-        endpoint: "/api/telegram-live-soak",
-        poll_loop_status: input.poll_loop_status,
-        cursor_status: input.cursor_status,
-        delivery_ledger_status: input.delivery_ledger_status,
-        production_guards: input.production_guards,
-        health_ready: input.production_readiness.ready,
-        production_readiness: input.production_readiness,
-        observation: input.observation,
-        raw_update_payload_exposed: false,
-        raw_prompt_text_exposed: false,
-        raw_response_text_exposed: false,
-        raw_token_exposed: false,
-        next_migration_slice: "keep the active gateway soaking; use this endpoint plus logs before broadening traffic or reducing guards",
-    }
+    build_native_telegram_live_soak_status(input)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::telegram_cursor::NativeTelegramCursorStatus;
+    use crate::telegram_delivery::NativeTelegramDeliveryLedgerStatus;
     use hepta_runtime::{
         NativeTelegramConfigStatus, NativeTelegramCursorPlan, NativeTelegramGatewayGateSummary,
         NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,

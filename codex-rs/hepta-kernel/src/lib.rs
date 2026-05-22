@@ -883,6 +883,39 @@ pub struct HeptaKernelTelegramProductionReadinessInput<'a> {
     pub now_unix_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramLiveSoakStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub side_effect_free: bool,
+    pub endpoint: &'static str,
+    pub poll_loop_status: HeptaKernelTelegramPollLoopStatus,
+    pub cursor_status: HeptaKernelTelegramCursorStatus,
+    pub delivery_ledger_status: HeptaKernelTelegramDeliveryLedgerStatus,
+    pub production_guards: HeptaKernelTelegramProductionGuardStatus,
+    pub production_readiness: HeptaKernelTelegramProductionReadinessStatus,
+    pub observation: HeptaKernelTelegramLiveSoakObservationReport,
+    pub health_ready: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_response_text_exposed: bool,
+    pub raw_token_exposed: bool,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramLiveSoakStatusInput {
+    pub requested: bool,
+    pub poll_loop_status: HeptaKernelTelegramPollLoopStatus,
+    pub cursor_status: HeptaKernelTelegramCursorStatus,
+    pub delivery_ledger_status: HeptaKernelTelegramDeliveryLedgerStatus,
+    pub production_guards: HeptaKernelTelegramProductionGuardStatus,
+    pub production_readiness: HeptaKernelTelegramProductionReadinessStatus,
+    pub observation: HeptaKernelTelegramLiveSoakObservationReport,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct HeptaKernelTelegramLiveSoakObservationState {
     poll_iterations: u64,
@@ -1171,6 +1204,49 @@ pub fn build_hepta_kernel_telegram_production_readiness_status(
         raw_prompt_text_exposed: false,
         raw_response_text_exposed: false,
         raw_token_exposed: false,
+    }
+}
+
+pub fn build_hepta_kernel_telegram_live_soak_status(
+    input: HeptaKernelTelegramLiveSoakStatusInput,
+) -> HeptaKernelTelegramLiveSoakStatus {
+    let last_status = input.observation.last_status.as_deref();
+    let status = if !input.requested {
+        "disabled"
+    } else if !input.poll_loop_status.loop_invokes_drain_once {
+        "gated"
+    } else if input.cursor_status.status == "attention"
+        || last_status == Some("attention")
+        || !input.production_readiness.attention_budget_ok
+    {
+        "attention"
+    } else if input.observation.poll_iterations == 0 {
+        "warming"
+    } else if !input.production_readiness.production_guards_ready {
+        "attention"
+    } else {
+        "soaking"
+    };
+
+    HeptaKernelTelegramLiveSoakStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: input.requested,
+        status,
+        side_effect_free: true,
+        endpoint: "/api/telegram-live-soak",
+        poll_loop_status: input.poll_loop_status,
+        cursor_status: input.cursor_status,
+        delivery_ledger_status: input.delivery_ledger_status,
+        production_guards: input.production_guards,
+        health_ready: input.production_readiness.ready,
+        production_readiness: input.production_readiness,
+        observation: input.observation,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_response_text_exposed: false,
+        raw_token_exposed: false,
+        next_migration_slice: "keep the active gateway soaking; use this endpoint plus logs before broadening traffic or reducing guards",
     }
 }
 
@@ -6744,6 +6820,104 @@ mod tests {
                 .readiness_blockers
                 .contains(&"durable_delivery_evidence_missing")
         );
+    }
+
+    #[test]
+    fn kernel_telegram_live_soak_status_reports_soaking_after_ready_readiness() {
+        let poll_loop = ready_kernel_poll_loop_status();
+        let cursor = ready_kernel_cursor_status();
+        let delivery_ledger = ready_kernel_delivery_ledger_status();
+        let guards = ready_kernel_production_guards();
+        let observation = kernel_live_soak_observation(
+            DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+            0,
+            Some("planned"),
+            Some(true),
+        );
+        let readiness = build_hepta_kernel_telegram_production_readiness_status(
+            HeptaKernelTelegramProductionReadinessInput {
+                requested: true,
+                poll_loop_status: &poll_loop,
+                cursor_status: &cursor,
+                delivery_ledger_status: &delivery_ledger,
+                production_guards: &guards,
+                observation: &observation,
+                min_poll_iterations_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MIN_POLLS",
+                min_poll_iterations: DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+                max_attention_count_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION",
+                max_attention_count: DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
+                max_observed_age_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS",
+                max_observed_age_ms: DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
+                now_unix_ms: TEST_NOW_MS,
+            },
+        );
+
+        let status =
+            build_hepta_kernel_telegram_live_soak_status(HeptaKernelTelegramLiveSoakStatusInput {
+                requested: true,
+                poll_loop_status: poll_loop,
+                cursor_status: cursor,
+                delivery_ledger_status: delivery_ledger,
+                production_guards: guards,
+                production_readiness: readiness,
+                observation,
+            });
+
+        assert_eq!(status.status, "soaking");
+        assert_eq!(status.endpoint, "/api/telegram-live-soak");
+        assert!(status.health_ready);
+        assert!(status.side_effect_free);
+        assert!(!status.raw_update_payload_exposed);
+        assert!(!status.raw_prompt_text_exposed);
+        assert!(!status.raw_response_text_exposed);
+        assert!(!status.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_telegram_live_soak_status_surfaces_attention_observations() {
+        let poll_loop = ready_kernel_poll_loop_status();
+        let cursor = ready_kernel_cursor_status();
+        let delivery_ledger = ready_kernel_delivery_ledger_status();
+        let guards = ready_kernel_production_guards();
+        let observation = kernel_live_soak_observation(
+            DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+            1,
+            Some("attention"),
+            Some(false),
+        );
+        let readiness = build_hepta_kernel_telegram_production_readiness_status(
+            HeptaKernelTelegramProductionReadinessInput {
+                requested: true,
+                poll_loop_status: &poll_loop,
+                cursor_status: &cursor,
+                delivery_ledger_status: &delivery_ledger,
+                production_guards: &guards,
+                observation: &observation,
+                min_poll_iterations_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MIN_POLLS",
+                min_poll_iterations: DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+                max_attention_count_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION",
+                max_attention_count: DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
+                max_observed_age_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS",
+                max_observed_age_ms: DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
+                now_unix_ms: TEST_NOW_MS,
+            },
+        );
+
+        let status =
+            build_hepta_kernel_telegram_live_soak_status(HeptaKernelTelegramLiveSoakStatusInput {
+                requested: true,
+                poll_loop_status: poll_loop,
+                cursor_status: cursor,
+                delivery_ledger_status: delivery_ledger,
+                production_guards: guards,
+                production_readiness: readiness,
+                observation,
+            });
+
+        assert_eq!(status.status, "attention");
+        assert!(!status.health_ready);
+        assert!(!status.production_readiness.attention_budget_ok);
+        assert_eq!(status.observation.last_status.as_deref(), Some("attention"));
     }
 
     #[test]

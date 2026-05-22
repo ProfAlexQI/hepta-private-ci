@@ -31,6 +31,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
     HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
     HeptaKernelTelegramLiveSoakObservationReport, HeptaKernelTelegramLiveSoakObservationState,
+    HeptaKernelTelegramLiveSoakStatus, HeptaKernelTelegramLiveSoakStatusInput,
     HeptaKernelTelegramModelBridgeStatus, HeptaKernelTelegramModelBridgeStatusInput,
     HeptaKernelTelegramModelExecutionInput, HeptaKernelTelegramModelExecutionOutcome,
     HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
@@ -60,7 +61,7 @@ pub use hepta_kernel::{
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
     build_hepta_kernel_telegram_drain_once_status,
-    build_hepta_kernel_telegram_gateway_gate_summary,
+    build_hepta_kernel_telegram_gateway_gate_summary, build_hepta_kernel_telegram_live_soak_status,
     build_hepta_kernel_telegram_model_bridge_status,
     build_hepta_kernel_telegram_model_turn_plan_status, build_hepta_kernel_telegram_plugin_status,
     build_hepta_kernel_telegram_poll_loop_status,
@@ -195,6 +196,8 @@ pub type NativeTelegramPollLoopStatus = HeptaKernelTelegramPollLoopStatus;
 pub type NativeTelegramPollLoopStatusInput = HeptaKernelTelegramPollLoopStatusInput;
 pub type NativeTelegramLiveSoakObservationReport = HeptaKernelTelegramLiveSoakObservationReport;
 pub type NativeTelegramLiveSoakObservationState = HeptaKernelTelegramLiveSoakObservationState;
+pub type NativeTelegramLiveSoakStatus = HeptaKernelTelegramLiveSoakStatus;
+pub type NativeTelegramLiveSoakStatusInput = HeptaKernelTelegramLiveSoakStatusInput;
 
 pub fn plan_native_telegram_receive_once_shell_readiness(
     input: NativeTelegramReceiveOnceShellReadinessInput<'_>,
@@ -700,6 +703,12 @@ pub fn build_native_telegram_production_readiness_status(
     input: NativeTelegramProductionReadinessInput<'_>,
 ) -> NativeTelegramProductionReadinessStatus {
     build_hepta_kernel_telegram_production_readiness_status(input)
+}
+
+pub fn build_native_telegram_live_soak_status(
+    input: NativeTelegramLiveSoakStatusInput,
+) -> NativeTelegramLiveSoakStatus {
+    build_hepta_kernel_telegram_live_soak_status(input)
 }
 
 pub fn native_telegram_get_updates_query(
