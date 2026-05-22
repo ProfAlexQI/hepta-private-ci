@@ -334,6 +334,47 @@ pub struct HeptaKernelTelegramModelExecutionReport {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramModelBridgeStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub model_turn_gate_env: &'static str,
+    pub model_turn_gate_enabled: bool,
+    pub send_gate_env: &'static str,
+    pub model_turn_bridge_ready: bool,
+    pub model_turn_started: bool,
+    pub session_runner_invoked: bool,
+    pub local_process_spawned: bool,
+    pub external_network_read: bool,
+    pub external_send: bool,
+    pub cursor_written: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_sender_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub model_turn_plan: HeptaKernelTelegramModelTurnPlan,
+    pub invocation_request: HeptaKernelTelegramModelInvocationRequestPlan,
+    pub model_execution: HeptaKernelTelegramModelExecutionReport,
+    pub bridge_plan: HeptaKernelTelegramSessionBridgePlan,
+    pub error: Option<String>,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramModelBridgeStatusInput<'a> {
+    pub requested: bool,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub model_turn_gate_env: &'static str,
+    pub model_turn_gate_enabled: bool,
+    pub send_gate_env: &'static str,
+    pub model_runner_plan: &'a HeptaKernelTelegramRunnerPlan,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeptaKernelTelegramModelExecutionInput {
     pub candidate: Option<HeptaKernelTelegramCandidateMaterial>,
@@ -2174,6 +2215,97 @@ pub fn plan_hepta_kernel_telegram_session_bridge(
         .unwrap_or_else(HeptaKernelTelegramSessionBridgePlan::disabled)
 }
 
+pub fn build_hepta_kernel_telegram_model_bridge_status(
+    input: HeptaKernelTelegramModelBridgeStatusInput<'_>,
+) -> HeptaKernelTelegramModelBridgeStatus {
+    let cursor_plan = if input.requested {
+        HeptaKernelTelegramCursorPlan::ready()
+    } else {
+        HeptaKernelTelegramCursorPlan::disabled()
+    };
+    let model_turn_plan = if input.requested {
+        hepta_kernel_telegram_model_turn_plan_for_updates(&[])
+    } else {
+        HeptaKernelTelegramModelTurnPlan::disabled()
+    };
+    let invocation_request = if input.requested {
+        hepta_kernel_telegram_model_invocation_request_plan_for_updates(
+            &[],
+            None,
+            input.model_turn_gate_env,
+            input.model_turn_gate_enabled,
+        )
+    } else {
+        HeptaKernelTelegramModelInvocationRequestPlan::disabled(
+            input.model_turn_gate_env,
+            input.model_turn_gate_enabled,
+        )
+    };
+    let model_execution = if input.requested {
+        HeptaKernelTelegramModelExecutionReport::from_invocation_request(&invocation_request)
+    } else {
+        HeptaKernelTelegramModelExecutionReport::disabled(
+            input.model_turn_gate_env,
+            input.model_turn_gate_enabled,
+        )
+    };
+    let bridge_plan = if input.requested {
+        plan_hepta_kernel_telegram_session_bridge(Some(input.model_runner_plan))
+    } else {
+        plan_hepta_kernel_telegram_session_bridge(None)
+    };
+    let config_ready = input.requested && input.config.config_ready();
+    let status = if !input.requested {
+        "disabled"
+    } else if !input.model_turn_gate_enabled {
+        "gated"
+    } else if config_ready {
+        "planned"
+    } else {
+        "attention"
+    };
+    let error = if input.requested && !input.model_turn_gate_enabled {
+        Some(format!(
+            "Telegram model-turn bridge is gated; set {}=1 only after runner invocation wiring is ready",
+            input.model_turn_gate_env
+        ))
+    } else if input.requested && !config_ready {
+        Some("Telegram config, token shape, or binding is not ready".to_string())
+    } else {
+        None
+    };
+
+    HeptaKernelTelegramModelBridgeStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: input.requested,
+        status,
+        model_turn_gate_env: input.model_turn_gate_env,
+        model_turn_gate_enabled: input.model_turn_gate_enabled,
+        send_gate_env: input.send_gate_env,
+        model_turn_bridge_ready: input.requested && input.model_turn_gate_enabled && config_ready,
+        model_turn_started: false,
+        session_runner_invoked: false,
+        local_process_spawned: false,
+        external_network_read: false,
+        external_send: false,
+        cursor_written: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_chat_id_exposed: false,
+        raw_sender_id_exposed: false,
+        raw_message_id_exposed: false,
+        config: input.config,
+        cursor_plan,
+        model_turn_plan,
+        invocation_request,
+        model_execution,
+        bridge_plan,
+        error,
+        next_migration_slice: "implement the gated session-runner invocation and keep Telegram send behind HEPTA_NATIVE_TELEGRAM_SEND",
+    }
+}
+
 pub fn hepta_kernel_telegram_update_already_drained(
     update_id: i64,
     next_update_offset: Option<i64>,
@@ -3867,6 +3999,57 @@ mod tests {
             binding_ready: true,
             error: None,
         }
+    }
+
+    #[test]
+    fn kernel_model_bridge_status_is_gated_and_side_effect_free() {
+        let runner = select_hepta_kernel_telegram_runner(
+            Some("mlx-local/local-model"),
+            Some(DEFAULT_TELEGRAM_MLX_BASE_URL),
+            Some(128),
+            false,
+            true,
+        );
+        let status = build_hepta_kernel_telegram_model_bridge_status(
+            HeptaKernelTelegramModelBridgeStatusInput {
+                requested: true,
+                config: ready_telegram_config(),
+                model_turn_gate_env: "HEPTA_NATIVE_TELEGRAM_MODEL_TURN",
+                model_turn_gate_enabled: false,
+                send_gate_env: "HEPTA_NATIVE_TELEGRAM_SEND",
+                model_runner_plan: &runner,
+            },
+        );
+
+        assert_eq!(status.status, "gated");
+        assert_eq!(
+            status.model_turn_gate_env,
+            "HEPTA_NATIVE_TELEGRAM_MODEL_TURN"
+        );
+        assert!(!status.model_turn_bridge_ready);
+        assert!(!status.model_turn_started);
+        assert!(!status.session_runner_invoked);
+        assert!(!status.local_process_spawned);
+        assert!(!status.external_network_read);
+        assert!(!status.external_send);
+        assert!(!status.cursor_written);
+        assert!(!status.raw_update_payload_exposed);
+        assert!(!status.raw_prompt_text_exposed);
+        assert!(status.cursor_plan.duplicate_suppression_ready);
+        assert!(status.model_turn_plan.planner_ready);
+        assert_eq!(
+            status.invocation_request.duplicate_decision,
+            "no_model_candidate"
+        );
+        assert_eq!(status.model_execution.status, "gated");
+        assert!(status.bridge_plan.bridge_plan_ready);
+        assert!(!status.bridge_plan.process_spawned_by_status);
+        assert!(
+            status
+                .error
+                .unwrap()
+                .contains("HEPTA_NATIVE_TELEGRAM_MODEL_TURN")
+        );
     }
 
     #[test]

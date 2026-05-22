@@ -28,6 +28,7 @@ pub use hepta_kernel::{
     HeptaKernelTelegramDrainPipelineOutcome, HeptaKernelTelegramDuplicateDecision,
     HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
     HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramIngressInspection,
+    HeptaKernelTelegramModelBridgeStatus, HeptaKernelTelegramModelBridgeStatusInput,
     HeptaKernelTelegramModelExecutionInput, HeptaKernelTelegramModelExecutionOutcome,
     HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
     HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramPollLoopStatus,
@@ -51,7 +52,8 @@ pub use hepta_kernel::{
     MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, MAX_TELEGRAM_SOAK_MIN_POLLS,
     MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
     MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
-    build_hepta_kernel_telegram_gateway_gate_summary, build_hepta_kernel_telegram_poll_loop_status,
+    build_hepta_kernel_telegram_gateway_gate_summary,
+    build_hepta_kernel_telegram_model_bridge_status, build_hepta_kernel_telegram_poll_loop_status,
     build_hepta_kernel_telegram_production_guard_status,
     build_hepta_kernel_telegram_production_guard_status_from_policy,
     build_hepta_kernel_telegram_receive_once_error_status,
@@ -132,6 +134,8 @@ pub type NativeTelegramModelInvocationRequestPlan = HeptaKernelTelegramModelInvo
 pub type NativeTelegramModelExecutionReport = HeptaKernelTelegramModelExecutionReport;
 pub type NativeTelegramModelExecutionInput = HeptaKernelTelegramModelExecutionInput;
 pub type NativeTelegramModelExecutionOutcome = HeptaKernelTelegramModelExecutionOutcome;
+pub type NativeTelegramModelBridgeStatus = HeptaKernelTelegramModelBridgeStatus;
+pub type NativeTelegramModelBridgeStatusInput<'a> = HeptaKernelTelegramModelBridgeStatusInput<'a>;
 pub type NativeTelegramSendRequestPlan = HeptaKernelTelegramSendRequestPlan;
 pub type NativeTelegramSendExecutionReport = HeptaKernelTelegramSendExecutionReport;
 pub type NativeTelegramTransportPlan = HeptaKernelTelegramTransportPlan;
@@ -423,6 +427,12 @@ pub fn finalize_native_telegram_drain_pipeline_status(
         previous_status,
         previous_error,
     )
+}
+
+pub fn build_native_telegram_model_bridge_status(
+    input: NativeTelegramModelBridgeStatusInput<'_>,
+) -> NativeTelegramModelBridgeStatus {
+    build_hepta_kernel_telegram_model_bridge_status(input)
 }
 
 pub fn native_telegram_update_already_drained(

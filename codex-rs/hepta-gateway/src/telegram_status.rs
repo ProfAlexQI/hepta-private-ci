@@ -8,14 +8,13 @@ use crate::telegram_policy::{
     NativeTelegramExecutionPlan, NativeTelegramGatewayGateSummary, NativeTelegramIngressInspection,
     NativeTelegramModelExecutionReport, NativeTelegramModelInvocationRequestPlan,
     NativeTelegramModelTurnPlan, NativeTelegramSendExecutionReport, NativeTelegramSendRequestPlan,
-    build_model_invocation_request_plan, plan_model_turn_for_updates,
+    plan_model_turn_for_updates,
 };
-use crate::telegram_runtime::NativeTelegramSessionBridgePlan;
 use crate::telegram_transport::{
     NativeTelegramSendPlan, NativeTelegramTransportPlan, telegram_redact_token_like_text,
 };
 use hepta_runtime::{
-    NativeTelegramModelRunnerPlan, build_native_telegram_poll_loop_status,
+    build_native_telegram_model_bridge_status, build_native_telegram_poll_loop_status,
     build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,
     build_native_telegram_receive_once_error_status, build_native_telegram_receive_once_status,
@@ -24,8 +23,8 @@ use hepta_runtime::{
     native_telegram_receive_limit_policy, native_telegram_soak_max_attention_count_policy,
     native_telegram_soak_max_observed_age_ms_policy,
     native_telegram_soak_min_poll_iterations_policy, native_telegram_system_time_unix_ms,
-    plan_hepta_kernel_telegram_session_bridge, plan_native_telegram_drain_once_api_result,
-    plan_native_telegram_drain_once_preflight, plan_native_telegram_drain_once_shell_readiness,
+    plan_native_telegram_drain_once_api_result, plan_native_telegram_drain_once_preflight,
+    plan_native_telegram_drain_once_shell_readiness,
     plan_native_telegram_receive_once_preflight_status,
     plan_native_telegram_receive_once_shell_readiness,
 };
@@ -45,6 +44,8 @@ pub use hepta_runtime::{
     NativeTelegramReceiveOnceShellReadinessPlan, NativeTelegramReceiveOnceStatus,
     NativeTelegramReceiveOnceStatusInput,
 };
+
+pub use hepta_runtime::{NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput};
 
 pub use hepta_runtime::{
     DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION, DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
@@ -164,37 +165,6 @@ pub struct NativeTelegramModelTurnPlanStatus {
     pub cursor_plan: NativeTelegramCursorPlan,
     pub inspection: NativeTelegramIngressInspection,
     pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramModelBridgeStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub model_turn_gate_env: &'static str,
-    pub model_turn_gate_enabled: bool,
-    pub send_gate_env: &'static str,
-    pub model_turn_bridge_ready: bool,
-    pub model_turn_started: bool,
-    pub session_runner_invoked: bool,
-    pub local_process_spawned: bool,
-    pub external_network_read: bool,
-    pub external_send: bool,
-    pub cursor_written: bool,
-    pub raw_update_payload_exposed: bool,
-    pub raw_prompt_text_exposed: bool,
-    pub raw_chat_id_exposed: bool,
-    pub raw_sender_id_exposed: bool,
-    pub raw_message_id_exposed: bool,
-    pub config: NativeTelegramConfigStatus,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub invocation_request: NativeTelegramModelInvocationRequestPlan,
-    pub model_execution: NativeTelegramModelExecutionReport,
-    pub bridge_plan: NativeTelegramSessionBridgePlan,
     pub error: Option<String>,
     pub next_migration_slice: &'static str,
 }
@@ -617,105 +587,10 @@ pub fn build_telegram_model_turn_plan_status(
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct NativeTelegramModelBridgeStatusInput<'a> {
-    pub requested: bool,
-    pub config: NativeTelegramConfigStatus,
-    pub model_turn_gate_env: &'static str,
-    pub model_turn_gate_enabled: bool,
-    pub send_gate_env: &'static str,
-    pub model_runner_plan: &'a NativeTelegramModelRunnerPlan,
-}
-
 pub fn build_telegram_model_bridge_status(
     input: NativeTelegramModelBridgeStatusInput<'_>,
 ) -> NativeTelegramModelBridgeStatus {
-    let cursor_plan = if input.requested {
-        NativeTelegramCursorPlan::ready()
-    } else {
-        NativeTelegramCursorPlan::disabled()
-    };
-    let model_turn_plan = if input.requested {
-        plan_model_turn_for_updates(&[])
-    } else {
-        NativeTelegramModelTurnPlan::disabled()
-    };
-    let invocation_request = if input.requested {
-        build_model_invocation_request_plan(
-            &[],
-            None,
-            input.model_turn_gate_env,
-            input.model_turn_gate_enabled,
-        )
-    } else {
-        NativeTelegramModelInvocationRequestPlan::disabled(
-            input.model_turn_gate_env,
-            input.model_turn_gate_enabled,
-        )
-    };
-    let model_execution = if input.requested {
-        NativeTelegramModelExecutionReport::from_invocation_request(&invocation_request)
-    } else {
-        NativeTelegramModelExecutionReport::disabled(
-            input.model_turn_gate_env,
-            input.model_turn_gate_enabled,
-        )
-    };
-    let bridge_plan = if input.requested {
-        plan_hepta_kernel_telegram_session_bridge(Some(input.model_runner_plan))
-    } else {
-        plan_hepta_kernel_telegram_session_bridge(None)
-    };
-    let config_ready = input.requested && input.config.config_ready();
-    let status = if !input.requested {
-        "disabled"
-    } else if !input.model_turn_gate_enabled {
-        "gated"
-    } else if config_ready {
-        "planned"
-    } else {
-        "attention"
-    };
-    let error = if input.requested && !input.model_turn_gate_enabled {
-        Some(format!(
-            "Telegram model-turn bridge is gated; set {}=1 only after runner invocation wiring is ready",
-            input.model_turn_gate_env
-        ))
-    } else if input.requested && !config_ready {
-        Some("Telegram config, token shape, or binding is not ready".to_string())
-    } else {
-        None
-    };
-
-    NativeTelegramModelBridgeStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: input.requested,
-        status,
-        model_turn_gate_env: input.model_turn_gate_env,
-        model_turn_gate_enabled: input.model_turn_gate_enabled,
-        send_gate_env: input.send_gate_env,
-        model_turn_bridge_ready: input.requested && input.model_turn_gate_enabled && config_ready,
-        model_turn_started: false,
-        session_runner_invoked: false,
-        local_process_spawned: false,
-        external_network_read: false,
-        external_send: false,
-        cursor_written: false,
-        raw_update_payload_exposed: false,
-        raw_prompt_text_exposed: false,
-        raw_chat_id_exposed: false,
-        raw_sender_id_exposed: false,
-        raw_message_id_exposed: false,
-        config: input.config,
-        cursor_plan,
-        model_turn_plan,
-        invocation_request,
-        model_execution,
-        bridge_plan,
-        error,
-        next_migration_slice: "implement the gated session-runner invocation and keep Telegram send behind HEPTA_NATIVE_TELEGRAM_SEND",
-    }
+    build_native_telegram_model_bridge_status(input)
 }
 
 #[derive(Debug, Clone)]
@@ -1142,6 +1017,7 @@ pub fn build_telegram_production_readiness_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hepta_runtime::NativeTelegramModelRunnerPlan;
     use std::time::Duration;
 
     const LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
