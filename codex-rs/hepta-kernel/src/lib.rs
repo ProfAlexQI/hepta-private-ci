@@ -64,6 +64,180 @@ pub const DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 1;
 pub const MAX_TELEGRAM_SEND_MAX_ATTEMPTS: u64 = 5;
 pub const DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 700;
 pub const MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS: u64 = 30_000;
+pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
+    &["approval_apply", "task_publish", "chat_send"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeptaKernelNativePostPlanRouteSpec {
+    pub pattern: &'static str,
+    pub prefix: Option<&'static str>,
+    pub exact_path: Option<&'static str>,
+    pub source_command: &'static str,
+    pub capability: &'static str,
+    pub plan_kind: &'static str,
+    pub compatibility_mode: &'static str,
+    pub dry_run_only: bool,
+    pub confirmation_required_for_real_mutation: bool,
+}
+
+pub const HEPTA_KERNEL_NATIVE_POST_PLAN_ROUTE_SPECS: &[HeptaKernelNativePostPlanRouteSpec] = &[
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/actions/<action>",
+        prefix: Some("/api/actions/"),
+        exact_path: None,
+        source_command: "/ui-action-plan <action> --dry-run --json",
+        capability: "guarded-action-post",
+        plan_kind: "ui_action",
+        compatibility_mode: "native_action_post_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/commands/<id>",
+        prefix: Some("/api/commands/"),
+        exact_path: None,
+        source_command: "/<allowlisted read-only command> --json",
+        capability: "readonly-command-runner",
+        plan_kind: "readonly_command",
+        compatibility_mode: "native_readonly_command_plan",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/approvals/exec/apply",
+        prefix: None,
+        exact_path: Some("/api/approvals/exec/apply"),
+        source_command: "/approvals exec apply --dry-run --json",
+        capability: "exec-approvals-apply-bridge",
+        plan_kind: "approval_apply",
+        compatibility_mode: "native_approvals_exec_apply_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: true,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/tasks/plan",
+        prefix: None,
+        exact_path: Some("/api/tasks/plan"),
+        source_command: "/tasks plan --dry-run --json",
+        capability: "task-publisher-plan",
+        plan_kind: "task_plan",
+        compatibility_mode: "native_task_plan_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/tasks/publish",
+        prefix: None,
+        exact_path: Some("/api/tasks/publish"),
+        source_command: "/tasks publish --confirm --json",
+        capability: "task-publisher-publish",
+        plan_kind: "task_publish",
+        compatibility_mode: "native_task_publish_confirm_required",
+        dry_run_only: false,
+        confirmation_required_for_real_mutation: true,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/chat/register",
+        prefix: None,
+        exact_path: Some("/api/chat/register"),
+        source_command: "/chat register --json",
+        capability: "agent-chat-register",
+        plan_kind: "chat_register",
+        compatibility_mode: "native_chat_register_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/chat/archive",
+        prefix: None,
+        exact_path: Some("/api/chat/archive"),
+        source_command: "/chat archive --json",
+        capability: "agent-chat-archive",
+        plan_kind: "chat_archive",
+        compatibility_mode: "native_chat_archive_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/chat/unarchive",
+        prefix: None,
+        exact_path: Some("/api/chat/unarchive"),
+        source_command: "/chat unarchive --json",
+        capability: "agent-chat-unarchive",
+        plan_kind: "chat_unarchive",
+        compatibility_mode: "native_chat_unarchive_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/chat/delete",
+        prefix: None,
+        exact_path: Some("/api/chat/delete"),
+        source_command: "/chat delete --json",
+        capability: "agent-chat-delete",
+        plan_kind: "chat_delete",
+        compatibility_mode: "native_chat_delete_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/chat/plan",
+        prefix: None,
+        exact_path: Some("/api/chat/plan"),
+        source_command: "/chat plan --json",
+        capability: "agent-chat-plan",
+        plan_kind: "chat_plan",
+        compatibility_mode: "native_chat_plan_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/chat",
+        prefix: None,
+        exact_path: Some("/api/chat"),
+        source_command: "/chat send --json",
+        capability: "agent-chat-send",
+        plan_kind: "chat_send",
+        compatibility_mode: "native_chat_send_confirm_required",
+        dry_run_only: false,
+        confirmation_required_for_real_mutation: true,
+    },
+    HeptaKernelNativePostPlanRouteSpec {
+        pattern: "/api/runtime/operator",
+        prefix: None,
+        exact_path: Some("/api/runtime/operator"),
+        source_command: "/runtime/operator --dry-run --json",
+        capability: "runtime-operator-plan",
+        plan_kind: "runtime_operator",
+        compatibility_mode: "native_runtime_operator_dry_run",
+        dry_run_only: true,
+        confirmation_required_for_real_mutation: false,
+    },
+];
+
+pub fn hepta_kernel_native_post_plan_route_specs() -> &'static [HeptaKernelNativePostPlanRouteSpec]
+{
+    HEPTA_KERNEL_NATIVE_POST_PLAN_ROUTE_SPECS
+}
+
+pub fn hepta_kernel_native_post_plan_parameter<'a>(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    path: &'a str,
+) -> Option<Option<&'a str>> {
+    if let Some(prefix) = spec.prefix {
+        return path
+            .strip_prefix(prefix)
+            .filter(|parameter| !parameter.is_empty())
+            .map(Some);
+    }
+    spec.exact_path
+        .filter(|exact_path| *exact_path == path)
+        .map(|_| None)
+}
+
+pub fn hepta_kernel_native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
+    HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS.contains(&plan_kind)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HeptaKernelTurnChannel {
@@ -5402,6 +5576,44 @@ mod tests {
     use super::*;
 
     const TEST_NOW_MS: u64 = 1_000_000;
+
+    #[test]
+    fn kernel_native_post_route_specs_cover_real_handler_policy() {
+        let specs = hepta_kernel_native_post_plan_route_specs();
+        assert_eq!(specs.len(), 12);
+
+        let action = specs
+            .iter()
+            .find(|spec| spec.pattern == "/api/actions/<action>")
+            .expect("action route");
+        assert_eq!(
+            hepta_kernel_native_post_plan_parameter(action, "/api/actions/reload"),
+            Some(Some("reload"))
+        );
+        assert_eq!(
+            hepta_kernel_native_post_plan_parameter(action, "/api/actions/"),
+            None
+        );
+
+        let task_publish = specs
+            .iter()
+            .find(|spec| spec.pattern == "/api/tasks/publish")
+            .expect("task publish route");
+        assert_eq!(
+            hepta_kernel_native_post_plan_parameter(task_publish, "/api/tasks/publish"),
+            Some(None)
+        );
+        assert!(task_publish.confirmation_required_for_real_mutation);
+        assert!(hepta_kernel_native_post_plan_kind_has_real_handler(
+            task_publish.plan_kind
+        ));
+        assert!(hepta_kernel_native_post_plan_kind_has_real_handler(
+            "approval_apply"
+        ));
+        assert!(!hepta_kernel_native_post_plan_kind_has_real_handler(
+            "readonly_command"
+        ));
+    }
 
     #[test]
     fn kernel_turn_plan_makes_hepta_the_owner_and_codex_an_engine() {

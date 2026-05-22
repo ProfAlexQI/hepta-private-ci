@@ -105,6 +105,10 @@ pub use doctor::{DoctorCheck, DoctorProviderProbe, DoctorReport, DoctorStatus};
 use events::EventState;
 pub use events::{EventQueryReport, EventRecord};
 pub use hepta_contracts::HeptaRuntimeContractInventory;
+pub use hepta_kernel::{
+    HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS as NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
+    HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
+};
 pub use inbound_router::{
     DEFAULT_INBOUND_ROUTER_ID, DEFAULT_INBOUND_ROUTER_PATH, InboundEventInput, InboundEventRecord,
     InboundIngestReport, InboundRouteReport, InboundRouteStatus, InboundRouterAuditEvent,
@@ -118,6 +122,21 @@ pub use live_readiness::{
     RuntimeReadinessStage, evaluate_live_adapter_activation, evaluate_runtime_product_readiness,
     evaluate_runtime_readiness, live_adapter_activation_discipline_sample,
 };
+
+pub fn native_post_plan_route_specs() -> &'static [NativePostPlanRouteSpec] {
+    hepta_kernel::hepta_kernel_native_post_plan_route_specs()
+}
+
+pub fn native_post_plan_parameter<'a>(
+    spec: &NativePostPlanRouteSpec,
+    path: &'a str,
+) -> Option<Option<&'a str>> {
+    hepta_kernel::hepta_kernel_native_post_plan_parameter(spec, path)
+}
+
+pub fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
+    hepta_kernel::hepta_kernel_native_post_plan_kind_has_real_handler(plan_kind)
+}
 pub use memory_context::{
     DEFAULT_MEMORY_CONTEXT_LEDGER_ID, DEFAULT_MEMORY_CONTEXT_LEDGER_PATH, MemoryCitation,
     MemoryCitationInput, MemoryContextBuildReport, MemoryContextEvent, MemoryContextLedger,

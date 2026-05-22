@@ -9,21 +9,8 @@ use std::path::Path;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NativePostPlanRouteSpec {
-    pub pattern: &'static str,
-    pub prefix: Option<&'static str>,
-    pub exact_path: Option<&'static str>,
-    pub source_command: &'static str,
-    pub capability: &'static str,
-    pub plan_kind: &'static str,
-    pub compatibility_mode: &'static str,
-    pub dry_run_only: bool,
-    pub confirmation_required_for_real_mutation: bool,
-}
+pub use hepta_runtime::{NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NativePostPlanRouteSpec};
 
-pub const NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
-    &["approval_apply", "task_publish", "chat_send"];
 pub const NATIVE_POST_MAX_BODY_BYTES: usize = 64 * 1024;
 pub const NATIVE_POST_REAL_HANDLERS_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLERS";
 pub const NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str = "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
@@ -43,162 +30,19 @@ pub const DEFAULT_NATIVE_POST_STORE_MAX_BYTES: u64 = 10 * 1024 * 1024;
 pub const DEFAULT_NATIVE_POST_STORE_MAX_LINES: u64 = 100_000;
 pub const DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR: &str = ".hepta/native-post-execution";
 
-const NATIVE_POST_PLAN_ROUTE_SPECS: &[NativePostPlanRouteSpec] = &[
-    NativePostPlanRouteSpec {
-        pattern: "/api/actions/<action>",
-        prefix: Some("/api/actions/"),
-        exact_path: None,
-        source_command: "/ui-action-plan <action> --dry-run --json",
-        capability: "guarded-action-post",
-        plan_kind: "ui_action",
-        compatibility_mode: "native_action_post_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/commands/<id>",
-        prefix: Some("/api/commands/"),
-        exact_path: None,
-        source_command: "/<allowlisted read-only command> --json",
-        capability: "readonly-command-runner",
-        plan_kind: "readonly_command",
-        compatibility_mode: "native_readonly_command_plan",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/approvals/exec/apply",
-        prefix: None,
-        exact_path: Some("/api/approvals/exec/apply"),
-        source_command: "/approvals exec apply --dry-run --json",
-        capability: "exec-approvals-apply-bridge",
-        plan_kind: "approval_apply",
-        compatibility_mode: "native_approvals_exec_apply_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: true,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/tasks/plan",
-        prefix: None,
-        exact_path: Some("/api/tasks/plan"),
-        source_command: "/tasks plan --dry-run --json",
-        capability: "task-publisher-plan",
-        plan_kind: "task_plan",
-        compatibility_mode: "native_task_plan_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/tasks/publish",
-        prefix: None,
-        exact_path: Some("/api/tasks/publish"),
-        source_command: "/tasks publish --confirm --json",
-        capability: "task-publisher-publish",
-        plan_kind: "task_publish",
-        compatibility_mode: "native_task_publish_confirm_required",
-        dry_run_only: false,
-        confirmation_required_for_real_mutation: true,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/register",
-        prefix: None,
-        exact_path: Some("/api/chat/register"),
-        source_command: "/chat register --json",
-        capability: "agent-chat-register",
-        plan_kind: "chat_register",
-        compatibility_mode: "native_chat_register_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/archive",
-        prefix: None,
-        exact_path: Some("/api/chat/archive"),
-        source_command: "/chat archive --json",
-        capability: "agent-chat-archive",
-        plan_kind: "chat_archive",
-        compatibility_mode: "native_chat_archive_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/unarchive",
-        prefix: None,
-        exact_path: Some("/api/chat/unarchive"),
-        source_command: "/chat unarchive --json",
-        capability: "agent-chat-unarchive",
-        plan_kind: "chat_unarchive",
-        compatibility_mode: "native_chat_unarchive_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/delete",
-        prefix: None,
-        exact_path: Some("/api/chat/delete"),
-        source_command: "/chat delete --json",
-        capability: "agent-chat-delete",
-        plan_kind: "chat_delete",
-        compatibility_mode: "native_chat_delete_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat/plan",
-        prefix: None,
-        exact_path: Some("/api/chat/plan"),
-        source_command: "/chat plan --json",
-        capability: "agent-chat-plan",
-        plan_kind: "chat_plan",
-        compatibility_mode: "native_chat_plan_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/chat",
-        prefix: None,
-        exact_path: Some("/api/chat"),
-        source_command: "/chat send --json",
-        capability: "agent-chat-send",
-        plan_kind: "chat_send",
-        compatibility_mode: "native_chat_send_confirm_required",
-        dry_run_only: false,
-        confirmation_required_for_real_mutation: true,
-    },
-    NativePostPlanRouteSpec {
-        pattern: "/api/runtime/operator",
-        prefix: None,
-        exact_path: Some("/api/runtime/operator"),
-        source_command: "/runtime/operator --dry-run --json",
-        capability: "runtime-operator-plan",
-        plan_kind: "runtime_operator",
-        compatibility_mode: "native_runtime_operator_dry_run",
-        dry_run_only: true,
-        confirmation_required_for_real_mutation: false,
-    },
-];
-
 pub fn native_post_plan_route_specs() -> &'static [NativePostPlanRouteSpec] {
-    NATIVE_POST_PLAN_ROUTE_SPECS
+    hepta_runtime::native_post_plan_route_specs()
 }
 
 pub fn native_post_plan_parameter<'a>(
     spec: &NativePostPlanRouteSpec,
     path: &'a str,
 ) -> Option<Option<&'a str>> {
-    if let Some(prefix) = spec.prefix {
-        return path
-            .strip_prefix(prefix)
-            .filter(|parameter| !parameter.is_empty())
-            .map(Some);
-    }
-    spec.exact_path
-        .filter(|exact_path| *exact_path == path)
-        .map(|_| None)
+    hepta_runtime::native_post_plan_parameter(spec, path)
 }
 
 pub fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
-    NATIVE_POST_REAL_HANDLER_PLAN_KINDS.contains(&plan_kind)
+    hepta_runtime::native_post_plan_kind_has_real_handler(plan_kind)
 }
 
 #[derive(Debug, Serialize)]

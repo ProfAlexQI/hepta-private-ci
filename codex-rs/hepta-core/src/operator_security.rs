@@ -4,6 +4,7 @@ use crate::control_ui::{CONTROL_UI_README, CONTROL_UI_RUST_RENDERER_MARKERS};
 
 pub const HEPTA_NATIVE_GATEWAY_RS: &str = include_str!("../../cli/src/native_gateway.rs");
 pub const HEPTA_NATIVE_POST_RS: &str = include_str!("../../hepta-gateway/src/native_post.rs");
+pub const HEPTA_KERNEL_RS: &str = include_str!("../../hepta-kernel/src/lib.rs");
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OperatorCommandSafetyDecision {
@@ -169,6 +170,10 @@ fn has_explicit_operator_confirmation(command: &str, slash_command: &str) -> boo
         || (slash_command == "/config" && command.contains("--dry-run"))
 }
 
+fn native_post_contract_source_contains(needle: &str) -> bool {
+    HEPTA_NATIVE_POST_RS.contains(needle) || HEPTA_KERNEL_RS.contains(needle)
+}
+
 pub fn operator_security_report() -> OperatorSecurityReport {
     let loopback_bind_enforced = HEPTA_NATIVE_GATEWAY_RS.contains("is_loopback_bind_addr")
         && HEPTA_NATIVE_GATEWAY_RS.contains("HEPTA_ALLOW_NON_LOOPBACK_UI")
@@ -176,30 +181,34 @@ pub fn operator_security_report() -> OperatorSecurityReport {
     let security_headers_present = HEPTA_NATIVE_GATEWAY_RS.contains("Content-Security-Policy")
         && HEPTA_NATIVE_GATEWAY_RS.contains("X-Content-Type-Options: nosniff")
         && HEPTA_NATIVE_GATEWAY_RS.contains("Referrer-Policy: no-referrer");
-    let post_actions_dry_run_only = HEPTA_NATIVE_POST_RS.contains("/api/actions/<action>")
-        && HEPTA_NATIVE_POST_RS.contains("/ui-action-plan <action> --dry-run --json")
-        && HEPTA_NATIVE_POST_RS.contains("native_action_post_dry_run");
-    let confirmed_local_mutation_guard_present = HEPTA_NATIVE_POST_RS
-        .contains("/api/tasks/publish")
-        && HEPTA_NATIVE_POST_RS.contains("/api/chat")
-        && HEPTA_NATIVE_POST_RS.contains("/api/approvals/exec/apply")
-        && HEPTA_NATIVE_POST_RS.contains("confirmation_required_for_real_mutation: true")
-        && HEPTA_NATIVE_POST_RS.contains("external_side_effects: false");
-    let read_only_command_allowlist_present = HEPTA_NATIVE_POST_RS.contains("/api/commands/<id>")
-        && HEPTA_NATIVE_POST_RS.contains("readonly_command")
-        && HEPTA_NATIVE_POST_RS.contains("native_readonly_command_plan");
+    let post_actions_dry_run_only = native_post_contract_source_contains("/api/actions/<action>")
+        && native_post_contract_source_contains("/ui-action-plan <action> --dry-run --json")
+        && native_post_contract_source_contains("native_action_post_dry_run");
+    let confirmed_local_mutation_guard_present =
+        native_post_contract_source_contains("/api/tasks/publish")
+            && native_post_contract_source_contains("/api/chat")
+            && native_post_contract_source_contains("/api/approvals/exec/apply")
+            && native_post_contract_source_contains(
+                "confirmation_required_for_real_mutation: true",
+            )
+            && native_post_contract_source_contains("external_side_effects: false");
+    let read_only_command_allowlist_present =
+        native_post_contract_source_contains("/api/commands/<id>")
+            && native_post_contract_source_contains("readonly_command")
+            && native_post_contract_source_contains("native_readonly_command_plan");
     let unsupported_post_fail_closed = HEPTA_NATIVE_GATEWAY_RS.contains("405 Method Not Allowed")
         && HEPTA_NATIVE_GATEWAY_RS.contains("supported POST endpoints are /api/actions/<action>");
     let policy_approval_bridge_present = CONTROL_UI_RUST_RENDERER_MARKERS
         .contains("renderApprovalCards")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/approvals")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/policy");
-    let runtime_operator_guard_present = HEPTA_NATIVE_GATEWAY_RS.contains("/api/runtime/operator")
-        && HEPTA_NATIVE_GATEWAY_RS.contains("/runtime/operator --dry-run --json")
-        && HEPTA_NATIVE_POST_RS.contains("runtime_operator")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("POST /api/runtime/operator")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("Confirm-gated runtime kill/steer dry-run evidence");
+    let runtime_operator_guard_present =
+        native_post_contract_source_contains("/api/runtime/operator")
+            && native_post_contract_source_contains("/runtime/operator --dry-run --json")
+            && native_post_contract_source_contains("runtime_operator")
+            && CONTROL_UI_RUST_RENDERER_MARKERS.contains("POST /api/runtime/operator")
+            && CONTROL_UI_RUST_RENDERER_MARKERS
+                .contains("Confirm-gated runtime kill/steer dry-run evidence");
     let audit_event_visibility_present = CONTROL_UI_RUST_RENDERER_MARKERS
         .contains("renderEventTimeline")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/events-report")
