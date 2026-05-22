@@ -2,39 +2,16 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
 use serde_json::Value;
 
 pub use hepta_runtime::{
     HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH as DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
-    NativeTelegramCursorPlan,
+    NativeTelegramCursorPlan, NativeTelegramCursorStatus,
 };
 use hepta_runtime::{
     native_telegram_cursor_body, native_telegram_cursor_duplicate_rule_valid,
     parse_native_telegram_cursor_next_update_offset,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramCursorStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub cursor_path: &'static str,
-    pub cursor_file_present: bool,
-    pub cursor_parse_ok: bool,
-    pub next_update_offset: Option<i64>,
-    pub cursor_updated_at_unix_ms: Option<u64>,
-    pub last_delivered_next_update_offset: Option<i64>,
-    pub durable_cursor_evidence_present: bool,
-    pub cursor_represents_next_update_offset: bool,
-    pub duplicate_suppression_rule_valid: bool,
-    pub cursor_write_policy: &'static str,
-    pub cursor_written: bool,
-    pub raw_update_payload_persisted: bool,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
-}
 
 pub fn telegram_cursor_status(requested: bool, path: &Path) -> NativeTelegramCursorStatus {
     if !requested {

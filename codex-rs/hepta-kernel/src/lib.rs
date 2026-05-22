@@ -2897,6 +2897,28 @@ impl HeptaKernelTelegramCursorPlan {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramCursorStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub cursor_path: &'static str,
+    pub cursor_file_present: bool,
+    pub cursor_parse_ok: bool,
+    pub next_update_offset: Option<i64>,
+    pub cursor_updated_at_unix_ms: Option<u64>,
+    pub last_delivered_next_update_offset: Option<i64>,
+    pub durable_cursor_evidence_present: bool,
+    pub cursor_represents_next_update_offset: bool,
+    pub duplicate_suppression_rule_valid: bool,
+    pub cursor_write_policy: &'static str,
+    pub cursor_written: bool,
+    pub raw_update_payload_persisted: bool,
+    pub error: Option<String>,
+    pub next_migration_slice: &'static str,
+}
+
 pub fn parse_hepta_kernel_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
     let value: Value = serde_json::from_str(raw)
         .map_err(|error| format!("failed to parse Telegram cursor JSON: {error}"))?;
@@ -3646,6 +3668,35 @@ pub fn hepta_kernel_telegram_send_rate_limit_sleep_for(
     last_elapsed
         .and_then(|elapsed| min_interval.checked_sub(elapsed))
         .unwrap_or_default()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramDeliveryLedgerStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub ledger_path: &'static str,
+    pub ledger_file_present: bool,
+    pub jsonl_readable: bool,
+    pub jsonl_valid: bool,
+    pub line_count: usize,
+    pub valid_json_line_count: usize,
+    pub invalid_json_line_count: usize,
+    pub acked_count: usize,
+    pub failed_count: usize,
+    pub latest_stage: Option<String>,
+    pub latest_created_unix_seconds: Option<u64>,
+    pub latest_acked_created_unix_seconds: Option<u64>,
+    pub ledger_updated_at_unix_ms: Option<u64>,
+    pub provider_message_id_present: bool,
+    pub durable_delivery_evidence_present: bool,
+    pub raw_response_text_logged: bool,
+    pub raw_chat_id_logged: bool,
+    pub raw_message_id_logged: bool,
+    pub raw_token_logged: bool,
+    pub error: Option<String>,
+    pub next_migration_slice: &'static str,
 }
 
 pub fn hepta_kernel_telegram_delivery_lifecycle_record(

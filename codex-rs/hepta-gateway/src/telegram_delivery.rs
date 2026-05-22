@@ -1,4 +1,3 @@
-use serde::Serialize;
 use serde_json::Value;
 use std::fs;
 use std::io::Write;
@@ -8,40 +7,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub use hepta_runtime::{
     HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES as TELEGRAM_DELIVERY_MAX_RETRIES,
     HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER as TELEGRAM_DELIVERY_STORE_IDENTIFIER,
+    NativeTelegramDeliveryLedgerStatus,
 };
 use hepta_runtime::{
     native_telegram_delivery_backoff_ms, native_telegram_delivery_error_is_permanent,
     native_telegram_delivery_lifecycle_record, redact_native_telegram_token_like_text,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramDeliveryLedgerStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub ledger_path: &'static str,
-    pub ledger_file_present: bool,
-    pub jsonl_readable: bool,
-    pub jsonl_valid: bool,
-    pub line_count: usize,
-    pub valid_json_line_count: usize,
-    pub invalid_json_line_count: usize,
-    pub acked_count: usize,
-    pub failed_count: usize,
-    pub latest_stage: Option<String>,
-    pub latest_created_unix_seconds: Option<u64>,
-    pub latest_acked_created_unix_seconds: Option<u64>,
-    pub ledger_updated_at_unix_ms: Option<u64>,
-    pub provider_message_id_present: bool,
-    pub durable_delivery_evidence_present: bool,
-    pub raw_response_text_logged: bool,
-    pub raw_chat_id_logged: bool,
-    pub raw_message_id_logged: bool,
-    pub raw_token_logged: bool,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
-}
 
 pub fn telegram_delivery_ledger_status(
     requested: bool,

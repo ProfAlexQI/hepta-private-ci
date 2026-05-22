@@ -21,6 +21,7 @@ pub use hepta_kernel::{
     HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
     HeptaKernelTelegramConfigMetadata, HeptaKernelTelegramConfigStatus,
     HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramCursorPlan,
+    HeptaKernelTelegramCursorStatus, HeptaKernelTelegramDeliveryLedgerStatus,
     HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDrainOnceApiResultInput,
     HeptaKernelTelegramDrainOnceApiResultPlan, HeptaKernelTelegramDrainOncePreflightInput,
     HeptaKernelTelegramDrainOncePreflightPlan, HeptaKernelTelegramDrainOnceShellReadinessInput,
@@ -180,6 +181,8 @@ pub type NativeTelegramTokenObservationInput = HeptaKernelTelegramTokenObservati
 pub type NativeTelegramTokenObservation = HeptaKernelTelegramTokenObservation;
 pub type NativeTelegramConfigMetadata = HeptaKernelTelegramConfigMetadata;
 pub type NativeTelegramCursorPlan = HeptaKernelTelegramCursorPlan;
+pub type NativeTelegramCursorStatus = HeptaKernelTelegramCursorStatus;
+pub type NativeTelegramDeliveryLedgerStatus = HeptaKernelTelegramDeliveryLedgerStatus;
 pub type NativeTelegramProductionGuardStatus = HeptaKernelTelegramProductionGuardStatus;
 pub type NativeTelegramProductionGuardStatusInput = HeptaKernelTelegramProductionGuardStatusInput;
 pub type NativeTelegramProductionGuardPolicyInput = HeptaKernelTelegramProductionGuardPolicyInput;
