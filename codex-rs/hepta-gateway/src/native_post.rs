@@ -34,11 +34,12 @@ pub use hepta_runtime::{
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
     native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_specs,
-    native_post_idempotency_duplicate_present_in_content, native_post_idempotency_evidence,
-    native_post_plan_kind_has_real_handler, native_post_plan_parameter,
-    native_post_plan_route_specs, native_post_rate_limit_recent_present_in_content,
-    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
-    native_post_redacted_fingerprint, native_post_rollback_contract,
+    native_post_execution_store_write_report, native_post_idempotency_duplicate_present_in_content,
+    native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
+    native_post_plan_parameter, native_post_plan_route_specs,
+    native_post_rate_limit_recent_present_in_content, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
+    native_post_rollback_contract,
 };
 
 pub fn native_post_plan_report(
@@ -424,16 +425,10 @@ pub fn persist_native_post_execution_store_record(
         })?;
         written_files.push(path.display().to_string());
     }
-    Ok(NativePostExecutionStoreWriteReport {
-        status: "written",
-        root: root.display().to_string(),
-        written_file_count: written_files.len(),
+    Ok(native_post_execution_store_write_report(
+        root.display().to_string(),
         written_files,
-        raw_request_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-    })
+    ))
 }
 
 fn native_post_idempotency_duplicate_present(

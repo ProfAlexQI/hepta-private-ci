@@ -314,6 +314,13 @@ pub fn native_post_execution_store_record(
     )
 }
 
+pub fn native_post_execution_store_write_report(
+    root: String,
+    written_files: Vec<String>,
+) -> NativePostExecutionStoreWriteReport {
+    hepta_kernel::hepta_kernel_native_post_execution_store_write_report(root, written_files)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn native_post_real_handler_harness(
     spec: &NativePostPlanRouteSpec,

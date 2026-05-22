@@ -406,6 +406,22 @@ pub struct HeptaKernelNativePostExecutionStoreWriteReport {
     pub raw_audit_payload_exposed: bool,
 }
 
+pub fn hepta_kernel_native_post_execution_store_write_report(
+    root: String,
+    written_files: Vec<String>,
+) -> HeptaKernelNativePostExecutionStoreWriteReport {
+    HeptaKernelNativePostExecutionStoreWriteReport {
+        status: "written",
+        root,
+        written_file_count: written_files.len(),
+        written_files,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostRealHandlerHarness {
     pub status: &'static str,
@@ -8667,6 +8683,23 @@ mod tests {
                 content, "missing", 1_000, 1_000,
             )
         );
+    }
+
+    #[test]
+    fn kernel_native_post_execution_store_write_report_binds_files_and_redaction() {
+        let report = hepta_kernel_native_post_execution_store_write_report(
+            ".hepta/native-post-execution".to_string(),
+            vec!["idempotency.jsonl".to_string(), "audit.jsonl".to_string()],
+        );
+
+        assert_eq!(report.status, "written");
+        assert_eq!(report.root, ".hepta/native-post-execution");
+        assert_eq!(report.written_file_count, 2);
+        assert_eq!(report.written_files.len(), 2);
+        assert!(!report.raw_request_body_exposed);
+        assert!(!report.raw_field_values_exposed);
+        assert!(!report.raw_idempotency_key_exposed);
+        assert!(!report.raw_audit_payload_exposed);
     }
 
     #[test]
