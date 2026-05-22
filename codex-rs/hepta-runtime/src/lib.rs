@@ -122,6 +122,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostExecutionAdmission as NativePostExecutionAdmission,
     HeptaKernelNativePostExecutionReadinessResponse as NativePostExecutionReadinessResponse,
     HeptaKernelNativePostExecutionReadinessRoute as NativePostExecutionReadinessRoute,
+    HeptaKernelNativePostExecutionStoreRecord as NativePostExecutionStoreRecord,
     HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
@@ -265,6 +266,26 @@ pub fn native_post_activation_plan_report(
         store_jsonl_valid,
         store_capacity_ok,
         rollback_store_ready,
+    )
+}
+
+pub fn native_post_execution_store_record(
+    spec: &NativePostPlanRouteSpec,
+    body_schema: &NativePostBodySchema,
+    body_admission: &NativePostBodyAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+    audit_event_contract: &NativePostAuditEventContract,
+    current_plan_executes_real_handler: bool,
+    recorded_at_unix_ms: u64,
+) -> NativePostExecutionStoreRecord {
+    hepta_kernel::hepta_kernel_native_post_execution_store_record(
+        spec,
+        body_schema,
+        body_admission,
+        idempotency_evidence,
+        audit_event_contract,
+        current_plan_executes_real_handler,
+        recorded_at_unix_ms,
     )
 }
 pub use memory_context::{

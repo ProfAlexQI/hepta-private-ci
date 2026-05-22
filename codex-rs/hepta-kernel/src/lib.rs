@@ -344,6 +344,31 @@ pub struct HeptaKernelNativePostActivationGate {
     pub purpose: &'static str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionStoreRecord {
+    pub schema_id: &'static str,
+    pub recorded_at_unix_ms: u64,
+    pub route_pattern: &'static str,
+    pub capability: &'static str,
+    pub plan_kind: &'static str,
+    pub body_schema_id: &'static str,
+    pub body_admission_status: &'static str,
+    pub idempotency_key_required: bool,
+    pub idempotency_key_present: bool,
+    pub idempotency_key_redacted: bool,
+    pub idempotency_key_fingerprint: Option<String>,
+    pub duplicate_suppression_required: bool,
+    pub audit_event_schema_id: &'static str,
+    pub audit_event_ready_for_real_handler: bool,
+    pub rollback_strategy: &'static str,
+    pub rate_limit_bucket: &'static str,
+    pub current_plan_executes_real_handler: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+}
+
 pub const HEPTA_KERNEL_NATIVE_POST_PLAN_ROUTE_SPECS: &[HeptaKernelNativePostPlanRouteSpec] = &[
     HeptaKernelNativePostPlanRouteSpec {
         pattern: "/api/actions/<action>",
@@ -1187,6 +1212,40 @@ pub fn hepta_kernel_native_post_activation_plan_report(
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
         next_migration_slice: "activate one handler only under dual gate after this plan remains ready and rollback anchors are observed",
+    }
+}
+
+pub fn hepta_kernel_native_post_execution_store_record(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    body_schema: &HeptaKernelNativePostBodySchema,
+    body_admission: &HeptaKernelNativePostBodyAdmission,
+    idempotency_evidence: &HeptaKernelNativePostIdempotencyEvidence,
+    audit_event_contract: &HeptaKernelNativePostAuditEventContract,
+    current_plan_executes_real_handler: bool,
+    recorded_at_unix_ms: u64,
+) -> HeptaKernelNativePostExecutionStoreRecord {
+    HeptaKernelNativePostExecutionStoreRecord {
+        schema_id: "hepta.post.execution_store_record.v1",
+        recorded_at_unix_ms,
+        route_pattern: spec.pattern,
+        capability: spec.capability,
+        plan_kind: spec.plan_kind,
+        body_schema_id: body_schema.schema_id,
+        body_admission_status: body_admission.admission_status,
+        idempotency_key_required: body_admission.idempotency_key_required,
+        idempotency_key_present: idempotency_evidence.key_present,
+        idempotency_key_redacted: idempotency_evidence.key_redacted,
+        idempotency_key_fingerprint: idempotency_evidence.key_fingerprint.clone(),
+        duplicate_suppression_required: idempotency_evidence.duplicate_suppression_required,
+        audit_event_schema_id: audit_event_contract.schema_id,
+        audit_event_ready_for_real_handler: audit_event_contract.ready_for_real_handler,
+        rollback_strategy: "pending_real_handler_rollback_anchor",
+        rate_limit_bucket: spec.plan_kind,
+        current_plan_executes_real_handler,
+        raw_request_body_exposed: false,
+        raw_field_values_exposed: false,
+        raw_idempotency_key_exposed: false,
+        raw_audit_payload_exposed: false,
     }
 }
 
@@ -6831,6 +6890,58 @@ mod tests {
             ambiguous_scope.activation_blocked_reason,
             "handler_scope_not_single"
         );
+    }
+
+    #[test]
+    fn kernel_native_post_execution_store_record_binds_redacted_evidence() {
+        let task_publish = hepta_kernel_native_post_plan_route_specs()
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let schema = hepta_kernel_native_post_body_schema(task_publish.plan_kind, true);
+        let admission = hepta_kernel_native_post_body_admission(
+            task_publish,
+            &schema,
+            Some(
+                r#"{"task":"secret","confirm":true,"dry_run":true,"idempotency_key":"secret-idem"}"#,
+            ),
+        );
+        let idempotency = hepta_kernel_native_post_idempotency_evidence(task_publish, &admission);
+        let audit = hepta_kernel_native_post_audit_event_contract(
+            task_publish,
+            &schema,
+            &admission,
+            &idempotency,
+        );
+
+        let record = hepta_kernel_native_post_execution_store_record(
+            task_publish,
+            &schema,
+            &admission,
+            &idempotency,
+            &audit,
+            true,
+            42,
+        );
+
+        assert_eq!(record.schema_id, "hepta.post.execution_store_record.v1");
+        assert_eq!(record.recorded_at_unix_ms, 42);
+        assert_eq!(record.plan_kind, "task_publish");
+        assert_eq!(record.body_schema_id, "hepta.post.task_publish.v1");
+        assert!(record.idempotency_key_required);
+        assert!(record.idempotency_key_present);
+        assert!(record.idempotency_key_redacted);
+        assert!(
+            record
+                .idempotency_key_fingerprint
+                .as_deref()
+                .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
+        );
+        assert!(record.duplicate_suppression_required);
+        assert!(record.audit_event_ready_for_real_handler);
+        assert!(record.current_plan_executes_real_handler);
+        assert!(!record.raw_request_body_exposed);
+        assert!(!record.raw_idempotency_key_exposed);
     }
 
     #[test]

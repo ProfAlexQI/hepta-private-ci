@@ -15,9 +15,10 @@ pub use hepta_runtime::{
     NativePostAuditEventContract, NativePostBodyAdmission, NativePostBodySchema,
     NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
-    NativePostIdempotencyEvidence, NativePostPlanRouteSpec, NativePostRollbackContract,
-    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
-    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
+    NativePostExecutionStoreRecord, NativePostIdempotencyEvidence, NativePostPlanRouteSpec,
+    NativePostRollbackContract, native_post_execution_admission_with_scope,
+    native_post_execution_readiness_report, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds,
 };
 
 pub const NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str = "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
@@ -141,31 +142,6 @@ pub struct NativePostRealHandlerHarness {
     pub model_invoked: bool,
     pub message_sent: bool,
     pub cursor_written: bool,
-    pub raw_request_body_exposed: bool,
-    pub raw_field_values_exposed: bool,
-    pub raw_idempotency_key_exposed: bool,
-    pub raw_audit_payload_exposed: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostExecutionStoreRecord {
-    pub schema_id: &'static str,
-    pub recorded_at_unix_ms: u64,
-    pub route_pattern: &'static str,
-    pub capability: &'static str,
-    pub plan_kind: &'static str,
-    pub body_schema_id: &'static str,
-    pub body_admission_status: &'static str,
-    pub idempotency_key_required: bool,
-    pub idempotency_key_present: bool,
-    pub idempotency_key_redacted: bool,
-    pub idempotency_key_fingerprint: Option<String>,
-    pub duplicate_suppression_required: bool,
-    pub audit_event_schema_id: &'static str,
-    pub audit_event_ready_for_real_handler: bool,
-    pub rollback_strategy: &'static str,
-    pub rate_limit_bucket: &'static str,
-    pub current_plan_executes_real_handler: bool,
     pub raw_request_body_exposed: bool,
     pub raw_field_values_exposed: bool,
     pub raw_idempotency_key_exposed: bool,
@@ -1091,29 +1067,15 @@ pub fn native_post_execution_store_record(
     audit_event_contract: &NativePostAuditEventContract,
     current_plan_executes_real_handler: bool,
 ) -> NativePostExecutionStoreRecord {
-    NativePostExecutionStoreRecord {
-        schema_id: "hepta.post.execution_store_record.v1",
-        recorded_at_unix_ms: native_post_now_unix_ms(),
-        route_pattern: spec.pattern,
-        capability: spec.capability,
-        plan_kind: spec.plan_kind,
-        body_schema_id: body_schema.schema_id,
-        body_admission_status: body_admission.admission_status,
-        idempotency_key_required: body_admission.idempotency_key_required,
-        idempotency_key_present: idempotency_evidence.key_present,
-        idempotency_key_redacted: idempotency_evidence.key_redacted,
-        idempotency_key_fingerprint: idempotency_evidence.key_fingerprint.clone(),
-        duplicate_suppression_required: idempotency_evidence.duplicate_suppression_required,
-        audit_event_schema_id: audit_event_contract.schema_id,
-        audit_event_ready_for_real_handler: audit_event_contract.ready_for_real_handler,
-        rollback_strategy: "pending_real_handler_rollback_anchor",
-        rate_limit_bucket: spec.plan_kind,
+    hepta_runtime::native_post_execution_store_record(
+        spec,
+        body_schema,
+        body_admission,
+        idempotency_evidence,
+        audit_event_contract,
         current_plan_executes_real_handler,
-        raw_request_body_exposed: false,
-        raw_field_values_exposed: false,
-        raw_idempotency_key_exposed: false,
-        raw_audit_payload_exposed: false,
-    }
+        native_post_now_unix_ms(),
+    )
 }
 
 pub fn native_post_execution_store_capacity_allows_append_with_limits(
