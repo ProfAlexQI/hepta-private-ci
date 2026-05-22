@@ -438,6 +438,60 @@ pub struct HeptaKernelNativePostRealHandlerHarness {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostPlanResponse {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub method: &'static str,
+    pub pattern: &'static str,
+    pub source_command: &'static str,
+    pub capability: &'static str,
+    pub native_route: bool,
+    pub compatibility_mode: &'static str,
+    pub side_effect_free: bool,
+    pub plan_kind: &'static str,
+    pub dry_run_only: bool,
+    pub confirmation_required_for_real_mutation: bool,
+    pub parameter_present: bool,
+    pub parameter_redacted: bool,
+    pub parameter_length: Option<usize>,
+    pub request_body_read: bool,
+    pub request_body_redacted: bool,
+    pub body_schema_ready: bool,
+    pub body_admission_ready: bool,
+    pub confirmation_contract_ready: bool,
+    pub rollback_contract_ready: bool,
+    pub idempotency_evidence_ready: bool,
+    pub audit_event_contract_ready: bool,
+    pub execution_admission_ready: bool,
+    pub body_schema: HeptaKernelNativePostBodySchema,
+    pub body_admission: HeptaKernelNativePostBodyAdmission,
+    pub confirmation_contract: HeptaKernelNativePostConfirmationContract,
+    pub rollback_contract: HeptaKernelNativePostRollbackContract,
+    pub idempotency_evidence: HeptaKernelNativePostIdempotencyEvidence,
+    pub audit_event_contract: HeptaKernelNativePostAuditEventContract,
+    pub execution_admission: HeptaKernelNativePostExecutionAdmission,
+    pub real_handler_harness_ready: bool,
+    pub real_handler_harness: HeptaKernelNativePostRealHandlerHarness,
+    pub action_dispatched: bool,
+    pub command_executed: bool,
+    pub approval_applied: bool,
+    pub task_published: bool,
+    pub chat_mutated: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_parameter_exposed: bool,
+    pub raw_token_exposed: bool,
+    pub raw_transcript_exposed: bool,
+    pub model_invoked: bool,
+    pub external_side_effects: bool,
+    pub gateway_mutation_performed: bool,
+    pub telegram_read_performed: bool,
+    pub message_sent: bool,
+    pub cursor_written: bool,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostExecutionStoreFileStatus {
     pub store_kind: &'static str,
     pub schema_id: &'static str,
@@ -1595,6 +1649,78 @@ pub fn hepta_kernel_native_post_real_handler_harness(
         raw_field_values_exposed: false,
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn hepta_kernel_native_post_plan_response(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    parameter_present: bool,
+    parameter_length: Option<usize>,
+    body_schema: HeptaKernelNativePostBodySchema,
+    body_admission: HeptaKernelNativePostBodyAdmission,
+    confirmation_contract: HeptaKernelNativePostConfirmationContract,
+    rollback_contract: HeptaKernelNativePostRollbackContract,
+    idempotency_evidence: HeptaKernelNativePostIdempotencyEvidence,
+    audit_event_contract: HeptaKernelNativePostAuditEventContract,
+    execution_admission: HeptaKernelNativePostExecutionAdmission,
+    real_handler_harness: HeptaKernelNativePostRealHandlerHarness,
+) -> HeptaKernelNativePostPlanResponse {
+    HeptaKernelNativePostPlanResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if spec.confirmation_required_for_real_mutation {
+            "confirm_required"
+        } else {
+            "dry_run_ready"
+        },
+        method: "POST",
+        pattern: spec.pattern,
+        source_command: spec.source_command,
+        capability: spec.capability,
+        native_route: true,
+        compatibility_mode: spec.compatibility_mode,
+        side_effect_free: !real_handler_harness.store_write_attempted,
+        plan_kind: spec.plan_kind,
+        dry_run_only: spec.dry_run_only,
+        confirmation_required_for_real_mutation: spec.confirmation_required_for_real_mutation,
+        parameter_present,
+        parameter_redacted: parameter_present,
+        parameter_length,
+        request_body_read: body_admission.request_body_read,
+        request_body_redacted: true,
+        body_schema_ready: true,
+        body_admission_ready: true,
+        confirmation_contract_ready: true,
+        rollback_contract_ready: true,
+        idempotency_evidence_ready: true,
+        audit_event_contract_ready: true,
+        execution_admission_ready: true,
+        body_schema,
+        body_admission,
+        confirmation_contract,
+        rollback_contract,
+        idempotency_evidence,
+        audit_event_contract,
+        execution_admission,
+        real_handler_harness_ready: true,
+        real_handler_harness,
+        action_dispatched: false,
+        command_executed: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        raw_request_body_exposed: false,
+        raw_parameter_exposed: false,
+        raw_token_exposed: false,
+        raw_transcript_exposed: false,
+        model_invoked: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        message_sent: false,
+        cursor_written: false,
+        next_migration_slice: "replace dry-run response with first real handler only after idempotency/audit/rollback stores are active",
     }
 }
 
@@ -7861,6 +7987,88 @@ mod tests {
         assert_eq!(duplicate.status, "duplicate_suppressed");
         assert!(duplicate.duplicate_suppressed);
         assert!(!duplicate.store_write_attempted);
+    }
+
+    #[test]
+    fn kernel_native_post_plan_response_assembles_redacted_report() {
+        let task_publish = hepta_kernel_native_post_plan_route_specs()
+            .iter()
+            .find(|spec| spec.plan_kind == "task_publish")
+            .expect("task publish spec");
+        let schema = hepta_kernel_native_post_body_schema(task_publish.plan_kind, true);
+        let admission = hepta_kernel_native_post_body_admission(
+            task_publish,
+            &schema,
+            Some(r#"{"task":"ship","confirm":true,"dry_run":true,"idempotency_key":"idem-1"}"#),
+        );
+        let mut idempotency =
+            hepta_kernel_native_post_idempotency_evidence(task_publish, &admission);
+        let mut audit = hepta_kernel_native_post_audit_event_contract(
+            task_publish,
+            &schema,
+            &admission,
+            &idempotency,
+        );
+        let execution = hepta_kernel_native_post_execution_admission_with_scope(
+            task_publish,
+            &admission,
+            &idempotency,
+            &audit,
+            true,
+            true,
+            Some("task_publish"),
+        );
+        let harness = hepta_kernel_native_post_real_handler_harness(
+            task_publish,
+            &execution,
+            true,
+            false,
+            None,
+            true,
+            false,
+            1_000,
+            None,
+            true,
+            true,
+            None,
+            true,
+            true,
+            None,
+            None,
+        );
+        idempotency.current_plan_store_written = harness.store_write_succeeded;
+        audit.current_plan_emits_audit_event = harness.store_write_succeeded;
+        audit.current_plan_persists_audit_event = harness.store_write_succeeded;
+
+        let response = hepta_kernel_native_post_plan_response(
+            task_publish,
+            true,
+            Some("redacted-param".len()),
+            schema,
+            admission,
+            hepta_kernel_native_post_confirmation_contract(task_publish),
+            hepta_kernel_native_post_rollback_contract(),
+            idempotency,
+            audit,
+            execution,
+            harness,
+        );
+
+        assert_eq!(response.status, "confirm_required");
+        assert_eq!(response.method, "POST");
+        assert_eq!(response.pattern, "/api/tasks/publish");
+        assert_eq!(response.parameter_length, Some("redacted-param".len()));
+        assert!(response.parameter_redacted);
+        assert!(!response.side_effect_free);
+        assert!(response.real_handler_harness.store_write_attempted);
+        assert!(response.idempotency_evidence.current_plan_store_written);
+        assert!(
+            response
+                .audit_event_contract
+                .current_plan_persists_audit_event
+        );
+        assert!(!response.raw_request_body_exposed);
+        assert!(!response.raw_parameter_exposed);
     }
 
     #[test]

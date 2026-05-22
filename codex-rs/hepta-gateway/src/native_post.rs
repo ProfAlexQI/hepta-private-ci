@@ -16,8 +16,8 @@ pub use hepta_runtime::{
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
     NativePostExecutionStoreFileStatus, NativePostExecutionStoreRecord,
     NativePostExecutionStoreWriteReport, NativePostExecutionStoresResponse,
-    NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanRouteSpec,
-    NativePostRealHandlerHarness, NativePostRollbackContract,
+    NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanResponse,
+    NativePostPlanRouteSpec, NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceScan, NativePostSelectedHandlerRolloutEvidence,
     native_post_execution_admission_with_scope, native_post_execution_readiness_report,
@@ -50,60 +50,6 @@ pub fn native_post_plan_parameter<'a>(
 
 pub fn native_post_plan_kind_has_real_handler(plan_kind: &str) -> bool {
     hepta_runtime::native_post_plan_kind_has_real_handler(plan_kind)
-}
-
-#[derive(Debug, Serialize)]
-pub struct NativePostPlanResponse {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub status: &'static str,
-    pub method: &'static str,
-    pub pattern: &'static str,
-    pub source_command: &'static str,
-    pub capability: &'static str,
-    pub native_route: bool,
-    pub compatibility_mode: &'static str,
-    pub side_effect_free: bool,
-    pub plan_kind: &'static str,
-    pub dry_run_only: bool,
-    pub confirmation_required_for_real_mutation: bool,
-    pub parameter_present: bool,
-    pub parameter_redacted: bool,
-    pub parameter_length: Option<usize>,
-    pub request_body_read: bool,
-    pub request_body_redacted: bool,
-    pub body_schema_ready: bool,
-    pub body_admission_ready: bool,
-    pub confirmation_contract_ready: bool,
-    pub rollback_contract_ready: bool,
-    pub idempotency_evidence_ready: bool,
-    pub audit_event_contract_ready: bool,
-    pub execution_admission_ready: bool,
-    pub body_schema: NativePostBodySchema,
-    pub body_admission: NativePostBodyAdmission,
-    pub confirmation_contract: NativePostConfirmationContract,
-    pub rollback_contract: NativePostRollbackContract,
-    pub idempotency_evidence: NativePostIdempotencyEvidence,
-    pub audit_event_contract: NativePostAuditEventContract,
-    pub execution_admission: NativePostExecutionAdmission,
-    pub real_handler_harness_ready: bool,
-    pub real_handler_harness: NativePostRealHandlerHarness,
-    pub action_dispatched: bool,
-    pub command_executed: bool,
-    pub approval_applied: bool,
-    pub task_published: bool,
-    pub chat_mutated: bool,
-    pub raw_request_body_exposed: bool,
-    pub raw_parameter_exposed: bool,
-    pub raw_token_exposed: bool,
-    pub raw_transcript_exposed: bool,
-    pub model_invoked: bool,
-    pub external_side_effects: bool,
-    pub gateway_mutation_performed: bool,
-    pub telegram_read_performed: bool,
-    pub message_sent: bool,
-    pub cursor_written: bool,
-    pub next_migration_slice: &'static str,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -261,36 +207,10 @@ pub fn native_post_plan_report(
         audit_event_contract.current_plan_emits_audit_event = true;
         audit_event_contract.current_plan_persists_audit_event = true;
     }
-    NativePostPlanResponse {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        status: if spec.confirmation_required_for_real_mutation {
-            "confirm_required"
-        } else {
-            "dry_run_ready"
-        },
-        method: "POST",
-        pattern: spec.pattern,
-        source_command: spec.source_command,
-        capability: spec.capability,
-        native_route: true,
-        compatibility_mode: spec.compatibility_mode,
-        side_effect_free: !real_handler_harness.store_write_attempted,
-        plan_kind: spec.plan_kind,
-        dry_run_only: spec.dry_run_only,
-        confirmation_required_for_real_mutation: spec.confirmation_required_for_real_mutation,
-        parameter_present: parameter.is_some(),
-        parameter_redacted: parameter.is_some(),
-        parameter_length: parameter.map(str::len),
-        request_body_read: body_admission.request_body_read,
-        request_body_redacted: true,
-        body_schema_ready: true,
-        body_admission_ready: true,
-        confirmation_contract_ready: true,
-        rollback_contract_ready: true,
-        idempotency_evidence_ready: true,
-        audit_event_contract_ready: true,
-        execution_admission_ready: true,
+    hepta_runtime::native_post_plan_response(
+        spec,
+        parameter.is_some(),
+        parameter.map(str::len),
         body_schema,
         body_admission,
         confirmation_contract,
@@ -298,25 +218,8 @@ pub fn native_post_plan_report(
         idempotency_evidence,
         audit_event_contract,
         execution_admission,
-        real_handler_harness_ready: true,
         real_handler_harness,
-        action_dispatched: false,
-        command_executed: false,
-        approval_applied: false,
-        task_published: false,
-        chat_mutated: false,
-        raw_request_body_exposed: false,
-        raw_parameter_exposed: false,
-        raw_token_exposed: false,
-        raw_transcript_exposed: false,
-        model_invoked: false,
-        external_side_effects: false,
-        gateway_mutation_performed: false,
-        telegram_read_performed: false,
-        message_sent: false,
-        cursor_written: false,
-        next_migration_slice: "replace dry-run response with first real handler only after idempotency/audit/rollback stores are active",
-    }
+    )
 }
 
 pub fn native_post_dispatch_plan_report(

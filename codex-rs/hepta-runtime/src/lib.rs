@@ -131,6 +131,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostExecutionStoresResponse as NativePostExecutionStoresResponse,
     HeptaKernelNativePostGrayReleaseEvidenceResponse as NativePostGrayReleaseEvidenceResponse,
     HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
+    HeptaKernelNativePostPlanResponse as NativePostPlanResponse,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
     HeptaKernelNativePostRealHandlerHarness as NativePostRealHandlerHarness,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
@@ -337,6 +338,35 @@ pub fn native_post_real_handler_harness(
         store_write_succeeded,
         store_write_report,
         store_write_error,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn native_post_plan_response(
+    spec: &NativePostPlanRouteSpec,
+    parameter_present: bool,
+    parameter_length: Option<usize>,
+    body_schema: NativePostBodySchema,
+    body_admission: NativePostBodyAdmission,
+    confirmation_contract: NativePostConfirmationContract,
+    rollback_contract: NativePostRollbackContract,
+    idempotency_evidence: NativePostIdempotencyEvidence,
+    audit_event_contract: NativePostAuditEventContract,
+    execution_admission: NativePostExecutionAdmission,
+    real_handler_harness: NativePostRealHandlerHarness,
+) -> NativePostPlanResponse {
+    hepta_kernel::hepta_kernel_native_post_plan_response(
+        spec,
+        parameter_present,
+        parameter_length,
+        body_schema,
+        body_admission,
+        confirmation_contract,
+        rollback_contract,
+        idempotency_evidence,
+        audit_event_contract,
+        execution_admission,
+        real_handler_harness,
     )
 }
 
