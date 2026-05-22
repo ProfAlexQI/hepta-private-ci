@@ -429,6 +429,13 @@ pub fn hepta_kernel_native_post_execution_store_record_json_line(
         .map_err(|error| format!("failed to serialize native POST execution record: {error}"))
 }
 
+pub fn hepta_kernel_native_post_execution_store_record_projected_append_bytes(
+    record: &HeptaKernelNativePostExecutionStoreRecord,
+) -> Result<u64, String> {
+    hepta_kernel_native_post_execution_store_record_json_line(record)
+        .map(|line| line.len() as u64 + 1)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostRealHandlerHarness {
     pub status: &'static str,
@@ -8263,6 +8270,9 @@ mod tests {
 
         let line = hepta_kernel_native_post_execution_store_record_json_line(&record)
             .expect("record serializes");
+        let projected_append_bytes =
+            hepta_kernel_native_post_execution_store_record_projected_append_bytes(&record)
+                .expect("project append bytes");
         let value = serde_json::from_str::<Value>(&line).expect("record JSON parses");
 
         assert_eq!(value["schema_id"], "hepta.post.execution_store_record.v1");
@@ -8276,6 +8286,7 @@ mod tests {
                 .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
         );
         assert!(!line.contains("secret-idem"));
+        assert_eq!(projected_append_bytes, line.len() as u64 + 1);
     }
 
     #[test]

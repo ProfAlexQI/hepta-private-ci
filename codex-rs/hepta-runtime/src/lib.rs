@@ -327,6 +327,12 @@ pub fn native_post_execution_store_record_json_line(
     hepta_kernel::hepta_kernel_native_post_execution_store_record_json_line(record)
 }
 
+pub fn native_post_execution_store_record_projected_append_bytes(
+    record: &NativePostExecutionStoreRecord,
+) -> Result<u64, String> {
+    hepta_kernel::hepta_kernel_native_post_execution_store_record_projected_append_bytes(record)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn native_post_real_handler_harness(
     spec: &NativePostPlanRouteSpec,
