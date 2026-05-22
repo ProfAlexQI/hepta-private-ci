@@ -14,8 +14,8 @@ use crate::telegram_transport::{
     NativeTelegramSendPlan, NativeTelegramTransportPlan, telegram_redact_token_like_text,
 };
 use hepta_runtime::{
-    build_native_telegram_model_bridge_status, build_native_telegram_poll_loop_status,
-    build_native_telegram_production_guard_status,
+    build_native_telegram_model_bridge_status, build_native_telegram_model_turn_plan_status,
+    build_native_telegram_poll_loop_status, build_native_telegram_production_guard_status,
     build_native_telegram_production_guard_status_from_policy,
     build_native_telegram_receive_once_error_status, build_native_telegram_receive_once_status,
     build_native_telegram_receive_once_status_from_api_result,
@@ -46,7 +46,10 @@ pub use hepta_runtime::{
     NativeTelegramReceiveOnceStatusInput,
 };
 
-pub use hepta_runtime::{NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput};
+pub use hepta_runtime::{
+    NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput,
+    NativeTelegramModelTurnPlanStatus, NativeTelegramModelTurnPlanStatusInput,
+};
 pub use hepta_runtime::{NativeTelegramSendPlanStatus, NativeTelegramSendPlanStatusInput};
 
 pub use hepta_runtime::{
@@ -145,30 +148,6 @@ pub fn build_telegram_receive_once_status_from_api_result(
     input: NativeTelegramReceiveOnceApiResultInput<'_>,
 ) -> NativeTelegramReceiveOnceStatus {
     build_native_telegram_receive_once_status_from_api_result(input)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NativeTelegramModelTurnPlanStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub model_turn_bridge_ready: bool,
-    pub model_turn_started: bool,
-    pub session_runner_invoked: bool,
-    pub external_send: bool,
-    pub cursor_written: bool,
-    pub raw_update_payload_exposed: bool,
-    pub raw_prompt_text_exposed: bool,
-    pub raw_chat_id_exposed: bool,
-    pub raw_sender_id_exposed: bool,
-    pub raw_message_id_exposed: bool,
-    pub config: NativeTelegramConfigStatus,
-    pub cursor_plan: NativeTelegramCursorPlan,
-    pub inspection: NativeTelegramIngressInspection,
-    pub model_turn_plan: NativeTelegramModelTurnPlan,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -507,62 +486,10 @@ pub fn build_telegram_plugin_status(
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct NativeTelegramModelTurnPlanStatusInput {
-    pub requested: bool,
-    pub config: NativeTelegramConfigStatus,
-}
-
 pub fn build_telegram_model_turn_plan_status(
     input: NativeTelegramModelTurnPlanStatusInput,
 ) -> NativeTelegramModelTurnPlanStatus {
-    let cursor_plan = if input.requested {
-        NativeTelegramCursorPlan::ready()
-    } else {
-        NativeTelegramCursorPlan::disabled()
-    };
-    let inspection = crate::telegram_policy::inspect_telegram_updates(&[]);
-    let model_turn_plan = if input.requested {
-        plan_model_turn_for_updates(&[])
-    } else {
-        NativeTelegramModelTurnPlan::disabled()
-    };
-    let config_ready = input.requested && input.config.config_ready();
-    let status = if !input.requested {
-        "disabled"
-    } else if config_ready {
-        "planned"
-    } else {
-        "attention"
-    };
-    let error = if input.requested && !config_ready {
-        Some("Telegram config, token shape, or binding is not ready".to_string())
-    } else {
-        None
-    };
-
-    NativeTelegramModelTurnPlanStatus {
-        product: "Hepta",
-        runtime: "hepta-codex",
-        requested: input.requested,
-        status,
-        model_turn_bridge_ready: false,
-        model_turn_started: false,
-        session_runner_invoked: false,
-        external_send: false,
-        cursor_written: false,
-        raw_update_payload_exposed: false,
-        raw_prompt_text_exposed: false,
-        raw_chat_id_exposed: false,
-        raw_sender_id_exposed: false,
-        raw_message_id_exposed: false,
-        config: input.config,
-        cursor_plan,
-        inspection,
-        model_turn_plan,
-        error,
-        next_migration_slice: "wire the planned redacted candidates into a bounded Codex session runner",
-    }
+    build_native_telegram_model_turn_plan_status(input)
 }
 
 pub fn build_telegram_model_bridge_status(

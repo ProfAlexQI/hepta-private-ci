@@ -365,6 +365,36 @@ pub struct HeptaKernelTelegramModelBridgeStatus {
     pub next_migration_slice: &'static str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelTelegramModelTurnPlanStatus {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub requested: bool,
+    pub status: &'static str,
+    pub model_turn_bridge_ready: bool,
+    pub model_turn_started: bool,
+    pub session_runner_invoked: bool,
+    pub external_send: bool,
+    pub cursor_written: bool,
+    pub raw_update_payload_exposed: bool,
+    pub raw_prompt_text_exposed: bool,
+    pub raw_chat_id_exposed: bool,
+    pub raw_sender_id_exposed: bool,
+    pub raw_message_id_exposed: bool,
+    pub config: HeptaKernelTelegramConfigStatus,
+    pub cursor_plan: HeptaKernelTelegramCursorPlan,
+    pub inspection: HeptaKernelTelegramIngressInspection,
+    pub model_turn_plan: HeptaKernelTelegramModelTurnPlan,
+    pub error: Option<String>,
+    pub next_migration_slice: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeptaKernelTelegramModelTurnPlanStatusInput {
+    pub requested: bool,
+    pub config: HeptaKernelTelegramConfigStatus,
+}
+
 #[derive(Debug, Clone)]
 pub struct HeptaKernelTelegramModelBridgeStatusInput<'a> {
     pub requested: bool,
@@ -2338,6 +2368,58 @@ pub fn build_hepta_kernel_telegram_model_bridge_status(
     }
 }
 
+pub fn build_hepta_kernel_telegram_model_turn_plan_status(
+    input: HeptaKernelTelegramModelTurnPlanStatusInput,
+) -> HeptaKernelTelegramModelTurnPlanStatus {
+    let cursor_plan = if input.requested {
+        HeptaKernelTelegramCursorPlan::ready()
+    } else {
+        HeptaKernelTelegramCursorPlan::disabled()
+    };
+    let inspection = inspect_hepta_kernel_telegram_updates(&[]);
+    let model_turn_plan = if input.requested {
+        hepta_kernel_telegram_model_turn_plan_for_updates(&[])
+    } else {
+        HeptaKernelTelegramModelTurnPlan::disabled()
+    };
+    let config_ready = input.requested && input.config.config_ready();
+    let status = if !input.requested {
+        "disabled"
+    } else if config_ready {
+        "planned"
+    } else {
+        "attention"
+    };
+    let error = if input.requested && !config_ready {
+        Some("Telegram config, token shape, or binding is not ready".to_string())
+    } else {
+        None
+    };
+
+    HeptaKernelTelegramModelTurnPlanStatus {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        requested: input.requested,
+        status,
+        model_turn_bridge_ready: false,
+        model_turn_started: false,
+        session_runner_invoked: false,
+        external_send: false,
+        cursor_written: false,
+        raw_update_payload_exposed: false,
+        raw_prompt_text_exposed: false,
+        raw_chat_id_exposed: false,
+        raw_sender_id_exposed: false,
+        raw_message_id_exposed: false,
+        config: input.config,
+        cursor_plan,
+        inspection,
+        model_turn_plan,
+        error,
+        next_migration_slice: "wire the planned redacted candidates into a bounded Codex session runner",
+    }
+}
+
 pub fn build_hepta_kernel_telegram_send_plan_status(
     input: HeptaKernelTelegramSendPlanStatusInput,
 ) -> HeptaKernelTelegramSendPlanStatus {
@@ -4151,6 +4233,44 @@ mod tests {
                 .unwrap()
                 .contains("HEPTA_NATIVE_TELEGRAM_MODEL_TURN")
         );
+    }
+
+    #[test]
+    fn kernel_model_turn_plan_status_is_planned_and_side_effect_free() {
+        let status = build_hepta_kernel_telegram_model_turn_plan_status(
+            HeptaKernelTelegramModelTurnPlanStatusInput {
+                requested: true,
+                config: ready_telegram_config(),
+            },
+        );
+
+        assert_eq!(status.status, "planned");
+        assert!(!status.model_turn_bridge_ready);
+        assert!(!status.model_turn_started);
+        assert!(!status.session_runner_invoked);
+        assert!(!status.external_send);
+        assert!(!status.cursor_written);
+        assert!(!status.raw_update_payload_exposed);
+        assert!(!status.raw_prompt_text_exposed);
+        assert!(!status.raw_chat_id_exposed);
+        assert!(!status.raw_sender_id_exposed);
+        assert!(!status.raw_message_id_exposed);
+        assert!(status.cursor_plan.duplicate_suppression_ready);
+        assert!(status.inspection.parser_ready);
+        assert_eq!(status.inspection.update_count, 0);
+        assert!(status.model_turn_plan.planner_ready);
+        assert_eq!(status.model_turn_plan.candidate_count, 0);
+        assert!(status.error.is_none());
+
+        let disabled = build_hepta_kernel_telegram_model_turn_plan_status(
+            HeptaKernelTelegramModelTurnPlanStatusInput {
+                requested: false,
+                config: ready_telegram_config(),
+            },
+        );
+        assert_eq!(disabled.status, "disabled");
+        assert!(!disabled.cursor_plan.duplicate_suppression_ready);
+        assert!(!disabled.model_turn_plan.planner_ready);
     }
 
     #[test]
