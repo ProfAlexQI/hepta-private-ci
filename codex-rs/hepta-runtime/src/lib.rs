@@ -108,11 +108,13 @@ pub use hepta_contracts::HeptaRuntimeContractInventory;
 pub use hepta_kernel::{
     HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT as NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
     HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT as NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
+    HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT as NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
     HEPTA_KERNEL_NATIVE_POST_MAX_BODY_BYTES as NATIVE_POST_MAX_BODY_BYTES,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV as NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS as NATIVE_POST_REAL_HANDLER_PLAN_KINDS,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV as NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
     HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV as NATIVE_POST_REAL_HANDLERS_ENV,
+    HEPTA_KERNEL_NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT as NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
     HeptaKernelNativePostActivationGate as NativePostActivationGate,
     HeptaKernelNativePostActivationPlanResponse as NativePostActivationPlanResponse,
     HeptaKernelNativePostAuditEventContract as NativePostAuditEventContract,
@@ -123,6 +125,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostExecutionReadinessResponse as NativePostExecutionReadinessResponse,
     HeptaKernelNativePostExecutionReadinessRoute as NativePostExecutionReadinessRoute,
     HeptaKernelNativePostExecutionStoreRecord as NativePostExecutionStoreRecord,
+    HeptaKernelNativePostGrayReleaseEvidenceResponse as NativePostGrayReleaseEvidenceResponse,
     HeptaKernelNativePostIdempotencyEvidence as NativePostIdempotencyEvidence,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
@@ -322,6 +325,36 @@ pub fn native_post_selected_handler_rollout_evidence_from_content(
     hepta_kernel::hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
         selected_handler_kind,
         content,
+    )
+}
+
+pub fn native_post_gray_release_evidence_report(
+    store_root: String,
+    handler_scope: Option<&str>,
+    real_handler_gate_enabled: bool,
+    operator_approval_enabled: bool,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    rollout_evidence_ready: bool,
+    rollout_raw_request_body_exposed: bool,
+    rollout_raw_field_values_exposed: bool,
+    rollout_raw_idempotency_key_exposed: bool,
+    rollout_raw_audit_payload_exposed: bool,
+    selected_handler_evidence: NativePostSelectedHandlerRolloutEvidence,
+) -> NativePostGrayReleaseEvidenceResponse {
+    hepta_kernel::hepta_kernel_native_post_gray_release_evidence_report(
+        store_root,
+        handler_scope,
+        real_handler_gate_enabled,
+        operator_approval_enabled,
+        store_jsonl_valid,
+        store_capacity_ok,
+        rollout_evidence_ready,
+        rollout_raw_request_body_exposed,
+        rollout_raw_field_values_exposed,
+        rollout_raw_idempotency_key_exposed,
+        rollout_raw_audit_payload_exposed,
+        selected_handler_evidence,
     )
 }
 pub use memory_context::{

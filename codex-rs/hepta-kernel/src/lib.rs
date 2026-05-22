@@ -78,6 +78,12 @@ pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str =
     "/api/native-post-execution-readiness";
 pub const HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT: &str =
     "/api/native-post-activation-plan";
+pub const HEPTA_KERNEL_NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT: &str =
+    "/api/native-post-rollout-evidence";
+pub const HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT: &str =
+    "/api/native-post-gray-release-evidence";
+pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR_ENV: &str =
+    "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HeptaKernelNativePostPlanRouteSpec {
@@ -426,6 +432,60 @@ pub struct HeptaKernelNativePostSelectedHandlerRolloutEvidence {
     pub raw_field_values_exposed: bool,
     pub raw_idempotency_key_exposed: bool,
     pub raw_audit_payload_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostGrayReleaseEvidenceResponse {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub endpoint: &'static str,
+    pub source_command: &'static str,
+    pub native_route: bool,
+    pub compatibility_mode: &'static str,
+    pub side_effect_free: bool,
+    pub activation_plan_endpoint: &'static str,
+    pub rollout_evidence_endpoint: &'static str,
+    pub store_root_env: &'static str,
+    pub store_root: String,
+    pub handler_scope_env: &'static str,
+    pub handler_scope: Option<String>,
+    pub selected_handler_count: usize,
+    pub selected_handler_kinds: Vec<&'static str>,
+    pub selected_handler_kind: Option<String>,
+    pub single_handler_scope_ready: bool,
+    pub real_handler_gate_env: &'static str,
+    pub real_handler_gate_enabled: bool,
+    pub operator_approval_env: &'static str,
+    pub operator_approval_enabled: bool,
+    pub activation_preflight_ready: bool,
+    pub activation_currently_enabled: bool,
+    pub store_jsonl_valid: bool,
+    pub store_capacity_ok: bool,
+    pub rollout_evidence_ready: bool,
+    pub gray_release_evidence_ready: bool,
+    pub selected_handler_evidence_ready: bool,
+    pub gray_release_ready: bool,
+    pub gray_release_phase: &'static str,
+    pub selected_handler_evidence: HeptaKernelNativePostSelectedHandlerRolloutEvidence,
+    pub rollback_actions: Vec<&'static str>,
+    pub dry_run_only: bool,
+    pub real_mutation_performed: bool,
+    pub store_write_attempted: bool,
+    pub approval_applied: bool,
+    pub task_published: bool,
+    pub chat_mutated: bool,
+    pub external_side_effects: bool,
+    pub gateway_mutation_performed: bool,
+    pub telegram_read_performed: bool,
+    pub model_invoked: bool,
+    pub message_sent: bool,
+    pub cursor_written: bool,
+    pub raw_request_body_exposed: bool,
+    pub raw_field_values_exposed: bool,
+    pub raw_idempotency_key_exposed: bool,
+    pub raw_audit_payload_exposed: bool,
+    pub next_migration_slice: &'static str,
 }
 
 pub const HEPTA_KERNEL_NATIVE_POST_PLAN_ROUTE_SPECS: &[HeptaKernelNativePostPlanRouteSpec] = &[
@@ -1485,6 +1545,135 @@ pub fn hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
         raw_field_values_exposed,
         raw_idempotency_key_exposed,
         raw_audit_payload_exposed,
+    }
+}
+
+pub fn hepta_kernel_native_post_gray_release_evidence_report(
+    store_root: String,
+    handler_scope: Option<&str>,
+    real_handler_gate_enabled: bool,
+    operator_approval_enabled: bool,
+    store_jsonl_valid: bool,
+    store_capacity_ok: bool,
+    rollout_evidence_ready: bool,
+    rollout_raw_request_body_exposed: bool,
+    rollout_raw_field_values_exposed: bool,
+    rollout_raw_idempotency_key_exposed: bool,
+    rollout_raw_audit_payload_exposed: bool,
+    selected_handler_evidence: HeptaKernelNativePostSelectedHandlerRolloutEvidence,
+) -> HeptaKernelNativePostGrayReleaseEvidenceResponse {
+    let readiness = hepta_kernel_native_post_execution_readiness_report(
+        real_handler_gate_enabled,
+        handler_scope,
+    );
+    let store_contracts_ready = store_jsonl_valid && store_capacity_ok;
+    let all_handlers_implemented =
+        readiness.real_handler_implemented_count == readiness.real_handler_candidate_count;
+    let activation_preflight_ready =
+        readiness.all_evidence_contracts_ready && all_handlers_implemented && store_contracts_ready;
+    let selected_handler_kinds =
+        hepta_kernel_native_post_real_handler_scope_selected_kinds(handler_scope);
+    let selected_handler_count = selected_handler_kinds.len();
+    let single_handler_scope_ready = selected_handler_count == 1;
+    let selected_handler_kind = single_handler_scope_ready.then(|| selected_handler_kinds[0]);
+    let activation_currently_enabled = activation_preflight_ready
+        && real_handler_gate_enabled
+        && operator_approval_enabled
+        && single_handler_scope_ready;
+    let selected_handler_evidence_ready = selected_handler_evidence.dry_run_record_present
+        && selected_handler_evidence.rollback_anchor_present
+        && !selected_handler_evidence.raw_request_body_exposed
+        && !selected_handler_evidence.raw_field_values_exposed
+        && !selected_handler_evidence.raw_idempotency_key_exposed
+        && !selected_handler_evidence.raw_audit_payload_exposed;
+    let gray_release_evidence_ready = activation_preflight_ready
+        && single_handler_scope_ready
+        && rollout_evidence_ready
+        && selected_handler_evidence_ready;
+    let gray_release_ready = activation_currently_enabled && gray_release_evidence_ready;
+    let gray_release_phase = if !activation_preflight_ready {
+        "activation_preflight_not_ready"
+    } else if !single_handler_scope_ready {
+        "handler_scope_not_single"
+    } else if !real_handler_gate_enabled {
+        "real_handler_gate_disabled"
+    } else if !operator_approval_enabled {
+        "operator_approval_required"
+    } else if !selected_handler_evidence.dry_run_record_present {
+        "awaiting_scoped_dry_run_record"
+    } else if !selected_handler_evidence.rollback_anchor_present {
+        "rollback_anchor_missing"
+    } else if !selected_handler_evidence_ready {
+        "redaction_attention"
+    } else {
+        "gray_release_ready"
+    };
+
+    HeptaKernelNativePostGrayReleaseEvidenceResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: if gray_release_ready {
+            "ready"
+        } else if activation_preflight_ready {
+            "staged"
+        } else {
+            "attention"
+        },
+        endpoint: HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT,
+        source_command: "/native-post-gray-release-evidence --json",
+        native_route: true,
+        compatibility_mode: "native_post_gray_release_evidence",
+        side_effect_free: true,
+        activation_plan_endpoint: HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT,
+        rollout_evidence_endpoint: HEPTA_KERNEL_NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
+        store_root_env: HEPTA_KERNEL_NATIVE_POST_EXECUTION_STORE_DIR_ENV,
+        store_root,
+        handler_scope_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
+        handler_scope: handler_scope
+            .map(str::trim)
+            .filter(|scope| !scope.is_empty())
+            .map(str::to_string),
+        selected_handler_count,
+        selected_handler_kinds,
+        selected_handler_kind: selected_handler_kind.map(str::to_string),
+        single_handler_scope_ready,
+        real_handler_gate_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLERS_ENV,
+        real_handler_gate_enabled,
+        operator_approval_env: HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
+        operator_approval_enabled,
+        activation_preflight_ready,
+        activation_currently_enabled,
+        store_jsonl_valid,
+        store_capacity_ok,
+        rollout_evidence_ready,
+        gray_release_evidence_ready,
+        selected_handler_evidence_ready,
+        gray_release_ready,
+        gray_release_phase,
+        selected_handler_evidence,
+        rollback_actions: vec![
+            "unset HEPTA_NATIVE_POST_REAL_HANDLERS, HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED, and HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE",
+            "restart ai.hepta.gateway after plist/env changes",
+            "inspect /api/native-post-gray-release-evidence and /api/native-post-rollout-evidence before reattempting activation",
+            "restore the latest hepta-codex binary/plist backup if gateway health regresses",
+        ],
+        dry_run_only: true,
+        real_mutation_performed: false,
+        store_write_attempted: false,
+        approval_applied: false,
+        task_published: false,
+        chat_mutated: false,
+        external_side_effects: false,
+        gateway_mutation_performed: false,
+        telegram_read_performed: false,
+        model_invoked: false,
+        message_sent: false,
+        cursor_written: false,
+        raw_request_body_exposed: rollout_raw_request_body_exposed,
+        raw_field_values_exposed: rollout_raw_field_values_exposed,
+        raw_idempotency_key_exposed: rollout_raw_idempotency_key_exposed,
+        raw_audit_payload_exposed: rollout_raw_audit_payload_exposed,
+        next_migration_slice: "run exactly one scoped POST dry-run canary and require rollback evidence before any real mutation wiring",
     }
 }
 
@@ -7305,6 +7494,61 @@ not-json
         let read_failed = hepta_kernel_native_post_rollout_evidence_scan_read_failed();
         assert!(!read_failed.jsonl_readable);
         assert_eq!(read_failed.read_error, Some("rollback_store_read_failed"));
+    }
+
+    #[test]
+    fn kernel_native_post_gray_release_evidence_requires_scoped_rollout_evidence() {
+        let empty_selected = hepta_kernel_native_post_selected_handler_rollout_evidence_missing(
+            Some("task_publish"),
+        );
+        let staged = hepta_kernel_native_post_gray_release_evidence_report(
+            ".hepta/native-post-execution".to_string(),
+            Some("task_publish"),
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            empty_selected,
+        );
+
+        assert_eq!(staged.status, "staged");
+        assert_eq!(staged.gray_release_phase, "awaiting_scoped_dry_run_record");
+        assert!(staged.activation_currently_enabled);
+        assert!(!staged.gray_release_ready);
+
+        let content = r#"{"recorded_at_unix_ms":1,"plan_kind":"task_publish","rollback_strategy":"pending_real_handler_rollback_anchor","current_plan_executes_real_handler":true,"idempotency_key_redacted":true,"idempotency_key_fingerprint":"sha256:abc","raw_request_body_exposed":false,"raw_field_values_exposed":false,"raw_idempotency_key_exposed":false,"raw_audit_payload_exposed":false}"#;
+        let selected = hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
+            Some("task_publish"),
+            content,
+        );
+        let ready = hepta_kernel_native_post_gray_release_evidence_report(
+            ".hepta/native-post-execution".to_string(),
+            Some("task_publish"),
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            selected,
+        );
+
+        assert_eq!(ready.status, "ready");
+        assert_eq!(ready.gray_release_phase, "gray_release_ready");
+        assert!(ready.gray_release_evidence_ready);
+        assert!(ready.gray_release_ready);
+        assert_eq!(
+            ready.endpoint,
+            HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT
+        );
     }
 
     #[test]
