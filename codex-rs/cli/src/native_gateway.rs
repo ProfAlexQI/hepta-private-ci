@@ -8937,6 +8937,16 @@ mod tests {
                 .as_bool()
                 .is_some_and(|allowed| !allowed)
         }));
+        assert!(surfaces.iter().all(|surface| {
+            surface["typed_request_response_envelope_ready"]
+                .as_bool()
+                .is_some_and(|ready| ready)
+        }));
+        assert!(surfaces.iter().all(|surface| {
+            surface["typed_adapter_parity_gate_ready"]
+                .as_bool()
+                .is_some_and(|ready| ready)
+        }));
         let surface_ids = surfaces
             .iter()
             .filter_map(|surface| surface["surface_id"].as_str())

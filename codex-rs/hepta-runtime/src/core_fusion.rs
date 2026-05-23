@@ -79,6 +79,8 @@ pub struct HeptaCodexEngineAdapterSurface {
     pub adapter_contract: &'static str,
     pub migration_state: &'static str,
     pub typed_request_response_envelope_ready: bool,
+    pub typed_adapter_parity_gate: &'static str,
+    pub typed_adapter_parity_gate_ready: bool,
     pub live_mutation_allowed: bool,
 }
 
@@ -203,6 +205,8 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         adapter_contract: "model invocation must enter through a Hepta-owned request/response boundary before provider dispatch",
         migration_state: "adapter_threaded_compatibility_dispatch",
         typed_request_response_envelope_ready: true,
+        typed_adapter_parity_gate: "model_provider_typed_envelope_compatibility_dispatch_gate",
+        typed_adapter_parity_gate_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -212,6 +216,8 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         adapter_contract: "session and thread persistence must be described as Hepta records before Codex store compatibility is used",
         migration_state: "adapter_threaded_compatibility_dispatch",
         typed_request_response_envelope_ready: true,
+        typed_adapter_parity_gate: "session_thread_store_typed_envelope_compatibility_dispatch_gate",
+        typed_adapter_parity_gate_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -221,6 +227,8 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         adapter_contract: "tool calls must carry Hepta policy, approval, and side-effect classification before Codex tool execution",
         migration_state: "adapter_threaded_compatibility_dispatch",
         typed_request_response_envelope_ready: true,
+        typed_adapter_parity_gate: "tool_invocation_typed_envelope_compatibility_dispatch_gate",
+        typed_adapter_parity_gate_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -230,6 +238,8 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         adapter_contract: "exec and sandbox requests must pass Hepta policy gates before Codex sandbox compatibility runs",
         migration_state: "adapter_threaded_compatibility_dispatch",
         typed_request_response_envelope_ready: true,
+        typed_adapter_parity_gate: "sandbox_exec_typed_envelope_compatibility_dispatch_gate",
+        typed_adapter_parity_gate_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -239,6 +249,8 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         adapter_contract: "MCP and app-server traffic must remain behind read-only Hepta route contracts until explicit adapter parity",
         migration_state: "adapter_threaded_compatibility_dispatch",
         typed_request_response_envelope_ready: true,
+        typed_adapter_parity_gate: "mcp_app_server_typed_envelope_compatibility_dispatch_gate",
+        typed_adapter_parity_gate_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -248,6 +260,8 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         adapter_contract: "legacy TUI and CLI behavior must remain compatibility-dispatched until first-class Hepta binary parity",
         migration_state: "adapter_threaded_compatibility_dispatch",
         typed_request_response_envelope_ready: true,
+        typed_adapter_parity_gate: "legacy_tui_cli_typed_envelope_compatibility_dispatch_gate",
+        typed_adapter_parity_gate_ready: true,
         live_mutation_allowed: false,
     },
 ];
@@ -683,6 +697,17 @@ mod tests {
                 .iter()
                 .all(|surface| surface.typed_request_response_envelope_ready)
         );
+        assert!(
+            report
+                .surfaces
+                .iter()
+                .all(|surface| surface.typed_adapter_parity_gate_ready)
+        );
+        assert!(report.surfaces.iter().all(|surface| {
+            surface
+                .typed_adapter_parity_gate
+                .ends_with("_typed_envelope_compatibility_dispatch_gate")
+        }));
     }
 
     #[test]

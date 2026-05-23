@@ -107,6 +107,9 @@ Current landed state:
   threading plans before entering Codex compatibility dispatch.
 - All six adapter surfaces now also carry typed adapter request/response
   envelopes before compatibility dispatch.
+- All six adapter surfaces now expose reportable typed adapter parity gates
+  while still keeping `adapter_parity_complete=false` until real parity
+  criteria are promoted.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -151,8 +154,9 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Replace debug-only adapter assertions with reportable typed adapter parity
-   gates per surface.
-2. Keep direct Codex dependencies explicit until each adapter has parity gates.
+1. Promote typed adapter parity gates from report-only to explicit route/script
+   checks that can fail preflight and live gates per surface.
+2. Keep direct Codex dependencies explicit until each adapter has enforced
+   parity gates.
 3. Run focused checks, full preflight, release build, live install, and live
    gates before advancing toward binary/package inversion.
