@@ -130,6 +130,11 @@ Current landed state:
   it runs targeted runtime and native-gateway tests before the broader gateway
   and UI/native app checks, requiring exact per-surface behavior evidence while
   keeping `adapter_parity_complete=false`.
+- The adapter boundary now also exposes a promotion-only completion gate:
+  `adapter_behavior_equivalence_to_parity_completion_gate`. It is ready as a
+  guardrail, but its status is
+  `blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage` and
+  `adapter_parity_completion_gate_allows_promotion=false`.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -174,9 +179,8 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Add a promotion-only adapter parity completion gate that consumes the
-   behavior-equivalence preflight evidence and still refuses promotion until
-   live shadow replay or equivalent stronger coverage exists.
+1. Add live shadow replay or equivalent stronger coverage for adapter surfaces,
+   starting with model-provider and session/thread-store behavior.
 2. Keep direct Codex dependencies explicit until adapter parity has enforced
    evidence beyond typed envelope presence.
 3. Run focused checks, full preflight, release build, live install, and live

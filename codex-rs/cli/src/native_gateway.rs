@@ -8929,6 +8929,19 @@ mod tests {
         assert_eq!(value["boundary_ready"], true);
         assert_eq!(value["adapter_parity_complete"], false);
         assert_eq!(value["adapter_parity_promotion_ready"], false);
+        assert_eq!(
+            value["adapter_parity_completion_gate"],
+            "adapter_behavior_equivalence_to_parity_completion_gate"
+        );
+        assert_eq!(value["adapter_parity_completion_gate_ready"], true);
+        assert_eq!(
+            value["adapter_parity_completion_gate_status"],
+            "blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage"
+        );
+        assert_eq!(
+            value["adapter_parity_completion_gate_allows_promotion"],
+            false
+        );
         assert_eq!(value["full_fusion_complete"], false);
         assert!(
             value["adapter_parity_promotion_criteria"]

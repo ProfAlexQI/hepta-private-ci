@@ -70,6 +70,10 @@ report="$(jq -n \
         and ($adapter.parity_evidence | all(.forbidden_side_effects_blocked == true))
         and $adapter.adapter_parity_complete == false
         and $adapter.adapter_parity_promotion_ready == false
+        and $adapter.adapter_parity_completion_gate == "adapter_behavior_equivalence_to_parity_completion_gate"
+        and $adapter.adapter_parity_completion_gate_ready == true
+        and $adapter.adapter_parity_completion_gate_status == "blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage"
+        and $adapter.adapter_parity_completion_gate_allows_promotion == false
         and ($adapter.adapter_parity_promotion_criteria | length) >= 6
         and ($adapter.adapter_parity_promotion_blockers | length) >= 1
         and $adapter.full_fusion_complete == false
@@ -126,6 +130,9 @@ report="$(jq -n \
     adapter_typed_parity_gate_ready_count:($adapter.surfaces | map(select(.typed_adapter_parity_gate_ready == true)) | length),
     adapter_parity_complete:$adapter.adapter_parity_complete,
     adapter_parity_promotion_ready:$adapter.adapter_parity_promotion_ready,
+    adapter_parity_completion_gate_ready:$adapter.adapter_parity_completion_gate_ready,
+    adapter_parity_completion_gate_status:$adapter.adapter_parity_completion_gate_status,
+    adapter_parity_completion_gate_allows_promotion:$adapter.adapter_parity_completion_gate_allows_promotion,
     adapter_parity_promotion_blocker_count:($adapter.adapter_parity_promotion_blockers | length),
     full_fusion_complete:$adapter.full_fusion_complete,
     side_effects:{

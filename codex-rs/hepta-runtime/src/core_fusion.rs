@@ -100,6 +100,10 @@ pub struct HeptaCodexEngineAdapterBoundaryResponse {
     pub adapter_parity_promotion_ready: bool,
     pub adapter_parity_promotion_criteria: &'static [&'static str],
     pub adapter_parity_promotion_blockers: &'static [&'static str],
+    pub adapter_parity_completion_gate: &'static str,
+    pub adapter_parity_completion_gate_ready: bool,
+    pub adapter_parity_completion_gate_status: &'static str,
+    pub adapter_parity_completion_gate_allows_promotion: bool,
     pub full_fusion_complete: bool,
     pub remaining_direct_codex_base_dependency_count: usize,
     pub surfaces: &'static [HeptaCodexEngineAdapterSurface],
@@ -225,6 +229,11 @@ const ADAPTER_PARITY_PROMOTION_BLOCKERS: &[&str] = &[
     "adapter parity completion has not yet been tied to dedicated per-surface failing preflight gates",
     "direct Codex base dependencies remain intentionally retained for compatibility dispatch",
 ];
+
+const ADAPTER_PARITY_COMPLETION_GATE: &str =
+    "adapter_behavior_equivalence_to_parity_completion_gate";
+const ADAPTER_PARITY_COMPLETION_GATE_STATUS: &str =
+    "blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage";
 
 const NEXT_ACTIONS: &[&str] = &[
     "promote the installed binary from codex-cli --bin hepta toward first-class Hepta binary ownership after adapter parity",
@@ -610,6 +619,10 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
         adapter_parity_promotion_ready: false,
         adapter_parity_promotion_criteria: ADAPTER_PARITY_PROMOTION_CRITERIA,
         adapter_parity_promotion_blockers: ADAPTER_PARITY_PROMOTION_BLOCKERS,
+        adapter_parity_completion_gate: ADAPTER_PARITY_COMPLETION_GATE,
+        adapter_parity_completion_gate_ready: true,
+        adapter_parity_completion_gate_status: ADAPTER_PARITY_COMPLETION_GATE_STATUS,
+        adapter_parity_completion_gate_allows_promotion: false,
         full_fusion_complete: false,
         remaining_direct_codex_base_dependency_count: DIRECT_CODEX_BASE_DEPENDENCIES.len(),
         surfaces: CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES,
@@ -782,6 +795,16 @@ mod tests {
         assert!(report.boundary_ready);
         assert!(!report.adapter_parity_complete);
         assert!(!report.adapter_parity_promotion_ready);
+        assert_eq!(
+            report.adapter_parity_completion_gate,
+            "adapter_behavior_equivalence_to_parity_completion_gate"
+        );
+        assert!(report.adapter_parity_completion_gate_ready);
+        assert_eq!(
+            report.adapter_parity_completion_gate_status,
+            "blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage"
+        );
+        assert!(!report.adapter_parity_completion_gate_allows_promotion);
         assert!(!report.full_fusion_complete);
         assert!(
             report
@@ -915,6 +938,13 @@ mod tests {
 
         assert!(!report.adapter_parity_complete);
         assert!(!report.adapter_parity_promotion_ready);
+        assert!(report.adapter_parity_completion_gate_ready);
+        assert!(!report.adapter_parity_completion_gate_allows_promotion);
+        assert!(
+            report
+                .adapter_parity_completion_gate_status
+                .contains("blocked_pending_live_shadow_replay")
+        );
         assert!(
             report
                 .adapter_parity_promotion_blockers
