@@ -17,7 +17,7 @@ jq -e '
   and .side_effect_free == true
   and .old_memory_capability_ops_file_count == 14
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 68
+  and .native_gateway_source_command_count == 69
   and .missing_route_count == 0
   and .surface_count == 14
   and .absorbed_or_represented_count == 9
@@ -53,7 +53,7 @@ for payload in "$LOCAL_JSON" "$CHANNEL_JSON" "$RUNTIME_JSON" "$CLI_JSON" "$PROVI
   jq -e '
     .runtime == "hepta"
     and .current_hepta_codex_script_total == 17
-    and .native_gateway_source_command_count == 68
+    and .native_gateway_source_command_count == 69
     and .missing_route_count == 0
   ' <<<"$payload" >/dev/null
 done

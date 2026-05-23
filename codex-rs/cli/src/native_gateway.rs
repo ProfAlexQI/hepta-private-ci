@@ -21,6 +21,8 @@ use hepta_gateway::HEPTA_CORE_FUSION_READINESS_ENDPOINT;
 use hepta_gateway::HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND;
 use hepta_gateway::HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
 use hepta_gateway::HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
+use hepta_gateway::HEPTA_ENGINE_DEPENDENCY_CLOSURE_ENDPOINT;
+use hepta_gateway::HEPTA_ENGINE_DEPENDENCY_CLOSURE_SOURCE_COMMAND;
 use hepta_gateway::HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT;
 use hepta_gateway::HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND;
 use hepta_gateway::NATIVE_POST_ACTIVATION_PLAN_ENDPOINT;
@@ -92,7 +94,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 68;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
 const HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED";
@@ -296,6 +298,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND,
         capability: "hepta-name-repository-closure",
         side_effect_boundary: "read-only Phase 4 name/repository closure inventory; no rename, filesystem mutation, launchd mutation, or publish",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_ENGINE_DEPENDENCY_CLOSURE_ENDPOINT,
+        source_command: HEPTA_ENGINE_DEPENDENCY_CLOSURE_SOURCE_COMMAND,
+        capability: "hepta-engine-dependency-closure",
+        side_effect_boundary: "read-only Phase 5 direct engine dependency closure inventory; no provider, model, credential, exec, session, or gateway mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -989,6 +998,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_gateway::hepta_name_repository_closure_report()),
                 );
             }
+            HEPTA_ENGINE_DEPENDENCY_CLOSURE_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_gateway::hepta_engine_dependency_closure_report()),
+                );
+            }
             HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT
             | HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT => {
                 return (
@@ -1390,6 +1406,7 @@ fn index_html(
         <p><code>/api/hepta-public-ga-readiness</code> aggregates the public GA readiness blockers and explicit operator approvals without publishing, reading credentials, or invoking live channels.</p>
         <p><code>/api/hepta-core-fusion-readiness</code> reports Hepta as root runtime owner and Codex as an internal engine adapter while keeping remaining direct Codex base dependencies explicit.</p>
         <p><code>/api/hepta-name-repository-closure</code> inventories the remaining Phase 4 transition names that still block full fusion while keeping the active Hepta binary path intact.</p>
+        <p><code>/api/hepta-engine-dependency-closure</code> inventories retained direct Codex engine dependencies that now define the Phase 5 full-fusion closure path.</p>
         <p><code>/api/hepta-engine-adapter-boundary</code> enumerates model, session, tool, sandbox, MCP, app-server, and legacy TUI/CLI adapter contracts before any Codex base dependency is removed; <code>/api/hepta-codex-engine-adapter-boundary</code> remains a compatibility alias.</p>
       </section>
       <section class="panel">
@@ -8891,7 +8908,7 @@ mod tests {
             "hepta_root_ownership_inversion_with_engine_adapter_boundary"
         );
         assert_eq!(value["side_effect_free"], true);
-        assert_eq!(value["phase"], "phase_3_binary_package_inversion");
+        assert_eq!(value["phase"], "phase_5_engine_dependency_closure");
         assert_eq!(value["root_owner"], "hepta");
         assert_eq!(value["product_runtime_owner"], "hepta-runtime");
         assert_eq!(value["gateway_owner"], "hepta-gateway");
@@ -8942,6 +8959,29 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(value["phase_4_name_repository_closure_ready"], true);
+        assert_eq!(
+            value["phase_5_engine_dependency_closure_gate"],
+            "hepta_engine_dependency_closure_gate"
+        );
+        assert_eq!(value["phase_5_engine_dependency_closure_gate_ready"], false);
+        assert_eq!(
+            value["phase_5_engine_dependency_closure_gate_status"],
+            "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+        );
+        assert!(
+            value["phase_5_engine_dependency_closure_remaining_dependency_count"]
+                .as_u64()
+                .expect("phase 5 remaining dependency count")
+                > 0
+        );
+        assert!(
+            value["phase_5_engine_dependency_closure_blockers"]
+                .as_array()
+                .expect("phase 5 blockers")
+                .iter()
+                .any(|blocker| blocker.as_str()
+                    == Some("codex-core still backs tool invocation compatibility"))
+        );
         assert_eq!(value["full_fusion_complete"], false);
         let direct_dependencies = value["direct_codex_base_dependencies"]
             .as_array()
@@ -9094,6 +9134,96 @@ mod tests {
             value["forbidden_real_side_effects"]["credential_read"],
             false
         );
+    }
+
+    #[test]
+    fn hepta_engine_dependency_closure_reports_remaining_dependency_inventory() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", HEPTA_ENGINE_DEPENDENCY_CLOSURE_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("engine dependency closure json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(
+            value["source_command"],
+            HEPTA_ENGINE_DEPENDENCY_CLOSURE_SOURCE_COMMAND
+        );
+        assert_eq!(value["phase"], "phase_5_engine_dependency_closure");
+        assert_eq!(value["root_owner"], "hepta");
+        assert_eq!(
+            value["closure_gate"],
+            "hepta_engine_dependency_closure_gate"
+        );
+        assert_eq!(value["closure_gate_ready"], false);
+        assert_eq!(
+            value["closure_gate_status"],
+            "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+        );
+        assert_eq!(value["full_fusion_complete"], false);
+        assert!(
+            value["direct_dependency_count"]
+                .as_u64()
+                .expect("dependency count")
+                >= 10
+        );
+        assert_eq!(
+            value["adapter_retained_dependency_count"],
+            value["direct_dependency_count"]
+        );
+        assert_eq!(
+            value["remaining_direct_dependency_count"],
+            value["direct_dependency_count"]
+        );
+        assert_eq!(value["closed_direct_dependency_count"], 0);
+
+        let surfaces = value["surfaces"]
+            .as_array()
+            .expect("dependency closure surfaces");
+        assert!(surfaces.iter().all(|surface| {
+            surface["closure_state"] == "adapter_retained"
+                && surface["direct_dependency_retained"] == true
+                && surface["compatibility_adapter_required"] == true
+                && surface["typed_adapter_parity_ready"] == true
+                && surface["blocks_full_fusion"] == true
+        }));
+        assert!(surfaces.iter().any(|surface| {
+            surface["dependency_crate"] == "codex-core"
+                && surface["adapter_surface_id"] == "tool_invocation"
+                && surface["target_owner"] == "hepta-kernel"
+        }));
+        assert!(surfaces.iter().any(|surface| {
+            surface["dependency_crate"] == "codex-tui"
+                && surface["adapter_surface_id"] == "legacy_tui_cli"
+                && surface["target_owner"] == "hepta-runtime"
+        }));
+        assert!(
+            value["blockers"]
+                .as_array()
+                .expect("dependency closure blockers")
+                .iter()
+                .any(|blocker| blocker.as_str()
+                    == Some("codex-tui still backs legacy TUI/CLI compatibility"))
+        );
+        assert_eq!(
+            value["forbidden_real_side_effects"]["public_release_published"],
+            false
+        );
+        assert_eq!(
+            value["forbidden_real_side_effects"]["gateway_mutation_performed"],
+            false
+        );
+        assert_eq!(
+            value["forbidden_real_side_effects"]["credential_read"],
+            false
+        );
+        assert_eq!(value["forbidden_real_side_effects"]["model_invoked"], false);
     }
 
     #[test]

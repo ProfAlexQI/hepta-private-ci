@@ -26,6 +26,7 @@ adapter_json="$(curl -fsS "$BASE_URL/api/hepta-engine-adapter-boundary")"
 adapter_alias_json="$(curl -fsS "$BASE_URL/api/hepta-codex-engine-adapter-boundary")"
 core_json="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
 closure_json="$(curl -fsS "$BASE_URL/api/hepta-name-repository-closure")"
+dependency_json="$(curl -fsS "$BASE_URL/api/hepta-engine-dependency-closure")"
 
 report="$(jq -n \
   --arg product "Hepta" \
@@ -45,6 +46,7 @@ report="$(jq -n \
   --argjson adapter_alias "$adapter_alias_json" \
   --argjson core "$core_json" \
   --argjson closure "$closure_json" \
+  --argjson dependency "$dependency_json" \
   '{
     product:$product,
     runtime:$runtime,
@@ -116,7 +118,7 @@ report="$(jq -n \
         and $adapter.forbidden_real_side_effects.model_invoked == false
         and $adapter.forbidden_real_side_effects.external_network_read == false
         and $core.status == "ready"
-        and $core.phase == "phase_3_binary_package_inversion"
+        and $core.phase == "phase_5_engine_dependency_closure"
         and $core.phase_2_engine_adapter_boundary_ready == true
         and $core.phase_3_binary_package_inversion_ready == true
         and $core.binary_package_inversion_gate == "hepta_first_class_binary_package_inversion_gate"
@@ -136,6 +138,11 @@ report="$(jq -n \
         and $core.phase_4_name_repository_closure_remaining_surface_count == 0
         and ($core.phase_4_name_repository_closure_blockers | length) == 0
         and $core.phase_4_name_repository_closure_ready == true
+        and $core.phase_5_engine_dependency_closure_gate == "hepta_engine_dependency_closure_gate"
+        and $core.phase_5_engine_dependency_closure_gate_ready == false
+        and $core.phase_5_engine_dependency_closure_gate_status == "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+        and $core.phase_5_engine_dependency_closure_remaining_dependency_count == $dependency.remaining_direct_dependency_count
+        and ($core.phase_5_engine_dependency_closure_blockers | length) >= 1
         and $closure.status == "ready"
         and $closure.phase == "phase_4_name_repository_closure"
         and $closure.closure_gate == "hepta_name_repository_closure_gate"
@@ -159,6 +166,29 @@ report="$(jq -n \
         and $closure.forbidden_real_side_effects.gateway_mutation_performed == false
         and $closure.forbidden_real_side_effects.credential_read == false
         and $closure.forbidden_real_side_effects.model_invoked == false
+        and $dependency.status == "ready"
+        and $dependency.phase == "phase_5_engine_dependency_closure"
+        and $dependency.closure_gate == "hepta_engine_dependency_closure_gate"
+        and $dependency.closure_gate_ready == false
+        and $dependency.closure_gate_status == "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+        and $dependency.full_fusion_complete == false
+        and $dependency.direct_dependency_count >= 10
+        and $dependency.adapter_retained_dependency_count == $dependency.direct_dependency_count
+        and $dependency.remaining_direct_dependency_count == $dependency.direct_dependency_count
+        and $dependency.closed_direct_dependency_count == 0
+        and ($dependency.surfaces | length) == $dependency.direct_dependency_count
+        and ($dependency.surfaces | all(.closure_state == "adapter_retained"))
+        and ($dependency.surfaces | all(.direct_dependency_retained == true))
+        and ($dependency.surfaces | all(.compatibility_adapter_required == true))
+        and ($dependency.surfaces | all(.typed_adapter_parity_ready == true))
+        and ($dependency.surfaces | all(.blocks_full_fusion == true))
+        and ($dependency.surfaces | map(select(.dependency_crate == "codex-core" and .adapter_surface_id == "tool_invocation" and .target_owner == "hepta-kernel")) | length) == 1
+        and ($dependency.surfaces | map(select(.dependency_crate == "codex-tui" and .adapter_surface_id == "legacy_tui_cli" and .target_owner == "hepta-runtime")) | length) == 1
+        and ($dependency.blockers | length) >= 1
+        and $dependency.forbidden_real_side_effects.public_release_published == false
+        and $dependency.forbidden_real_side_effects.gateway_mutation_performed == false
+        and $dependency.forbidden_real_side_effects.credential_read == false
+        and $dependency.forbidden_real_side_effects.model_invoked == false
         and (
           (
             $operator.status == "attention"
@@ -239,6 +269,13 @@ report="$(jq -n \
     name_repository_closure_gate_status:$closure.closure_gate_status,
     name_repository_closure_remaining_surface_count:$closure.remaining_transition_surface_count,
     name_repository_closure_blocker_count:($closure.blockers | length),
+    phase_5_engine_dependency_closure_gate_status:$core.phase_5_engine_dependency_closure_gate_status,
+    phase_5_engine_dependency_closure_ready:$core.phase_5_engine_dependency_closure_gate_ready,
+    phase_5_engine_dependency_closure_remaining_dependency_count:$core.phase_5_engine_dependency_closure_remaining_dependency_count,
+    engine_dependency_closure_status:$dependency.status,
+    engine_dependency_closure_gate_status:$dependency.closure_gate_status,
+    engine_dependency_closure_remaining_dependency_count:$dependency.remaining_direct_dependency_count,
+    engine_dependency_closure_blocker_count:($dependency.blockers | length),
     side_effects:{
       telegram_read_by_status:$poll.external_network_read_by_status,
       telegram_send_by_status:$poll.external_send_by_status,
@@ -255,7 +292,11 @@ report="$(jq -n \
       closure_public_release_published:$closure.forbidden_real_side_effects.public_release_published,
       closure_gateway_mutation:$closure.forbidden_real_side_effects.gateway_mutation_performed,
       closure_credential_read:$closure.forbidden_real_side_effects.credential_read,
-      closure_model_invoked:$closure.forbidden_real_side_effects.model_invoked
+      closure_model_invoked:$closure.forbidden_real_side_effects.model_invoked,
+      dependency_public_release_published:$dependency.forbidden_real_side_effects.public_release_published,
+      dependency_gateway_mutation:$dependency.forbidden_real_side_effects.gateway_mutation_performed,
+      dependency_credential_read:$dependency.forbidden_real_side_effects.credential_read,
+      dependency_model_invoked:$dependency.forbidden_real_side_effects.model_invoked
     }
   }')"
 

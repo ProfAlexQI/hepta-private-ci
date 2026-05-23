@@ -19,6 +19,10 @@ Current state:
 - The active workspace directory is `/Users/qianqi/.openclaw/workspace/Hepta`.
   The old `/Users/qianqi/.openclaw/workspace/hepta-codex` path is retained only
   as a rollback/compatibility alias.
+- The Phase 5 dependency closure gate is
+  `/api/hepta-engine-dependency-closure`.
+- Full fusion remains intentionally incomplete while direct Codex engine
+  dependencies are retained behind internal adapter surfaces.
 
 No public release publication, credential read, model invocation, channel
 delivery, or gateway mutation is implied by this document.
