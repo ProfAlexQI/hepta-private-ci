@@ -251,6 +251,16 @@ pub fn native_post_execution_admission_with_scope(
     )
 }
 
+pub fn native_post_duplicate_check_required(
+    execution_admission: &NativePostExecutionAdmission,
+    idempotency_evidence: &NativePostIdempotencyEvidence,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_duplicate_check_required(
+        execution_admission,
+        idempotency_evidence,
+    )
+}
+
 pub fn native_post_real_handler_scope_matches(
     plan_kind: &str,
     handler_scope: Option<&str>,

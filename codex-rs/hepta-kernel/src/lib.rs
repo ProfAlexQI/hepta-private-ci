@@ -1524,6 +1524,14 @@ pub fn hepta_kernel_native_post_execution_admission_with_scope(
     }
 }
 
+pub fn hepta_kernel_native_post_duplicate_check_required(
+    execution_admission: &HeptaKernelNativePostExecutionAdmission,
+    idempotency_evidence: &HeptaKernelNativePostIdempotencyEvidence,
+) -> bool {
+    execution_admission.current_plan_executes_real_handler
+        && idempotency_evidence.key_fingerprint.is_some()
+}
+
 pub fn hepta_kernel_native_post_real_handler_scope_matches(
     plan_kind: &str,
     handler_scope: Option<&str>,
@@ -8085,6 +8093,10 @@ mod tests {
         assert_eq!(mismatched.admission_status, "blocked");
         assert_eq!(mismatched.blocked_reason, "handler_scope_not_selected");
         assert!(!mismatched.current_plan_executes_real_handler);
+        assert!(!hepta_kernel_native_post_duplicate_check_required(
+            &mismatched,
+            &idempotency
+        ));
         assert_eq!(
             mismatched.handler_scope_env,
             HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV
@@ -8103,6 +8115,17 @@ mod tests {
         assert_eq!(matched.blocked_reason, "real_handler_harness_dry_run_only");
         assert!(matched.current_plan_executes_real_handler);
         assert!(matched.handler_scope_matches);
+        assert!(hepta_kernel_native_post_duplicate_check_required(
+            &matched,
+            &idempotency
+        ));
+
+        let mut no_key_idempotency = idempotency.clone();
+        no_key_idempotency.key_fingerprint = None;
+        assert!(!hepta_kernel_native_post_duplicate_check_required(
+            &matched,
+            &no_key_idempotency
+        ));
     }
 
     #[test]

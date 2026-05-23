@@ -28,9 +28,10 @@ pub use hepta_runtime::{
     NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
     NativePostSelectedHandlerRolloutEvidence, native_post_audit_event_contract,
     native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
-    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
-    native_post_execution_store_capacity_allows_append, native_post_execution_store_capacity_ok,
-    native_post_execution_store_contracts_ready, native_post_execution_store_file_status_report,
+    native_post_duplicate_check_required, native_post_execution_admission_with_scope,
+    native_post_execution_readiness_report, native_post_execution_store_capacity_allows_append,
+    native_post_execution_store_capacity_ok, native_post_execution_store_contracts_ready,
+    native_post_execution_store_file_status_report,
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
     native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_jsonl_valid,
@@ -244,8 +245,8 @@ pub fn native_post_real_handler_harness(
     store_root: &Path,
     store_limits: NativePostExecutionStoreLimits,
 ) -> NativePostRealHandlerHarness {
-    let duplicate_check_performed = execution_admission.current_plan_executes_real_handler
-        && idempotency_evidence.key_fingerprint.is_some();
+    let duplicate_check_performed =
+        native_post_duplicate_check_required(execution_admission, idempotency_evidence);
     let (duplicate_found, duplicate_check_error) = if duplicate_check_performed {
         match native_post_idempotency_duplicate_present(
             store_root,
@@ -661,6 +662,10 @@ mod tests {
         assert_eq!(mismatched.admission_status, "blocked");
         assert_eq!(mismatched.blocked_reason, "handler_scope_not_selected");
         assert_eq!(mismatched.current_plan_executes_real_handler, false);
+        assert!(!super::native_post_duplicate_check_required(
+            &mismatched,
+            &idempotency
+        ));
 
         let matched = super::native_post_execution_admission_with_scope(
             spec,
@@ -674,6 +679,10 @@ mod tests {
         assert_eq!(matched.admission_status, "harness_ready");
         assert_eq!(matched.current_plan_executes_real_handler, true);
         assert_eq!(matched.blocked_reason, "real_handler_harness_dry_run_only");
+        assert!(super::native_post_duplicate_check_required(
+            &matched,
+            &idempotency
+        ));
     }
 
     #[test]
