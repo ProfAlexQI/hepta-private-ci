@@ -28,21 +28,22 @@ pub use hepta_runtime::{
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
     NativePostSelectedHandlerRolloutEvidence, NativePostStoreEffectProjection,
-    native_post_audit_event_contract, native_post_body_admission, native_post_body_schema,
-    native_post_confirmation_contract, native_post_duplicate_check_required,
-    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
-    native_post_execution_store_capacity_allows_append, native_post_execution_store_capacity_ok,
-    native_post_execution_store_contracts_ready,
+    NativePostStoreReadObservation, native_post_audit_event_contract, native_post_body_admission,
+    native_post_body_schema, native_post_confirmation_contract,
+    native_post_duplicate_check_required, native_post_execution_admission_with_scope,
+    native_post_execution_readiness_report, native_post_execution_store_capacity_allows_append,
+    native_post_execution_store_capacity_ok, native_post_execution_store_contracts_ready,
     native_post_execution_store_file_status_from_observation,
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
     native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_jsonl_valid,
     native_post_execution_store_record_json_line,
     native_post_execution_store_record_projected_append_bytes, native_post_execution_store_specs,
-    native_post_execution_store_write_report, native_post_idempotency_duplicate_present_in_content,
-    native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
-    native_post_plan_parameter, native_post_plan_route_specs,
-    native_post_rate_limit_check_required, native_post_rate_limit_recent_present_in_content,
+    native_post_execution_store_write_report,
+    native_post_idempotency_duplicate_present_from_observation, native_post_idempotency_evidence,
+    native_post_plan_kind_has_real_handler, native_post_plan_parameter,
+    native_post_plan_route_specs, native_post_rate_limit_check_required,
+    native_post_rate_limit_recent_present_from_observation,
     native_post_real_handler_harness_from_observation, native_post_real_handler_scope_matches,
     native_post_real_handler_scope_selected_kinds,
     native_post_real_handler_scope_single_selected_kind, native_post_redacted_fingerprint,
@@ -436,44 +437,49 @@ pub fn persist_native_post_execution_store_record(
 fn native_post_idempotency_duplicate_present(
     root: &Path,
     key_fingerprint: Option<&str>,
-) -> Result<bool, String> {
-    let Some(key_fingerprint) = key_fingerprint else {
-        return Ok(false);
-    };
+) -> Result<bool, &'static str> {
     let path = root.join("idempotency.jsonl");
-    match fs::read_to_string(&path) {
-        Ok(content) => Ok(native_post_idempotency_duplicate_present_in_content(
-            &content,
-            Some(key_fingerprint),
-        )),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(format!(
-            "failed to read native POST idempotency store {}: {error}",
-            path.display()
-        )),
-    }
+    native_post_idempotency_duplicate_present_from_observation(
+        native_post_store_read_observation(&path),
+        key_fingerprint,
+    )
 }
 
 fn native_post_rate_limit_recent_present(
     root: &Path,
     bucket: &str,
     window_ms: u64,
-) -> Result<bool, String> {
+) -> Result<bool, &'static str> {
     let path = root.join("rate-limit.jsonl");
-    let content = match fs::read_to_string(&path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => {
-            return Err(format!(
-                "failed to read native POST rate-limit store {}: {error}",
-                path.display()
-            ));
-        }
-    };
     let now_ms = native_post_now_unix_ms();
-    Ok(native_post_rate_limit_recent_present_in_content(
-        &content, bucket, window_ms, now_ms,
-    ))
+    native_post_rate_limit_recent_present_from_observation(
+        native_post_store_read_observation(&path),
+        bucket,
+        window_ms,
+        now_ms,
+    )
+}
+
+fn native_post_store_read_observation(path: &Path) -> NativePostStoreReadObservation {
+    match fs::read_to_string(path) {
+        Ok(content) => NativePostStoreReadObservation {
+            content: Some(content),
+            missing: false,
+            read_failed: false,
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            NativePostStoreReadObservation {
+                content: None,
+                missing: true,
+                read_failed: false,
+            }
+        }
+        Err(_) => NativePostStoreReadObservation {
+            content: None,
+            missing: false,
+            read_failed: true,
+        },
+    }
 }
 
 fn native_post_execution_store_file_statuses(

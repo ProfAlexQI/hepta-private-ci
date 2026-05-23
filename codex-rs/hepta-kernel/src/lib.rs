@@ -608,6 +608,13 @@ pub struct HeptaKernelNativePostExecutionStoreFileObservation {
     pub jsonl_health: HeptaKernelNativePostExecutionStoreJsonlHealth,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelNativePostStoreReadObservation {
+    pub content: Option<String>,
+    pub missing: bool,
+    pub read_failed: bool,
+}
+
 pub fn hepta_kernel_native_post_execution_store_specs()
 -> &'static [HeptaKernelNativePostExecutionStoreFileSpec] {
     &[
@@ -770,6 +777,27 @@ pub fn hepta_kernel_native_post_idempotency_duplicate_present_in_content(
     content.lines().any(|line| line.contains(key_fingerprint))
 }
 
+pub fn hepta_kernel_native_post_idempotency_duplicate_present_from_observation(
+    observation: HeptaKernelNativePostStoreReadObservation,
+    key_fingerprint: Option<&str>,
+) -> Result<bool, &'static str> {
+    if key_fingerprint.is_none() {
+        return Ok(false);
+    }
+    if let Some(content) = observation.content {
+        return Ok(
+            hepta_kernel_native_post_idempotency_duplicate_present_in_content(
+                &content,
+                key_fingerprint,
+            ),
+        );
+    }
+    if observation.missing {
+        return Ok(false);
+    }
+    Err("native_post_idempotency_check_failed")
+}
+
 pub fn hepta_kernel_native_post_rate_limit_recent_present_in_content(
     content: &str,
     bucket: &str,
@@ -794,6 +822,25 @@ pub fn hepta_kernel_native_post_rate_limit_recent_present_in_content(
         }
     }
     false
+}
+
+pub fn hepta_kernel_native_post_rate_limit_recent_present_from_observation(
+    observation: HeptaKernelNativePostStoreReadObservation,
+    bucket: &str,
+    window_ms: u64,
+    now_ms: u64,
+) -> Result<bool, &'static str> {
+    if let Some(content) = observation.content {
+        return Ok(
+            hepta_kernel_native_post_rate_limit_recent_present_in_content(
+                &content, bucket, window_ms, now_ms,
+            ),
+        );
+    }
+    if observation.missing {
+        return Ok(false);
+    }
+    Err("native_post_rate_limit_check_failed")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -9048,6 +9095,39 @@ mod tests {
             )
         );
         assert!(!hepta_kernel_native_post_idempotency_duplicate_present_in_content(content, None));
+        assert_eq!(
+            hepta_kernel_native_post_idempotency_duplicate_present_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: Some(content.to_string()),
+                    missing: false,
+                    read_failed: false,
+                },
+                Some("sha256:abc123"),
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            hepta_kernel_native_post_idempotency_duplicate_present_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: None,
+                    missing: true,
+                    read_failed: false,
+                },
+                Some("sha256:abc123"),
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            hepta_kernel_native_post_idempotency_duplicate_present_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: None,
+                    missing: false,
+                    read_failed: true,
+                },
+                Some("sha256:abc123"),
+            ),
+            Err("native_post_idempotency_check_failed")
+        );
     }
 
     #[test]
@@ -9074,6 +9154,45 @@ mod tests {
             !hepta_kernel_native_post_rate_limit_recent_present_in_content(
                 content, "missing", 1_000, 1_000,
             )
+        );
+        assert_eq!(
+            hepta_kernel_native_post_rate_limit_recent_present_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: Some(content.to_string()),
+                    missing: false,
+                    read_failed: false,
+                },
+                "task_publish",
+                150,
+                1_000,
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            hepta_kernel_native_post_rate_limit_recent_present_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: None,
+                    missing: true,
+                    read_failed: false,
+                },
+                "task_publish",
+                150,
+                1_000,
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            hepta_kernel_native_post_rate_limit_recent_present_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: None,
+                    missing: false,
+                    read_failed: true,
+                },
+                "task_publish",
+                150,
+                1_000,
+            ),
+            Err("native_post_rate_limit_check_failed")
         );
     }
 

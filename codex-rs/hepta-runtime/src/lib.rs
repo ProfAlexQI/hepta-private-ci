@@ -155,6 +155,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostRolloutEvidenceScan as NativePostRolloutEvidenceScan,
     HeptaKernelNativePostSelectedHandlerRolloutEvidence as NativePostSelectedHandlerRolloutEvidence,
     HeptaKernelNativePostStoreEffectProjection as NativePostStoreEffectProjection,
+    HeptaKernelNativePostStoreReadObservation as NativePostStoreReadObservation,
 };
 pub use inbound_router::{
     DEFAULT_INBOUND_ROUTER_ID, DEFAULT_INBOUND_ROUTER_PATH, InboundEventInput, InboundEventRecord,
@@ -580,6 +581,16 @@ pub fn native_post_idempotency_duplicate_present_in_content(
     )
 }
 
+pub fn native_post_idempotency_duplicate_present_from_observation(
+    observation: NativePostStoreReadObservation,
+    key_fingerprint: Option<&str>,
+) -> Result<bool, &'static str> {
+    hepta_kernel::hepta_kernel_native_post_idempotency_duplicate_present_from_observation(
+        observation,
+        key_fingerprint,
+    )
+}
+
 pub fn native_post_rate_limit_recent_present_in_content(
     content: &str,
     bucket: &str,
@@ -588,6 +599,20 @@ pub fn native_post_rate_limit_recent_present_in_content(
 ) -> bool {
     hepta_kernel::hepta_kernel_native_post_rate_limit_recent_present_in_content(
         content, bucket, window_ms, now_ms,
+    )
+}
+
+pub fn native_post_rate_limit_recent_present_from_observation(
+    observation: NativePostStoreReadObservation,
+    bucket: &str,
+    window_ms: u64,
+    now_ms: u64,
+) -> Result<bool, &'static str> {
+    hepta_kernel::hepta_kernel_native_post_rate_limit_recent_present_from_observation(
+        observation,
+        bucket,
+        window_ms,
+        now_ms,
     )
 }
 
