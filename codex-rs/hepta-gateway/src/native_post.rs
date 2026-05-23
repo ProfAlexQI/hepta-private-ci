@@ -23,7 +23,7 @@ pub use hepta_runtime::{
     NativePostExecutionStoreRecord, NativePostExecutionStoreWriteReport,
     NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
     NativePostIdempotencyEvidence, NativePostPlanResponse, NativePostPlanRouteSpec,
-    NativePostRealHandlerHarness, NativePostRollbackContract,
+    NativePostRealHandlerHarness, NativePostRealHandlerObservation, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
     NativePostSelectedHandlerRolloutEvidence, NativePostStoreEffectProjection,
@@ -41,7 +41,8 @@ pub use hepta_runtime::{
     native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
     native_post_plan_parameter, native_post_plan_route_specs,
     native_post_rate_limit_check_required, native_post_rate_limit_recent_present_in_content,
-    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
+    native_post_real_handler_harness_from_observation, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds,
     native_post_real_handler_scope_single_selected_kind, native_post_redacted_fingerprint,
     native_post_rollback_contract, native_post_store_capacity_check_required,
     native_post_store_effect_projection, native_post_store_write_attempt_required,
@@ -329,15 +330,13 @@ pub fn native_post_real_handler_harness(
     } else {
         (false, None, None)
     };
-    hepta_runtime::native_post_real_handler_harness(
-        spec,
-        execution_admission,
+    let observation = NativePostRealHandlerObservation {
         duplicate_check_performed,
         duplicate_found,
         duplicate_check_error,
         rate_limit_check_performed,
         rate_limited,
-        store_limits.rate_limit_window_ms,
+        rate_limit_window_ms: store_limits.rate_limit_window_ms,
         rate_limit_check_error,
         capacity_check_performed,
         store_capacity_ok,
@@ -346,7 +345,8 @@ pub fn native_post_real_handler_harness(
         store_write_succeeded,
         store_write_report,
         store_write_error,
-    )
+    };
+    native_post_real_handler_harness_from_observation(spec, execution_admission, observation)
 }
 
 pub fn native_post_execution_store_record(

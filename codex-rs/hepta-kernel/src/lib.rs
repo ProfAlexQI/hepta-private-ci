@@ -482,6 +482,24 @@ pub struct HeptaKernelNativePostRealHandlerHarness {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostRealHandlerObservation {
+    pub duplicate_check_performed: bool,
+    pub duplicate_found: bool,
+    pub duplicate_check_error: Option<&'static str>,
+    pub rate_limit_check_performed: bool,
+    pub rate_limited: bool,
+    pub rate_limit_window_ms: u64,
+    pub rate_limit_check_error: Option<&'static str>,
+    pub capacity_check_performed: bool,
+    pub store_capacity_ok: bool,
+    pub store_capacity_check_error: Option<&'static str>,
+    pub store_write_attempted: bool,
+    pub store_write_succeeded: bool,
+    pub store_write_report: Option<HeptaKernelNativePostExecutionStoreWriteReport>,
+    pub store_write_error: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostStoreEffectProjection {
     pub idempotency_evidence: HeptaKernelNativePostIdempotencyEvidence,
     pub audit_event_contract: HeptaKernelNativePostAuditEventContract,
@@ -1987,6 +2005,31 @@ pub fn hepta_kernel_native_post_real_handler_harness(
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
     }
+}
+
+pub fn hepta_kernel_native_post_real_handler_harness_from_observation(
+    spec: &HeptaKernelNativePostPlanRouteSpec,
+    execution_admission: &HeptaKernelNativePostExecutionAdmission,
+    observation: HeptaKernelNativePostRealHandlerObservation,
+) -> HeptaKernelNativePostRealHandlerHarness {
+    hepta_kernel_native_post_real_handler_harness(
+        spec,
+        execution_admission,
+        observation.duplicate_check_performed,
+        observation.duplicate_found,
+        observation.duplicate_check_error,
+        observation.rate_limit_check_performed,
+        observation.rate_limited,
+        observation.rate_limit_window_ms,
+        observation.rate_limit_check_error,
+        observation.capacity_check_performed,
+        observation.store_capacity_ok,
+        observation.store_capacity_check_error,
+        observation.store_write_attempted,
+        observation.store_write_succeeded,
+        observation.store_write_report,
+        observation.store_write_error,
+    )
 }
 
 pub fn hepta_kernel_native_post_store_effect_projection(
@@ -8472,23 +8515,25 @@ mod tests {
             raw_audit_payload_exposed: false,
         };
 
-        let recorded = hepta_kernel_native_post_real_handler_harness(
+        let recorded = hepta_kernel_native_post_real_handler_harness_from_observation(
             task_publish,
             &execution,
-            true,
-            false,
-            None,
-            true,
-            false,
-            1_000,
-            None,
-            true,
-            true,
-            None,
-            true,
-            true,
-            Some(write_report),
-            None,
+            HeptaKernelNativePostRealHandlerObservation {
+                duplicate_check_performed: true,
+                duplicate_found: false,
+                duplicate_check_error: None,
+                rate_limit_check_performed: true,
+                rate_limited: false,
+                rate_limit_window_ms: 1_000,
+                rate_limit_check_error: None,
+                capacity_check_performed: true,
+                store_capacity_ok: true,
+                store_capacity_check_error: None,
+                store_write_attempted: true,
+                store_write_succeeded: true,
+                store_write_report: Some(write_report),
+                store_write_error: None,
+            },
         );
 
         assert_eq!(recorded.status, "dry_run_recorded");
@@ -8507,23 +8552,25 @@ mod tests {
         assert!(!recorded.raw_request_body_exposed);
         assert!(!recorded.gateway_mutation_performed);
 
-        let duplicate = hepta_kernel_native_post_real_handler_harness(
+        let duplicate = hepta_kernel_native_post_real_handler_harness_from_observation(
             task_publish,
             &execution,
-            true,
-            true,
-            None,
-            false,
-            false,
-            1_000,
-            None,
-            false,
-            true,
-            None,
-            false,
-            false,
-            None,
-            None,
+            HeptaKernelNativePostRealHandlerObservation {
+                duplicate_check_performed: true,
+                duplicate_found: true,
+                duplicate_check_error: None,
+                rate_limit_check_performed: false,
+                rate_limited: false,
+                rate_limit_window_ms: 1_000,
+                rate_limit_check_error: None,
+                capacity_check_performed: false,
+                store_capacity_ok: true,
+                store_capacity_check_error: None,
+                store_write_attempted: false,
+                store_write_succeeded: false,
+                store_write_report: None,
+                store_write_error: None,
+            },
         );
 
         assert_eq!(duplicate.status, "duplicate_suppressed");

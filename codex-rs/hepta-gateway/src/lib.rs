@@ -61,7 +61,7 @@ pub use native_post::{
     NativePostExecutionStoreRecord, NativePostExecutionStoreWriteReport,
     NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
     NativePostIdempotencyEvidence, NativePostPlanResponse, NativePostPlanRouteSpec,
-    NativePostRealHandlerHarness, NativePostRollbackContract,
+    NativePostRealHandlerHarness, NativePostRealHandlerObservation, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostSelectedHandlerRolloutEvidence,
     NativePostStoreEffectProjection, native_post_activation_plan_report,
@@ -75,11 +75,11 @@ pub use native_post::{
     native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
     native_post_plan_parameter, native_post_plan_report, native_post_plan_route_specs,
     native_post_rate_limit_check_required, native_post_real_handler_harness,
-    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
-    native_post_redacted_fingerprint, native_post_rollback_contract,
-    native_post_rollout_evidence_report, native_post_store_capacity_check_required,
-    native_post_store_effect_projection, native_post_store_write_attempt_required,
-    persist_native_post_execution_store_record,
+    native_post_real_handler_harness_from_observation, native_post_real_handler_scope_matches,
+    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
+    native_post_rollback_contract, native_post_rollout_evidence_report,
+    native_post_store_capacity_check_required, native_post_store_effect_projection,
+    native_post_store_write_attempt_required, persist_native_post_execution_store_record,
 };
 pub use report::GatewayPluginResolutionContractReport;
 pub use resolution::{

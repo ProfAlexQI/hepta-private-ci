@@ -145,6 +145,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostPlanResponse as NativePostPlanResponse,
     HeptaKernelNativePostPlanRouteSpec as NativePostPlanRouteSpec,
     HeptaKernelNativePostRealHandlerHarness as NativePostRealHandlerHarness,
+    HeptaKernelNativePostRealHandlerObservation as NativePostRealHandlerObservation,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
     HeptaKernelNativePostRolloutEvidencePlanKindCount as NativePostRolloutEvidencePlanKindCount,
     HeptaKernelNativePostRolloutEvidenceRecordSummary as NativePostRolloutEvidenceRecordSummary,
@@ -430,6 +431,18 @@ pub fn native_post_real_handler_harness(
         store_write_succeeded,
         store_write_report,
         store_write_error,
+    )
+}
+
+pub fn native_post_real_handler_harness_from_observation(
+    spec: &NativePostPlanRouteSpec,
+    execution_admission: &NativePostExecutionAdmission,
+    observation: NativePostRealHandlerObservation,
+) -> NativePostRealHandlerHarness {
+    hepta_kernel::hepta_kernel_native_post_real_handler_harness_from_observation(
+        spec,
+        execution_admission,
+        observation,
     )
 }
 
