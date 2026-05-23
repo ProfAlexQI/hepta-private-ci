@@ -24,6 +24,7 @@ post_json="$(curl -fsS "$BASE_URL/api/native-post-activation-plan")"
 stores_json="$(curl -fsS "$BASE_URL/api/native-post-execution-stores")"
 adapter_json="$(curl -fsS "$BASE_URL/api/hepta-codex-engine-adapter-boundary")"
 core_json="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
+closure_json="$(curl -fsS "$BASE_URL/api/hepta-name-repository-closure")"
 
 report="$(jq -n \
   --arg product "Hepta" \
@@ -41,6 +42,7 @@ report="$(jq -n \
   --argjson stores "$stores_json" \
   --argjson adapter "$adapter_json" \
   --argjson core "$core_json" \
+  --argjson closure "$closure_json" \
   '{
     product:$product,
     runtime:$runtime,
@@ -114,6 +116,31 @@ report="$(jq -n \
         and $core.intended_binary_target == "hepta"
         and $core.installed_service_binary == $installed_bin
         and $core.full_fusion_complete == false
+        and $core.phase_4_name_repository_closure_gate == "hepta_name_repository_closure_gate"
+        and $core.phase_4_name_repository_closure_gate_ready == true
+        and $core.phase_4_name_repository_closure_gate_status == "inventory_ready_remaining_transition_names_block_full_fusion"
+        and $core.phase_4_name_repository_closure_remaining_surface_count > 0
+        and ($core.phase_4_name_repository_closure_blockers | length) > 0
+        and $core.phase_4_name_repository_closure_ready == false
+        and $closure.status == "ready"
+        and $closure.phase == "phase_4_name_repository_closure"
+        and $closure.closure_gate == "hepta_name_repository_closure_gate"
+        and $closure.closure_gate_ready == true
+        and $closure.closure_gate_status == "inventory_ready_remaining_transition_names_block_full_fusion"
+        and $closure.phase_4_name_repository_closure_ready == false
+        and $closure.full_fusion_complete == false
+        and $closure.transition_surface_count >= 6
+        and $closure.closed_transition_surface_count >= 1
+        and $closure.remaining_transition_surface_count > 0
+        and ($closure.blockers | length) > 0
+        and ($closure.surfaces | map(select(.blocks_full_fusion == true)) | length) == $closure.remaining_transition_surface_count
+        and ($closure.surfaces | map(select(.surface_id == "active_release_binary_package" and .closure_state == "closed" and .blocks_full_fusion == false)) | length) == 1
+        and ($closure.surfaces | map(select(.surface_id == "runtime_report_strings" and .current_name == "hepta-codex" and .target_name == "hepta" and .blocks_full_fusion == true)) | length) == 1
+        and $closure.forbidden_real_side_effects.public_ga_claimed == false
+        and $closure.forbidden_real_side_effects.public_release_published == false
+        and $closure.forbidden_real_side_effects.gateway_mutation_performed == false
+        and $closure.forbidden_real_side_effects.credential_read == false
+        and $closure.forbidden_real_side_effects.model_invoked == false
         and (
           (
             $operator.status == "attention"
@@ -184,6 +211,13 @@ report="$(jq -n \
     active_binary_package:$core.active_binary_package,
     intended_binary_package:$core.intended_binary_package,
     installed_service_binary:$core.installed_service_binary,
+    phase_4_name_repository_closure_gate_status:$core.phase_4_name_repository_closure_gate_status,
+    phase_4_name_repository_closure_ready:$core.phase_4_name_repository_closure_ready,
+    phase_4_name_repository_closure_remaining_surface_count:$core.phase_4_name_repository_closure_remaining_surface_count,
+    name_repository_closure_status:$closure.status,
+    name_repository_closure_gate_status:$closure.closure_gate_status,
+    name_repository_closure_remaining_surface_count:$closure.remaining_transition_surface_count,
+    name_repository_closure_blocker_count:($closure.blockers | length),
     side_effects:{
       telegram_read_by_status:$poll.external_network_read_by_status,
       telegram_send_by_status:$poll.external_send_by_status,
@@ -195,7 +229,12 @@ report="$(jq -n \
       adapter_task_publish_real_mutation:$adapter.forbidden_real_side_effects.task_publish_real_mutation_performed,
       adapter_credential_read:$adapter.forbidden_real_side_effects.credential_read,
       adapter_model_invoked:$adapter.forbidden_real_side_effects.model_invoked,
-      adapter_external_network_read:$adapter.forbidden_real_side_effects.external_network_read
+      adapter_external_network_read:$adapter.forbidden_real_side_effects.external_network_read,
+      closure_public_ga_claimed:$closure.forbidden_real_side_effects.public_ga_claimed,
+      closure_public_release_published:$closure.forbidden_real_side_effects.public_release_published,
+      closure_gateway_mutation:$closure.forbidden_real_side_effects.gateway_mutation_performed,
+      closure_credential_read:$closure.forbidden_real_side_effects.credential_read,
+      closure_model_invoked:$closure.forbidden_real_side_effects.model_invoked
     }
   }')"
 

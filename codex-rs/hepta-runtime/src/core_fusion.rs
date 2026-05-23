@@ -6,6 +6,9 @@ pub const HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-codex-engine-adapter-boundary";
 pub const HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND: &str =
     "/hepta-codex-engine-adapter-boundary --json";
+pub const HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT: &str = "/api/hepta-name-repository-closure";
+pub const HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND: &str =
+    "/hepta-name-repository-closure --json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaCoreFusionReadinessResponse {
@@ -36,6 +39,11 @@ pub struct HeptaCoreFusionReadinessResponse {
     pub intended_binary_package: &'static str,
     pub intended_binary_target: &'static str,
     pub installed_service_binary: &'static str,
+    pub phase_4_name_repository_closure_gate: &'static str,
+    pub phase_4_name_repository_closure_gate_ready: bool,
+    pub phase_4_name_repository_closure_gate_status: &'static str,
+    pub phase_4_name_repository_closure_remaining_surface_count: usize,
+    pub phase_4_name_repository_closure_blockers: &'static [&'static str],
     pub phase_4_name_repository_closure_ready: bool,
     pub full_fusion_complete: bool,
     pub hepta_owned_root_surfaces: &'static [&'static str],
@@ -59,6 +67,43 @@ pub struct HeptaCoreFusionForbiddenSideEffects {
     pub credential_read: bool,
     pub model_invoked: bool,
     pub external_network_read: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct HeptaNameRepositoryClosureSurface {
+    pub surface_id: &'static str,
+    pub surface_kind: &'static str,
+    pub current_name: &'static str,
+    pub target_name: &'static str,
+    pub closure_state: &'static str,
+    pub operator_facing: bool,
+    pub compatibility_alias_retained: bool,
+    pub blocks_full_fusion: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaNameRepositoryClosureResponse {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub source_command: &'static str,
+    pub native_route: bool,
+    pub side_effect_free: bool,
+    pub phase: &'static str,
+    pub root_owner: &'static str,
+    pub closure_gate: &'static str,
+    pub closure_gate_ready: bool,
+    pub closure_gate_status: &'static str,
+    pub phase_4_name_repository_closure_ready: bool,
+    pub full_fusion_complete: bool,
+    pub transition_surface_count: usize,
+    pub closed_transition_surface_count: usize,
+    pub remaining_transition_surface_count: usize,
+    pub operator_facing_transition_surface_count: usize,
+    pub surfaces: &'static [HeptaNameRepositoryClosureSurface],
+    pub blockers: &'static [&'static str],
+    pub forbidden_real_side_effects: HeptaCoreFusionForbiddenSideEffects,
+    pub next_actions: &'static [&'static str],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -271,6 +316,17 @@ const BINARY_PACKAGE_INVERSION_GATE: &str = "hepta_first_class_binary_package_in
 const BINARY_PACKAGE_INVERSION_GATE_STATUS: &str =
     "ready_hepta_cli_release_package_ownership_active";
 
+const NAME_REPOSITORY_CLOSURE_GATE: &str = "hepta_name_repository_closure_gate";
+const NAME_REPOSITORY_CLOSURE_GATE_STATUS: &str =
+    "inventory_ready_remaining_transition_names_block_full_fusion";
+const NAME_REPOSITORY_CLOSURE_BLOCKERS: &[&str] = &[
+    "operator_facing_runtime_reports_still_emit_hepta_codex_runtime_name",
+    "engine_adapter_boundary_route_still_uses_hepta_codex_transition_slug",
+    "release_gate_script_family_still_uses_hepta_codex_transition_prefix",
+    "core_fusion_route_document_still_uses_hepta_codex_transition_title",
+    "workspace_repository_directory_still_uses_hepta_codex_transition_name",
+];
+
 const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
     "all adapter surfaces expose typed request/response envelopes",
     "all adapter surfaces expose reportable typed parity gates",
@@ -292,6 +348,69 @@ const NEXT_ACTIONS: &[&str] = &[
     "close remaining operator-facing runtime strings and repository naming from hepta-codex toward Hepta",
     "port or retire non-gateway legacy CLI shell compatibility that still routes through codex-cli",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
+];
+
+const NAME_REPOSITORY_CLOSURE_SURFACES: &[HeptaNameRepositoryClosureSurface] = &[
+    HeptaNameRepositoryClosureSurface {
+        surface_id: "active_release_binary_package",
+        surface_kind: "release_package",
+        current_name: "codex-cli --bin hepta",
+        target_name: "hepta-cli --bin hepta",
+        closure_state: "closed",
+        operator_facing: true,
+        compatibility_alias_retained: true,
+        blocks_full_fusion: false,
+    },
+    HeptaNameRepositoryClosureSurface {
+        surface_id: "runtime_report_strings",
+        surface_kind: "runtime_report",
+        current_name: "hepta-codex",
+        target_name: "hepta",
+        closure_state: "pending",
+        operator_facing: true,
+        compatibility_alias_retained: true,
+        blocks_full_fusion: true,
+    },
+    HeptaNameRepositoryClosureSurface {
+        surface_id: "engine_adapter_boundary_route",
+        surface_kind: "native_gateway_route",
+        current_name: "/api/hepta-codex-engine-adapter-boundary",
+        target_name: "/api/hepta-engine-adapter-boundary",
+        closure_state: "pending_alias_plan",
+        operator_facing: true,
+        compatibility_alias_retained: true,
+        blocks_full_fusion: true,
+    },
+    HeptaNameRepositoryClosureSurface {
+        surface_id: "release_gate_script_family",
+        surface_kind: "script_family",
+        current_name: "scripts/hepta-codex-*.sh",
+        target_name: "scripts/hepta-*.sh",
+        closure_state: "pending_alias_plan",
+        operator_facing: true,
+        compatibility_alias_retained: true,
+        blocks_full_fusion: true,
+    },
+    HeptaNameRepositoryClosureSurface {
+        surface_id: "core_fusion_route_document",
+        surface_kind: "release_document",
+        current_name: "docs/architecture/HEPTA_CODEX_CORE_FUSION_ROUTE_2026-05-23.md",
+        target_name: "docs/architecture/HEPTA_CORE_FUSION_ROUTE.md",
+        closure_state: "pending",
+        operator_facing: true,
+        compatibility_alias_retained: true,
+        blocks_full_fusion: true,
+    },
+    HeptaNameRepositoryClosureSurface {
+        surface_id: "workspace_repository_directory",
+        surface_kind: "repository_directory",
+        current_name: "/Users/qianqi/.openclaw/workspace/hepta-codex",
+        target_name: "/Users/qianqi/.openclaw/workspace/Hepta",
+        closure_state: "pending_operator_cutover",
+        operator_facing: false,
+        compatibility_alias_retained: true,
+        blocks_full_fusion: true,
+    },
 ];
 
 const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] = &[
@@ -883,7 +1002,70 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
     }
 }
 
+fn name_repository_closed_transition_surface_count() -> usize {
+    NAME_REPOSITORY_CLOSURE_SURFACES
+        .iter()
+        .filter(|surface| surface.closure_state == "closed" && !surface.blocks_full_fusion)
+        .count()
+}
+
+fn name_repository_remaining_transition_surface_count() -> usize {
+    NAME_REPOSITORY_CLOSURE_SURFACES
+        .iter()
+        .filter(|surface| surface.blocks_full_fusion)
+        .count()
+}
+
+fn name_repository_operator_facing_transition_surface_count() -> usize {
+    NAME_REPOSITORY_CLOSURE_SURFACES
+        .iter()
+        .filter(|surface| surface.operator_facing)
+        .count()
+}
+
+pub fn hepta_name_repository_closure_report() -> HeptaNameRepositoryClosureResponse {
+    let remaining_transition_surface_count = name_repository_remaining_transition_surface_count();
+
+    HeptaNameRepositoryClosureResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "ready",
+        source_command: HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND,
+        native_route: true,
+        side_effect_free: true,
+        phase: "phase_4_name_repository_closure",
+        root_owner: "hepta",
+        closure_gate: NAME_REPOSITORY_CLOSURE_GATE,
+        closure_gate_ready: true,
+        closure_gate_status: NAME_REPOSITORY_CLOSURE_GATE_STATUS,
+        phase_4_name_repository_closure_ready: remaining_transition_surface_count == 0,
+        full_fusion_complete: false,
+        transition_surface_count: NAME_REPOSITORY_CLOSURE_SURFACES.len(),
+        closed_transition_surface_count: name_repository_closed_transition_surface_count(),
+        remaining_transition_surface_count,
+        operator_facing_transition_surface_count:
+            name_repository_operator_facing_transition_surface_count(),
+        surfaces: NAME_REPOSITORY_CLOSURE_SURFACES,
+        blockers: NAME_REPOSITORY_CLOSURE_BLOCKERS,
+        forbidden_real_side_effects: HeptaCoreFusionForbiddenSideEffects {
+            public_ga_claimed: false,
+            public_release_published: false,
+            native_post_real_mutation_performed: false,
+            task_publish_real_mutation_performed: false,
+            telegram_send_performed: false,
+            gateway_mutation_performed: false,
+            launchd_mutated: false,
+            credential_read: false,
+            model_invoked: false,
+            external_network_read: false,
+        },
+        next_actions: NEXT_ACTIONS,
+    }
+}
+
 pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse {
+    let name_repository_closure = hepta_name_repository_closure_report();
+
     HeptaCoreFusionReadinessResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -912,7 +1094,14 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         intended_binary_package: "hepta-cli",
         intended_binary_target: "hepta",
         installed_service_binary: "/Users/qianqi/.local/opt/hepta/bin/hepta",
-        phase_4_name_repository_closure_ready: false,
+        phase_4_name_repository_closure_gate: NAME_REPOSITORY_CLOSURE_GATE,
+        phase_4_name_repository_closure_gate_ready: name_repository_closure.closure_gate_ready,
+        phase_4_name_repository_closure_gate_status: NAME_REPOSITORY_CLOSURE_GATE_STATUS,
+        phase_4_name_repository_closure_remaining_surface_count: name_repository_closure
+            .remaining_transition_surface_count,
+        phase_4_name_repository_closure_blockers: NAME_REPOSITORY_CLOSURE_BLOCKERS,
+        phase_4_name_repository_closure_ready: name_repository_closure
+            .phase_4_name_repository_closure_ready,
         full_fusion_complete: false,
         hepta_owned_root_surfaces: HEPTA_OWNED_ROOT_SURFACES,
         codex_engine_adapter_surfaces: CODEX_ENGINE_ADAPTER_SURFACES,
@@ -969,7 +1158,7 @@ mod tests {
         hepta_codex_tool_invocation_adapter_envelope,
         hepta_codex_tool_invocation_adapter_shadow_replay,
         hepta_codex_tool_invocation_adapter_threading_plan, hepta_core_fusion_readiness_report,
-        hepta_product_runtime_entrypoint_plan,
+        hepta_name_repository_closure_report, hepta_product_runtime_entrypoint_plan,
     };
 
     #[test]
@@ -1003,6 +1192,22 @@ mod tests {
             report.installed_service_binary,
             "/Users/qianqi/.local/opt/hepta/bin/hepta"
         );
+        assert_eq!(
+            report.phase_4_name_repository_closure_gate,
+            "hepta_name_repository_closure_gate"
+        );
+        assert!(report.phase_4_name_repository_closure_gate_ready);
+        assert_eq!(
+            report.phase_4_name_repository_closure_gate_status,
+            "inventory_ready_remaining_transition_names_block_full_fusion"
+        );
+        assert!(report.phase_4_name_repository_closure_remaining_surface_count > 0);
+        assert!(
+            report
+                .phase_4_name_repository_closure_blockers
+                .contains(&"operator_facing_runtime_reports_still_emit_hepta_codex_runtime_name")
+        );
+        assert!(!report.phase_4_name_repository_closure_ready);
         assert!(
             report
                 .binary_package_inversion_criteria
@@ -1026,6 +1231,58 @@ mod tests {
                 .contains(&"codex-core")
         );
         assert!(report.remaining_direct_codex_base_dependency_count > 0);
+    }
+
+    #[test]
+    fn name_repository_closure_report_tracks_remaining_transition_surfaces() {
+        let report = hepta_name_repository_closure_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.runtime, "hepta-codex");
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.phase, "phase_4_name_repository_closure");
+        assert_eq!(report.root_owner, "hepta");
+        assert_eq!(report.closure_gate, "hepta_name_repository_closure_gate");
+        assert!(report.closure_gate_ready);
+        assert_eq!(
+            report.closure_gate_status,
+            "inventory_ready_remaining_transition_names_block_full_fusion"
+        );
+        assert!(!report.phase_4_name_repository_closure_ready);
+        assert!(!report.full_fusion_complete);
+        assert_eq!(report.transition_surface_count, report.surfaces.len());
+        assert!(report.closed_transition_surface_count >= 1);
+        assert!(report.remaining_transition_surface_count >= 5);
+        assert!(report.operator_facing_transition_surface_count >= 5);
+        assert_eq!(
+            report.remaining_transition_surface_count,
+            report
+                .surfaces
+                .iter()
+                .filter(|surface| surface.blocks_full_fusion)
+                .count()
+        );
+        assert!(report.surfaces.iter().any(|surface| surface.surface_id
+            == "active_release_binary_package"
+            && surface.closure_state == "closed"
+            && !surface.blocks_full_fusion));
+        assert!(report.surfaces.iter().any(|surface| surface.surface_id
+            == "runtime_report_strings"
+            && surface.current_name == "hepta-codex"
+            && surface.target_name == "hepta"
+            && surface.blocks_full_fusion));
+        assert!(
+            report
+                .blockers
+                .contains(&"engine_adapter_boundary_route_still_uses_hepta_codex_transition_slug")
+        );
+        assert!(!report.forbidden_real_side_effects.public_release_published);
+        assert!(
+            !report
+                .forbidden_real_side_effects
+                .gateway_mutation_performed
+        );
+        assert!(!report.forbidden_real_side_effects.credential_read);
     }
 
     #[test]

@@ -38,6 +38,12 @@ echo "[hepta-codex-preflight] adapter shadow-replay gate"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
   all_adapter_shadow_replay -- --nocapture
 
+echo "[hepta-codex-preflight] name/repository closure gate"
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
+  name_repository_closure -- --nocapture
+cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta \
+  hepta_name_repository_closure -- --nocapture
+
 echo "[hepta-codex-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 

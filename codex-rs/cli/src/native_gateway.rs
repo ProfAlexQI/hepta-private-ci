@@ -19,6 +19,8 @@ use hepta_gateway::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
 use hepta_gateway::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
 use hepta_gateway::HEPTA_CORE_FUSION_READINESS_ENDPOINT;
 use hepta_gateway::HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND;
+use hepta_gateway::HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT;
+use hepta_gateway::HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND;
 use hepta_gateway::NATIVE_POST_ACTIVATION_PLAN_ENDPOINT;
 use hepta_gateway::NATIVE_POST_EXECUTION_READINESS_ENDPOINT;
 use hepta_gateway::NATIVE_POST_EXECUTION_STORE_DIR_ENV;
@@ -88,7 +90,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 66;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 67;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
 const HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED";
@@ -285,6 +287,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND,
         capability: "hepta-core-fusion-readiness",
         side_effect_boundary: "read-only core fusion readiness report; no publish, model call, credential read, or mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT,
+        source_command: HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND,
+        capability: "hepta-name-repository-closure",
+        side_effect_boundary: "read-only Phase 4 name/repository closure inventory; no rename, filesystem mutation, launchd mutation, or publish",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -964,6 +973,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_gateway::hepta_core_fusion_readiness_report()),
                 );
             }
+            HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_gateway::hepta_name_repository_closure_report()),
+                );
+            }
             HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1363,6 +1379,7 @@ fn index_html(
         <p><code>/api/hepta-legacy-compatibility-closure</code> closes the old Hepta CLI/script family gap as native read-only route/script coverage, without reenabling live execution.</p>
         <p><code>/api/hepta-public-ga-readiness</code> aggregates the public GA readiness blockers and explicit operator approvals without publishing, reading credentials, or invoking live channels.</p>
         <p><code>/api/hepta-core-fusion-readiness</code> reports Hepta as root runtime owner and Codex as an internal engine adapter while keeping remaining direct Codex base dependencies explicit.</p>
+        <p><code>/api/hepta-name-repository-closure</code> inventories the remaining Phase 4 transition names that still block full fusion while keeping the active Hepta binary path intact.</p>
         <p><code>/api/hepta-codex-engine-adapter-boundary</code> enumerates model, session, tool, sandbox, MCP, app-server, and legacy TUI/CLI adapter contracts before any Codex base dependency is removed.</p>
       </section>
       <section class="panel">
@@ -1411,6 +1428,7 @@ fn native_gateway_json(
             HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT,
         hepta_public_ga_readiness_endpoint: HEPTA_PUBLIC_GA_READINESS_ENDPOINT,
         hepta_core_fusion_readiness_endpoint: HEPTA_CORE_FUSION_READINESS_ENDPOINT,
+        hepta_name_repository_closure_endpoint: HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT,
         hepta_codex_engine_adapter_boundary_endpoint: HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
@@ -6895,6 +6913,7 @@ struct NativeGatewayResponse<'a> {
     hepta_public_ga_operator_approval_packet_endpoint: &'static str,
     hepta_public_ga_readiness_endpoint: &'static str,
     hepta_core_fusion_readiness_endpoint: &'static str,
+    hepta_name_repository_closure_endpoint: &'static str,
     hepta_codex_engine_adapter_boundary_endpoint: &'static str,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
@@ -8889,6 +8908,31 @@ mod tests {
                 .len(),
             0
         );
+        assert_eq!(
+            value["phase_4_name_repository_closure_gate"],
+            "hepta_name_repository_closure_gate"
+        );
+        assert_eq!(value["phase_4_name_repository_closure_gate_ready"], true);
+        assert_eq!(
+            value["phase_4_name_repository_closure_gate_status"],
+            "inventory_ready_remaining_transition_names_block_full_fusion"
+        );
+        assert!(
+            value["phase_4_name_repository_closure_remaining_surface_count"]
+                .as_u64()
+                .expect("phase 4 remaining surface count")
+                > 0
+        );
+        assert!(
+            value["phase_4_name_repository_closure_blockers"]
+                .as_array()
+                .expect("phase 4 blockers")
+                .iter()
+                .filter_map(|blocker| blocker.as_str())
+                .any(|blocker| blocker
+                    == "operator_facing_runtime_reports_still_emit_hepta_codex_runtime_name")
+        );
+        assert_eq!(value["phase_4_name_repository_closure_ready"], false);
         assert_eq!(value["full_fusion_complete"], false);
         let direct_dependencies = value["direct_codex_base_dependencies"]
             .as_array()
@@ -8925,6 +8969,89 @@ mod tests {
             false
         );
         assert_eq!(value["forbidden_real_side_effects"]["model_invoked"], false);
+    }
+
+    #[test]
+    fn hepta_name_repository_closure_reports_remaining_transition_surfaces_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) =
+            route_native_gateway_request("GET", HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT, &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("name repository closure json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND
+        );
+        assert_eq!(value["phase"], "phase_4_name_repository_closure");
+        assert_eq!(value["root_owner"], "hepta");
+        assert_eq!(value["closure_gate"], "hepta_name_repository_closure_gate");
+        assert_eq!(value["closure_gate_ready"], true);
+        assert_eq!(
+            value["closure_gate_status"],
+            "inventory_ready_remaining_transition_names_block_full_fusion"
+        );
+        assert_eq!(value["phase_4_name_repository_closure_ready"], false);
+        assert_eq!(value["full_fusion_complete"], false);
+        assert!(
+            value["transition_surface_count"]
+                .as_u64()
+                .expect("transition surface count")
+                >= 6
+        );
+        assert!(
+            value["closed_transition_surface_count"]
+                .as_u64()
+                .expect("closed transition surface count")
+                >= 1
+        );
+        assert!(
+            value["remaining_transition_surface_count"]
+                .as_u64()
+                .expect("remaining transition surface count")
+                >= 5
+        );
+        let surfaces = value["surfaces"].as_array().expect("surfaces");
+        assert!(surfaces.iter().any(|surface| {
+            surface["surface_id"] == "active_release_binary_package"
+                && surface["closure_state"] == "closed"
+                && surface["blocks_full_fusion"] == false
+        }));
+        assert!(surfaces.iter().any(|surface| {
+            surface["surface_id"] == "runtime_report_strings"
+                && surface["current_name"] == "hepta-codex"
+                && surface["target_name"] == "hepta"
+                && surface["blocks_full_fusion"] == true
+        }));
+        let blockers = value["blockers"]
+            .as_array()
+            .expect("blockers")
+            .iter()
+            .filter_map(|blocker| blocker.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            blockers
+                .contains(&"engine_adapter_boundary_route_still_uses_hepta_codex_transition_slug")
+        );
+        assert_eq!(
+            value["forbidden_real_side_effects"]["public_release_published"],
+            false
+        );
+        assert_eq!(
+            value["forbidden_real_side_effects"]["gateway_mutation_performed"],
+            false
+        );
+        assert_eq!(
+            value["forbidden_real_side_effects"]["credential_read"],
+            false
+        );
     }
 
     #[test]

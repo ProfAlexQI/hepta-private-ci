@@ -95,11 +95,13 @@ pub use config_store::{
 pub use core_fusion::{
     HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
     HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND, HEPTA_CORE_FUSION_READINESS_ENDPOINT,
-    HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND, HeptaCodexEngineAdapterBoundaryResponse,
+    HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND, HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT,
+    HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND, HeptaCodexEngineAdapterBoundaryResponse,
     HeptaCodexEngineAdapterEnvelope, HeptaCodexEngineAdapterEnvelopeInput,
     HeptaCodexEngineAdapterParityEvidence, HeptaCodexEngineAdapterShadowReplayResult,
     HeptaCodexEngineAdapterSurface, HeptaCodexEngineAdapterThreadingPlan,
     HeptaCoreFusionForbiddenSideEffects, HeptaCoreFusionReadinessResponse,
+    HeptaNameRepositoryClosureResponse, HeptaNameRepositoryClosureSurface,
     HeptaProductRuntimeEntrypointInput, HeptaProductRuntimeEntrypointPlan,
     hepta_codex_engine_adapter_boundary_report, hepta_codex_legacy_tui_cli_adapter_envelope,
     hepta_codex_legacy_tui_cli_adapter_shadow_replay,
@@ -116,7 +118,7 @@ pub use core_fusion::{
     hepta_codex_tool_invocation_adapter_envelope,
     hepta_codex_tool_invocation_adapter_shadow_replay,
     hepta_codex_tool_invocation_adapter_threading_plan, hepta_core_fusion_readiness_report,
-    hepta_product_runtime_entrypoint_plan,
+    hepta_name_repository_closure_report, hepta_product_runtime_entrypoint_plan,
 };
 pub use delivery_queue::{
     ChannelSendHandoffInput, ChannelSendHandoffReport, DEFAULT_DELIVERY_LEASE_MS,

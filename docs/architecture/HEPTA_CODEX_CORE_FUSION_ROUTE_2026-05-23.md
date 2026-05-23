@@ -214,6 +214,22 @@ Acceptance:
   the root runtime owner.
 - Codex is visible only as a contained engine/provider compatibility layer.
 
+Current landed state:
+
+- `/api/hepta-name-repository-closure` is now the Phase 4 inventory gate. It is
+  side-effect-free and does not rename files, mutate launchd, publish release
+  state, read credentials, or invoke models.
+- The closure report marks the active binary package transition as closed:
+  `codex-cli --bin hepta` has been replaced by `hepta-cli --bin hepta` for the
+  active service artifact.
+- The same report keeps full fusion blocked while remaining transition surfaces
+  still expose `hepta-codex`: runtime report strings, the engine-adapter route
+  slug, release gate script family names, the core-fusion route document title,
+  and the workspace repository directory name.
+- `/api/hepta-core-fusion-readiness` now includes the Phase 4 closure gate and
+  blocker list while still reporting `phase_4_name_repository_closure_ready=false`
+  and `full_fusion_complete=false`.
+
 ## Immediate Safe Next Slice
 
 Advance after Phase 3:

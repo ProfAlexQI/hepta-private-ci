@@ -15,7 +15,7 @@ jq -e '
   and .side_effect_free == true
   and .old_channel_ops_file_count == 13
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 66
+  and .native_gateway_source_command_count == 67
   and .missing_route_count == 0
   and .adapter_count == 13
   and .disabled_status_ready_count == 13
@@ -48,7 +48,7 @@ for payload in "$RUNTIME_JSON" "$CLI_JSON" "$PROVIDER_JSON" "$MERGE_JSON"; do
   jq -e '
     .runtime == "hepta-codex"
     and .current_hepta_codex_script_total == 17
-    and .native_gateway_source_command_count == 66
+    and .native_gateway_source_command_count == 67
     and .missing_route_count == 0
   ' <<<"$payload" >/dev/null
 done
