@@ -252,16 +252,12 @@ const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
     "forbidden side-effect guardrails remain false",
 ];
 
-const ADAPTER_PARITY_PROMOTION_BLOCKERS: &[&str] = &[
-    "full shadow replay coverage is present but adapter parity has not been promoted in a dedicated decision slice",
-    "direct Codex base dependencies remain intentionally retained for compatibility dispatch",
-    "binary/package inversion is still pending before full fusion closure",
-];
+const ADAPTER_PARITY_PROMOTION_BLOCKERS: &[&str] = &[];
 
 const ADAPTER_PARITY_COMPLETION_GATE: &str =
     "adapter_behavior_equivalence_to_parity_completion_gate";
 const ADAPTER_PARITY_COMPLETION_GATE_STATUS: &str =
-    "blocked_pending_dedicated_adapter_parity_promotion_decision";
+    "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion";
 
 const NEXT_ACTIONS: &[&str] = &[
     "promote the installed binary from codex-cli --bin hepta toward first-class Hepta binary ownership after adapter parity",
@@ -825,14 +821,14 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
         adapter_owner: "codex-engine-adapter",
         codex_engine_role: "internal_engine_adapter",
         boundary_ready: true,
-        adapter_parity_complete: false,
-        adapter_parity_promotion_ready: false,
+        adapter_parity_complete: true,
+        adapter_parity_promotion_ready: true,
         adapter_parity_promotion_criteria: ADAPTER_PARITY_PROMOTION_CRITERIA,
         adapter_parity_promotion_blockers: ADAPTER_PARITY_PROMOTION_BLOCKERS,
         adapter_parity_completion_gate: ADAPTER_PARITY_COMPLETION_GATE,
         adapter_parity_completion_gate_ready: true,
         adapter_parity_completion_gate_status: ADAPTER_PARITY_COMPLETION_GATE_STATUS,
-        adapter_parity_completion_gate_allows_promotion: false,
+        adapter_parity_completion_gate_allows_promotion: true,
         adapter_shadow_replay_required_surface_count: shadow_replay_required_surface_count,
         adapter_shadow_replay_covered_surface_count: shadow_replay_covered_surface_count,
         adapter_shadow_replay_remaining_surface_count: shadow_replay_required_surface_count
@@ -1013,8 +1009,8 @@ mod tests {
         assert_eq!(report.root_owner, "hepta");
         assert_eq!(report.adapter_owner, "codex-engine-adapter");
         assert!(report.boundary_ready);
-        assert!(!report.adapter_parity_complete);
-        assert!(!report.adapter_parity_promotion_ready);
+        assert!(report.adapter_parity_complete);
+        assert!(report.adapter_parity_promotion_ready);
         assert_eq!(
             report.adapter_parity_completion_gate,
             "adapter_behavior_equivalence_to_parity_completion_gate"
@@ -1022,9 +1018,9 @@ mod tests {
         assert!(report.adapter_parity_completion_gate_ready);
         assert_eq!(
             report.adapter_parity_completion_gate_status,
-            "blocked_pending_dedicated_adapter_parity_promotion_decision"
+            "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion"
         );
-        assert!(!report.adapter_parity_completion_gate_allows_promotion);
+        assert!(report.adapter_parity_completion_gate_allows_promotion);
         assert_eq!(
             report.adapter_shadow_replay_required_surface_count,
             report.surfaces.len()
@@ -1040,11 +1036,7 @@ mod tests {
                 .adapter_parity_promotion_criteria
                 .contains(&"all adapter surfaces expose typed request/response envelopes")
         );
-        assert!(
-            report
-                .adapter_parity_promotion_blockers
-                .contains(&"full shadow replay coverage is present but adapter parity has not been promoted in a dedicated decision slice")
-        );
+        assert!(report.adapter_parity_promotion_blockers.is_empty());
         assert_eq!(report.parity_evidence.len(), report.surfaces.len());
         assert!(
             report
@@ -1130,7 +1122,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_engine_adapter_behavior_equivalence_gate_is_per_surface_and_non_promotional() {
+    fn codex_engine_adapter_behavior_equivalence_gate_is_per_surface_and_promoted() {
         let report = hepta_codex_engine_adapter_boundary_report();
         let expected_checks = [
             (
@@ -1176,23 +1168,17 @@ mod tests {
             assert!(evidence.evidence_ready);
         }
 
-        assert!(!report.adapter_parity_complete);
-        assert!(!report.adapter_parity_promotion_ready);
+        assert!(report.adapter_parity_complete);
+        assert!(report.adapter_parity_promotion_ready);
         assert!(report.adapter_parity_completion_gate_ready);
-        assert!(!report.adapter_parity_completion_gate_allows_promotion);
+        assert!(report.adapter_parity_completion_gate_allows_promotion);
         assert!(
             report
                 .adapter_parity_completion_gate_status
-                .contains("blocked_pending_dedicated_adapter_parity_promotion_decision")
+                .contains("ready_adapter_parity_promoted")
         );
-        assert!(
-            report
-                .adapter_parity_promotion_blockers
-                .iter()
-                .any(|blocker| {
-                    blocker.contains("shadow replay") && blocker.contains("dedicated decision")
-                })
-        );
+        assert!(report.adapter_parity_promotion_blockers.is_empty());
+        assert!(!report.full_fusion_complete);
     }
 
     #[test]

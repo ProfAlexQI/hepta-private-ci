@@ -108,15 +108,14 @@ Current landed state:
 - All six adapter surfaces now also carry typed adapter request/response
   envelopes before compatibility dispatch.
 - All six adapter surfaces now expose reportable typed adapter parity gates
-  while still keeping `adapter_parity_complete=false` until real parity
-  criteria are promoted.
+  and those gates are part of the promoted adapter parity evidence chain.
 - The live watchdog now fails if the adapter boundary route loses typed
   envelopes, typed parity gates, no-live-mutation status, or forbidden
   side-effect guardrails.
 - The adapter boundary route now also reports promotion criteria and blockers
-  for `adapter_parity_complete=true`; current state is intentionally
-  `adapter_parity_promotion_ready=false` until per-surface compatibility
-  evidence goes beyond typed envelope/gate presence.
+  for `adapter_parity_complete=true`; current state has no remaining adapter
+  parity promotion blockers because behavior evidence and shadow replay cover
+  all six surfaces.
 - Per-surface compatibility evidence records are now reported for all six
   surfaces and enforced by the watchdog, covering typed envelope readiness,
   typed parity gate readiness, compatibility dispatch checks, live-mutation
@@ -129,12 +128,12 @@ Current landed state:
 - The preflight matrix now has a dedicated adapter behavior-equivalence gate:
   it runs targeted runtime and native-gateway tests before the broader gateway
   and UI/native app checks, requiring exact per-surface behavior evidence while
-  keeping `adapter_parity_complete=false`.
+  keeping full fusion separate from adapter parity promotion.
 - The adapter boundary now also exposes a promotion-only completion gate:
   `adapter_behavior_equivalence_to_parity_completion_gate`. It is ready as a
-  guardrail, but its status is
-  `blocked_pending_dedicated_adapter_parity_promotion_decision` and
-  `adapter_parity_completion_gate_allows_promotion=false`.
+  guardrail, its status is
+  `ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion`,
+  and `adapter_parity_completion_gate_allows_promotion=true`.
 - Stronger shadow replay coverage is now present for all six adapter surfaces:
   `model_provider_execution`, `session_thread_store`, `tool_invocation`,
   `sandbox_exec`, `mcp_app_server`, and `legacy_tui_cli`. Each replay compares
@@ -142,8 +141,12 @@ Current landed state:
   compatibility dispatch, and proves provider invocation, credential reads,
   session-store writes, external reads, and live mutation remain blocked. The
   boundary reports `adapter_shadow_replay_covered_surface_count=6`, but
-  promotion remains blocked until a dedicated adapter parity promotion decision
-  slice changes the state.
+  promotion is now accepted by the dedicated adapter parity decision slice.
+- The adapter boundary now reports `adapter_parity_complete=true`,
+  `adapter_parity_promotion_ready=true`, and an empty
+  `adapter_parity_promotion_blockers` set. It still reports
+  `full_fusion_complete=false` because binary/package inversion is a separate
+  phase.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -186,12 +189,11 @@ Acceptance:
 
 ## Immediate Safe Next Slice
 
-Continue Phase 2:
+Advance to Phase 3:
 
-1. Run a dedicated adapter parity promotion decision slice using the full
-   `6/6` shadow replay evidence, without advancing full fusion in the same
-   patch.
-2. Keep direct Codex dependencies explicit until adapter parity has enforced
-   evidence beyond typed envelope presence.
+1. Start binary/package inversion: move from `codex-cli --bin hepta` toward a
+   first-class Hepta binary ownership model.
+2. Keep direct Codex dependencies explicit as internal engine-adapter
+   compatibility surfaces until the binary/package layer is inverted.
 3. Run focused checks, full preflight, release build, live install, and live
-   gates before advancing toward binary/package inversion.
+   gates before claiming full fusion.

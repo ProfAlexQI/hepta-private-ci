@@ -68,12 +68,12 @@ report="$(jq -n \
         and ($adapter.parity_evidence | all(.observable_behavior_preserved == true))
         and ($adapter.parity_evidence | all(.live_mutation_blocked == true))
         and ($adapter.parity_evidence | all(.forbidden_side_effects_blocked == true))
-        and $adapter.adapter_parity_complete == false
-        and $adapter.adapter_parity_promotion_ready == false
+        and $adapter.adapter_parity_complete == true
+        and $adapter.adapter_parity_promotion_ready == true
         and $adapter.adapter_parity_completion_gate == "adapter_behavior_equivalence_to_parity_completion_gate"
         and $adapter.adapter_parity_completion_gate_ready == true
-        and $adapter.adapter_parity_completion_gate_status == "blocked_pending_dedicated_adapter_parity_promotion_decision"
-        and $adapter.adapter_parity_completion_gate_allows_promotion == false
+        and $adapter.adapter_parity_completion_gate_status == "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion"
+        and $adapter.adapter_parity_completion_gate_allows_promotion == true
         and $adapter.adapter_shadow_replay_required_surface_count == ($adapter.surfaces | length)
         and $adapter.adapter_shadow_replay_covered_surface_count == ($adapter.surfaces | length)
         and $adapter.adapter_shadow_replay_remaining_surface_count == (($adapter.surfaces | length) - $adapter.adapter_shadow_replay_covered_surface_count)
@@ -87,7 +87,7 @@ report="$(jq -n \
           | length
         ) == ($adapter.surfaces | length)
         and ($adapter.adapter_parity_promotion_criteria | length) >= 6
-        and ($adapter.adapter_parity_promotion_blockers | length) >= 1
+        and ($adapter.adapter_parity_promotion_blockers | length) == 0
         and $adapter.full_fusion_complete == false
         and $adapter.forbidden_real_side_effects.public_ga_claimed == false
         and $adapter.forbidden_real_side_effects.public_release_published == false
