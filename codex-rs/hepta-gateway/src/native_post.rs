@@ -24,14 +24,15 @@ pub use hepta_runtime::{
     NativePostExecutionStoreWriteReport, NativePostExecutionStoresResponse,
     NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanResponse,
     NativePostPlanRouteSpec, NativePostRealHandlerHarness, NativePostRealHandlerObservation,
-    NativePostRollbackContract, NativePostRolloutEvidencePlanKindCount,
-    NativePostRolloutEvidenceRecordSummary, NativePostRolloutEvidenceResponse,
-    NativePostRolloutEvidenceScan, NativePostSelectedHandlerRolloutEvidence,
-    NativePostStoreEffectProjection, native_post_audit_event_contract, native_post_body_admission,
-    native_post_body_schema, native_post_confirmation_contract,
-    native_post_duplicate_check_required, native_post_execution_admission_with_scope,
-    native_post_execution_readiness_report, native_post_execution_store_capacity_allows_append,
-    native_post_execution_store_capacity_ok, native_post_execution_store_contracts_ready,
+    NativePostRollbackContract, NativePostRolloutEvidenceFileObservation,
+    NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
+    NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
+    NativePostSelectedHandlerRolloutEvidence, NativePostStoreEffectProjection,
+    native_post_audit_event_contract, native_post_body_admission, native_post_body_schema,
+    native_post_confirmation_contract, native_post_duplicate_check_required,
+    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
+    native_post_execution_store_capacity_allows_append, native_post_execution_store_capacity_ok,
+    native_post_execution_store_contracts_ready,
     native_post_execution_store_file_status_from_observation,
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
@@ -45,8 +46,10 @@ pub use hepta_runtime::{
     native_post_real_handler_harness_from_observation, native_post_real_handler_scope_matches,
     native_post_real_handler_scope_selected_kinds,
     native_post_real_handler_scope_single_selected_kind, native_post_redacted_fingerprint,
-    native_post_rollback_contract, native_post_store_capacity_check_required,
-    native_post_store_effect_projection, native_post_store_write_attempt_required,
+    native_post_rollback_contract, native_post_rollout_evidence_scan_from_observation,
+    native_post_selected_handler_rollout_evidence_from_observation,
+    native_post_store_capacity_check_required, native_post_store_effect_projection,
+    native_post_store_write_attempt_required,
 };
 
 pub fn native_post_plan_report(
@@ -213,11 +216,18 @@ pub fn native_post_gray_release_evidence_report(
     let store_jsonl_valid = native_post_execution_store_jsonl_valid(&store_files);
     let store_capacity_ok = native_post_execution_store_capacity_ok(&store_files);
     let selected_handler_kind = native_post_real_handler_scope_single_selected_kind(handler_scope);
-    let rollout_evidence =
-        native_post_rollout_evidence_report(root, max_store_bytes, max_store_lines, handler_scope);
-    let selected_handler_evidence = native_post_selected_handler_rollout_evidence(
-        &root.join("rollback.jsonl"),
+    let rollback_path = root.join("rollback.jsonl");
+    let rollout_observation = native_post_rollout_evidence_file_observation(&rollback_path);
+    let rollout_evidence = hepta_runtime::native_post_rollout_evidence_report(
+        root.display().to_string(),
+        store_jsonl_valid,
+        store_capacity_ok,
+        handler_scope,
+        native_post_rollout_evidence_scan_from_observation(rollout_observation.clone()),
+    );
+    let selected_handler_evidence = native_post_selected_handler_rollout_evidence_from_observation(
         selected_handler_kind,
+        rollout_observation,
     );
     hepta_runtime::native_post_gray_release_evidence_report(
         root.display().to_string(),
@@ -518,27 +528,32 @@ fn native_post_execution_store_jsonl_health(
 }
 
 fn native_post_rollout_evidence_scan(path: &Path) -> NativePostRolloutEvidenceScan {
-    match fs::read_to_string(path) {
-        Ok(content) => hepta_runtime::native_post_rollout_evidence_scan_from_content(&content),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            hepta_runtime::native_post_rollout_evidence_scan_missing()
-        }
-        Err(_) => hepta_runtime::native_post_rollout_evidence_scan_read_failed(),
-    }
+    native_post_rollout_evidence_scan_from_observation(
+        native_post_rollout_evidence_file_observation(path),
+    )
 }
 
-fn native_post_selected_handler_rollout_evidence(
+fn native_post_rollout_evidence_file_observation(
     path: &Path,
-    selected_handler_kind: Option<&str>,
-) -> NativePostSelectedHandlerRolloutEvidence {
+) -> NativePostRolloutEvidenceFileObservation {
     match fs::read_to_string(path) {
-        Ok(content) => hepta_runtime::native_post_selected_handler_rollout_evidence_from_content(
-            selected_handler_kind,
-            &content,
-        ),
-        Err(_) => hepta_runtime::native_post_selected_handler_rollout_evidence_missing(
-            selected_handler_kind,
-        ),
+        Ok(content) => NativePostRolloutEvidenceFileObservation {
+            content: Some(content),
+            missing: false,
+            read_failed: false,
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            NativePostRolloutEvidenceFileObservation {
+                content: None,
+                missing: true,
+                read_failed: false,
+            }
+        }
+        Err(_) => NativePostRolloutEvidenceFileObservation {
+            content: None,
+            missing: false,
+            read_failed: true,
+        },
     }
 }
 

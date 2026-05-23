@@ -892,6 +892,13 @@ pub struct HeptaKernelNativePostRolloutEvidenceScan {
     pub raw_audit_payload_exposed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeptaKernelNativePostRolloutEvidenceFileObservation {
+    pub content: Option<String>,
+    pub missing: bool,
+    pub read_failed: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostRolloutEvidenceResponse {
     pub product: &'static str,
@@ -2344,6 +2351,21 @@ pub fn hepta_kernel_native_post_rollout_evidence_scan_from_content(
     }
 }
 
+pub fn hepta_kernel_native_post_rollout_evidence_scan_from_observation(
+    observation: HeptaKernelNativePostRolloutEvidenceFileObservation,
+) -> HeptaKernelNativePostRolloutEvidenceScan {
+    if let Some(content) = observation.content {
+        return hepta_kernel_native_post_rollout_evidence_scan_from_content(&content);
+    }
+    if observation.missing {
+        return hepta_kernel_native_post_rollout_evidence_scan_missing();
+    }
+    if observation.read_failed {
+        return hepta_kernel_native_post_rollout_evidence_scan_read_failed();
+    }
+    hepta_kernel_native_post_rollout_evidence_scan_read_failed()
+}
+
 pub fn hepta_kernel_native_post_rollout_evidence_report(
     store_root: String,
     store_jsonl_valid: bool,
@@ -2494,6 +2516,19 @@ pub fn hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
         raw_idempotency_key_exposed,
         raw_audit_payload_exposed,
     }
+}
+
+pub fn hepta_kernel_native_post_selected_handler_rollout_evidence_from_observation(
+    selected_handler_kind: Option<&str>,
+    observation: HeptaKernelNativePostRolloutEvidenceFileObservation,
+) -> HeptaKernelNativePostSelectedHandlerRolloutEvidence {
+    if let Some(content) = observation.content {
+        return hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
+            selected_handler_kind,
+            &content,
+        );
+    }
+    hepta_kernel_native_post_selected_handler_rollout_evidence_missing(selected_handler_kind)
 }
 
 pub fn hepta_kernel_native_post_gray_release_evidence_report(
@@ -9066,6 +9101,13 @@ not-json
 {"recorded_at_unix_ms":2,"plan_kind":"chat_send","current_plan_executes_real_handler":false,"rollback_strategy":"pending_real_handler_rollback_anchor","raw_request_body_exposed":true}"#;
 
         let scan = hepta_kernel_native_post_rollout_evidence_scan_from_content(content);
+        let observed_scan = hepta_kernel_native_post_rollout_evidence_scan_from_observation(
+            HeptaKernelNativePostRolloutEvidenceFileObservation {
+                content: Some(content.to_string()),
+                missing: false,
+                read_failed: false,
+            },
+        );
 
         assert!(scan.jsonl_readable);
         assert_eq!(scan.line_count, 3);
@@ -9080,11 +9122,22 @@ not-json
         assert_eq!(latest.recorded_at_unix_ms, Some(2));
         assert_eq!(latest.plan_kind.as_deref(), Some("chat_send"));
         assert!(latest.raw_request_body_exposed);
+        assert_eq!(observed_scan.record_count, 2);
+        assert_eq!(observed_scan.dry_run_record_count, 1);
 
         let selected = hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
             Some("task_publish"),
             content,
         );
+        let observed_selected =
+            hepta_kernel_native_post_selected_handler_rollout_evidence_from_observation(
+                Some("task_publish"),
+                HeptaKernelNativePostRolloutEvidenceFileObservation {
+                    content: Some(content.to_string()),
+                    missing: false,
+                    read_failed: false,
+                },
+            );
         assert_eq!(
             selected.selected_handler_kind.as_deref(),
             Some("task_publish")
@@ -9093,10 +9146,20 @@ not-json
         assert!(selected.dry_run_record_present);
         assert!(selected.rollback_anchor_present);
         assert!(!selected.raw_request_body_exposed);
+        assert_eq!(observed_selected.record_count, selected.record_count);
 
         let missing = hepta_kernel_native_post_rollout_evidence_scan_missing();
         assert!(missing.jsonl_readable);
         assert_eq!(missing.record_count, 0);
+        let observed_missing = hepta_kernel_native_post_rollout_evidence_scan_from_observation(
+            HeptaKernelNativePostRolloutEvidenceFileObservation {
+                content: None,
+                missing: true,
+                read_failed: false,
+            },
+        );
+        assert_eq!(observed_missing.record_count, 0);
+        assert!(observed_missing.jsonl_readable);
 
         let read_failed = hepta_kernel_native_post_rollout_evidence_scan_read_failed();
         assert!(!read_failed.jsonl_readable);

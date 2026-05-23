@@ -148,6 +148,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostRealHandlerHarness as NativePostRealHandlerHarness,
     HeptaKernelNativePostRealHandlerObservation as NativePostRealHandlerObservation,
     HeptaKernelNativePostRollbackContract as NativePostRollbackContract,
+    HeptaKernelNativePostRolloutEvidenceFileObservation as NativePostRolloutEvidenceFileObservation,
     HeptaKernelNativePostRolloutEvidencePlanKindCount as NativePostRolloutEvidencePlanKindCount,
     HeptaKernelNativePostRolloutEvidenceRecordSummary as NativePostRolloutEvidenceRecordSummary,
     HeptaKernelNativePostRolloutEvidenceResponse as NativePostRolloutEvidenceResponse,
@@ -628,6 +629,12 @@ pub fn native_post_rollout_evidence_scan_from_content(
     hepta_kernel::hepta_kernel_native_post_rollout_evidence_scan_from_content(content)
 }
 
+pub fn native_post_rollout_evidence_scan_from_observation(
+    observation: NativePostRolloutEvidenceFileObservation,
+) -> NativePostRolloutEvidenceScan {
+    hepta_kernel::hepta_kernel_native_post_rollout_evidence_scan_from_observation(observation)
+}
+
 pub fn native_post_rollout_evidence_report(
     store_root: String,
     store_jsonl_valid: bool,
@@ -659,6 +666,16 @@ pub fn native_post_selected_handler_rollout_evidence_from_content(
     hepta_kernel::hepta_kernel_native_post_selected_handler_rollout_evidence_from_content(
         selected_handler_kind,
         content,
+    )
+}
+
+pub fn native_post_selected_handler_rollout_evidence_from_observation(
+    selected_handler_kind: Option<&str>,
+    observation: NativePostRolloutEvidenceFileObservation,
+) -> NativePostSelectedHandlerRolloutEvidence {
+    hepta_kernel::hepta_kernel_native_post_selected_handler_rollout_evidence_from_observation(
+        selected_handler_kind,
+        observation,
     )
 }
 
