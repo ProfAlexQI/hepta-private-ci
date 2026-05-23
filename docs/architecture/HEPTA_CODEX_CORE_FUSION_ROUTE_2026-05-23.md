@@ -94,6 +94,19 @@ Acceptance:
 - Tests can assert that root routing uses Hepta-owned dispatch before invoking
   Codex engine functions.
 
+Current landed state:
+
+- `/api/hepta-codex-engine-adapter-boundary` enumerates the adapter surfaces.
+- Model-provider execution and session/thread-store compatibility are now marked
+  `adapter_threaded_compatibility_dispatch`.
+- The `hepta` CLI entrypoint, `exec`, `review`, and debug model/state paths call
+  Hepta-owned adapter threading plans before entering Codex compatibility
+  dispatch.
+- These plans are side-effect-free and preserve current Codex provider/session
+  semantics; they do not invoke providers, read credentials, mutate session
+  stores, perform external reads, publish public release state, or cross
+  `task_publish` real mutation.
+
 ### Phase 3 - Binary / Package Inversion
 
 Goal: move from `codex-cli --bin hepta` to a first-class Hepta binary crate.
@@ -131,15 +144,10 @@ Acceptance:
 
 ## Immediate Safe Next Slice
 
-Start with Phase 1:
+Continue Phase 2:
 
-1. Add a side-effect-free Hepta core-fusion readiness report.
-2. Expose it through the gateway as a read-only route.
-3. Add focused tests proving:
-   - root owner is Hepta,
-   - Codex is reported as an internal engine,
-   - direct mutation/public-release flags remain false,
-   - direct Codex base dependencies are still explicitly visible as remaining
-     fusion work.
-4. Run focused checks, full preflight, release build, live install, and live
-   gates before advancing to adapter inversion.
+1. Extend the same adapter threading pattern to tool invocation, sandbox/exec,
+   MCP/app-server, and legacy TUI/CLI surfaces.
+2. Keep direct Codex dependencies explicit until each adapter has parity gates.
+3. Run focused checks, full preflight, release build, live install, and live
+   gates before advancing toward binary/package inversion.

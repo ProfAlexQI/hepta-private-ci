@@ -872,6 +872,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 &mut interactive.config_overrides,
                 root_config_overrides.clone(),
             );
+            assert_hepta_codex_runtime_adapters_threaded("interactive_tui_dispatch");
             let exit_info = run_interactive_tui(
                 interactive,
                 root_remote.clone(),
@@ -895,6 +896,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 &mut exec_cli.config_overrides,
                 root_config_overrides.clone(),
             );
+            assert_hepta_codex_runtime_adapters_threaded("exec_dispatch");
             codex_exec::run_main(exec_cli, arg0_paths.clone()).await?;
         }
         Some(Subcommand::Review(ReviewCommand {
@@ -916,6 +918,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 &mut exec_cli.config_overrides,
                 root_config_overrides.clone(),
             );
+            assert_hepta_codex_runtime_adapters_threaded("review_dispatch");
             codex_exec::run_main(exec_cli, arg0_paths.clone()).await?;
         }
         Some(Subcommand::McpServer(McpServerCommand { strict_config })) => {
@@ -1617,6 +1620,7 @@ async fn run_debug_prompt_input_command(
     interactive: TuiCli,
     arg0_paths: Arg0DispatchPaths,
 ) -> anyhow::Result<()> {
+    assert_hepta_codex_model_provider_adapter_threaded("debug_prompt_input_build_prompt");
     let loader_overrides = loader_overrides_for_profile(interactive.config_profile_v2.as_ref())?;
     let shared = interactive.shared.into_inner();
     let mut cli_kv_overrides = root_config_overrides
@@ -1684,6 +1688,7 @@ async fn run_debug_models_command(
     cmd: DebugModelsCommand,
     root_config_overrides: CliConfigOverrides,
 ) -> anyhow::Result<()> {
+    assert_hepta_codex_model_provider_adapter_threaded("debug_models_catalog");
     let catalog = if cmd.bundled {
         bundled_models_response()?
     } else {
@@ -1711,6 +1716,7 @@ async fn run_debug_clear_memories_command(
     root_config_overrides: &CliConfigOverrides,
     interactive: &TuiCli,
 ) -> anyhow::Result<()> {
+    assert_hepta_codex_session_thread_store_adapter_threaded("debug_clear_memories_state_store");
     let cli_kv_overrides = root_config_overrides
         .parse_overrides()
         .map_err(anyhow::Error::msg)?;
@@ -1758,6 +1764,41 @@ fn prepend_config_flags(
     cli_config_overrides: CliConfigOverrides,
 ) {
     subcommand_config_overrides.prepend_root_overrides(cli_config_overrides);
+}
+
+fn assert_hepta_codex_runtime_adapters_threaded(operation: &'static str) {
+    assert_hepta_codex_model_provider_adapter_threaded(operation);
+    assert_hepta_codex_session_thread_store_adapter_threaded(operation);
+}
+
+fn assert_hepta_codex_model_provider_adapter_threaded(operation: &'static str) {
+    let plan = hepta_gateway::hepta_codex_model_provider_adapter_threading_plan(operation);
+
+    debug_assert_eq!(plan.root_owner, "hepta");
+    debug_assert_eq!(plan.surface_id, "model_provider_execution");
+    debug_assert_eq!(plan.codex_dependency, "codex-model-provider");
+    debug_assert!(plan.adapter_threaded);
+    debug_assert!(plan.compatibility_dispatch_allowed);
+    debug_assert!(plan.direct_codex_dependency_retained);
+    debug_assert!(plan.side_effect_free);
+    debug_assert!(!plan.live_mutation_allowed_by_plan);
+    debug_assert!(!plan.provider_invoked_by_plan);
+    debug_assert!(!plan.credential_read_by_plan);
+}
+
+fn assert_hepta_codex_session_thread_store_adapter_threaded(operation: &'static str) {
+    let plan = hepta_gateway::hepta_codex_session_thread_store_adapter_threading_plan(operation);
+
+    debug_assert_eq!(plan.root_owner, "hepta");
+    debug_assert_eq!(plan.surface_id, "session_thread_store");
+    debug_assert_eq!(plan.codex_dependency, "codex-state");
+    debug_assert!(plan.adapter_threaded);
+    debug_assert!(plan.compatibility_dispatch_allowed);
+    debug_assert!(plan.direct_codex_dependency_retained);
+    debug_assert!(plan.side_effect_free);
+    debug_assert!(!plan.live_mutation_allowed_by_plan);
+    debug_assert!(!plan.session_store_mutated_by_plan);
+    debug_assert!(!plan.external_network_read_by_plan);
 }
 
 fn reject_remote_mode_for_subcommand(

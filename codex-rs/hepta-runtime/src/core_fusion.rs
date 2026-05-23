@@ -101,6 +101,26 @@ pub struct HeptaCodexEngineAdapterBoundaryResponse {
     pub next_actions: &'static [&'static str],
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaCodexEngineAdapterThreadingPlan {
+    pub product: &'static str,
+    pub root_owner: &'static str,
+    pub adapter_owner: &'static str,
+    pub surface_id: &'static str,
+    pub hepta_boundary_owner: &'static str,
+    pub codex_dependency: &'static str,
+    pub operation: String,
+    pub adapter_threaded: bool,
+    pub compatibility_dispatch_allowed: bool,
+    pub direct_codex_dependency_retained: bool,
+    pub live_mutation_allowed_by_plan: bool,
+    pub provider_invoked_by_plan: bool,
+    pub credential_read_by_plan: bool,
+    pub session_store_mutated_by_plan: bool,
+    pub external_network_read_by_plan: bool,
+    pub side_effect_free: bool,
+}
+
 const HEPTA_OWNED_ROOT_SURFACES: &[&str] = &[
     "hepta-core",
     "hepta-kernel",
@@ -136,8 +156,7 @@ const DIRECT_CODEX_BASE_DEPENDENCIES: &[&str] = &[
 const PHASE_1_BLOCKERS: &[&str] = &[];
 
 const NEXT_ACTIONS: &[&str] = &[
-    "thread CodexEngineAdapter contracts into model provider execution without changing provider semantics",
-    "thread CodexEngineAdapter contracts into session/thread-store compatibility without changing persistence semantics",
+    "extend CodexEngineAdapter contracts from model/session compatibility dispatch into tool, sandbox, MCP, app-server, and legacy TUI surfaces",
     "promote the installed binary from codex-cli --bin hepta toward first-class Hepta binary ownership after adapter parity",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
 ];
@@ -148,7 +167,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         hepta_boundary_owner: "hepta-runtime",
         codex_dependency: "codex-model-provider",
         adapter_contract: "model invocation must enter through a Hepta-owned request/response boundary before provider dispatch",
-        migration_state: "boundary_defined_adapter_pending",
+        migration_state: "adapter_threaded_compatibility_dispatch",
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -156,7 +175,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         hepta_boundary_owner: "hepta-runtime",
         codex_dependency: "codex-state",
         adapter_contract: "session and thread persistence must be described as Hepta records before Codex store compatibility is used",
-        migration_state: "boundary_defined_adapter_pending",
+        migration_state: "adapter_threaded_compatibility_dispatch",
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -218,6 +237,60 @@ pub fn hepta_product_runtime_entrypoint_plan(
         cli_parse_required: !native_gateway_dispatch,
         codex_engine_role: "internal_engine_adapter",
         first_cli_arg_kind,
+        side_effect_free: true,
+    }
+}
+
+pub fn hepta_codex_model_provider_adapter_threading_plan(
+    operation: impl AsRef<str>,
+) -> HeptaCodexEngineAdapterThreadingPlan {
+    hepta_codex_engine_adapter_threading_plan(
+        "model_provider_execution",
+        "hepta-runtime",
+        "codex-model-provider",
+        operation.as_ref(),
+    )
+}
+
+pub fn hepta_codex_session_thread_store_adapter_threading_plan(
+    operation: impl AsRef<str>,
+) -> HeptaCodexEngineAdapterThreadingPlan {
+    hepta_codex_engine_adapter_threading_plan(
+        "session_thread_store",
+        "hepta-runtime",
+        "codex-state",
+        operation.as_ref(),
+    )
+}
+
+fn hepta_codex_engine_adapter_threading_plan(
+    surface_id: &'static str,
+    hepta_boundary_owner: &'static str,
+    codex_dependency: &'static str,
+    operation: &str,
+) -> HeptaCodexEngineAdapterThreadingPlan {
+    let operation = operation.trim();
+
+    HeptaCodexEngineAdapterThreadingPlan {
+        product: "Hepta",
+        root_owner: "hepta",
+        adapter_owner: "codex-engine-adapter",
+        surface_id,
+        hepta_boundary_owner,
+        codex_dependency,
+        operation: if operation.is_empty() {
+            "codex_compatibility_dispatch".to_string()
+        } else {
+            operation.to_string()
+        },
+        adapter_threaded: true,
+        compatibility_dispatch_allowed: true,
+        direct_codex_dependency_retained: true,
+        live_mutation_allowed_by_plan: false,
+        provider_invoked_by_plan: false,
+        credential_read_by_plan: false,
+        session_store_mutated_by_plan: false,
+        external_network_read_by_plan: false,
         side_effect_free: true,
     }
 }
@@ -313,6 +386,8 @@ fn classify_first_cli_arg(arg: &str) -> &'static str {
 mod tests {
     use super::{
         HeptaProductRuntimeEntrypointInput, hepta_codex_engine_adapter_boundary_report,
+        hepta_codex_model_provider_adapter_threading_plan,
+        hepta_codex_session_thread_store_adapter_threading_plan,
         hepta_core_fusion_readiness_report, hepta_product_runtime_entrypoint_plan,
     };
 
@@ -417,6 +492,14 @@ mod tests {
                 .iter()
                 .all(|surface| !surface.live_mutation_allowed)
         );
+        assert!(report.surfaces.iter().any(|surface| {
+            surface.surface_id == "model_provider_execution"
+                && surface.migration_state == "adapter_threaded_compatibility_dispatch"
+        }));
+        assert!(report.surfaces.iter().any(|surface| {
+            surface.surface_id == "session_thread_store"
+                && surface.migration_state == "adapter_threaded_compatibility_dispatch"
+        }));
     }
 
     #[test]
@@ -432,5 +515,37 @@ mod tests {
         assert!(!side_effects.credential_read);
         assert!(!side_effects.model_invoked);
         assert!(!side_effects.external_network_read);
+    }
+
+    #[test]
+    fn model_provider_adapter_threading_plan_preserves_compatibility_dispatch() {
+        let plan =
+            hepta_codex_model_provider_adapter_threading_plan("interactive_tui_model_provider");
+
+        assert_eq!(plan.root_owner, "hepta");
+        assert_eq!(plan.surface_id, "model_provider_execution");
+        assert_eq!(plan.codex_dependency, "codex-model-provider");
+        assert!(plan.adapter_threaded);
+        assert!(plan.compatibility_dispatch_allowed);
+        assert!(plan.direct_codex_dependency_retained);
+        assert!(!plan.live_mutation_allowed_by_plan);
+        assert!(!plan.provider_invoked_by_plan);
+        assert!(!plan.credential_read_by_plan);
+        assert!(plan.side_effect_free);
+    }
+
+    #[test]
+    fn session_thread_store_adapter_threading_plan_preserves_store_semantics() {
+        let plan =
+            hepta_codex_session_thread_store_adapter_threading_plan("interactive_tui_state_store");
+
+        assert_eq!(plan.surface_id, "session_thread_store");
+        assert_eq!(plan.codex_dependency, "codex-state");
+        assert!(plan.adapter_threaded);
+        assert!(plan.compatibility_dispatch_allowed);
+        assert!(plan.direct_codex_dependency_retained);
+        assert!(!plan.session_store_mutated_by_plan);
+        assert!(!plan.external_network_read_by_plan);
+        assert!(plan.side_effect_free);
     }
 }

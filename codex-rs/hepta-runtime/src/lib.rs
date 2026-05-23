@@ -96,10 +96,12 @@ pub use core_fusion::{
     HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
     HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND, HEPTA_CORE_FUSION_READINESS_ENDPOINT,
     HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND, HeptaCodexEngineAdapterBoundaryResponse,
-    HeptaCodexEngineAdapterSurface, HeptaCoreFusionForbiddenSideEffects,
-    HeptaCoreFusionReadinessResponse, HeptaProductRuntimeEntrypointInput,
-    HeptaProductRuntimeEntrypointPlan, hepta_codex_engine_adapter_boundary_report,
-    hepta_core_fusion_readiness_report, hepta_product_runtime_entrypoint_plan,
+    HeptaCodexEngineAdapterSurface, HeptaCodexEngineAdapterThreadingPlan,
+    HeptaCoreFusionForbiddenSideEffects, HeptaCoreFusionReadinessResponse,
+    HeptaProductRuntimeEntrypointInput, HeptaProductRuntimeEntrypointPlan,
+    hepta_codex_engine_adapter_boundary_report, hepta_codex_model_provider_adapter_threading_plan,
+    hepta_codex_session_thread_store_adapter_threading_plan, hepta_core_fusion_readiness_report,
+    hepta_product_runtime_entrypoint_plan,
 };
 pub use delivery_queue::{
     ChannelSendHandoffInput, ChannelSendHandoffReport, DEFAULT_DELIVERY_LEASE_MS,
