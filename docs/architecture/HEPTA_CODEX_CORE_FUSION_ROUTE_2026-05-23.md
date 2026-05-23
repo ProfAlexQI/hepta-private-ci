@@ -110,6 +110,9 @@ Current landed state:
 - All six adapter surfaces now expose reportable typed adapter parity gates
   while still keeping `adapter_parity_complete=false` until real parity
   criteria are promoted.
+- The live watchdog now fails if the adapter boundary route loses typed
+  envelopes, typed parity gates, no-live-mutation status, or forbidden
+  side-effect guardrails.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -154,9 +157,9 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Promote typed adapter parity gates from report-only to explicit route/script
-   checks that can fail preflight and live gates per surface.
-2. Keep direct Codex dependencies explicit until each adapter has enforced
-   parity gates.
+1. Decide and document the stricter criteria for promoting
+   `adapter_parity_complete=true`; do not infer it from report-only gates.
+2. Keep direct Codex dependencies explicit until adapter parity has enforced
+   evidence beyond typed envelope presence.
 3. Run focused checks, full preflight, release build, live install, and live
    gates before advancing toward binary/package inversion.
