@@ -259,6 +259,7 @@ const BINARY_PACKAGE_INVERSION_CRITERIA: &[&str] = &[
     "intended first-class Hepta package and target are explicitly reported",
     "workspace exposes hepta-cli as the intended first-class release package",
     "active release build is produced by hepta-cli --bin hepta",
+    "active launchd service binary uses the first-class Hepta install path",
     "legacy codex-cli binary remains a compatibility test surface only",
     "Codex remains an internal engine adapter during the package transition",
     "public release and real mutation boundaries remain blocked",
@@ -288,7 +289,7 @@ const ADAPTER_PARITY_COMPLETION_GATE_STATUS: &str =
     "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion";
 
 const NEXT_ACTIONS: &[&str] = &[
-    "close the transition runtime path and launchd naming from hepta-codex toward Hepta after package ownership inversion",
+    "close remaining operator-facing runtime strings and repository naming from hepta-codex toward Hepta",
     "port or retire non-gateway legacy CLI shell compatibility that still routes through codex-cli",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
 ];
@@ -910,7 +911,7 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         active_binary_target: "hepta",
         intended_binary_package: "hepta-cli",
         intended_binary_target: "hepta",
-        installed_service_binary: "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex",
+        installed_service_binary: "/Users/qianqi/.local/opt/hepta/bin/hepta",
         phase_4_name_repository_closure_ready: false,
         full_fusion_complete: false,
         hepta_owned_root_surfaces: HEPTA_OWNED_ROOT_SURFACES,
@@ -998,6 +999,10 @@ mod tests {
         assert_eq!(report.active_binary_target, "hepta");
         assert_eq!(report.intended_binary_package, "hepta-cli");
         assert_eq!(report.intended_binary_target, "hepta");
+        assert_eq!(
+            report.installed_service_binary,
+            "/Users/qianqi/.local/opt/hepta/bin/hepta"
+        );
         assert!(
             report
                 .binary_package_inversion_criteria
@@ -1007,6 +1012,11 @@ mod tests {
             report
                 .binary_package_inversion_criteria
                 .contains(&"active release build is produced by hepta-cli --bin hepta")
+        );
+        assert!(
+            report
+                .binary_package_inversion_criteria
+                .contains(&"active launchd service binary uses the first-class Hepta install path")
         );
         assert!(report.binary_package_inversion_blockers.is_empty());
         assert!(!report.full_fusion_complete);

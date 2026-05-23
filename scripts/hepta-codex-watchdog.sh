@@ -4,7 +4,7 @@ set -euo pipefail
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 RELEASE_BIN="${HEPTA_CODEX_RELEASE_BIN:-$REPO_ROOT/codex-rs/target/release/hepta}"
-INSTALLED_BIN="${HEPTA_CODEX_INSTALLED_BIN:-$HOME/.local/opt/hepta-codex/bin/hepta-codex}"
+INSTALLED_BIN="${HEPTA_CODEX_INSTALLED_BIN:-$HOME/.local/opt/hepta/bin/hepta}"
 
 release_sha=""
 installed_sha=""
@@ -29,6 +29,7 @@ report="$(jq -n \
   --arg product "Hepta" \
   --arg runtime "hepta-codex" \
   --arg base_url "$BASE_URL" \
+  --arg installed_bin "$INSTALLED_BIN" \
   --arg release_sha "$release_sha" \
   --arg installed_sha "$installed_sha" \
   --argjson health "$health_json" \
@@ -111,6 +112,7 @@ report="$(jq -n \
         and $core.active_binary_target == "hepta"
         and $core.intended_binary_package == "hepta-cli"
         and $core.intended_binary_target == "hepta"
+        and $core.installed_service_binary == $installed_bin
         and $core.full_fusion_complete == false
         and (
           (
@@ -181,6 +183,7 @@ report="$(jq -n \
     binary_package_inversion_blocker_count:($core.binary_package_inversion_blockers | length),
     active_binary_package:$core.active_binary_package,
     intended_binary_package:$core.intended_binary_package,
+    installed_service_binary:$core.installed_service_binary,
     side_effects:{
       telegram_read_by_status:$poll.external_network_read_by_status,
       telegram_send_by_status:$poll.external_send_by_status,

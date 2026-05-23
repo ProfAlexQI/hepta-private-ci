@@ -29,8 +29,9 @@ The current crate graph already supports the first phase:
   wrappers.
 - `hepta-gateway` depends on `hepta-runtime` and owns the external gateway
   surface.
-- `codex-cli --bin hepta` remains the active binary entrypoint and still owns
-  direct references to `codex-core`, `codex-exec`, `codex-tui`, `codex-state`,
+- `hepta-cli --bin hepta` is now the active gateway release package. `codex-cli
+  --bin hepta` remains a compatibility test surface and still owns direct
+  references to `codex-core`, `codex-exec`, `codex-tui`, `codex-state`,
   app-server, MCP, sandboxing, and other Codex engine crates.
 
 This means the already-finished kernel migrations are directionally correct:
@@ -163,8 +164,8 @@ First patches:
   `hepta-cli`, intended target `hepta`.
 - Add or promote a `hepta-cli` binary crate.
 - Make the old `codex-cli` entrypoint a compatibility shell.
-- Keep install paths and launchd labels stable during migration, then flip
-  package naming only after live parity gates pass.
+- Keep the launchd label stable during migration, then move the active service
+  binary path to the first-class Hepta install once live parity gates pass.
 
 Acceptance:
 
@@ -184,6 +185,10 @@ Current landed state:
 - The active release package is `hepta-cli` with target `hepta`; `codex-cli`
   remains a compatibility test surface rather than the package that carries the
   installed gateway release.
+- The active service binary path is now expected to be
+  `/Users/qianqi/.local/opt/hepta/bin/hepta`; the old
+  `/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex` path is retained as a
+  transition rollback anchor, not the primary launch target.
 - Watchdog now checks this Phase 3 state in addition to adapter parity, so full
   fusion cannot regress to Codex package ownership silently.
 - A first-class `hepta-cli` package now exists in the workspace and builds a
@@ -213,8 +218,8 @@ Acceptance:
 
 Advance after Phase 3:
 
-1. Close transition naming: service path, runtime strings, and docs should move
-   from `hepta-codex` toward Hepta once rollback evidence is stable.
+1. Close transition naming: runtime strings, route names, script names, and docs
+   should move from `hepta-codex` toward Hepta once rollback evidence is stable.
 2. Keep direct Codex dependencies explicit as internal engine-adapter
    compatibility surfaces until repository/name closure is complete.
 3. Port or retire non-gateway legacy CLI shell compatibility that still routes

@@ -111,8 +111,8 @@ const TELEGRAM_DELIVERY_LEDGER_ENDPOINT: &str = "/api/telegram-delivery-ledger";
 const TELEGRAM_OWNER_HANDOFF_ENDPOINT: &str = "/api/telegram-owner-handoff";
 const LEGACY_OPENCLAW_CONFIG_PATH_ENV: &str = "HEPTA_LEGACY_OPENCLAW_CONFIG_PATH";
 const ACTIVE_GATEWAY_LABEL: &str = "ai.hepta.gateway";
-const ACTIVE_GATEWAY_LEGACY_BINARY: &str = "/Users/qianqi/.local/opt/hepta/bin/hepta";
-const HEPTA_CODEX_RELEASE_BINARY: &str = "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex";
+const HEPTA_ACTIVE_RELEASE_BINARY: &str = "/Users/qianqi/.local/opt/hepta/bin/hepta";
+const HEPTA_CODEX_TRANSITION_BINARY: &str = "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex";
 const MAX_NATIVE_SESSION_SUMMARIES: usize = 20;
 const MAX_NATIVE_TRANSCRIPT_FILES: usize = 5;
 const MAX_NATIVE_TRANSCRIPT_QUERY_FILES: usize = 20;
@@ -3725,11 +3725,11 @@ fn gateway_live_activation_plan(
         readiness_blocker_count: readiness.blocker_count,
         readiness_blockers: readiness.blockers.clone(),
         active_gateway_label: ACTIVE_GATEWAY_LABEL,
-        current_legacy_binary: ACTIVE_GATEWAY_LEGACY_BINARY,
-        replacement_binary: HEPTA_CODEX_RELEASE_BINARY,
+        current_legacy_binary: HEPTA_CODEX_TRANSITION_BINARY,
+        replacement_binary: HEPTA_ACTIVE_RELEASE_BINARY,
         bind_addr: options.bind_addr.clone(),
         launch_arguments: vec![
-            HEPTA_CODEX_RELEASE_BINARY.to_string(),
+            HEPTA_ACTIVE_RELEASE_BINARY.to_string(),
             "--serve-ui".to_string(),
             options.bind_addr.clone(),
             "--with-telegram-plugin".to_string(),
@@ -3784,7 +3784,7 @@ fn gateway_live_activation_plan(
             },
         ],
         live_smoke_sequence: &[
-            "start isolated hepta-codex release binary on a non-production loopback port",
+            "start isolated hepta-cli release binary on a non-production loopback port",
             "GET /api/gateway-replacement-readiness and require active_install_allowed=false until delivery approval is explicit",
             "GET /api/control-ui-route-parity and require missing_route_count=0",
             "GET /api/telegram-poll-loop and require no status-triggered external read/send",
@@ -3792,9 +3792,9 @@ fn gateway_live_activation_plan(
             "allow production replacement only if readiness has no blockers after the smoke",
         ],
         production_replacement_sequence: &[
-            "keep the old Hepta gateway binary and launchd label as rollback anchors",
-            "install the verified hepta-codex release binary under the isolated hepta-codex path",
-            "switch the active launchd ProgramArguments to hepta-codex --serve-ui loopback with Telegram plugin flags",
+            "keep the transition hepta-codex binary and launchd label as rollback anchors",
+            "install the verified hepta-cli release binary under the first-class Hepta path",
+            "switch the active launchd ProgramArguments to hepta --serve-ui loopback with Telegram plugin flags",
             "set only the audited HEPTA_NATIVE_* and HEPTA_CODEX_* gate env vars",
             "kickstart the gateway service and verify /health plus /api/native-gateway",
             "rollback by restoring the old ProgramArguments/binary and kickstarting ai.hepta.gateway",
@@ -8504,7 +8504,11 @@ mod tests {
         assert_eq!(value["runtime"], "hepta-codex");
         assert_eq!(value["operator_approval_required"], true);
         assert_eq!(value["active_gateway_label"], ACTIVE_GATEWAY_LABEL);
-        assert_eq!(value["replacement_binary"], HEPTA_CODEX_RELEASE_BINARY);
+        assert_eq!(
+            value["current_legacy_binary"],
+            HEPTA_CODEX_TRANSITION_BINARY
+        );
+        assert_eq!(value["replacement_binary"], HEPTA_ACTIVE_RELEASE_BINARY);
         assert_eq!(
             value["safety"]["status_probe_reads_telegram"], false,
             "activation planning must not read Telegram"
