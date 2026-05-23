@@ -830,7 +830,19 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
-    if let Some(options) = native_gateway::parse_serve_ui_args_from_env()? {
+    let native_gateway_options = native_gateway::parse_serve_ui_args_from_env()?;
+    let first_cli_arg = std::env::args().nth(1);
+    let entrypoint_plan = hepta_gateway::hepta_product_runtime_entrypoint_plan(
+        hepta_gateway::HeptaProductRuntimeEntrypointInput {
+            native_gateway_requested: native_gateway_options.is_some(),
+            first_cli_arg: first_cli_arg.as_deref(),
+        },
+    );
+
+    if entrypoint_plan.native_gateway_dispatch {
+        let Some(options) = native_gateway_options else {
+            unreachable!("entrypoint facade selected native gateway without parsed options");
+        };
         native_gateway::run_native_gateway(options).await?;
         return Ok(());
     }

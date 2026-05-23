@@ -95,7 +95,8 @@ pub use config_store::{
 pub use core_fusion::{
     HEPTA_CORE_FUSION_READINESS_ENDPOINT, HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND,
     HeptaCoreFusionForbiddenSideEffects, HeptaCoreFusionReadinessResponse,
-    hepta_core_fusion_readiness_report,
+    HeptaProductRuntimeEntrypointInput, HeptaProductRuntimeEntrypointPlan,
+    hepta_core_fusion_readiness_report, hepta_product_runtime_entrypoint_plan,
 };
 pub use delivery_queue::{
     ChannelSendHandoffInput, ChannelSendHandoffReport, DEFAULT_DELIVERY_LEASE_MS,

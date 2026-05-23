@@ -19,6 +19,7 @@ pub struct HeptaCoreFusionReadinessResponse {
     pub engine_adapter_owner: &'static str,
     pub codex_engine_role: &'static str,
     pub phase_1_root_ownership_inversion_ready: bool,
+    pub product_runtime_entrypoint_facade_ready: bool,
     pub phase_2_engine_adapter_boundary_ready: bool,
     pub phase_3_binary_package_inversion_ready: bool,
     pub phase_4_name_repository_closure_ready: bool,
@@ -44,6 +45,26 @@ pub struct HeptaCoreFusionForbiddenSideEffects {
     pub credential_read: bool,
     pub model_invoked: bool,
     pub external_network_read: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct HeptaProductRuntimeEntrypointInput<'a> {
+    pub native_gateway_requested: bool,
+    pub first_cli_arg: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaProductRuntimeEntrypointPlan {
+    pub product: &'static str,
+    pub root_owner: &'static str,
+    pub facade_owner: &'static str,
+    pub dispatch_target: &'static str,
+    pub native_gateway_dispatch: bool,
+    pub codex_compatibility_dispatch_required: bool,
+    pub cli_parse_required: bool,
+    pub codex_engine_role: &'static str,
+    pub first_cli_arg_kind: &'static str,
+    pub side_effect_free: bool,
 }
 
 const HEPTA_OWNED_ROOT_SURFACES: &[&str] = &[
@@ -81,11 +102,39 @@ const DIRECT_CODEX_BASE_DEPENDENCIES: &[&str] = &[
 const PHASE_1_BLOCKERS: &[&str] = &[];
 
 const NEXT_ACTIONS: &[&str] = &[
-    "route the hepta binary entrypoint through a Hepta-owned product-runtime facade before Codex compatibility dispatch",
     "introduce explicit CodexEngineAdapter boundaries for model/session/tool/sandbox/thread-store surfaces",
     "promote the installed binary from codex-cli --bin hepta toward first-class Hepta binary ownership after adapter parity",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
 ];
+
+pub fn hepta_product_runtime_entrypoint_plan(
+    input: HeptaProductRuntimeEntrypointInput<'_>,
+) -> HeptaProductRuntimeEntrypointPlan {
+    let first_cli_arg_kind = input
+        .first_cli_arg
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(classify_first_cli_arg)
+        .unwrap_or("interactive_default");
+    let native_gateway_dispatch = input.native_gateway_requested;
+
+    HeptaProductRuntimeEntrypointPlan {
+        product: "Hepta",
+        root_owner: "hepta",
+        facade_owner: "hepta-runtime",
+        dispatch_target: if native_gateway_dispatch {
+            "hepta_native_gateway"
+        } else {
+            "codex_compatibility_cli_dispatch"
+        },
+        native_gateway_dispatch,
+        codex_compatibility_dispatch_required: !native_gateway_dispatch,
+        cli_parse_required: !native_gateway_dispatch,
+        codex_engine_role: "internal_engine_adapter",
+        first_cli_arg_kind,
+        side_effect_free: true,
+    }
+}
 
 pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse {
     HeptaCoreFusionReadinessResponse {
@@ -103,6 +152,7 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         engine_adapter_owner: "codex-engine-adapter",
         codex_engine_role: "internal_engine_adapter",
         phase_1_root_ownership_inversion_ready: true,
+        product_runtime_entrypoint_facade_ready: true,
         phase_2_engine_adapter_boundary_ready: false,
         phase_3_binary_package_inversion_ready: false,
         phase_4_name_repository_closure_ready: false,
@@ -128,9 +178,25 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
     }
 }
 
+fn classify_first_cli_arg(arg: &str) -> &'static str {
+    match arg {
+        "exec" | "e" | "review" | "resume" | "fork" | "debug" => "runtime_command",
+        "mcp" | "plugin" | "mcp-server" | "app-server" | "remote-control" | "cloud"
+        | "cloud-tasks" => "service_or_integration_command",
+        "login" | "logout" | "doctor" | "completion" | "update" | "sandbox" | "features" => {
+            "operator_command"
+        }
+        value if value.starts_with('-') => "interactive_option",
+        _ => "prompt_or_compatibility_command",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::hepta_core_fusion_readiness_report;
+    use super::{
+        HeptaProductRuntimeEntrypointInput, hepta_core_fusion_readiness_report,
+        hepta_product_runtime_entrypoint_plan,
+    };
 
     #[test]
     fn report_marks_hepta_as_root_owner_and_codex_as_internal_engine() {
@@ -142,6 +208,7 @@ mod tests {
         assert_eq!(report.engine_adapter_owner, "codex-engine-adapter");
         assert_eq!(report.codex_engine_role, "internal_engine_adapter");
         assert!(report.phase_1_root_ownership_inversion_ready);
+        assert!(report.product_runtime_entrypoint_facade_ready);
         assert!(!report.full_fusion_complete);
         assert!(
             report
@@ -165,5 +232,37 @@ mod tests {
         assert!(!side_effects.credential_read);
         assert!(!side_effects.model_invoked);
         assert!(!side_effects.external_network_read);
+    }
+
+    #[test]
+    fn entrypoint_facade_selects_native_gateway_before_cli_parse_when_requested() {
+        let plan = hepta_product_runtime_entrypoint_plan(HeptaProductRuntimeEntrypointInput {
+            native_gateway_requested: true,
+            first_cli_arg: Some("exec"),
+        });
+
+        assert_eq!(plan.root_owner, "hepta");
+        assert_eq!(plan.facade_owner, "hepta-runtime");
+        assert_eq!(plan.dispatch_target, "hepta_native_gateway");
+        assert!(plan.native_gateway_dispatch);
+        assert!(!plan.codex_compatibility_dispatch_required);
+        assert!(!plan.cli_parse_required);
+        assert_eq!(plan.codex_engine_role, "internal_engine_adapter");
+        assert!(plan.side_effect_free);
+    }
+
+    #[test]
+    fn entrypoint_facade_keeps_codex_compatibility_dispatch_explicit() {
+        let plan = hepta_product_runtime_entrypoint_plan(HeptaProductRuntimeEntrypointInput {
+            native_gateway_requested: false,
+            first_cli_arg: Some("review"),
+        });
+
+        assert_eq!(plan.dispatch_target, "codex_compatibility_cli_dispatch");
+        assert!(!plan.native_gateway_dispatch);
+        assert!(plan.codex_compatibility_dispatch_required);
+        assert!(plan.cli_parse_required);
+        assert_eq!(plan.first_cli_arg_kind, "runtime_command");
+        assert_eq!(plan.codex_engine_role, "internal_engine_adapter");
     }
 }
