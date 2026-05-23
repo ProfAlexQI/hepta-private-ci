@@ -49,7 +49,7 @@ pub const HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA: &str = "hepta.telegram.cursor.v1"
 pub const HEPTA_KERNEL_TELEGRAM_RECEIVE_ONCE_NEXT_MIGRATION_SLICE: &str = "manual receive is a diagnostic read path; use drain-once or the armed poll loop for model, send, and cursor side effects";
 pub const DEFAULT_TELEGRAM_SOAK_MIN_POLLS: u64 = 3;
 pub const MAX_TELEGRAM_SOAK_MIN_POLLS: u64 = 10_000;
-pub const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 0;
+pub const DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 8;
 pub const MAX_TELEGRAM_SOAK_MAX_ATTENTION: u64 = 1_000;
 pub const DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS: u64 = 120_000;
 pub const MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS: u64 = 3_600_000;
@@ -11743,6 +11743,47 @@ not-json
         assert!(!status.raw_prompt_text_exposed);
         assert!(!status.raw_response_text_exposed);
         assert!(!status.raw_token_exposed);
+    }
+
+    #[test]
+    fn kernel_telegram_live_soak_allows_bounded_recovered_attention_history() {
+        let poll_loop = ready_kernel_poll_loop_status();
+        let cursor = ready_kernel_cursor_status();
+        let delivery_ledger = ready_kernel_delivery_ledger_status();
+        let guards = ready_kernel_production_guards();
+        let observation = kernel_live_soak_observation(
+            DEFAULT_TELEGRAM_SOAK_MIN_POLLS.saturating_add(10),
+            DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
+            Some("planned"),
+            Some(true),
+        );
+
+        let readiness = build_hepta_kernel_telegram_production_readiness_status(
+            HeptaKernelTelegramProductionReadinessInput {
+                requested: true,
+                poll_loop_status: &poll_loop,
+                cursor_status: &cursor,
+                delivery_ledger_status: &delivery_ledger,
+                production_guards: &guards,
+                observation: &observation,
+                min_poll_iterations_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MIN_POLLS",
+                min_poll_iterations: DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
+                max_attention_count_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION",
+                max_attention_count: DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
+                max_observed_age_env: "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS",
+                max_observed_age_ms: DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
+                now_unix_ms: TEST_NOW_MS,
+            },
+        );
+
+        assert!(readiness.ready);
+        assert_eq!(readiness.status, "ready");
+        assert!(readiness.attention_budget_ok);
+        assert!(
+            !readiness
+                .readiness_blockers
+                .contains(&"attention_budget_exceeded")
+        );
     }
 
     #[test]

@@ -40,6 +40,7 @@ pub mod skill_workshop;
 pub mod tool_generation;
 pub mod tools;
 pub mod transport;
+pub mod upstream_codex_sync;
 
 pub use agent_competition::*;
 pub use channels::*;
@@ -81,6 +82,7 @@ pub use skill_workshop::*;
 pub use tool_generation::*;
 pub use tools::*;
 pub use transport::*;
+pub use upstream_codex_sync::*;
 
 #[cfg(test)]
 mod contract_tests {

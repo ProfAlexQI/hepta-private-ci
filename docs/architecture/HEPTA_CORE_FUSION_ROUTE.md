@@ -27,6 +27,10 @@ Current state:
 - `scripts/hepta-active-service-dependency-isolation.sh` makes the active
   service isolation check repeatable with an offline `hepta-cli` cargo-tree
   gate and an optional live route contract check.
+- `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
+  lane: upstream changes are classified, absorbed through Hepta contracts, and
+  gated by active-service dependency isolation before any active runtime
+  promotion.
 
 No public release publication, credential read, model invocation, channel
 delivery, or gateway mutation is implied by this document.
