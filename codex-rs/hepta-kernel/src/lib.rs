@@ -598,6 +598,16 @@ pub struct HeptaKernelNativePostExecutionStoreJsonlHealth {
     pub invalid_json_line_count: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostExecutionStoreFileObservation {
+    pub path: String,
+    pub exists: bool,
+    pub bytes: u64,
+    pub max_bytes: u64,
+    pub max_lines: u64,
+    pub jsonl_health: HeptaKernelNativePostExecutionStoreJsonlHealth,
+}
+
 pub fn hepta_kernel_native_post_execution_store_specs()
 -> &'static [HeptaKernelNativePostExecutionStoreFileSpec] {
     &[
@@ -700,6 +710,24 @@ pub fn hepta_kernel_native_post_execution_store_file_status_report(
         raw_field_values_exposed: false,
         raw_idempotency_key_exposed: false,
     }
+}
+
+pub fn hepta_kernel_native_post_execution_store_file_status_from_observation(
+    spec: &HeptaKernelNativePostExecutionStoreFileSpec,
+    observation: HeptaKernelNativePostExecutionStoreFileObservation,
+) -> HeptaKernelNativePostExecutionStoreFileStatus {
+    hepta_kernel_native_post_execution_store_file_status_report(
+        spec,
+        observation.path,
+        observation.exists,
+        observation.bytes,
+        observation.max_bytes,
+        observation.max_lines,
+        observation.jsonl_health.jsonl_readable,
+        observation.jsonl_health.line_count,
+        observation.jsonl_health.valid_json_line_count,
+        observation.jsonl_health.invalid_json_line_count,
+    )
 }
 
 pub fn hepta_kernel_native_post_execution_store_capacity_allows_append(
@@ -8817,7 +8845,24 @@ mod tests {
             3,
             1,
         );
+        let observed = hepta_kernel_native_post_execution_store_file_status_from_observation(
+            spec,
+            HeptaKernelNativePostExecutionStoreFileObservation {
+                path: ".hepta/native-post-execution/idempotency.jsonl".to_string(),
+                exists: true,
+                bytes: 99,
+                max_bytes: 100,
+                max_lines: 3,
+                jsonl_health: HeptaKernelNativePostExecutionStoreJsonlHealth {
+                    jsonl_readable: true,
+                    line_count: 4,
+                    valid_json_line_count: 3,
+                    invalid_json_line_count: 1,
+                },
+            },
+        );
 
+        assert_eq!(observed, status);
         assert_eq!(status.store_kind, "idempotency");
         assert_eq!(status.schema_id, "hepta.post.idempotency_entry.v1");
         assert_eq!(status.filename, "idempotency.jsonl");

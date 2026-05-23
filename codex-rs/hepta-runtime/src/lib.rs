@@ -133,6 +133,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostExecutionAdmission as NativePostExecutionAdmission,
     HeptaKernelNativePostExecutionReadinessResponse as NativePostExecutionReadinessResponse,
     HeptaKernelNativePostExecutionReadinessRoute as NativePostExecutionReadinessRoute,
+    HeptaKernelNativePostExecutionStoreFileObservation as NativePostExecutionStoreFileObservation,
     HeptaKernelNativePostExecutionStoreFileSpec as NativePostExecutionStoreFileSpec,
     HeptaKernelNativePostExecutionStoreFileStatus as NativePostExecutionStoreFileStatus,
     HeptaKernelNativePostExecutionStoreJsonlHealth as NativePostExecutionStoreJsonlHealth,
@@ -529,6 +530,16 @@ pub fn native_post_execution_store_file_status_report(
         line_count,
         valid_json_line_count,
         invalid_json_line_count,
+    )
+}
+
+pub fn native_post_execution_store_file_status_from_observation(
+    spec: &NativePostExecutionStoreFileSpec,
+    observation: NativePostExecutionStoreFileObservation,
+) -> NativePostExecutionStoreFileStatus {
+    hepta_kernel::hepta_kernel_native_post_execution_store_file_status_from_observation(
+        spec,
+        observation,
     )
 }
 
