@@ -8928,7 +8928,25 @@ mod tests {
         assert_eq!(value["adapter_owner"], "codex-engine-adapter");
         assert_eq!(value["boundary_ready"], true);
         assert_eq!(value["adapter_parity_complete"], false);
+        assert_eq!(value["adapter_parity_promotion_ready"], false);
         assert_eq!(value["full_fusion_complete"], false);
+        assert!(
+            value["adapter_parity_promotion_criteria"]
+                .as_array()
+                .expect("adapter parity criteria")
+                .iter()
+                .any(|item| item.as_str()
+                    == Some("all adapter surfaces expose typed request/response envelopes"))
+        );
+        assert!(
+            value["adapter_parity_promotion_blockers"]
+                .as_array()
+                .expect("adapter parity blockers")
+                .iter()
+                .any(|item| item.as_str().is_some_and(|blocker| {
+                    blocker.contains("per-surface compatibility evidence")
+                }))
+        );
 
         let surfaces = value["surfaces"].as_array().expect("surfaces array");
         assert!(surfaces.len() >= 6);

@@ -113,6 +113,10 @@ Current landed state:
 - The live watchdog now fails if the adapter boundary route loses typed
   envelopes, typed parity gates, no-live-mutation status, or forbidden
   side-effect guardrails.
+- The adapter boundary route now also reports promotion criteria and blockers
+  for `adapter_parity_complete=true`; current state is intentionally
+  `adapter_parity_promotion_ready=false` until per-surface compatibility
+  evidence goes beyond typed envelope/gate presence.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -157,8 +161,8 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Decide and document the stricter criteria for promoting
-   `adapter_parity_complete=true`; do not infer it from report-only gates.
+1. Add per-surface compatibility evidence records, then wire them into the
+   promotion criteria for `adapter_parity_complete=true`.
 2. Keep direct Codex dependencies explicit until adapter parity has enforced
    evidence beyond typed envelope presence.
 3. Run focused checks, full preflight, release build, live install, and live

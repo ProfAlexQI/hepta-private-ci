@@ -62,6 +62,9 @@ report="$(jq -n \
         and ($adapter.surfaces | all(.typed_adapter_parity_gate_ready == true))
         and ($adapter.surfaces | all(.live_mutation_allowed == false))
         and $adapter.adapter_parity_complete == false
+        and $adapter.adapter_parity_promotion_ready == false
+        and ($adapter.adapter_parity_promotion_criteria | length) >= 6
+        and ($adapter.adapter_parity_promotion_blockers | length) >= 1
         and $adapter.full_fusion_complete == false
         and $adapter.forbidden_real_side_effects.public_ga_claimed == false
         and $adapter.forbidden_real_side_effects.public_release_published == false
@@ -111,6 +114,8 @@ report="$(jq -n \
     adapter_typed_envelope_ready_count:($adapter.surfaces | map(select(.typed_request_response_envelope_ready == true)) | length),
     adapter_typed_parity_gate_ready_count:($adapter.surfaces | map(select(.typed_adapter_parity_gate_ready == true)) | length),
     adapter_parity_complete:$adapter.adapter_parity_complete,
+    adapter_parity_promotion_ready:$adapter.adapter_parity_promotion_ready,
+    adapter_parity_promotion_blocker_count:($adapter.adapter_parity_promotion_blockers | length),
     full_fusion_complete:$adapter.full_fusion_complete,
     side_effects:{
       telegram_read_by_status:$poll.external_network_read_by_status,

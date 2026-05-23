@@ -97,6 +97,9 @@ pub struct HeptaCodexEngineAdapterBoundaryResponse {
     pub codex_engine_role: &'static str,
     pub boundary_ready: bool,
     pub adapter_parity_complete: bool,
+    pub adapter_parity_promotion_ready: bool,
+    pub adapter_parity_promotion_criteria: &'static [&'static str],
+    pub adapter_parity_promotion_blockers: &'static [&'static str],
     pub full_fusion_complete: bool,
     pub remaining_direct_codex_base_dependency_count: usize,
     pub surfaces: &'static [HeptaCodexEngineAdapterSurface],
@@ -191,6 +194,21 @@ const DIRECT_CODEX_BASE_DEPENDENCIES: &[&str] = &[
 ];
 
 const PHASE_1_BLOCKERS: &[&str] = &[];
+
+const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
+    "all adapter surfaces expose typed request/response envelopes",
+    "all adapter surfaces expose reportable typed parity gates",
+    "live watchdog enforces typed envelope and typed parity gate presence",
+    "per-surface compatibility evidence exists beyond report-field presence",
+    "no adapter surface allows live mutation during compatibility dispatch",
+    "forbidden side-effect guardrails remain false",
+];
+
+const ADAPTER_PARITY_PROMOTION_BLOCKERS: &[&str] = &[
+    "per-surface compatibility evidence has not yet been promoted beyond typed envelope/gate presence",
+    "adapter parity completion has not yet been tied to a dedicated failing preflight gate per surface",
+    "direct Codex base dependencies remain intentionally retained for compatibility dispatch",
+];
 
 const NEXT_ACTIONS: &[&str] = &[
     "promote the installed binary from codex-cli --bin hepta toward first-class Hepta binary ownership after adapter parity",
@@ -492,6 +510,9 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
         codex_engine_role: "internal_engine_adapter",
         boundary_ready: true,
         adapter_parity_complete: false,
+        adapter_parity_promotion_ready: false,
+        adapter_parity_promotion_criteria: ADAPTER_PARITY_PROMOTION_CRITERIA,
+        adapter_parity_promotion_blockers: ADAPTER_PARITY_PROMOTION_BLOCKERS,
         full_fusion_complete: false,
         remaining_direct_codex_base_dependency_count: DIRECT_CODEX_BASE_DEPENDENCIES.len(),
         surfaces: CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES,
@@ -662,7 +683,18 @@ mod tests {
         assert_eq!(report.adapter_owner, "codex-engine-adapter");
         assert!(report.boundary_ready);
         assert!(!report.adapter_parity_complete);
+        assert!(!report.adapter_parity_promotion_ready);
         assert!(!report.full_fusion_complete);
+        assert!(
+            report
+                .adapter_parity_promotion_criteria
+                .contains(&"all adapter surfaces expose typed request/response envelopes")
+        );
+        assert!(
+            report
+                .adapter_parity_promotion_blockers
+                .contains(&"per-surface compatibility evidence has not yet been promoted beyond typed envelope/gate presence")
+        );
         assert_eq!(
             report.remaining_direct_codex_base_dependency_count,
             super::DIRECT_CODEX_BASE_DEPENDENCIES.len()
