@@ -57,6 +57,52 @@ pub struct HeptaUpstreamCodexSyncLaneReport {
     pub contracts: Vec<HeptaUpstreamCodexSyncContract>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexSnapshotRiskClass {
+    pub id: String,
+    pub risk: HeptaUpstreamCodexSyncRisk,
+    pub upstream_path_hints: Vec<String>,
+    pub hepta_review_surfaces: Vec<String>,
+    pub required_action: String,
+    pub auto_absorb_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub classification_required: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexSnapshotReport {
+    pub product: String,
+    pub status: String,
+    pub snapshot_lane_id: String,
+    pub upstream_repository: String,
+    pub upstream_default_ref: String,
+    pub compatibility_snapshot_role: String,
+    pub snapshot_gate: String,
+    pub sync_lane_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub observed_upstream_head_required_before_absorption: bool,
+    pub local_compatibility_head_required: bool,
+    pub diff_range_required_before_absorption: bool,
+    pub diff_inventory_required_before_absorption: bool,
+    pub risk_class_count: usize,
+    pub ready_risk_class_count: usize,
+    pub snapshot_intake_ready: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub external_network_read_default: bool,
+    pub workspace_mutation_default: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub risk_classes: Vec<HeptaUpstreamCodexSnapshotRiskClass>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -116,6 +162,65 @@ impl HeptaUpstreamCodexSyncLaneReport {
     }
 }
 
+impl HeptaUpstreamCodexSnapshotReport {
+    pub fn native_default() -> Self {
+        Self::from_risk_classes(default_upstream_codex_snapshot_risk_classes())
+    }
+
+    pub fn from_risk_classes(risk_classes: Vec<HeptaUpstreamCodexSnapshotRiskClass>) -> Self {
+        let risk_class_count = risk_classes.len();
+        let ready_risk_class_count = risk_classes
+            .iter()
+            .filter(|risk_class| {
+                risk_class.classification_required
+                    && !risk_class.auto_absorb_allowed
+                    && !risk_class.active_runtime_dependency_allowed
+            })
+            .count();
+        let snapshot_intake_ready =
+            risk_class_count > 0 && ready_risk_class_count == risk_class_count;
+
+        Self {
+            product: "Hepta".into(),
+            status: if snapshot_intake_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            snapshot_lane_id: "upstream-codex-snapshot-intake".into(),
+            upstream_repository: "https://github.com/openai/codex".into(),
+            upstream_default_ref: "HEAD".into(),
+            compatibility_snapshot_role: "ingestion_and_regression_oracle".into(),
+            snapshot_gate: "scripts/hepta-upstream-codex-snapshot.sh".into(),
+            sync_lane_gate: "scripts/hepta-upstream-codex-sync-lane.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            observed_upstream_head_required_before_absorption: true,
+            local_compatibility_head_required: true,
+            diff_range_required_before_absorption: true,
+            diff_inventory_required_before_absorption: true,
+            risk_class_count,
+            ready_risk_class_count,
+            snapshot_intake_ready,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            public_release_claim_allowed: false,
+            external_network_read_default: false,
+            workspace_mutation_default: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            risk_classes,
+        }
+    }
+}
+
 fn sync_contract(
     id: &str,
     risk: HeptaUpstreamCodexSyncRisk,
@@ -154,7 +259,7 @@ fn default_upstream_codex_sync_contracts() -> Vec<HeptaUpstreamCodexSyncContract
                 "codex-rs compatibility snapshot",
                 "docs/architecture/HEPTA_UPSTREAM_CODEX_SYNC_LANE.md",
             ],
-            "manual fetch or CI job must record the observed upstream head before any absorption patch",
+            "scripts/hepta-upstream-codex-snapshot.sh must record the observed upstream head before any absorption patch",
         ),
         sync_contract(
             "provider-credential-security-classification",
@@ -241,6 +346,107 @@ pub fn hepta_upstream_codex_sync_lane_report() -> HeptaUpstreamCodexSyncLaneRepo
     HeptaUpstreamCodexSyncLaneReport::native_default()
 }
 
+fn snapshot_risk_class(
+    id: &str,
+    risk: HeptaUpstreamCodexSyncRisk,
+    upstream_path_hints: &[&str],
+    hepta_review_surfaces: &[&str],
+    required_action: &str,
+) -> HeptaUpstreamCodexSnapshotRiskClass {
+    HeptaUpstreamCodexSnapshotRiskClass {
+        id: id.into(),
+        risk,
+        upstream_path_hints: upstream_path_hints
+            .iter()
+            .map(|value| (*value).into())
+            .collect(),
+        hepta_review_surfaces: hepta_review_surfaces
+            .iter()
+            .map(|value| (*value).into())
+            .collect(),
+        required_action: required_action.into(),
+        auto_absorb_allowed: false,
+        active_runtime_dependency_allowed: false,
+        classification_required: true,
+    }
+}
+
+fn default_upstream_codex_snapshot_risk_classes() -> Vec<HeptaUpstreamCodexSnapshotRiskClass> {
+    vec![
+        snapshot_risk_class(
+            "provider-credential-sandbox-security",
+            HeptaUpstreamCodexSyncRisk::P0Security,
+            &[
+                "providers",
+                "auth",
+                "login",
+                "credentials",
+                "approval_policy",
+                "sandbox",
+                "exec",
+                "network",
+            ],
+            &[
+                "hepta-runtime provider reports",
+                "hepta-kernel security policy reports",
+                "operator approval packet",
+            ],
+            "classify as P0 before any adapter or active runtime wiring",
+        ),
+        snapshot_risk_class(
+            "runtime-session-tool-mcp-appserver",
+            HeptaUpstreamCodexSyncRisk::P0Runtime,
+            &[
+                "runtime",
+                "session",
+                "thread",
+                "tool",
+                "mcp",
+                "app-server",
+                "protocol",
+            ],
+            &[
+                "/api/hepta-engine-adapter-boundary",
+                "adapter behavior-equivalence gate",
+                "shadow replay gate",
+            ],
+            "require contract tests and replay evidence before promotion",
+        ),
+        snapshot_risk_class(
+            "legacy-cli-tui-compatibility",
+            HeptaUpstreamCodexSyncRisk::P1Compatibility,
+            &["cli", "tui", "codex-cli", "codex-tui", "legacy command"],
+            &[
+                "codex-cli compatibility package",
+                "scripts/hepta-active-service-dependency-isolation.sh",
+            ],
+            "retain only as compatibility intake unless Hepta contracts absorb it",
+        ),
+        snapshot_risk_class(
+            "product-doc-release-governance",
+            HeptaUpstreamCodexSyncRisk::P2Product,
+            &[
+                "docs",
+                "changelog",
+                "release",
+                "install",
+                "package metadata",
+            ],
+            &[
+                "public GA readiness gate",
+                "release-hardening status",
+                "operator approval packet",
+                "long-cycle soak evidence",
+            ],
+            "gate release claims on governance evidence, not on upstream freshness alone",
+        ),
+    ]
+}
+
+pub fn hepta_upstream_codex_snapshot_report() -> HeptaUpstreamCodexSnapshotReport {
+    HeptaUpstreamCodexSnapshotReport::native_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,6 +505,73 @@ mod tests {
         assert!(report.contracts.iter().any(|contract| {
             contract.id == "provider-credential-security-classification"
                 && matches!(contract.risk, HeptaUpstreamCodexSyncRisk::P0Security)
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_snapshot_intake_is_ready_without_default_side_effects() {
+        let report = hepta_upstream_codex_snapshot_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.snapshot_lane_id, "upstream-codex-snapshot-intake");
+        assert_eq!(
+            report.snapshot_gate,
+            "scripts/hepta-upstream-codex-snapshot.sh"
+        );
+        assert_eq!(
+            report.sync_lane_gate,
+            "scripts/hepta-upstream-codex-sync-lane.sh"
+        );
+        assert_eq!(
+            report.active_dependency_isolation_gate,
+            "scripts/hepta-active-service-dependency-isolation.sh"
+        );
+        assert_eq!(report.risk_class_count, 4);
+        assert_eq!(report.ready_risk_class_count, report.risk_class_count);
+        assert!(report.snapshot_intake_ready);
+        assert!(report.observed_upstream_head_required_before_absorption);
+        assert!(report.local_compatibility_head_required);
+        assert!(report.diff_range_required_before_absorption);
+        assert!(report.diff_inventory_required_before_absorption);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.external_network_read_default);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+    }
+
+    #[test]
+    fn upstream_codex_snapshot_requires_classification_for_all_risk_classes() {
+        let report = hepta_upstream_codex_snapshot_report();
+
+        assert!(report.risk_classes.iter().all(|risk_class| {
+            risk_class.classification_required
+                && !risk_class.auto_absorb_allowed
+                && !risk_class.active_runtime_dependency_allowed
+        }));
+        assert!(report.risk_classes.iter().any(|risk_class| {
+            risk_class.id == "provider-credential-sandbox-security"
+                && matches!(risk_class.risk, HeptaUpstreamCodexSyncRisk::P0Security)
+        }));
+        assert!(report.risk_classes.iter().any(|risk_class| {
+            risk_class.id == "runtime-session-tool-mcp-appserver"
+                && matches!(risk_class.risk, HeptaUpstreamCodexSyncRisk::P0Runtime)
+        }));
+        assert!(report.risk_classes.iter().any(|risk_class| {
+            risk_class.id == "legacy-cli-tui-compatibility"
+                && risk_class
+                    .hepta_review_surfaces
+                    .iter()
+                    .any(|surface| surface.contains("dependency-isolation"))
         }));
     }
 }

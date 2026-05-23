@@ -18,6 +18,19 @@ bounded path:
 5. Run preflight, watchdog, soak, and release-governance gates before any public
    release claim.
 
+The head/diff intake gate is:
+
+```bash
+scripts/hepta-upstream-codex-snapshot.sh
+```
+
+By default this gate is offline/local-only. It records the Hepta repo head and
+the `codex-rs` compatibility tree hash, and it emits the required risk buckets.
+Set `HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=1` to perform a read-only
+`git ls-remote` observation of `https://github.com/openai/codex` HEAD. Set
+`HEPTA_UPSTREAM_CODEX_BASE_HEAD` and either `HEPTA_UPSTREAM_CODEX_TARGET_HEAD`
+or remote observation to materialize a candidate diff range.
+
 The local sync-lane gate is:
 
 ```bash
