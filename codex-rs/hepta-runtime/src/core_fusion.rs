@@ -202,7 +202,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-model-provider",
         adapter_contract: "model invocation must enter through a Hepta-owned request/response boundary before provider dispatch",
         migration_state: "adapter_threaded_compatibility_dispatch",
-        typed_request_response_envelope_ready: false,
+        typed_request_response_envelope_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -211,7 +211,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-state",
         adapter_contract: "session and thread persistence must be described as Hepta records before Codex store compatibility is used",
         migration_state: "adapter_threaded_compatibility_dispatch",
-        typed_request_response_envelope_ready: false,
+        typed_request_response_envelope_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -238,7 +238,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-mcp",
         adapter_contract: "MCP and app-server traffic must remain behind read-only Hepta route contracts until explicit adapter parity",
         migration_state: "adapter_threaded_compatibility_dispatch",
-        typed_request_response_envelope_ready: false,
+        typed_request_response_envelope_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -247,7 +247,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-tui",
         adapter_contract: "legacy TUI and CLI behavior must remain compatibility-dispatched until first-class Hepta binary parity",
         migration_state: "adapter_threaded_compatibility_dispatch",
-        typed_request_response_envelope_ready: false,
+        typed_request_response_envelope_ready: true,
         live_mutation_allowed: false,
     },
 ];
@@ -347,6 +347,28 @@ pub fn hepta_codex_legacy_tui_cli_adapter_threading_plan(
     )
 }
 
+pub fn hepta_codex_model_provider_adapter_envelope(
+    input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
+) -> HeptaCodexEngineAdapterEnvelope {
+    hepta_codex_engine_adapter_envelope(
+        "model_provider_execution",
+        "hepta-runtime",
+        "codex-model-provider",
+        input,
+    )
+}
+
+pub fn hepta_codex_session_thread_store_adapter_envelope(
+    input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
+) -> HeptaCodexEngineAdapterEnvelope {
+    hepta_codex_engine_adapter_envelope(
+        "session_thread_store",
+        "hepta-runtime",
+        "codex-state",
+        input,
+    )
+}
+
 pub fn hepta_codex_tool_invocation_adapter_envelope(
     input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
 ) -> HeptaCodexEngineAdapterEnvelope {
@@ -357,6 +379,18 @@ pub fn hepta_codex_sandbox_exec_adapter_envelope(
     input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
 ) -> HeptaCodexEngineAdapterEnvelope {
     hepta_codex_engine_adapter_envelope("sandbox_exec", "hepta-kernel", "codex-exec", input)
+}
+
+pub fn hepta_codex_mcp_app_server_adapter_envelope(
+    input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
+) -> HeptaCodexEngineAdapterEnvelope {
+    hepta_codex_engine_adapter_envelope("mcp_app_server", "hepta-gateway", "codex-mcp", input)
+}
+
+pub fn hepta_codex_legacy_tui_cli_adapter_envelope(
+    input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
+) -> HeptaCodexEngineAdapterEnvelope {
+    hepta_codex_engine_adapter_envelope("legacy_tui_cli", "hepta-runtime", "codex-tui", input)
 }
 
 fn hepta_codex_engine_adapter_threading_plan(
@@ -522,11 +556,14 @@ fn classify_first_cli_arg(arg: &str) -> &'static str {
 mod tests {
     use super::{
         HeptaCodexEngineAdapterEnvelopeInput, HeptaProductRuntimeEntrypointInput,
-        hepta_codex_engine_adapter_boundary_report,
+        hepta_codex_engine_adapter_boundary_report, hepta_codex_legacy_tui_cli_adapter_envelope,
         hepta_codex_legacy_tui_cli_adapter_threading_plan,
+        hepta_codex_mcp_app_server_adapter_envelope,
         hepta_codex_mcp_app_server_adapter_threading_plan,
+        hepta_codex_model_provider_adapter_envelope,
         hepta_codex_model_provider_adapter_threading_plan,
         hepta_codex_sandbox_exec_adapter_envelope, hepta_codex_sandbox_exec_adapter_threading_plan,
+        hepta_codex_session_thread_store_adapter_envelope,
         hepta_codex_session_thread_store_adapter_threading_plan,
         hepta_codex_tool_invocation_adapter_envelope,
         hepta_codex_tool_invocation_adapter_threading_plan, hepta_core_fusion_readiness_report,
@@ -640,12 +677,12 @@ mod tests {
                 .iter()
                 .all(|surface| surface.migration_state == "adapter_threaded_compatibility_dispatch")
         );
-        assert!(report.surfaces.iter().any(|surface| {
-            surface.surface_id == "tool_invocation" && surface.typed_request_response_envelope_ready
-        }));
-        assert!(report.surfaces.iter().any(|surface| {
-            surface.surface_id == "sandbox_exec" && surface.typed_request_response_envelope_ready
-        }));
+        assert!(
+            report
+                .surfaces
+                .iter()
+                .all(|surface| surface.typed_request_response_envelope_ready)
+        );
     }
 
     #[test]
@@ -730,7 +767,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_and_sandbox_adapter_envelopes_are_typed_and_side_effect_free() {
+    fn all_adapter_envelopes_are_typed_and_side_effect_free() {
         let input = HeptaCodexEngineAdapterEnvelopeInput {
             operation: "compat_dispatch",
             compatibility_dispatch_requested: true,
@@ -740,10 +777,32 @@ mod tests {
             session_store_mutation_requested: false,
             external_network_read_requested: false,
         };
-        let tool = hepta_codex_tool_invocation_adapter_envelope(input);
-        let sandbox = hepta_codex_sandbox_exec_adapter_envelope(input);
+        let envelopes = [
+            hepta_codex_model_provider_adapter_envelope(input),
+            hepta_codex_session_thread_store_adapter_envelope(input),
+            hepta_codex_tool_invocation_adapter_envelope(input),
+            hepta_codex_sandbox_exec_adapter_envelope(input),
+            hepta_codex_mcp_app_server_adapter_envelope(input),
+            hepta_codex_legacy_tui_cli_adapter_envelope(input),
+        ];
 
-        for envelope in [tool, sandbox] {
+        let surface_ids = envelopes
+            .iter()
+            .map(|envelope| envelope.surface_id)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            surface_ids,
+            vec![
+                "model_provider_execution",
+                "session_thread_store",
+                "tool_invocation",
+                "sandbox_exec",
+                "mcp_app_server",
+                "legacy_tui_cli"
+            ]
+        );
+
+        for envelope in envelopes {
             assert_eq!(envelope.root_owner, "hepta");
             assert!(envelope.request_envelope_ready);
             assert!(envelope.response_envelope_ready);
