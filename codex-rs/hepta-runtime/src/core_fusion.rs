@@ -26,6 +26,16 @@ pub struct HeptaCoreFusionReadinessResponse {
     pub product_runtime_entrypoint_facade_ready: bool,
     pub phase_2_engine_adapter_boundary_ready: bool,
     pub phase_3_binary_package_inversion_ready: bool,
+    pub binary_package_inversion_gate: &'static str,
+    pub binary_package_inversion_gate_ready: bool,
+    pub binary_package_inversion_gate_status: &'static str,
+    pub binary_package_inversion_criteria: &'static [&'static str],
+    pub binary_package_inversion_blockers: &'static [&'static str],
+    pub active_binary_package: &'static str,
+    pub active_binary_target: &'static str,
+    pub intended_binary_package: &'static str,
+    pub intended_binary_target: &'static str,
+    pub installed_service_binary: &'static str,
     pub phase_4_name_repository_closure_ready: bool,
     pub full_fusion_complete: bool,
     pub hepta_owned_root_surfaces: &'static [&'static str],
@@ -241,6 +251,25 @@ const DIRECT_CODEX_BASE_DEPENDENCIES: &[&str] = &[
 ];
 
 const PHASE_1_BLOCKERS: &[&str] = &[];
+
+const BINARY_PACKAGE_INVERSION_CRITERIA: &[&str] = &[
+    "adapter parity is promoted before binary ownership inversion",
+    "active service binary path is known and watchdog-observed",
+    "current release package and target are explicitly reported",
+    "intended first-class Hepta package and target are explicitly reported",
+    "Codex remains an internal engine adapter during the package transition",
+    "public release and real mutation boundaries remain blocked",
+];
+
+const BINARY_PACKAGE_INVERSION_BLOCKERS: &[&str] = &[
+    "active release binary is still built from package codex-cli",
+    "workspace does not yet expose hepta-cli as the first-class release package",
+    "installed service path still uses the hepta-codex transition runtime name",
+];
+
+const BINARY_PACKAGE_INVERSION_GATE: &str = "hepta_first_class_binary_package_inversion_gate";
+const BINARY_PACKAGE_INVERSION_GATE_STATUS: &str =
+    "blocked_pending_hepta_cli_release_package_ownership";
 
 const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
     "all adapter surfaces expose typed request/response envelopes",
@@ -862,7 +891,7 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         native_route: true,
         compatibility_mode: "hepta_root_ownership_inversion_with_engine_adapter_boundary",
         side_effect_free: true,
-        phase: "phase_2_engine_adapter_boundary",
+        phase: "phase_3_binary_package_inversion",
         root_owner: "hepta",
         product_runtime_owner: "hepta-runtime",
         gateway_owner: "hepta-gateway",
@@ -872,6 +901,16 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         product_runtime_entrypoint_facade_ready: true,
         phase_2_engine_adapter_boundary_ready: true,
         phase_3_binary_package_inversion_ready: false,
+        binary_package_inversion_gate: BINARY_PACKAGE_INVERSION_GATE,
+        binary_package_inversion_gate_ready: true,
+        binary_package_inversion_gate_status: BINARY_PACKAGE_INVERSION_GATE_STATUS,
+        binary_package_inversion_criteria: BINARY_PACKAGE_INVERSION_CRITERIA,
+        binary_package_inversion_blockers: BINARY_PACKAGE_INVERSION_BLOCKERS,
+        active_binary_package: "codex-cli",
+        active_binary_target: "hepta",
+        intended_binary_package: "hepta-cli",
+        intended_binary_target: "hepta",
+        installed_service_binary: "/Users/qianqi/.local/opt/hepta-codex/bin/hepta-codex",
         phase_4_name_repository_closure_ready: false,
         full_fusion_complete: false,
         hepta_owned_root_surfaces: HEPTA_OWNED_ROOT_SURFACES,
@@ -937,6 +976,7 @@ mod tests {
         let report = hepta_core_fusion_readiness_report();
 
         assert_eq!(report.status, "ready");
+        assert_eq!(report.phase, "phase_3_binary_package_inversion");
         assert_eq!(report.root_owner, "hepta");
         assert_eq!(report.product_runtime_owner, "hepta-runtime");
         assert_eq!(report.engine_adapter_owner, "codex-engine-adapter");
@@ -944,6 +984,30 @@ mod tests {
         assert!(report.phase_1_root_ownership_inversion_ready);
         assert!(report.product_runtime_entrypoint_facade_ready);
         assert!(report.phase_2_engine_adapter_boundary_ready);
+        assert!(!report.phase_3_binary_package_inversion_ready);
+        assert_eq!(
+            report.binary_package_inversion_gate,
+            "hepta_first_class_binary_package_inversion_gate"
+        );
+        assert!(report.binary_package_inversion_gate_ready);
+        assert_eq!(
+            report.binary_package_inversion_gate_status,
+            "blocked_pending_hepta_cli_release_package_ownership"
+        );
+        assert_eq!(report.active_binary_package, "codex-cli");
+        assert_eq!(report.active_binary_target, "hepta");
+        assert_eq!(report.intended_binary_package, "hepta-cli");
+        assert_eq!(report.intended_binary_target, "hepta");
+        assert!(
+            report
+                .binary_package_inversion_criteria
+                .contains(&"adapter parity is promoted before binary ownership inversion")
+        );
+        assert!(
+            report
+                .binary_package_inversion_blockers
+                .contains(&"active release binary is still built from package codex-cli")
+        );
         assert!(!report.full_fusion_complete);
         assert!(
             report

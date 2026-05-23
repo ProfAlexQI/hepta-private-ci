@@ -158,6 +158,9 @@ Goal: move from `codex-cli --bin hepta` to a first-class Hepta binary crate.
 
 First patches:
 
+- Report and gate the current binary/package ownership state before moving
+  code: active package `codex-cli`, active target `hepta`, intended package
+  `hepta-cli`, intended target `hepta`.
 - Add or promote a `hepta-cli` binary crate.
 - Make the old `codex-cli` entrypoint a compatibility shell.
 - Keep install paths and launchd labels stable during migration, then flip
@@ -168,6 +171,23 @@ Acceptance:
 - The installed binary still serves `127.0.0.1:7373`.
 - The live service can be rebuilt and restarted from the Hepta binary crate.
 - Legacy Codex commands still resolve through compatibility shims.
+
+Current landed state:
+
+- `/api/hepta-core-fusion-readiness` now reports
+  `phase=phase_3_binary_package_inversion`.
+- Phase 3 is started but not complete:
+  `phase_3_binary_package_inversion_ready=false`.
+- The live route reports a dedicated
+  `hepta_first_class_binary_package_inversion_gate`, with status
+  `blocked_pending_hepta_cli_release_package_ownership`.
+- The gate makes the remaining blockers explicit: the active release binary is
+  still built from package `codex-cli`, the workspace does not yet expose
+  `hepta-cli` as the first-class release package, and the installed service path
+  still uses the `hepta-codex` transition runtime name.
+- Watchdog now checks this Phase 3 state in addition to adapter parity, so full
+  fusion cannot be claimed while package ownership remains inverted through the
+  Codex package.
 
 ### Phase 4 - Name and Repository Closure
 
@@ -192,7 +212,8 @@ Acceptance:
 Advance to Phase 3:
 
 1. Start binary/package inversion: move from `codex-cli --bin hepta` toward a
-   first-class Hepta binary ownership model.
+   first-class Hepta binary ownership model by introducing/promoting a
+   `hepta-cli` release package.
 2. Keep direct Codex dependencies explicit as internal engine-adapter
    compatibility surfaces until the binary/package layer is inverted.
 3. Run focused checks, full preflight, release build, live install, and live

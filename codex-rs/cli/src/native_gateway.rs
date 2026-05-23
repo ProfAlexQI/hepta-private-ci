@@ -8856,6 +8856,7 @@ mod tests {
             "hepta_root_ownership_inversion_with_engine_adapter_boundary"
         );
         assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["phase"], "phase_3_binary_package_inversion");
         assert_eq!(value["root_owner"], "hepta");
         assert_eq!(value["product_runtime_owner"], "hepta-runtime");
         assert_eq!(value["gateway_owner"], "hepta-gateway");
@@ -8863,6 +8864,28 @@ mod tests {
         assert_eq!(value["codex_engine_role"], "internal_engine_adapter");
         assert_eq!(value["phase_1_root_ownership_inversion_ready"], true);
         assert_eq!(value["phase_2_engine_adapter_boundary_ready"], true);
+        assert_eq!(value["phase_3_binary_package_inversion_ready"], false);
+        assert_eq!(
+            value["binary_package_inversion_gate"],
+            "hepta_first_class_binary_package_inversion_gate"
+        );
+        assert_eq!(value["binary_package_inversion_gate_ready"], true);
+        assert_eq!(
+            value["binary_package_inversion_gate_status"],
+            "blocked_pending_hepta_cli_release_package_ownership"
+        );
+        assert_eq!(value["active_binary_package"], "codex-cli");
+        assert_eq!(value["active_binary_target"], "hepta");
+        assert_eq!(value["intended_binary_package"], "hepta-cli");
+        assert_eq!(value["intended_binary_target"], "hepta");
+        assert!(
+            value["binary_package_inversion_blockers"]
+                .as_array()
+                .expect("binary package inversion blockers")
+                .iter()
+                .any(|item| item.as_str()
+                    == Some("active release binary is still built from package codex-cli"))
+        );
         assert_eq!(value["full_fusion_complete"], false);
         let direct_dependencies = value["direct_codex_base_dependencies"]
             .as_array()

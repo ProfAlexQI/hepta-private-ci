@@ -23,6 +23,7 @@ poll_json="$(curl -fsS "$BASE_URL/api/telegram-poll-loop")"
 post_json="$(curl -fsS "$BASE_URL/api/native-post-activation-plan")"
 stores_json="$(curl -fsS "$BASE_URL/api/native-post-execution-stores")"
 adapter_json="$(curl -fsS "$BASE_URL/api/hepta-codex-engine-adapter-boundary")"
+core_json="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
 
 report="$(jq -n \
   --arg product "Hepta" \
@@ -38,6 +39,7 @@ report="$(jq -n \
   --argjson post "$post_json" \
   --argjson stores "$stores_json" \
   --argjson adapter "$adapter_json" \
+  --argjson core "$core_json" \
   '{
     product:$product,
     runtime:$runtime,
@@ -96,6 +98,20 @@ report="$(jq -n \
         and $adapter.forbidden_real_side_effects.credential_read == false
         and $adapter.forbidden_real_side_effects.model_invoked == false
         and $adapter.forbidden_real_side_effects.external_network_read == false
+        and $core.status == "ready"
+        and $core.phase == "phase_3_binary_package_inversion"
+        and $core.phase_2_engine_adapter_boundary_ready == true
+        and $core.phase_3_binary_package_inversion_ready == false
+        and $core.binary_package_inversion_gate == "hepta_first_class_binary_package_inversion_gate"
+        and $core.binary_package_inversion_gate_ready == true
+        and $core.binary_package_inversion_gate_status == "blocked_pending_hepta_cli_release_package_ownership"
+        and ($core.binary_package_inversion_criteria | length) >= 6
+        and ($core.binary_package_inversion_blockers | length) >= 3
+        and $core.active_binary_package == "codex-cli"
+        and $core.active_binary_target == "hepta"
+        and $core.intended_binary_package == "hepta-cli"
+        and $core.intended_binary_target == "hepta"
+        and $core.full_fusion_complete == false
         and (
           (
             $operator.status == "attention"
@@ -159,6 +175,12 @@ report="$(jq -n \
     ),
     adapter_parity_promotion_blocker_count:($adapter.adapter_parity_promotion_blockers | length),
     full_fusion_complete:$adapter.full_fusion_complete,
+    core_fusion_phase:$core.phase,
+    phase_3_binary_package_inversion_ready:$core.phase_3_binary_package_inversion_ready,
+    binary_package_inversion_gate_status:$core.binary_package_inversion_gate_status,
+    binary_package_inversion_blocker_count:($core.binary_package_inversion_blockers | length),
+    active_binary_package:$core.active_binary_package,
+    intended_binary_package:$core.intended_binary_package,
     side_effects:{
       telegram_read_by_status:$poll.external_network_read_by_status,
       telegram_send_by_status:$poll.external_send_by_status,
