@@ -72,10 +72,10 @@ report="$(jq -n \
         and $adapter.adapter_parity_promotion_ready == false
         and $adapter.adapter_parity_completion_gate == "adapter_behavior_equivalence_to_parity_completion_gate"
         and $adapter.adapter_parity_completion_gate_ready == true
-        and $adapter.adapter_parity_completion_gate_status == "blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage"
+        and $adapter.adapter_parity_completion_gate_status == "blocked_pending_dedicated_adapter_parity_promotion_decision"
         and $adapter.adapter_parity_completion_gate_allows_promotion == false
         and $adapter.adapter_shadow_replay_required_surface_count == ($adapter.surfaces | length)
-        and $adapter.adapter_shadow_replay_covered_surface_count >= 2
+        and $adapter.adapter_shadow_replay_covered_surface_count == ($adapter.surfaces | length)
         and $adapter.adapter_shadow_replay_remaining_surface_count == (($adapter.surfaces | length) - $adapter.adapter_shadow_replay_covered_surface_count)
         and (
           $adapter.parity_evidence
@@ -85,7 +85,7 @@ report="$(jq -n \
               and .shadow_replay_side_effect_free == true
             ))
           | length
-        ) >= 2
+        ) == ($adapter.surfaces | length)
         and ($adapter.adapter_parity_promotion_criteria | length) >= 6
         and ($adapter.adapter_parity_promotion_blockers | length) >= 1
         and $adapter.full_fusion_complete == false
