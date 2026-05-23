@@ -151,6 +151,7 @@ pub use hepta_kernel::{
     HeptaKernelNativePostRolloutEvidenceResponse as NativePostRolloutEvidenceResponse,
     HeptaKernelNativePostRolloutEvidenceScan as NativePostRolloutEvidenceScan,
     HeptaKernelNativePostSelectedHandlerRolloutEvidence as NativePostSelectedHandlerRolloutEvidence,
+    HeptaKernelNativePostStoreEffectProjection as NativePostStoreEffectProjection,
 };
 pub use inbound_router::{
     DEFAULT_INBOUND_ROUTER_ID, DEFAULT_INBOUND_ROUTER_PATH, InboundEventInput, InboundEventRecord,
@@ -429,6 +430,18 @@ pub fn native_post_real_handler_harness(
         store_write_succeeded,
         store_write_report,
         store_write_error,
+    )
+}
+
+pub fn native_post_store_effect_projection(
+    idempotency_evidence: NativePostIdempotencyEvidence,
+    audit_event_contract: NativePostAuditEventContract,
+    real_handler_harness: &NativePostRealHandlerHarness,
+) -> NativePostStoreEffectProjection {
+    hepta_kernel::hepta_kernel_native_post_store_effect_projection(
+        idempotency_evidence,
+        audit_event_contract,
+        real_handler_harness,
     )
 }
 

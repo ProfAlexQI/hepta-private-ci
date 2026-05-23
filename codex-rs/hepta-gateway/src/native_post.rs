@@ -26,12 +26,12 @@ pub use hepta_runtime::{
     NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
-    NativePostSelectedHandlerRolloutEvidence, native_post_audit_event_contract,
-    native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
-    native_post_duplicate_check_required, native_post_execution_admission_with_scope,
-    native_post_execution_readiness_report, native_post_execution_store_capacity_allows_append,
-    native_post_execution_store_capacity_ok, native_post_execution_store_contracts_ready,
-    native_post_execution_store_file_status_report,
+    NativePostSelectedHandlerRolloutEvidence, NativePostStoreEffectProjection,
+    native_post_audit_event_contract, native_post_body_admission, native_post_body_schema,
+    native_post_confirmation_contract, native_post_duplicate_check_required,
+    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
+    native_post_execution_store_capacity_allows_append, native_post_execution_store_capacity_ok,
+    native_post_execution_store_contracts_ready, native_post_execution_store_file_status_report,
     native_post_execution_store_jsonl_health_from_content,
     native_post_execution_store_jsonl_health_missing,
     native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_jsonl_valid,
@@ -44,7 +44,7 @@ pub use hepta_runtime::{
     native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
     native_post_real_handler_scope_single_selected_kind, native_post_redacted_fingerprint,
     native_post_rollback_contract, native_post_store_capacity_check_required,
-    native_post_store_write_attempt_required,
+    native_post_store_effect_projection, native_post_store_write_attempt_required,
 };
 
 pub fn native_post_plan_report(
@@ -61,8 +61,8 @@ pub fn native_post_plan_report(
     let body_admission = native_post_body_admission(spec, &body_schema, request_body);
     let confirmation_contract = native_post_confirmation_contract(spec);
     let rollback_contract = native_post_rollback_contract();
-    let mut idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
-    let mut audit_event_contract = native_post_audit_event_contract(
+    let idempotency_evidence = native_post_idempotency_evidence(spec, &body_admission);
+    let audit_event_contract = native_post_audit_event_contract(
         spec,
         &body_schema,
         &body_admission,
@@ -87,14 +87,11 @@ pub fn native_post_plan_report(
         store_root,
         store_limits,
     );
-    if real_handler_harness.duplicate_check_performed {
-        idempotency_evidence.current_plan_lookup_performed = true;
-    }
-    if real_handler_harness.store_write_succeeded {
-        idempotency_evidence.current_plan_store_written = true;
-        audit_event_contract.current_plan_emits_audit_event = true;
-        audit_event_contract.current_plan_persists_audit_event = true;
-    }
+    let store_effect_projection = native_post_store_effect_projection(
+        idempotency_evidence,
+        audit_event_contract,
+        &real_handler_harness,
+    );
     hepta_runtime::native_post_plan_response(
         spec,
         parameter.is_some(),
@@ -103,8 +100,8 @@ pub fn native_post_plan_report(
         body_admission,
         confirmation_contract,
         rollback_contract,
-        idempotency_evidence,
-        audit_event_contract,
+        store_effect_projection.idempotency_evidence,
+        store_effect_projection.audit_event_contract,
         execution_admission,
         real_handler_harness,
     )

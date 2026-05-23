@@ -482,6 +482,12 @@ pub struct HeptaKernelNativePostRealHandlerHarness {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaKernelNativePostStoreEffectProjection {
+    pub idempotency_evidence: HeptaKernelNativePostIdempotencyEvidence,
+    pub audit_event_contract: HeptaKernelNativePostAuditEventContract,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaKernelNativePostPlanResponse {
     pub product: &'static str,
     pub runtime: &'static str,
@@ -1980,6 +1986,26 @@ pub fn hepta_kernel_native_post_real_handler_harness(
         raw_field_values_exposed: false,
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
+    }
+}
+
+pub fn hepta_kernel_native_post_store_effect_projection(
+    mut idempotency_evidence: HeptaKernelNativePostIdempotencyEvidence,
+    mut audit_event_contract: HeptaKernelNativePostAuditEventContract,
+    real_handler_harness: &HeptaKernelNativePostRealHandlerHarness,
+) -> HeptaKernelNativePostStoreEffectProjection {
+    if real_handler_harness.duplicate_check_performed {
+        idempotency_evidence.current_plan_lookup_performed = true;
+    }
+    if real_handler_harness.store_write_succeeded {
+        idempotency_evidence.current_plan_store_written = true;
+        audit_event_contract.current_plan_emits_audit_event = true;
+        audit_event_contract.current_plan_persists_audit_event = true;
+    }
+
+    HeptaKernelNativePostStoreEffectProjection {
+        idempotency_evidence,
+        audit_event_contract,
     }
 }
 
@@ -8517,9 +8543,8 @@ mod tests {
             &schema,
             Some(r#"{"task":"ship","confirm":true,"dry_run":true,"idempotency_key":"idem-1"}"#),
         );
-        let mut idempotency =
-            hepta_kernel_native_post_idempotency_evidence(task_publish, &admission);
-        let mut audit = hepta_kernel_native_post_audit_event_contract(
+        let idempotency = hepta_kernel_native_post_idempotency_evidence(task_publish, &admission);
+        let audit = hepta_kernel_native_post_audit_event_contract(
             task_publish,
             &schema,
             &admission,
@@ -8552,9 +8577,8 @@ mod tests {
             None,
             None,
         );
-        idempotency.current_plan_store_written = harness.store_write_succeeded;
-        audit.current_plan_emits_audit_event = harness.store_write_succeeded;
-        audit.current_plan_persists_audit_event = harness.store_write_succeeded;
+        let store_effect_projection =
+            hepta_kernel_native_post_store_effect_projection(idempotency, audit, &harness);
 
         let response = hepta_kernel_native_post_plan_response(
             task_publish,
@@ -8564,8 +8588,8 @@ mod tests {
             admission,
             hepta_kernel_native_post_confirmation_contract(task_publish),
             hepta_kernel_native_post_rollback_contract(),
-            idempotency,
-            audit,
+            store_effect_projection.idempotency_evidence,
+            store_effect_projection.audit_event_contract,
             execution,
             harness,
         );
@@ -8577,7 +8601,9 @@ mod tests {
         assert!(response.parameter_redacted);
         assert!(!response.side_effect_free);
         assert!(response.real_handler_harness.store_write_attempted);
+        assert!(response.idempotency_evidence.current_plan_lookup_performed);
         assert!(response.idempotency_evidence.current_plan_store_written);
+        assert!(response.audit_event_contract.current_plan_emits_audit_event);
         assert!(
             response
                 .audit_event_contract

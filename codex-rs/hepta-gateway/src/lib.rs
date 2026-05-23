@@ -64,10 +64,11 @@ pub use native_post::{
     NativePostRealHandlerHarness, NativePostRollbackContract,
     NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
     NativePostRolloutEvidenceResponse, NativePostSelectedHandlerRolloutEvidence,
-    native_post_activation_plan_report, native_post_audit_event_contract,
-    native_post_body_admission, native_post_body_schema, native_post_confirmation_contract,
-    native_post_dispatch_plan_report, native_post_duplicate_check_required,
-    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
+    NativePostStoreEffectProjection, native_post_activation_plan_report,
+    native_post_audit_event_contract, native_post_body_admission, native_post_body_schema,
+    native_post_confirmation_contract, native_post_dispatch_plan_report,
+    native_post_duplicate_check_required, native_post_execution_admission_with_scope,
+    native_post_execution_readiness_report,
     native_post_execution_store_capacity_allows_append_with_limits,
     native_post_execution_store_contracts_ready, native_post_execution_store_record,
     native_post_execution_stores_report, native_post_gray_release_evidence_report,
@@ -77,7 +78,8 @@ pub use native_post::{
     native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
     native_post_redacted_fingerprint, native_post_rollback_contract,
     native_post_rollout_evidence_report, native_post_store_capacity_check_required,
-    native_post_store_write_attempt_required, persist_native_post_execution_store_record,
+    native_post_store_effect_projection, native_post_store_write_attempt_required,
+    persist_native_post_execution_store_record,
 };
 pub use report::GatewayPluginResolutionContractReport;
 pub use resolution::{
