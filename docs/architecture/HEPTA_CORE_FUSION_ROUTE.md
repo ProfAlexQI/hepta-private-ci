@@ -36,6 +36,9 @@ Current state:
 - `scripts/hepta-upstream-codex-product-governance-absorption.sh` selects the
   first bounded absorption family from that ledger and requires Hepta-specific
   product/release-governance translation before promotion.
+- `scripts/hepta-upstream-codex-product-governance-translation.sh` verifies the
+  Hepta-owned translation packet for that selected product/release-governance
+  family, keeping upstream docs/package wording out of active runtime claims.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

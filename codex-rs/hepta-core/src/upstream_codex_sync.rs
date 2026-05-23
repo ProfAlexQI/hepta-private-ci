@@ -190,6 +190,43 @@ pub struct HeptaUpstreamCodexProductGovernanceAbsorptionReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexProductGovernanceTranslationReport {
+    pub product: String,
+    pub status: String,
+    pub translation_id: String,
+    pub translation_packet_path: String,
+    pub selected_bucket_id: String,
+    pub selected_changed_file_count: usize,
+    pub translated_surface_count: usize,
+    pub required_surface_count: usize,
+    pub source_absorption_gate: String,
+    pub translation_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub release_governance_documented: bool,
+    pub package_policy_documented: bool,
+    pub plugin_marketplace_policy_documented: bool,
+    pub sandbox_runtime_policy_documented: bool,
+    pub operator_approval_policy_documented: bool,
+    pub requires_hepta_translation: bool,
+    pub raw_upstream_doc_copy_allowed: bool,
+    pub raw_upstream_package_policy_copy_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub translation_ready: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub hepta_actions: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -432,6 +469,66 @@ impl HeptaUpstreamCodexProductGovernanceAbsorptionReport {
                 "run clean preflight before any absorption patch".into(),
                 "require watchdog and long soak before release claims".into(),
             ],
+        }
+    }
+}
+
+impl HeptaUpstreamCodexProductGovernanceTranslationReport {
+    pub fn native_default() -> Self {
+        let hepta_actions = vec![
+            "translate package and install-context deltas into Hepta packaging governance without changing the active service binary".into(),
+            "translate README and protocol documentation deltas into Hepta route/gate language without copying upstream public-release claims".into(),
+            "translate plugin install/request changes into operator-approved marketplace policy before live mutation".into(),
+            "hold sandbox, exec, and network documentation behind the P0 security/runtime buckets before active promotion".into(),
+            "require clean preflight, watchdog, operator approval packet, and long soak before any release-facing claim".into(),
+        ];
+        let translated_surface_count = hepta_actions.len();
+        let required_surface_count = 5;
+        let translation_ready = translated_surface_count == required_surface_count;
+
+        Self {
+            product: "Hepta".into(),
+            status: if translation_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            translation_id: "upstream-codex-product-governance-translation-packet".into(),
+            translation_packet_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_PRODUCT_GOVERNANCE_TRANSLATION.md".into(),
+            selected_bucket_id: "product-doc-release-governance".into(),
+            selected_changed_file_count: 22,
+            translated_surface_count,
+            required_surface_count,
+            source_absorption_gate: "scripts/hepta-upstream-codex-product-governance-absorption.sh"
+                .into(),
+            translation_gate: "scripts/hepta-upstream-codex-product-governance-translation.sh"
+                .into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            release_governance_documented: true,
+            package_policy_documented: true,
+            plugin_marketplace_policy_documented: true,
+            sandbox_runtime_policy_documented: true,
+            operator_approval_policy_documented: true,
+            requires_hepta_translation: true,
+            raw_upstream_doc_copy_allowed: false,
+            raw_upstream_package_policy_copy_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            translation_ready,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            hepta_actions,
         }
     }
 }
@@ -810,6 +907,11 @@ pub fn hepta_upstream_codex_product_governance_absorption_report()
     HeptaUpstreamCodexProductGovernanceAbsorptionReport::native_default()
 }
 
+pub fn hepta_upstream_codex_product_governance_translation_report()
+-> HeptaUpstreamCodexProductGovernanceTranslationReport {
+    HeptaUpstreamCodexProductGovernanceTranslationReport::native_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1099,6 +1201,93 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("active dependency isolation"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_product_governance_translation_packet_is_ready_and_bounded() {
+        let report = hepta_upstream_codex_product_governance_translation_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.translation_id,
+            "upstream-codex-product-governance-translation-packet"
+        );
+        assert_eq!(
+            report.translation_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_PRODUCT_GOVERNANCE_TRANSLATION.md"
+        );
+        assert_eq!(report.selected_bucket_id, "product-doc-release-governance");
+        assert_eq!(report.selected_changed_file_count, 22);
+        assert_eq!(
+            report.translated_surface_count,
+            report.required_surface_count
+        );
+        assert_eq!(
+            report.source_absorption_gate,
+            "scripts/hepta-upstream-codex-product-governance-absorption.sh"
+        );
+        assert_eq!(
+            report.translation_gate,
+            "scripts/hepta-upstream-codex-product-governance-translation.sh"
+        );
+        assert!(report.release_governance_documented);
+        assert!(report.package_policy_documented);
+        assert!(report.plugin_marketplace_policy_documented);
+        assert!(report.sandbox_runtime_policy_documented);
+        assert!(report.operator_approval_policy_documented);
+        assert!(report.requires_hepta_translation);
+        assert!(!report.raw_upstream_doc_copy_allowed);
+        assert!(!report.raw_upstream_package_policy_copy_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(report.translation_ready);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+    }
+
+    #[test]
+    fn upstream_codex_product_governance_translation_covers_hepta_actions() {
+        let report = hepta_upstream_codex_product_governance_translation_report();
+
+        assert!(
+            report
+                .hepta_actions
+                .iter()
+                .any(|action| action.contains("packaging governance"))
+        );
+        assert!(
+            report
+                .hepta_actions
+                .iter()
+                .any(|action| action.contains("route/gate language"))
+        );
+        assert!(
+            report
+                .hepta_actions
+                .iter()
+                .any(|action| action.contains("marketplace policy"))
+        );
+        assert!(
+            report
+                .hepta_actions
+                .iter()
+                .any(|action| action.contains("P0 security/runtime"))
+        );
+        assert!(
+            report
+                .hepta_actions
+                .iter()
+                .any(|action| action.contains("long soak"))
         );
     }
 }

@@ -60,6 +60,19 @@ packaging, or release-governance wording is promoted. It explicitly does not
 copy upstream docs verbatim, wire active runtime code, fetch or merge upstream,
 or make a public release claim.
 
+The translated Hepta release-governance packet is:
+
+```bash
+scripts/hepta-upstream-codex-product-governance-translation.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_PRODUCT_GOVERNANCE_TRANSLATION.md`.
+It converts the selected upstream package, README, protocol, plugin, sandbox,
+exec, network, and release-governance deltas into Hepta-owned policy language.
+It keeps public release claims, active runtime wiring, and live plugin mutation
+behind Hepta gates and operator approval.
+
 The local sync-lane gate is:
 
 ```bash
