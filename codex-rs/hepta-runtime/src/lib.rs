@@ -509,6 +509,14 @@ pub fn native_post_execution_store_jsonl_health_from_content(
     hepta_kernel::hepta_kernel_native_post_execution_store_jsonl_health_from_content(content)
 }
 
+pub fn native_post_execution_store_jsonl_health_from_observation(
+    observation: NativePostStoreReadObservation,
+) -> NativePostExecutionStoreJsonlHealth {
+    hepta_kernel::hepta_kernel_native_post_execution_store_jsonl_health_from_observation(
+        observation,
+    )
+}
+
 pub fn native_post_execution_store_file_status_report(
     spec: &NativePostExecutionStoreFileSpec,
     path: String,

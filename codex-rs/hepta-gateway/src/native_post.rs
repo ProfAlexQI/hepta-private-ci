@@ -19,25 +19,22 @@ pub use hepta_runtime::{
     NativePostBodySchema, NativePostConfirmationContract, NativePostExecutionAdmission,
     NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
     NativePostExecutionStoreFileObservation, NativePostExecutionStoreFileSpec,
-    NativePostExecutionStoreFileStatus, NativePostExecutionStoreJsonlHealth,
-    NativePostExecutionStoreLimits, NativePostExecutionStoreRecord,
-    NativePostExecutionStoreWriteReport, NativePostExecutionStoresResponse,
-    NativePostGrayReleaseEvidenceResponse, NativePostIdempotencyEvidence, NativePostPlanResponse,
-    NativePostPlanRouteSpec, NativePostRealHandlerHarness, NativePostRealHandlerObservation,
-    NativePostRollbackContract, NativePostRolloutEvidenceFileObservation,
-    NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
-    NativePostRolloutEvidenceResponse, NativePostRolloutEvidenceScan,
-    NativePostSelectedHandlerRolloutEvidence, NativePostStoreEffectProjection,
-    NativePostStoreReadObservation, native_post_audit_event_contract, native_post_body_admission,
-    native_post_body_schema, native_post_confirmation_contract,
-    native_post_duplicate_check_required, native_post_execution_admission_with_scope,
-    native_post_execution_readiness_report, native_post_execution_store_capacity_allows_append,
-    native_post_execution_store_capacity_ok, native_post_execution_store_contracts_ready,
+    NativePostExecutionStoreFileStatus, NativePostExecutionStoreLimits,
+    NativePostExecutionStoreRecord, NativePostExecutionStoreWriteReport,
+    NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
+    NativePostIdempotencyEvidence, NativePostPlanResponse, NativePostPlanRouteSpec,
+    NativePostRealHandlerHarness, NativePostRealHandlerObservation, NativePostRollbackContract,
+    NativePostRolloutEvidenceFileObservation, NativePostRolloutEvidencePlanKindCount,
+    NativePostRolloutEvidenceRecordSummary, NativePostRolloutEvidenceResponse,
+    NativePostRolloutEvidenceScan, NativePostSelectedHandlerRolloutEvidence,
+    NativePostStoreEffectProjection, NativePostStoreReadObservation,
+    native_post_audit_event_contract, native_post_body_admission, native_post_body_schema,
+    native_post_confirmation_contract, native_post_duplicate_check_required,
+    native_post_execution_admission_with_scope, native_post_execution_readiness_report,
+    native_post_execution_store_capacity_allows_append, native_post_execution_store_capacity_ok,
+    native_post_execution_store_contracts_ready,
     native_post_execution_store_file_status_from_observation,
-    native_post_execution_store_jsonl_health_from_content,
-    native_post_execution_store_jsonl_health_missing,
-    native_post_execution_store_jsonl_health_read_failed, native_post_execution_store_jsonl_valid,
-    native_post_execution_store_record_json_line,
+    native_post_execution_store_jsonl_valid, native_post_execution_store_record_json_line,
     native_post_execution_store_record_projected_append_bytes, native_post_execution_store_specs,
     native_post_execution_store_write_report,
     native_post_idempotency_duplicate_present_from_observation, native_post_idempotency_evidence,
@@ -504,8 +501,16 @@ fn native_post_execution_store_file_status(
     let path = root.join(spec.filename);
     let metadata = path.metadata().ok();
     let exists = metadata.as_ref().is_some_and(std::fs::Metadata::is_file);
-    let jsonl_health = native_post_execution_store_jsonl_health(&path, exists);
     let bytes = metadata.as_ref().map(std::fs::Metadata::len).unwrap_or(0);
+    let jsonl_observation = if exists {
+        native_post_store_read_observation(&path)
+    } else {
+        NativePostStoreReadObservation {
+            content: None,
+            missing: true,
+            read_failed: false,
+        }
+    };
     native_post_execution_store_file_status_from_observation(
         spec,
         NativePostExecutionStoreFileObservation {
@@ -514,23 +519,9 @@ fn native_post_execution_store_file_status(
             bytes,
             max_bytes: max_store_bytes,
             max_lines: max_store_lines,
-            jsonl_health,
+            jsonl_observation,
         },
     )
-}
-
-fn native_post_execution_store_jsonl_health(
-    path: &Path,
-    exists: bool,
-) -> NativePostExecutionStoreJsonlHealth {
-    if !exists {
-        return native_post_execution_store_jsonl_health_missing();
-    }
-    let content = match fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(_) => return native_post_execution_store_jsonl_health_read_failed(),
-    };
-    native_post_execution_store_jsonl_health_from_content(&content)
 }
 
 fn native_post_rollout_evidence_scan(path: &Path) -> NativePostRolloutEvidenceScan {

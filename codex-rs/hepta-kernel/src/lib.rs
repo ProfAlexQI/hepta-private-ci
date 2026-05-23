@@ -598,14 +598,14 @@ pub struct HeptaKernelNativePostExecutionStoreJsonlHealth {
     pub invalid_json_line_count: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeptaKernelNativePostExecutionStoreFileObservation {
     pub path: String,
     pub exists: bool,
     pub bytes: u64,
     pub max_bytes: u64,
     pub max_lines: u64,
-    pub jsonl_health: HeptaKernelNativePostExecutionStoreJsonlHealth,
+    pub jsonl_observation: HeptaKernelNativePostStoreReadObservation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -683,6 +683,21 @@ pub fn hepta_kernel_native_post_execution_store_jsonl_health_from_content(
     }
 }
 
+pub fn hepta_kernel_native_post_execution_store_jsonl_health_from_observation(
+    observation: HeptaKernelNativePostStoreReadObservation,
+) -> HeptaKernelNativePostExecutionStoreJsonlHealth {
+    if let Some(content) = observation.content {
+        return hepta_kernel_native_post_execution_store_jsonl_health_from_content(&content);
+    }
+    if observation.missing {
+        return hepta_kernel_native_post_execution_store_jsonl_health_missing();
+    }
+    if observation.read_failed {
+        return hepta_kernel_native_post_execution_store_jsonl_health_read_failed();
+    }
+    hepta_kernel_native_post_execution_store_jsonl_health_read_failed()
+}
+
 pub fn hepta_kernel_native_post_execution_store_file_status_report(
     spec: &HeptaKernelNativePostExecutionStoreFileSpec,
     path: String,
@@ -723,6 +738,9 @@ pub fn hepta_kernel_native_post_execution_store_file_status_from_observation(
     spec: &HeptaKernelNativePostExecutionStoreFileSpec,
     observation: HeptaKernelNativePostExecutionStoreFileObservation,
 ) -> HeptaKernelNativePostExecutionStoreFileStatus {
+    let jsonl_health = hepta_kernel_native_post_execution_store_jsonl_health_from_observation(
+        observation.jsonl_observation,
+    );
     hepta_kernel_native_post_execution_store_file_status_report(
         spec,
         observation.path,
@@ -730,10 +748,10 @@ pub fn hepta_kernel_native_post_execution_store_file_status_from_observation(
         observation.bytes,
         observation.max_bytes,
         observation.max_lines,
-        observation.jsonl_health.jsonl_readable,
-        observation.jsonl_health.line_count,
-        observation.jsonl_health.valid_json_line_count,
-        observation.jsonl_health.invalid_json_line_count,
+        jsonl_health.jsonl_readable,
+        jsonl_health.line_count,
+        jsonl_health.valid_json_line_count,
+        jsonl_health.invalid_json_line_count,
     )
 }
 
@@ -8935,11 +8953,10 @@ mod tests {
                 bytes: 99,
                 max_bytes: 100,
                 max_lines: 3,
-                jsonl_health: HeptaKernelNativePostExecutionStoreJsonlHealth {
-                    jsonl_readable: true,
-                    line_count: 4,
-                    valid_json_line_count: 3,
-                    invalid_json_line_count: 1,
+                jsonl_observation: HeptaKernelNativePostStoreReadObservation {
+                    content: Some("{\"ok\":true}\n[1]\n{\"n\":2}\nnot-json\n".to_string()),
+                    missing: false,
+                    read_failed: false,
                 },
             },
         );
@@ -8981,6 +8998,39 @@ mod tests {
         assert_eq!(health.line_count, 3);
         assert_eq!(health.valid_json_line_count, 2);
         assert_eq!(health.invalid_json_line_count, 1);
+
+        let observed_health =
+            hepta_kernel_native_post_execution_store_jsonl_health_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: Some("{\"ok\":true}\nnot-json\n".to_string()),
+                    missing: false,
+                    read_failed: false,
+                },
+            );
+        assert!(observed_health.jsonl_readable);
+        assert_eq!(observed_health.line_count, 2);
+        assert_eq!(observed_health.valid_json_line_count, 1);
+        assert_eq!(observed_health.invalid_json_line_count, 1);
+
+        let observed_missing =
+            hepta_kernel_native_post_execution_store_jsonl_health_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: None,
+                    missing: true,
+                    read_failed: false,
+                },
+            );
+        assert_eq!(observed_missing, missing);
+
+        let observed_failed =
+            hepta_kernel_native_post_execution_store_jsonl_health_from_observation(
+                HeptaKernelNativePostStoreReadObservation {
+                    content: None,
+                    missing: false,
+                    read_failed: true,
+                },
+            );
+        assert_eq!(observed_failed, failed);
     }
 
     #[test]
