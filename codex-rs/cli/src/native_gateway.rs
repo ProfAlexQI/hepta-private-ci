@@ -8927,25 +8927,21 @@ mod tests {
         assert_eq!(value["phase_4_name_repository_closure_gate_ready"], true);
         assert_eq!(
             value["phase_4_name_repository_closure_gate_status"],
-            "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending"
+            "ready_phase_4_transition_names_closed"
         );
         assert_eq!(
             value["phase_4_name_repository_closure_remaining_surface_count"]
                 .as_u64()
                 .expect("phase 4 remaining surface count"),
-            1
+            0
         );
-        let phase_4_blockers = value["phase_4_name_repository_closure_blockers"]
-            .as_array()
-            .expect("phase 4 blockers")
-            .iter()
-            .filter_map(|blocker| blocker.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            phase_4_blockers,
-            vec!["workspace_repository_directory_still_uses_hepta_codex_transition_name"]
+        assert!(
+            value["phase_4_name_repository_closure_blockers"]
+                .as_array()
+                .expect("phase 4 blockers")
+                .is_empty()
         );
-        assert_eq!(value["phase_4_name_repository_closure_ready"], false);
+        assert_eq!(value["phase_4_name_repository_closure_ready"], true);
         assert_eq!(value["full_fusion_complete"], false);
         let direct_dependencies = value["direct_codex_base_dependencies"]
             .as_array()
@@ -9009,9 +9005,9 @@ mod tests {
         assert_eq!(value["closure_gate_ready"], true);
         assert_eq!(
             value["closure_gate_status"],
-            "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending"
+            "ready_phase_4_transition_names_closed"
         );
-        assert_eq!(value["phase_4_name_repository_closure_ready"], false);
+        assert_eq!(value["phase_4_name_repository_closure_ready"], true);
         assert_eq!(value["full_fusion_complete"], false);
         assert!(
             value["transition_surface_count"]
@@ -9023,13 +9019,13 @@ mod tests {
             value["closed_transition_surface_count"]
                 .as_u64()
                 .expect("closed transition surface count")
-                >= 5
+                >= 6
         );
         assert_eq!(
             value["remaining_transition_surface_count"]
                 .as_u64()
                 .expect("remaining transition surface count"),
-            1
+            0
         );
         let surfaces = value["surfaces"].as_array().expect("surfaces");
         assert!(surfaces.iter().any(|surface| {
@@ -9066,9 +9062,10 @@ mod tests {
         }));
         assert!(surfaces.iter().any(|surface| {
             surface["surface_id"] == "workspace_repository_directory"
+                && surface["current_name"] == "/Users/qianqi/.openclaw/workspace/Hepta"
                 && surface["target_name"] == "/Users/qianqi/.openclaw/workspace/Hepta"
-                && surface["closure_state"] == "pending_operator_cutover"
-                && surface["blocks_full_fusion"] == true
+                && surface["closure_state"] == "closed"
+                && surface["blocks_full_fusion"] == false
         }));
         let blockers = value["blockers"]
             .as_array()
@@ -9076,10 +9073,7 @@ mod tests {
             .iter()
             .filter_map(|blocker| blocker.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(
-            blockers,
-            vec!["workspace_repository_directory_still_uses_hepta_codex_transition_name"]
-        );
+        assert!(blockers.is_empty());
         assert!(
             !blockers
                 .contains(&"engine_adapter_boundary_route_still_uses_hepta_codex_transition_slug")

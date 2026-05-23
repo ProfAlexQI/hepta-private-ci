@@ -16,10 +16,9 @@ Current state:
   compatibility target.
 - Runtime reports now expose `runtime="hepta"` while retaining compatibility
   names only where they identify old paths, old scripts, or old route aliases.
-- The workspace directory cutover is intentionally still pending. An existing
-  `/Users/qianqi/.openclaw/workspace/Hepta` checkout is present, so the active
-  repository path must be migrated in a later controlled slice rather than by a
-  blind rename.
+- The active workspace directory is `/Users/qianqi/.openclaw/workspace/Hepta`.
+  The old `/Users/qianqi/.openclaw/workspace/hepta-codex` path is retained only
+  as a rollback/compatibility alias.
 
 No public release publication, credential read, model invocation, channel
 delivery, or gateway mutation is implied by this document.

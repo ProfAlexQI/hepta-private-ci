@@ -231,22 +231,21 @@ Current landed state:
 - The closure report marks the active binary package transition as closed:
   `codex-cli --bin hepta` has been replaced by `hepta-cli --bin hepta` for the
   active service artifact.
-- The same report keeps full fusion blocked only for the remaining workspace
-  repository directory cutover. Runtime report strings now expose `hepta`, this
-  document has a Hepta-named canonical successor, and the engine-adapter route
-  slug plus release gate script family have active Hepta-named aliases.
+- The same report now closes the workspace repository directory cutover.
+  Runtime report strings expose `hepta`, this document has a Hepta-named
+  canonical successor, and the engine-adapter route slug plus release gate
+  script family have active Hepta-named aliases.
 - `/api/hepta-core-fusion-readiness` now includes the Phase 4 closure gate and
-  blocker list while still reporting `phase_4_name_repository_closure_ready=false`
-  and `full_fusion_complete=false`.
+  now reports `phase_4_name_repository_closure_ready=true` while keeping
+  `full_fusion_complete=false` for remaining internal Codex engine dependencies.
 
 ## Immediate Safe Next Slice
 
 Advance after Phase 3:
 
-1. Finish the workspace repository directory cutover from
-   `/Users/qianqi/.openclaw/workspace/hepta-codex` to a verified Hepta-owned
-   active checkout path, without overwriting the existing
-   `/Users/qianqi/.openclaw/workspace/Hepta` repository.
+1. Keep `/Users/qianqi/.openclaw/workspace/hepta-codex` only as a rollback
+   compatibility alias after the active checkout moves to
+   `/Users/qianqi/.openclaw/workspace/Hepta`.
 2. Keep direct Codex dependencies explicit as internal engine-adapter
    compatibility surfaces until repository/name closure is complete.
 3. Port or retire non-gateway legacy CLI shell compatibility that still routes

@@ -326,10 +326,8 @@ const BINARY_PACKAGE_INVERSION_GATE_STATUS: &str =
     "ready_hepta_cli_release_package_ownership_active";
 
 const NAME_REPOSITORY_CLOSURE_GATE: &str = "hepta_name_repository_closure_gate";
-const NAME_REPOSITORY_CLOSURE_GATE_STATUS: &str =
-    "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending";
-const NAME_REPOSITORY_CLOSURE_BLOCKERS: &[&str] =
-    &["workspace_repository_directory_still_uses_hepta_codex_transition_name"];
+const NAME_REPOSITORY_CLOSURE_GATE_STATUS: &str = "ready_phase_4_transition_names_closed";
+const NAME_REPOSITORY_CLOSURE_BLOCKERS: &[&str] = &[];
 
 const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
     "all adapter surfaces expose typed request/response envelopes",
@@ -349,7 +347,7 @@ const ADAPTER_PARITY_COMPLETION_GATE_STATUS: &str =
     "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion";
 
 const NEXT_ACTIONS: &[&str] = &[
-    "complete a controlled workspace repository directory cutover from hepta-codex toward a verified Hepta-owned active checkout",
+    "keep the hepta-codex workspace path only as a rollback compatibility alias",
     "port or retire non-gateway legacy CLI shell compatibility that still routes through codex-cli",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
 ];
@@ -408,12 +406,12 @@ const NAME_REPOSITORY_CLOSURE_SURFACES: &[HeptaNameRepositoryClosureSurface] = &
     HeptaNameRepositoryClosureSurface {
         surface_id: "workspace_repository_directory",
         surface_kind: "repository_directory",
-        current_name: "/Users/qianqi/.openclaw/workspace/hepta-codex",
+        current_name: "/Users/qianqi/.openclaw/workspace/Hepta",
         target_name: "/Users/qianqi/.openclaw/workspace/Hepta",
-        closure_state: "pending_operator_cutover",
+        closure_state: "closed",
         operator_facing: false,
         compatibility_alias_retained: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
 ];
 
@@ -1215,17 +1213,14 @@ mod tests {
         assert!(report.phase_4_name_repository_closure_gate_ready);
         assert_eq!(
             report.phase_4_name_repository_closure_gate_status,
-            "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending"
+            "ready_phase_4_transition_names_closed"
         );
         assert_eq!(
             report.phase_4_name_repository_closure_remaining_surface_count,
-            1
+            0
         );
-        assert_eq!(
-            report.phase_4_name_repository_closure_blockers,
-            &["workspace_repository_directory_still_uses_hepta_codex_transition_name"]
-        );
-        assert!(!report.phase_4_name_repository_closure_ready);
+        assert!(report.phase_4_name_repository_closure_blockers.is_empty());
+        assert!(report.phase_4_name_repository_closure_ready);
         assert!(
             report
                 .binary_package_inversion_criteria
@@ -1264,16 +1259,16 @@ mod tests {
         assert!(report.closure_gate_ready);
         assert_eq!(
             report.closure_gate_status,
-            "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending"
+            "ready_phase_4_transition_names_closed"
         );
-        assert!(!report.phase_4_name_repository_closure_ready);
+        assert!(report.phase_4_name_repository_closure_ready);
         assert!(!report.full_fusion_complete);
         assert_eq!(report.transition_surface_count, report.surfaces.len());
         assert_eq!(
             report.closed_transition_surface_count,
-            report.surfaces.len() - 1
+            report.surfaces.len()
         );
-        assert_eq!(report.remaining_transition_surface_count, 1);
+        assert_eq!(report.remaining_transition_surface_count, 0);
         assert!(report.operator_facing_transition_surface_count >= 5);
         assert_eq!(
             report.remaining_transition_surface_count,
@@ -1312,13 +1307,11 @@ mod tests {
             && !surface.blocks_full_fusion));
         assert!(report.surfaces.iter().any(|surface| surface.surface_id
             == "workspace_repository_directory"
+            && surface.current_name == "/Users/qianqi/.openclaw/workspace/Hepta"
             && surface.target_name == "/Users/qianqi/.openclaw/workspace/Hepta"
-            && surface.closure_state == "pending_operator_cutover"
-            && surface.blocks_full_fusion));
-        assert_eq!(
-            report.blockers,
-            &["workspace_repository_directory_still_uses_hepta_codex_transition_name"]
-        );
+            && surface.closure_state == "closed"
+            && !surface.blocks_full_fusion));
+        assert!(report.blockers.is_empty());
         assert!(
             !report
                 .blockers
