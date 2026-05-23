@@ -97,7 +97,15 @@ Acceptance:
 
 Current landed state:
 
-- `/api/hepta-codex-engine-adapter-boundary` enumerates the adapter surfaces.
+- `/api/hepta-engine-adapter-boundary` is now the canonical Hepta-named
+  adapter-boundary route; `/api/hepta-codex-engine-adapter-boundary` is
+  retained as a compatibility alias.
+- `scripts/hepta-*.sh` wrappers now front the transition
+  `scripts/hepta-codex-*.sh` release gate family.
+- `/api/hepta-name-repository-closure` now marks the engine-adapter route and
+  release-gate script family as `alias_active`; remaining Phase 4 blockers are
+  the runtime report strings, core-fusion document title, and workspace
+  repository directory name.
 - All six adapter surfaces are now marked
   `adapter_threaded_compatibility_dispatch`: model-provider execution,
   session/thread-store, tool invocation, sandbox/exec, MCP/app-server, and
@@ -222,10 +230,11 @@ Current landed state:
 - The closure report marks the active binary package transition as closed:
   `codex-cli --bin hepta` has been replaced by `hepta-cli --bin hepta` for the
   active service artifact.
-- The same report keeps full fusion blocked while remaining transition surfaces
-  still expose `hepta-codex`: runtime report strings, the engine-adapter route
-  slug, release gate script family names, the core-fusion route document title,
-  and the workspace repository directory name.
+- The same report keeps full fusion blocked while the remaining transition
+  surfaces still expose `hepta-codex`: runtime report strings, the core-fusion
+  route document title, and the workspace repository directory name. The
+  engine-adapter route slug and release gate script family now have active
+  Hepta-named aliases.
 - `/api/hepta-core-fusion-readiness` now includes the Phase 4 closure gate and
   blocker list while still reporting `phase_4_name_repository_closure_ready=false`
   and `full_fusion_complete=false`.

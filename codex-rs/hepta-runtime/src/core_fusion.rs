@@ -6,6 +6,9 @@ pub const HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-codex-engine-adapter-boundary";
 pub const HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND: &str =
     "/hepta-codex-engine-adapter-boundary --json";
+pub const HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT: &str = "/api/hepta-engine-adapter-boundary";
+pub const HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND: &str =
+    "/hepta-engine-adapter-boundary --json";
 pub const HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT: &str = "/api/hepta-name-repository-closure";
 pub const HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND: &str =
     "/hepta-name-repository-closure --json";
@@ -145,6 +148,12 @@ pub struct HeptaCodexEngineAdapterBoundaryResponse {
     pub runtime: &'static str,
     pub status: &'static str,
     pub source_command: &'static str,
+    pub canonical_endpoint: &'static str,
+    pub canonical_source_command: &'static str,
+    pub transition_alias_endpoint: &'static str,
+    pub transition_alias_source_command: &'static str,
+    pub hepta_named_route_alias_ready: bool,
+    pub transition_alias_retained: bool,
     pub native_route: bool,
     pub phase: &'static str,
     pub root_owner: &'static str,
@@ -321,8 +330,6 @@ const NAME_REPOSITORY_CLOSURE_GATE_STATUS: &str =
     "inventory_ready_remaining_transition_names_block_full_fusion";
 const NAME_REPOSITORY_CLOSURE_BLOCKERS: &[&str] = &[
     "operator_facing_runtime_reports_still_emit_hepta_codex_runtime_name",
-    "engine_adapter_boundary_route_still_uses_hepta_codex_transition_slug",
-    "release_gate_script_family_still_uses_hepta_codex_transition_prefix",
     "core_fusion_route_document_still_uses_hepta_codex_transition_title",
     "workspace_repository_directory_still_uses_hepta_codex_transition_name",
 ];
@@ -376,20 +383,20 @@ const NAME_REPOSITORY_CLOSURE_SURFACES: &[HeptaNameRepositoryClosureSurface] = &
         surface_kind: "native_gateway_route",
         current_name: "/api/hepta-codex-engine-adapter-boundary",
         target_name: "/api/hepta-engine-adapter-boundary",
-        closure_state: "pending_alias_plan",
+        closure_state: "alias_active",
         operator_facing: true,
         compatibility_alias_retained: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaNameRepositoryClosureSurface {
         surface_id: "release_gate_script_family",
         surface_kind: "script_family",
         current_name: "scripts/hepta-codex-*.sh",
         target_name: "scripts/hepta-*.sh",
-        closure_state: "pending_alias_plan",
+        closure_state: "alias_active",
         operator_facing: true,
         compatibility_alias_retained: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaNameRepositoryClosureSurface {
         surface_id: "core_fusion_route_document",
@@ -963,7 +970,13 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
         product: "Hepta",
         runtime: "hepta-codex",
         status: "ready",
-        source_command: HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND,
+        source_command: HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND,
+        canonical_endpoint: HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+        canonical_source_command: HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND,
+        transition_alias_endpoint: HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+        transition_alias_source_command: HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND,
+        hepta_named_route_alias_ready: true,
+        transition_alias_retained: true,
         native_route: true,
         phase: "phase_2_engine_adapter_boundary",
         root_owner: "hepta",
@@ -1005,7 +1018,10 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
 fn name_repository_closed_transition_surface_count() -> usize {
     NAME_REPOSITORY_CLOSURE_SURFACES
         .iter()
-        .filter(|surface| surface.closure_state == "closed" && !surface.blocks_full_fusion)
+        .filter(|surface| {
+            !surface.blocks_full_fusion
+                && (surface.closure_state == "closed" || surface.closure_state == "alias_active")
+        })
         .count()
 }
 
@@ -1140,8 +1156,11 @@ fn classify_first_cli_arg(arg: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        HeptaCodexEngineAdapterEnvelopeInput, HeptaProductRuntimeEntrypointInput,
-        hepta_codex_engine_adapter_boundary_report, hepta_codex_legacy_tui_cli_adapter_envelope,
+        HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+        HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND, HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+        HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND, HeptaCodexEngineAdapterEnvelopeInput,
+        HeptaProductRuntimeEntrypointInput, hepta_codex_engine_adapter_boundary_report,
+        hepta_codex_legacy_tui_cli_adapter_envelope,
         hepta_codex_legacy_tui_cli_adapter_shadow_replay,
         hepta_codex_legacy_tui_cli_adapter_threading_plan,
         hepta_codex_mcp_app_server_adapter_envelope,
@@ -1201,7 +1220,10 @@ mod tests {
             report.phase_4_name_repository_closure_gate_status,
             "inventory_ready_remaining_transition_names_block_full_fusion"
         );
-        assert!(report.phase_4_name_repository_closure_remaining_surface_count > 0);
+        assert_eq!(
+            report.phase_4_name_repository_closure_remaining_surface_count,
+            3
+        );
         assert!(
             report
                 .phase_4_name_repository_closure_blockers
@@ -1251,8 +1273,8 @@ mod tests {
         assert!(!report.phase_4_name_repository_closure_ready);
         assert!(!report.full_fusion_complete);
         assert_eq!(report.transition_surface_count, report.surfaces.len());
-        assert!(report.closed_transition_surface_count >= 1);
-        assert!(report.remaining_transition_surface_count >= 5);
+        assert!(report.closed_transition_surface_count >= 3);
+        assert_eq!(report.remaining_transition_surface_count, 3);
         assert!(report.operator_facing_transition_surface_count >= 5);
         assert_eq!(
             report.remaining_transition_surface_count,
@@ -1271,10 +1293,32 @@ mod tests {
             && surface.current_name == "hepta-codex"
             && surface.target_name == "hepta"
             && surface.blocks_full_fusion));
+        assert!(report.surfaces.iter().any(|surface| surface.surface_id
+            == "engine_adapter_boundary_route"
+            && surface.current_name == HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT
+            && surface.target_name == HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT
+            && surface.closure_state == "alias_active"
+            && !surface.blocks_full_fusion));
+        assert!(report.surfaces.iter().any(|surface| surface.surface_id
+            == "release_gate_script_family"
+            && surface.current_name == "scripts/hepta-codex-*.sh"
+            && surface.target_name == "scripts/hepta-*.sh"
+            && surface.closure_state == "alias_active"
+            && !surface.blocks_full_fusion));
         assert!(
             report
                 .blockers
+                .contains(&"core_fusion_route_document_still_uses_hepta_codex_transition_title")
+        );
+        assert!(
+            !report
+                .blockers
                 .contains(&"engine_adapter_boundary_route_still_uses_hepta_codex_transition_slug")
+        );
+        assert!(
+            !report
+                .blockers
+                .contains(&"release_gate_script_family_still_uses_hepta_codex_transition_prefix")
         );
         assert!(!report.forbidden_real_side_effects.public_release_published);
         assert!(
@@ -1340,6 +1384,28 @@ mod tests {
         assert_eq!(report.status, "ready");
         assert_eq!(report.root_owner, "hepta");
         assert_eq!(report.adapter_owner, "codex-engine-adapter");
+        assert_eq!(
+            report.source_command,
+            HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND
+        );
+        assert_eq!(
+            report.canonical_endpoint,
+            HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            report.canonical_source_command,
+            HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND
+        );
+        assert_eq!(
+            report.transition_alias_endpoint,
+            HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            report.transition_alias_source_command,
+            HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND
+        );
+        assert!(report.hepta_named_route_alias_ready);
+        assert!(report.transition_alias_retained);
         assert!(report.boundary_ready);
         assert!(report.adapter_parity_complete);
         assert!(report.adapter_parity_promotion_ready);

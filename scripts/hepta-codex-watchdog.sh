@@ -22,7 +22,8 @@ owner_json="$(curl -fsS "$BASE_URL/api/telegram-owner-handoff")"
 poll_json="$(curl -fsS "$BASE_URL/api/telegram-poll-loop")"
 post_json="$(curl -fsS "$BASE_URL/api/native-post-activation-plan")"
 stores_json="$(curl -fsS "$BASE_URL/api/native-post-execution-stores")"
-adapter_json="$(curl -fsS "$BASE_URL/api/hepta-codex-engine-adapter-boundary")"
+adapter_json="$(curl -fsS "$BASE_URL/api/hepta-engine-adapter-boundary")"
+adapter_alias_json="$(curl -fsS "$BASE_URL/api/hepta-codex-engine-adapter-boundary")"
 core_json="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
 closure_json="$(curl -fsS "$BASE_URL/api/hepta-name-repository-closure")"
 
@@ -41,6 +42,7 @@ report="$(jq -n \
   --argjson post "$post_json" \
   --argjson stores "$stores_json" \
   --argjson adapter "$adapter_json" \
+  --argjson adapter_alias "$adapter_alias_json" \
   --argjson core "$core_json" \
   --argjson closure "$closure_json" \
   '{
@@ -61,6 +63,18 @@ report="$(jq -n \
         and $stores.store_jsonl_valid == true
         and $stores.store_capacity_ok == true
         and $adapter.status == "ready"
+        and $adapter.source_command == "/hepta-engine-adapter-boundary --json"
+        and $adapter.canonical_endpoint == "/api/hepta-engine-adapter-boundary"
+        and $adapter.canonical_source_command == "/hepta-engine-adapter-boundary --json"
+        and $adapter.transition_alias_endpoint == "/api/hepta-codex-engine-adapter-boundary"
+        and $adapter.transition_alias_source_command == "/hepta-codex-engine-adapter-boundary --json"
+        and $adapter.hepta_named_route_alias_ready == true
+        and $adapter.transition_alias_retained == true
+        and $adapter_alias.status == "ready"
+        and $adapter_alias.canonical_endpoint == $adapter.canonical_endpoint
+        and $adapter_alias.transition_alias_endpoint == $adapter.transition_alias_endpoint
+        and $adapter_alias.source_command == $adapter.source_command
+        and $adapter_alias.boundary_ready == true
         and $adapter.boundary_ready == true
         and ($adapter.surfaces | length) >= 6
         and ($adapter.surfaces | all(.typed_request_response_envelope_ready == true))
@@ -119,8 +133,8 @@ report="$(jq -n \
         and $core.phase_4_name_repository_closure_gate == "hepta_name_repository_closure_gate"
         and $core.phase_4_name_repository_closure_gate_ready == true
         and $core.phase_4_name_repository_closure_gate_status == "inventory_ready_remaining_transition_names_block_full_fusion"
-        and $core.phase_4_name_repository_closure_remaining_surface_count > 0
-        and ($core.phase_4_name_repository_closure_blockers | length) > 0
+        and $core.phase_4_name_repository_closure_remaining_surface_count == 3
+        and ($core.phase_4_name_repository_closure_blockers | length) == 3
         and $core.phase_4_name_repository_closure_ready == false
         and $closure.status == "ready"
         and $closure.phase == "phase_4_name_repository_closure"
@@ -130,11 +144,13 @@ report="$(jq -n \
         and $closure.phase_4_name_repository_closure_ready == false
         and $closure.full_fusion_complete == false
         and $closure.transition_surface_count >= 6
-        and $closure.closed_transition_surface_count >= 1
-        and $closure.remaining_transition_surface_count > 0
-        and ($closure.blockers | length) > 0
+        and $closure.closed_transition_surface_count >= 3
+        and $closure.remaining_transition_surface_count == 3
+        and ($closure.blockers | length) == 3
         and ($closure.surfaces | map(select(.blocks_full_fusion == true)) | length) == $closure.remaining_transition_surface_count
         and ($closure.surfaces | map(select(.surface_id == "active_release_binary_package" and .closure_state == "closed" and .blocks_full_fusion == false)) | length) == 1
+        and ($closure.surfaces | map(select(.surface_id == "engine_adapter_boundary_route" and .closure_state == "alias_active" and .blocks_full_fusion == false)) | length) == 1
+        and ($closure.surfaces | map(select(.surface_id == "release_gate_script_family" and .closure_state == "alias_active" and .blocks_full_fusion == false)) | length) == 1
         and ($closure.surfaces | map(select(.surface_id == "runtime_report_strings" and .current_name == "hepta-codex" and .target_name == "hepta" and .blocks_full_fusion == true)) | length) == 1
         and $closure.forbidden_real_side_effects.public_ga_claimed == false
         and $closure.forbidden_real_side_effects.public_release_published == false
@@ -178,6 +194,9 @@ report="$(jq -n \
     native_post_activation_enabled:$post.activation_currently_enabled,
     native_post_store_lines:$stores.total_line_count,
     adapter_boundary_status:$adapter.status,
+    adapter_canonical_endpoint:$adapter.canonical_endpoint,
+    adapter_transition_alias_endpoint:$adapter.transition_alias_endpoint,
+    adapter_alias_status:$adapter_alias.status,
     adapter_surface_count:($adapter.surfaces | length),
     adapter_parity_evidence_count:($adapter.parity_evidence | length),
     adapter_parity_evidence_ready_count:($adapter.parity_evidence | map(select(.evidence_ready == true)) | length),
