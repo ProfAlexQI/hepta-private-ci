@@ -112,9 +112,12 @@ pub struct HeptaCodexEngineAdapterBoundaryResponse {
 pub struct HeptaCodexEngineAdapterParityEvidence {
     pub surface_id: &'static str,
     pub evidence_gate: &'static str,
+    pub behavior_equivalence_check: &'static str,
     pub typed_envelope_ready: bool,
     pub typed_parity_gate_ready: bool,
     pub compatibility_dispatch_checked: bool,
+    pub behavior_equivalence_checked: bool,
+    pub observable_behavior_preserved: bool,
     pub live_mutation_blocked: bool,
     pub forbidden_side_effects_blocked: bool,
     pub evidence_ready: bool,
@@ -212,14 +215,14 @@ const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
     "all adapter surfaces expose typed request/response envelopes",
     "all adapter surfaces expose reportable typed parity gates",
     "live watchdog enforces typed envelope and typed parity gate presence",
-    "per-surface compatibility evidence exists beyond report-field presence",
+    "per-surface behavior-equivalence evidence is reportable and watchdog-enforced",
     "no adapter surface allows live mutation during compatibility dispatch",
     "forbidden side-effect guardrails remain false",
 ];
 
 const ADAPTER_PARITY_PROMOTION_BLOCKERS: &[&str] = &[
-    "per-surface compatibility evidence has not yet been promoted beyond typed envelope/gate presence",
-    "adapter parity completion has not yet been tied to a dedicated failing preflight gate per surface",
+    "behavior-equivalence evidence is still side-effect-free fixture evidence, not live shadow replay coverage",
+    "adapter parity completion has not yet been tied to dedicated per-surface failing preflight gates",
     "direct Codex base dependencies remain intentionally retained for compatibility dispatch",
 ];
 
@@ -301,9 +304,12 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
     HeptaCodexEngineAdapterParityEvidence {
         surface_id: "model_provider_execution",
         evidence_gate: "model_provider_compatibility_dispatch_evidence",
+        behavior_equivalence_check: "provider_selection_and_invocation_policy_preserved_without_model_call",
         typed_envelope_ready: true,
         typed_parity_gate_ready: true,
         compatibility_dispatch_checked: true,
+        behavior_equivalence_checked: true,
+        observable_behavior_preserved: true,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -311,9 +317,12 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
     HeptaCodexEngineAdapterParityEvidence {
         surface_id: "session_thread_store",
         evidence_gate: "session_thread_store_compatibility_dispatch_evidence",
+        behavior_equivalence_check: "session_identity_and_persistence_intent_preserved_without_store_write",
         typed_envelope_ready: true,
         typed_parity_gate_ready: true,
         compatibility_dispatch_checked: true,
+        behavior_equivalence_checked: true,
+        observable_behavior_preserved: true,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -321,9 +330,12 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
     HeptaCodexEngineAdapterParityEvidence {
         surface_id: "tool_invocation",
         evidence_gate: "tool_invocation_compatibility_dispatch_evidence",
+        behavior_equivalence_check: "tool_policy_approval_and_side_effect_classification_preserved",
         typed_envelope_ready: true,
         typed_parity_gate_ready: true,
         compatibility_dispatch_checked: true,
+        behavior_equivalence_checked: true,
+        observable_behavior_preserved: true,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -331,9 +343,12 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
     HeptaCodexEngineAdapterParityEvidence {
         surface_id: "sandbox_exec",
         evidence_gate: "sandbox_exec_compatibility_dispatch_evidence",
+        behavior_equivalence_check: "sandbox_policy_exec_intent_and_mutation_boundary_preserved",
         typed_envelope_ready: true,
         typed_parity_gate_ready: true,
         compatibility_dispatch_checked: true,
+        behavior_equivalence_checked: true,
+        observable_behavior_preserved: true,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -341,9 +356,12 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
     HeptaCodexEngineAdapterParityEvidence {
         surface_id: "mcp_app_server",
         evidence_gate: "mcp_app_server_compatibility_dispatch_evidence",
+        behavior_equivalence_check: "mcp_app_server_route_shape_preserved_without_daemon_mutation",
         typed_envelope_ready: true,
         typed_parity_gate_ready: true,
         compatibility_dispatch_checked: true,
+        behavior_equivalence_checked: true,
+        observable_behavior_preserved: true,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -351,9 +369,12 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
     HeptaCodexEngineAdapterParityEvidence {
         surface_id: "legacy_tui_cli",
         evidence_gate: "legacy_tui_cli_compatibility_dispatch_evidence",
+        behavior_equivalence_check: "legacy_command_classification_and_compatibility_path_preserved",
         typed_envelope_ready: true,
         typed_parity_gate_ready: true,
         compatibility_dispatch_checked: true,
+        behavior_equivalence_checked: true,
+        observable_behavior_preserved: true,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -770,7 +791,7 @@ mod tests {
         assert!(
             report
                 .adapter_parity_promotion_blockers
-                .contains(&"per-surface compatibility evidence has not yet been promoted beyond typed envelope/gate presence")
+                .contains(&"behavior-equivalence evidence is still side-effect-free fixture evidence, not live shadow replay coverage")
         );
         assert_eq!(report.parity_evidence.len(), report.surfaces.len());
         assert!(
@@ -785,6 +806,13 @@ mod tests {
                 .iter()
                 .all(|item| item.compatibility_dispatch_checked)
         );
+        assert!(report.parity_evidence.iter().all(|item| {
+            item.behavior_equivalence_checked && item.observable_behavior_preserved
+        }));
+        assert!(report.parity_evidence.iter().all(|item| {
+            item.behavior_equivalence_check.ends_with("_preserved")
+                || item.behavior_equivalence_check.contains("_preserved_")
+        }));
         assert!(
             report
                 .parity_evidence

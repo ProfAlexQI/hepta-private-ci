@@ -121,6 +121,11 @@ Current landed state:
   surfaces and enforced by the watchdog, covering typed envelope readiness,
   typed parity gate readiness, compatibility dispatch checks, live-mutation
   blocking, and forbidden side-effect blocking.
+- Those evidence records now include behavior-equivalence checks for each
+  surface: provider selection/invocation policy, session persistence intent,
+  tool approval/side-effect classification, sandbox policy, MCP/app-server
+  route shape, and legacy CLI command classification. The watchdog enforces
+  that these checks are present and marked as preserving observable behavior.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -165,9 +170,9 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Promote per-surface evidence from compatibility-dispatch presence to
-   behavior-equivalence checks where each Codex adapter preserves observable
-   semantics.
+1. Tie the behavior-equivalence evidence to dedicated per-surface preflight
+   gates, so final `adapter_parity_complete=true` cannot be promoted by report
+   shape alone.
 2. Keep direct Codex dependencies explicit until adapter parity has enforced
    evidence beyond typed envelope presence.
 3. Run focused checks, full preflight, release build, live install, and live

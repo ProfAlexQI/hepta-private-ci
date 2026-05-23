@@ -8943,9 +8943,9 @@ mod tests {
                 .as_array()
                 .expect("adapter parity blockers")
                 .iter()
-                .any(|item| item.as_str().is_some_and(|blocker| {
-                    blocker.contains("per-surface compatibility evidence")
-                }))
+                .any(|item| item
+                    .as_str()
+                    .is_some_and(|blocker| { blocker.contains("behavior-equivalence evidence") }))
         );
 
         let surfaces = value["surfaces"].as_array().expect("surfaces array");
@@ -8963,6 +8963,21 @@ mod tests {
             item["compatibility_dispatch_checked"]
                 .as_bool()
                 .is_some_and(|checked| checked)
+        }));
+        assert!(parity_evidence.iter().all(|item| {
+            item["behavior_equivalence_checked"]
+                .as_bool()
+                .is_some_and(|checked| checked)
+        }));
+        assert!(parity_evidence.iter().all(|item| {
+            item["observable_behavior_preserved"]
+                .as_bool()
+                .is_some_and(|preserved| preserved)
+        }));
+        assert!(parity_evidence.iter().all(|item| {
+            item["behavior_equivalence_check"]
+                .as_str()
+                .is_some_and(|check| check.contains("preserved"))
         }));
         assert!(surfaces.iter().all(|surface| {
             surface["live_mutation_allowed"]
