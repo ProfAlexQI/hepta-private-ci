@@ -290,7 +290,7 @@ mod tests {
     fn ready_poll_loop_status() -> NativeTelegramPollLoopStatus {
         NativeTelegramPollLoopStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: true,
             status: "armed",
             poll_loop_gate_env: POLL_LOOP_ENV,
@@ -318,7 +318,7 @@ mod tests {
     fn ready_cursor_status() -> NativeTelegramCursorStatus {
         NativeTelegramCursorStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: true,
             status: "ready",
             cursor_path: TEST_CURSOR_PATH,
@@ -341,7 +341,7 @@ mod tests {
     fn ready_delivery_ledger_status() -> NativeTelegramDeliveryLedgerStatus {
         NativeTelegramDeliveryLedgerStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: true,
             status: "ready",
             ledger_path: TEST_DELIVERY_LEDGER_PATH,

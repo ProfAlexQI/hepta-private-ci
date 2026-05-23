@@ -6,7 +6,7 @@ INVENTORY_JSON="$(curl -fsS "$BASE_URL/api/hepta-cli-command-inventory")"
 MERGE_JSON="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
 jq -e '
-  .runtime == "hepta-codex"
+  .runtime == "hepta"
   and (.status == "attention" or .status == "ready")
   and .compatibility_mode == "native_cli_command_breadth_inventory"
   and .side_effect_free == true
@@ -31,7 +31,7 @@ jq -e '
 ' <<<"$INVENTORY_JSON" >/dev/null
 
 jq -e '
-  .runtime == "hepta-codex"
+  .runtime == "hepta"
   and .current_hepta_codex_script_total == 17
   and .native_gateway_source_command_count == 68
   and .route_matrix_ready == true
@@ -42,7 +42,7 @@ jq -e '
 
 report="$(jq -n \
   --arg product "Hepta" \
-  --arg runtime "hepta-codex" \
+  --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --argjson inventory "$INVENTORY_JSON" \
   --argjson merge "$MERGE_JSON" \

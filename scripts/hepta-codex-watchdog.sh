@@ -29,7 +29,7 @@ closure_json="$(curl -fsS "$BASE_URL/api/hepta-name-repository-closure")"
 
 report="$(jq -n \
   --arg product "Hepta" \
-  --arg runtime "hepta-codex" \
+  --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --arg installed_bin "$INSTALLED_BIN" \
   --arg release_sha "$release_sha" \
@@ -132,26 +132,30 @@ report="$(jq -n \
         and $core.full_fusion_complete == false
         and $core.phase_4_name_repository_closure_gate == "hepta_name_repository_closure_gate"
         and $core.phase_4_name_repository_closure_gate_ready == true
-        and $core.phase_4_name_repository_closure_gate_status == "inventory_ready_remaining_transition_names_block_full_fusion"
-        and $core.phase_4_name_repository_closure_remaining_surface_count == 3
-        and ($core.phase_4_name_repository_closure_blockers | length) == 3
+        and $core.phase_4_name_repository_closure_gate_status == "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending"
+        and $core.phase_4_name_repository_closure_remaining_surface_count == 1
+        and ($core.phase_4_name_repository_closure_blockers | length) == 1
+        and ($core.phase_4_name_repository_closure_blockers | index("workspace_repository_directory_still_uses_hepta_codex_transition_name")) != null
         and $core.phase_4_name_repository_closure_ready == false
         and $closure.status == "ready"
         and $closure.phase == "phase_4_name_repository_closure"
         and $closure.closure_gate == "hepta_name_repository_closure_gate"
         and $closure.closure_gate_ready == true
-        and $closure.closure_gate_status == "inventory_ready_remaining_transition_names_block_full_fusion"
+        and $closure.closure_gate_status == "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending"
         and $closure.phase_4_name_repository_closure_ready == false
         and $closure.full_fusion_complete == false
         and $closure.transition_surface_count >= 6
-        and $closure.closed_transition_surface_count >= 3
-        and $closure.remaining_transition_surface_count == 3
-        and ($closure.blockers | length) == 3
+        and $closure.closed_transition_surface_count == ($closure.transition_surface_count - 1)
+        and $closure.remaining_transition_surface_count == 1
+        and ($closure.blockers | length) == 1
+        and ($closure.blockers | index("workspace_repository_directory_still_uses_hepta_codex_transition_name")) != null
         and ($closure.surfaces | map(select(.blocks_full_fusion == true)) | length) == $closure.remaining_transition_surface_count
         and ($closure.surfaces | map(select(.surface_id == "active_release_binary_package" and .closure_state == "closed" and .blocks_full_fusion == false)) | length) == 1
+        and ($closure.surfaces | map(select(.surface_id == "runtime_report_strings" and .current_name == "hepta" and .target_name == "hepta" and .closure_state == "closed" and .blocks_full_fusion == false)) | length) == 1
         and ($closure.surfaces | map(select(.surface_id == "engine_adapter_boundary_route" and .closure_state == "alias_active" and .blocks_full_fusion == false)) | length) == 1
         and ($closure.surfaces | map(select(.surface_id == "release_gate_script_family" and .closure_state == "alias_active" and .blocks_full_fusion == false)) | length) == 1
-        and ($closure.surfaces | map(select(.surface_id == "runtime_report_strings" and .current_name == "hepta-codex" and .target_name == "hepta" and .blocks_full_fusion == true)) | length) == 1
+        and ($closure.surfaces | map(select(.surface_id == "core_fusion_route_document" and .closure_state == "alias_active" and .blocks_full_fusion == false)) | length) == 1
+        and ($closure.surfaces | map(select(.surface_id == "workspace_repository_directory" and .closure_state == "pending_operator_cutover" and .blocks_full_fusion == true)) | length) == 1
         and $closure.forbidden_real_side_effects.public_ga_claimed == false
         and $closure.forbidden_real_side_effects.public_release_published == false
         and $closure.forbidden_real_side_effects.gateway_mutation_performed == false

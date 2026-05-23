@@ -793,7 +793,7 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(&HealthResponse {
                         product: "Hepta",
-                        runtime: "hepta-codex",
+                        runtime: "hepta",
                         status: "ready",
                     }),
                 );
@@ -1345,7 +1345,7 @@ fn index_html(
     let readiness = native_gateway_json(options, telegram_plugin);
     format!(
         r#"<!doctype html>
-<html lang="en" data-runtime="hepta-codex-native-gateway">
+<html lang="en" data-runtime="hepta-native-gateway">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -1368,9 +1368,9 @@ fn index_html(
   <body>
     <main>
       <h1>Hepta Control UI</h1>
-      <p>Native gateway entrypoint running from the Codex fork. <code>hepta-codex</code> is the active Hepta runtime owner for the local production-replacement surface.</p>
+      <p>Native gateway entrypoint running from the Hepta release package. Codex remains contained as an internal engine-adapter compatibility layer.</p>
       <section class="grid" aria-label="gateway status">
-        <div class="metric"><div class="label">Runtime</div><div class="value">hepta-codex</div></div>
+        <div class="metric"><div class="label">Runtime</div><div class="value">hepta</div></div>
         <div class="metric"><div class="label">Gateway</div><div class="value">ready</div></div>
         <div class="metric"><div class="label">Telegram</div><div class="value">{telegram_status}</div></div>
         <div class="metric"><div class="label">Merge completion</div><div class="value">100 / 100 / 100 / 100</div></div>
@@ -1416,7 +1416,7 @@ fn native_gateway_json(
     let replacement_blocker = gateway_replacement_readiness.blockers.first().copied();
     json_or_error(&NativeGatewayResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: "ready",
         migration_mode: "codex_fork_native",
         bind_addr: &options.bind_addr,
@@ -1544,7 +1544,7 @@ fn operator_snapshot_json(
 
     json_or_error(&NativeOperatorSnapshotResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if gateway_replacement_readiness.ready && production_soak_ready {
             "ready"
         } else {
@@ -1556,7 +1556,7 @@ fn operator_snapshot_json(
         side_effect_free: true,
         health: HealthResponse {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             status: "ready",
         },
         active_gateway_replacement_ready: gateway_replacement_readiness.ready,
@@ -1619,7 +1619,7 @@ fn native_sessions_report(
 
     NativeSessionsResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if scan_error_count == 0 {
             "ready"
         } else {
@@ -1908,7 +1908,7 @@ fn native_transcript_report(
 
     NativeTranscriptResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if scan_error_count == 0 {
             "ready"
         } else {
@@ -1972,7 +1972,7 @@ fn native_task_artifact_report(
 
     NativeTaskArtifactResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status,
         source_command: spec.source_command,
         native_route: true,
@@ -2352,7 +2352,7 @@ fn native_events_report(
 
     NativeEventsResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status,
         source_command: surface.source_command(),
         native_route: true,
@@ -2428,7 +2428,7 @@ fn native_runtime_audit_report(
 
     NativeRuntimeAuditResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if ready { "ready" } else { "attention" },
         source_command: surface.source_command(),
         native_route: true,
@@ -2558,7 +2558,7 @@ fn native_control_ui_audit_report(
 
     NativeControlUiAuditResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if ready { "ready" } else { "attention" },
         source_command: surface.source_command(),
         native_route: true,
@@ -2639,7 +2639,7 @@ fn native_approvals_report() -> NativeApprovalsResponse {
 
     NativeApprovalsResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if ready { "ready" } else { "attention" },
         source_command: "/approvals --json",
         native_route: true,
@@ -2680,7 +2680,7 @@ fn native_policy_report(
 
     NativePolicyResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if ready { "ready" } else { "attention" },
         source_command: "/policy --json",
         native_route: true,
@@ -2732,7 +2732,7 @@ fn native_config_report(options: &NativeGatewayOptions) -> NativeConfigResponse 
 
     NativeConfigResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: "ready",
         source_command: "/config-surface --json",
         native_route: true,
@@ -2823,7 +2823,7 @@ fn native_optional_configs_report() -> NativeOptionalConfigsResponse {
         .count();
     NativeOptionalConfigsResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if missing_expected_count == 0 {
             "ready"
         } else {
@@ -3061,7 +3061,7 @@ fn operator_console_json(
 
     json_or_error(&NativeOperatorConsoleResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if ready { "ready" } else { "attention" },
         source_command: "/operator-console --json",
         native_route: true,
@@ -3069,7 +3069,7 @@ fn operator_console_json(
         side_effect_free: true,
         health: HealthResponse {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             status: "ready",
         },
         operator_snapshot_endpoint: "/api/operator-snapshot",
@@ -3181,7 +3181,7 @@ fn operator_security_json(
 
     json_or_error(&NativeOperatorSecurityResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if ready { "ready" } else { "attention" },
         source_command: "/operator-security --json",
         native_route: true,
@@ -3360,7 +3360,7 @@ fn telegram_owner_handoff_status_from_inputs(
 
     NativeTelegramOwnerHandoffStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status,
         endpoint: TELEGRAM_OWNER_HANDOFF_ENDPOINT,
         ready: conflict_free,
@@ -3671,7 +3671,7 @@ fn gateway_replacement_readiness(
 
     NativeGatewayReplacementReadiness {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status,
         ready,
         active_install_allowed: ready,
@@ -3746,7 +3746,7 @@ fn gateway_live_activation_plan(
 
     NativeGatewayLiveActivationPlan {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status,
         endpoint: GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
         operator_approval_required: !telegram_gate_summary.delivery_approval_gate_enabled,
@@ -5650,7 +5650,7 @@ fn hepta_provider_channel_dry_run_plan_report() -> HeptaProviderChannelDryRunPla
     let route_matrix = control_ui_route_parity_report();
     HeptaProviderChannelDryRunPlanResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: "attention",
         source_command: "/hepta-provider-channel-dry-run-plan --json",
         native_route: true,
@@ -5748,7 +5748,7 @@ fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusI
     };
     HeptaChannelAdapterStatusInventoryResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if channel_read_verified && channel_send_verified {
             "ready"
         } else {
@@ -5814,7 +5814,7 @@ fn hepta_local_tooling_content_inventory_report() -> HeptaLocalToolingContentInv
     let route_matrix = control_ui_route_parity_report();
     HeptaLocalToolingContentInventoryResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: "attention",
         source_command: "/hepta-local-tooling-content-inventory --json",
         native_route: true,
@@ -5893,7 +5893,7 @@ fn hepta_memory_capability_absorption_inventory_report()
     let route_matrix = control_ui_route_parity_report();
     HeptaMemoryCapabilityAbsorptionInventoryResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: "attention",
         source_command: "/hepta-memory-capability-absorption-inventory --json",
         native_route: true,
@@ -6000,7 +6000,7 @@ fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGa
     };
     HeptaReleaseHardeningStatusGateResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status,
         source_command: "/hepta-release-hardening-status-gate --json",
         native_route: true,
@@ -6083,7 +6083,7 @@ fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRun
     let route_matrix = control_ui_route_parity_report();
     HeptaRuntimeSessionDryRunInventoryResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: "attention",
         source_command: "/hepta-runtime-session-dry-run-inventory --json",
         native_route: true,
@@ -6150,7 +6150,7 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
     let credentialed_smoke_verified = env_truthy(HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV);
     HeptaProviderMetadataInventoryResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if credentialed_smoke_verified {
             "ready"
         } else {
@@ -6233,7 +6233,7 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
     };
     HeptaCliCommandInventoryResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status,
         source_command: "/hepta-cli-command-inventory --json",
         native_route: true,
@@ -6322,7 +6322,7 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
 
     HeptaMergeCompletionResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if production_tracks_ready {
             "ready"
         } else {
@@ -6364,7 +6364,7 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         safe_continue_internal_work: true,
         blockers,
         next_actions: &[
-            "keep old Hepta Native retired and use hepta-codex as the active runtime owner",
+            "keep old Hepta Native retired and use Hepta as the active runtime owner",
             "keep browser visual smoke, preflight, soak, and watchdog gates green",
             "keep distinct-token Telegram parallel mode unless full owner handoff is explicitly requested",
             "broaden native POST handlers one scoped canary at a time",
@@ -6385,7 +6385,7 @@ fn hepta_native_packaging_gate_report() -> HeptaNativePackagingGateResponse {
     let route_matrix = control_ui_route_parity_report();
     HeptaNativePackagingGateResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: "ready",
         source_command: "/hepta-native-packaging-gate --json",
         native_route: true,
@@ -6464,7 +6464,7 @@ fn hepta_legacy_compatibility_closure_report() -> HeptaLegacyCompatibilityClosur
     let route_matrix = control_ui_route_parity_report();
     HeptaLegacyCompatibilityClosureResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: "ready",
         source_command: "/hepta-legacy-compatibility-closure --json",
         native_route: true,
@@ -6695,7 +6695,7 @@ fn hepta_public_ga_readiness_report(
 
     HeptaPublicGaReadinessResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if public_ga_ready { "ready" } else { "blocked" },
         source_command: "/hepta-public-ga-readiness --json",
         native_route: true,
@@ -6837,7 +6837,7 @@ fn hepta_public_ga_operator_approval_packet_report(
 
     HeptaPublicGaOperatorApprovalPacketResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if approval_packet_ready {
             "ready"
         } else {
@@ -7970,7 +7970,7 @@ fn control_ui_route_parity_report() -> ControlUiRouteParityReport {
     let ready = missing_routes.is_empty();
     ControlUiRouteParityReport {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if ready { "ready" } else { "blocked" },
         ready,
         route_count: CONTROL_UI_ROUTE_SPECS.len(),
@@ -7987,7 +7987,7 @@ fn control_ui_route_response(method: &str, path: &str) -> Option<String> {
     let route = control_ui_route_spec_for(method, path)?;
     Some(json_or_error(&ControlUiRouteCompatibilityResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if route.method == "POST" {
             "dry_run_compatibility"
         } else {
@@ -8195,7 +8195,7 @@ mod tests {
         let telegram_plugin =
             native_telegram::telegram_plugin_status(true, options.telegram_plugin_poll_ms);
         let body = native_gateway_json(&options, &telegram_plugin);
-        assert!(body.contains(r#""runtime":"hepta-codex""#));
+        assert!(body.contains(r#""runtime":"hepta""#));
         assert!(body.contains(r#""launchd_entrypoint_compatible":true"#));
         assert!(body.contains(r#""active_gateway_replacement_ready":false"#));
         assert!(body.contains(
@@ -8263,7 +8263,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
 
         let value: serde_json::Value = serde_json::from_str(&body).expect("live soak json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["side_effect_free"], true);
         assert_eq!(value["raw_update_payload_exposed"], false);
         assert_eq!(value["raw_prompt_text_exposed"], false);
@@ -8318,7 +8318,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("production readiness json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["side_effect_free"], true);
         assert_eq!(value["raw_update_payload_exposed"], false);
         assert_eq!(value["raw_prompt_text_exposed"], false);
@@ -8347,7 +8347,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
 
         let value: serde_json::Value = serde_json::from_str(&body).expect("delivery ledger json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["requested"], true);
         assert_eq!(
             value["ledger_path"],
@@ -8372,7 +8372,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
 
         let value: serde_json::Value = serde_json::from_str(&body).expect("owner handoff json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["endpoint"], TELEGRAM_OWNER_HANDOFF_ENDPOINT);
         assert_eq!(value["side_effect_free"], true);
         assert_eq!(value["raw_token_exposed"], false);
@@ -8487,7 +8487,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
 
         let value: serde_json::Value = serde_json::from_str(&body).expect("readiness json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["ready"], false);
         assert_eq!(value["active_install_allowed"], false);
         assert_eq!(value["side_effect_free"], true);
@@ -8532,7 +8532,7 @@ mod tests {
         assert_eq!(status, "200 OK");
         assert_eq!(content_type, "application/json; charset=utf-8");
         let value: serde_json::Value = serde_json::from_str(&body).expect("activation plan json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["operator_approval_required"], true);
         assert_eq!(value["active_gateway_label"], ACTIVE_GATEWAY_LABEL);
         assert_eq!(
@@ -8612,7 +8612,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
 
         let value: serde_json::Value = serde_json::from_str(&body).expect("merge completion json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["source_command"], "/hepta-merge-completion --json");
         assert_eq!(value["compatibility_mode"], "native_merge_completion_audit");
         assert_eq!(
@@ -8690,7 +8690,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("native packaging gate json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-native-packaging-gate --json"
@@ -8749,7 +8749,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("legacy compatibility closure json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-legacy-compatibility-closure --json"
@@ -8807,7 +8807,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("public ga readiness json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["source_command"], "/hepta-public-ga-readiness --json");
         assert_eq!(
             value["compatibility_mode"],
@@ -8881,7 +8881,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("core fusion readiness json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND
@@ -8927,22 +8927,23 @@ mod tests {
         assert_eq!(value["phase_4_name_repository_closure_gate_ready"], true);
         assert_eq!(
             value["phase_4_name_repository_closure_gate_status"],
-            "inventory_ready_remaining_transition_names_block_full_fusion"
+            "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending"
         );
         assert_eq!(
             value["phase_4_name_repository_closure_remaining_surface_count"]
                 .as_u64()
                 .expect("phase 4 remaining surface count"),
-            3
+            1
         );
-        assert!(
-            value["phase_4_name_repository_closure_blockers"]
-                .as_array()
-                .expect("phase 4 blockers")
-                .iter()
-                .filter_map(|blocker| blocker.as_str())
-                .any(|blocker| blocker
-                    == "operator_facing_runtime_reports_still_emit_hepta_codex_runtime_name")
+        let phase_4_blockers = value["phase_4_name_repository_closure_blockers"]
+            .as_array()
+            .expect("phase 4 blockers")
+            .iter()
+            .filter_map(|blocker| blocker.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            phase_4_blockers,
+            vec!["workspace_repository_directory_still_uses_hepta_codex_transition_name"]
         );
         assert_eq!(value["phase_4_name_repository_closure_ready"], false);
         assert_eq!(value["full_fusion_complete"], false);
@@ -8997,7 +8998,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("name repository closure json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND
@@ -9008,7 +9009,7 @@ mod tests {
         assert_eq!(value["closure_gate_ready"], true);
         assert_eq!(
             value["closure_gate_status"],
-            "inventory_ready_remaining_transition_names_block_full_fusion"
+            "ready_phase_4_runtime_and_docs_closed_workspace_cutover_pending"
         );
         assert_eq!(value["phase_4_name_repository_closure_ready"], false);
         assert_eq!(value["full_fusion_complete"], false);
@@ -9022,13 +9023,13 @@ mod tests {
             value["closed_transition_surface_count"]
                 .as_u64()
                 .expect("closed transition surface count")
-                >= 3
+                >= 5
         );
         assert_eq!(
             value["remaining_transition_surface_count"]
                 .as_u64()
                 .expect("remaining transition surface count"),
-            3
+            1
         );
         let surfaces = value["surfaces"].as_array().expect("surfaces");
         assert!(surfaces.iter().any(|surface| {
@@ -9038,9 +9039,10 @@ mod tests {
         }));
         assert!(surfaces.iter().any(|surface| {
             surface["surface_id"] == "runtime_report_strings"
-                && surface["current_name"] == "hepta-codex"
+                && surface["current_name"] == "hepta"
                 && surface["target_name"] == "hepta"
-                && surface["blocks_full_fusion"] == true
+                && surface["closure_state"] == "closed"
+                && surface["blocks_full_fusion"] == false
         }));
         assert!(surfaces.iter().any(|surface| {
             surface["surface_id"] == "engine_adapter_boundary_route"
@@ -9056,15 +9058,27 @@ mod tests {
                 && surface["closure_state"] == "alias_active"
                 && surface["blocks_full_fusion"] == false
         }));
+        assert!(surfaces.iter().any(|surface| {
+            surface["surface_id"] == "core_fusion_route_document"
+                && surface["target_name"] == "docs/architecture/HEPTA_CORE_FUSION_ROUTE.md"
+                && surface["closure_state"] == "alias_active"
+                && surface["blocks_full_fusion"] == false
+        }));
+        assert!(surfaces.iter().any(|surface| {
+            surface["surface_id"] == "workspace_repository_directory"
+                && surface["target_name"] == "/Users/qianqi/.openclaw/workspace/Hepta"
+                && surface["closure_state"] == "pending_operator_cutover"
+                && surface["blocks_full_fusion"] == true
+        }));
         let blockers = value["blockers"]
             .as_array()
             .expect("blockers")
             .iter()
             .filter_map(|blocker| blocker.as_str())
             .collect::<Vec<_>>();
-        assert!(
-            blockers
-                .contains(&"core_fusion_route_document_still_uses_hepta_codex_transition_title")
+        assert_eq!(
+            blockers,
+            vec!["workspace_repository_directory_still_uses_hepta_codex_transition_name"]
         );
         assert!(
             !blockers
@@ -9102,7 +9116,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("engine adapter boundary json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND
@@ -9311,7 +9325,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("public ga approval packet json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-public-ga-operator-approval-packet --json"
@@ -9377,7 +9391,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("cli command inventory json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-cli-command-inventory --json"
@@ -9449,7 +9463,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("provider metadata inventory json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-provider-metadata-inventory --json"
@@ -9519,7 +9533,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("runtime session inventory json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-runtime-session-dry-run-inventory --json"
@@ -9601,7 +9615,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("channel adapter inventory json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-channel-adapter-status-inventory --json"
@@ -9686,7 +9700,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("local tooling content inventory json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-local-tooling-content-inventory --json"
@@ -9772,7 +9786,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("memory capability inventory json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-memory-capability-absorption-inventory --json"
@@ -9860,7 +9874,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("release hardening status gate json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-release-hardening-status-gate --json"
@@ -9960,7 +9974,7 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("provider channel dry run plan json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(
             value["source_command"],
             "/hepta-provider-channel-dry-run-plan --json"
@@ -10056,7 +10070,7 @@ mod tests {
             assert_eq!(status, "200 OK", "{method} {path}");
             assert_eq!(content_type, "application/json; charset=utf-8");
             let value: serde_json::Value = serde_json::from_str(&body).expect("compat route json");
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["external_side_effects"], false);
             assert_eq!(value["gateway_mutation_performed"], false);
             assert_eq!(value["telegram_read_performed"], false);
@@ -10079,7 +10093,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
 
         let value: serde_json::Value = serde_json::from_str(&body).expect("operator snapshot json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["native_route"], true);
         assert_eq!(value["compatibility_mode"], "native_operator_snapshot");
         assert_eq!(value["side_effect_free"], true);
@@ -10153,7 +10167,7 @@ mod tests {
             assert_eq!(content_type, "application/json; charset=utf-8");
             let value: serde_json::Value =
                 serde_json::from_str(&body).expect("sessions route json");
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
             assert_eq!(value["side_effect_free"], true);
@@ -10241,7 +10255,7 @@ mod tests {
             assert!(!body.contains("sample-secret-query"));
             let value: serde_json::Value =
                 serde_json::from_str(&body).expect("transcript route json");
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
             assert_eq!(value["side_effect_free"], true);
@@ -10288,7 +10302,7 @@ mod tests {
         );
         let response = NativeTaskArtifactResponse {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             status: "ready",
             source_command: "/task <task_id> --json",
             native_route: true,
@@ -10368,7 +10382,7 @@ mod tests {
             assert!(!body.contains("sample-secret-task"));
             let value: serde_json::Value =
                 serde_json::from_str(&body).expect("task artifact route json");
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
             assert_eq!(value["artifact_kind"], artifact_kind);
@@ -10475,7 +10489,7 @@ mod tests {
             assert_eq!(content_type, "application/json; charset=utf-8");
             assert!(!body.contains("sample-secret-cursor"));
             let value: serde_json::Value = serde_json::from_str(&body).expect("events route json");
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
             assert_eq!(value["event_surface"], surface);
@@ -10594,7 +10608,7 @@ mod tests {
             let value: serde_json::Value =
                 serde_json::from_str(&body).expect("runtime audit route json");
 
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
             assert_eq!(value["audit_surface"], audit_surface);
@@ -10652,7 +10666,7 @@ mod tests {
             assert_eq!(content_type, "application/json; charset=utf-8");
             let value: serde_json::Value =
                 serde_json::from_str(&body).expect("redacted config route json");
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
             assert_eq!(value["side_effect_free"], true);
@@ -10800,7 +10814,7 @@ mod tests {
             let value: serde_json::Value =
                 serde_json::from_str(&body).expect("control ui audit route json");
 
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
             assert_eq!(value["control_surface"], surface);
@@ -11025,7 +11039,7 @@ mod tests {
             assert!(!body.contains("secret-command"));
             let value: serde_json::Value = serde_json::from_str(&body).expect("post plan json");
 
-            assert_eq!(value["runtime"], "hepta-codex");
+            assert_eq!(value["runtime"], "hepta");
             assert_eq!(value["method"], "POST");
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
@@ -11400,7 +11414,7 @@ mod tests {
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("post execution readiness json");
 
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["status"], "ready");
         assert_eq!(value["native_route"], true);
         assert_eq!(
@@ -11454,7 +11468,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
         let value: serde_json::Value = serde_json::from_str(&body).expect("post stores json");
 
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["status"], "ready");
         assert_eq!(value["native_route"], true);
         assert_eq!(value["compatibility_mode"], "native_post_execution_stores");
@@ -11517,7 +11531,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
         let value: serde_json::Value = serde_json::from_str(&body).expect("activation plan json");
 
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["status"], "ready");
         assert_eq!(value["native_route"], true);
         assert_eq!(value["compatibility_mode"], "native_post_activation_plan");
@@ -11609,7 +11623,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
         let value: serde_json::Value = serde_json::from_str(&body).expect("rollout evidence json");
 
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["status"], "ready");
         assert_eq!(value["native_route"], true);
         assert_eq!(value["compatibility_mode"], "native_post_rollout_evidence");
@@ -11652,7 +11666,7 @@ mod tests {
         let value: serde_json::Value =
             serde_json::from_str(&body).expect("gray release evidence json");
 
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["status"], "staged");
         assert_eq!(value["native_route"], true);
         assert_eq!(
@@ -12492,7 +12506,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
         let value: serde_json::Value = serde_json::from_str(&body).expect("operator console json");
 
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["native_route"], true);
         assert_eq!(value["compatibility_mode"], "native_operator_console");
         assert_eq!(value["side_effect_free"], true);
@@ -12527,7 +12541,7 @@ mod tests {
         assert_eq!(content_type, "application/json; charset=utf-8");
         let value: serde_json::Value = serde_json::from_str(&body).expect("operator security json");
 
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["native_route"], true);
         assert_eq!(value["compatibility_mode"], "native_operator_security");
         assert_eq!(value["side_effect_free"], true);
@@ -12658,7 +12672,7 @@ mod tests {
         assert_eq!(status, "200 OK");
         assert_eq!(content_type, "application/json; charset=utf-8");
         let value: serde_json::Value = serde_json::from_str(&body).expect("parity json");
-        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["ready"], true);
         assert_eq!(value["missing_route_count"], 0);
     }

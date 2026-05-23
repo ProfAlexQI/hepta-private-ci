@@ -61,7 +61,7 @@ done
 
 jq -n \
   --arg product "Hepta" \
-  --arg runtime "hepta-codex" \
+  --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --arg owner "$last_owner" \
   --arg post "$last_post" \

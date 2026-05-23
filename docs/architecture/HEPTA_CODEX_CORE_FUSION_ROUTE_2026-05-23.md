@@ -211,10 +211,11 @@ identity.
 
 First patches:
 
-- Rename operator-facing runtime strings from `hepta-codex` to `hepta` after
-  compatibility gates are stable.
+- Runtime reports and control UI copy now identify the active runtime as
+  `hepta`.
 - Keep internal `codex-engine` naming only for adapter diagnostics.
-- Archive transition docs and keep rollback evidence.
+- Keep this dated transition doc as rollback evidence while the canonical
+  Hepta-named route note lives at `docs/architecture/HEPTA_CORE_FUSION_ROUTE.md`.
 
 Acceptance:
 
@@ -230,11 +231,10 @@ Current landed state:
 - The closure report marks the active binary package transition as closed:
   `codex-cli --bin hepta` has been replaced by `hepta-cli --bin hepta` for the
   active service artifact.
-- The same report keeps full fusion blocked while the remaining transition
-  surfaces still expose `hepta-codex`: runtime report strings, the core-fusion
-  route document title, and the workspace repository directory name. The
-  engine-adapter route slug and release gate script family now have active
-  Hepta-named aliases.
+- The same report keeps full fusion blocked only for the remaining workspace
+  repository directory cutover. Runtime report strings now expose `hepta`, this
+  document has a Hepta-named canonical successor, and the engine-adapter route
+  slug plus release gate script family have active Hepta-named aliases.
 - `/api/hepta-core-fusion-readiness` now includes the Phase 4 closure gate and
   blocker list while still reporting `phase_4_name_repository_closure_ready=false`
   and `full_fusion_complete=false`.
@@ -243,8 +243,10 @@ Current landed state:
 
 Advance after Phase 3:
 
-1. Close transition naming: runtime strings, route names, script names, and docs
-   should move from `hepta-codex` toward Hepta once rollback evidence is stable.
+1. Finish the workspace repository directory cutover from
+   `/Users/qianqi/.openclaw/workspace/hepta-codex` to a verified Hepta-owned
+   active checkout path, without overwriting the existing
+   `/Users/qianqi/.openclaw/workspace/Hepta` repository.
 2. Keep direct Codex dependencies explicit as internal engine-adapter
    compatibility surfaces until repository/name closure is complete.
 3. Port or retire non-gateway legacy CLI shell compatibility that still routes

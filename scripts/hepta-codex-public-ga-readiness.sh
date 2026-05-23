@@ -14,7 +14,7 @@ OWNER_JSON="$(curl -fsS "$BASE_URL/api/telegram-owner-handoff")"
 POST_JSON="$(curl -fsS "$BASE_URL/api/native-post-activation-plan")"
 
 jq -e '
-  .runtime == "hepta-codex"
+  .runtime == "hepta"
   and (.status == "blocked" or .status == "ready")
   and .compatibility_mode == "native_public_ga_readiness_gate"
   and .side_effect_free == true
@@ -51,7 +51,7 @@ jq -e '
 
 report="$(jq -n \
   --arg product "Hepta" \
-  --arg runtime "hepta-codex" \
+  --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --argjson ga "$GA_JSON" \
   --argjson merge "$MERGE_JSON" \

@@ -11,7 +11,7 @@ GA_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-readiness")"
 MERGE_JSON="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
 jq -e '
-  .runtime == "hepta-codex"
+  .runtime == "hepta"
   and .status == "ready"
   and .compatibility_mode == "native_app_packaging_readiness_gate"
   and .side_effect_free == true
@@ -91,7 +91,7 @@ fi
 
 report="$(jq -n \
   --arg product "Hepta" \
-  --arg runtime "hepta-codex" \
+  --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --argjson gate "$GATE_JSON" \
   --argjson ga "$GA_JSON" \

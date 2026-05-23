@@ -9,7 +9,7 @@ RELEASE_JSON="$(curl -fsS "$BASE_URL/api/hepta-release-hardening-status-gate")"
 GA_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-readiness")"
 
 jq -e '
-  .runtime == "hepta-codex"
+  .runtime == "hepta"
   and .status == "ready"
   and .compatibility_mode == "native_legacy_cli_script_compatibility_closure"
   and .side_effect_free == true
@@ -48,7 +48,7 @@ jq -e '
 
 report="$(jq -n \
   --arg product "Hepta" \
-  --arg runtime "hepta-codex" \
+  --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --argjson closure "$CLOSURE_JSON" \
   --argjson cli "$CLI_JSON" \

@@ -22,7 +22,7 @@ for needle in "Merge completion" "100 / 100 / 100 / 100" "/api/hepta-merge-compl
   fi
 done
 
-if [[ "$(jq -r '.runtime' <<<"$merge_json")" != "hepta-codex" ]]; then
+if [[ "$(jq -r '.runtime' <<<"$merge_json")" != "hepta" ]]; then
   echo "merge completion endpoint runtime mismatch" >&2
   exit 1
 fi
@@ -114,7 +114,7 @@ capture_viewport "mobile" "390x844"
 
 jq -n \
   --arg product "Hepta" \
-  --arg runtime "hepta-codex" \
+  --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --arg output_dir "$OUT_DIR" \
   --argjson telegram_live_send_enabled "$telegram_live_send_enabled" \

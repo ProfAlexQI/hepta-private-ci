@@ -1772,7 +1772,7 @@ pub fn hepta_kernel_native_post_execution_readiness_report(
 
     HeptaKernelNativePostExecutionReadinessResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if all_evidence_contracts_ready {
             "ready"
         } else {
@@ -1904,7 +1904,7 @@ pub fn hepta_kernel_native_post_activation_plan_report(
 
     HeptaKernelNativePostActivationPlanResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if activation_preflight_ready {
             "ready"
         } else {
@@ -2168,7 +2168,7 @@ pub fn hepta_kernel_native_post_plan_response(
 ) -> HeptaKernelNativePostPlanResponse {
     HeptaKernelNativePostPlanResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if spec.confirmation_required_for_real_mutation {
             "confirm_required"
         } else {
@@ -2248,7 +2248,7 @@ pub fn hepta_kernel_native_post_execution_stores_report(
 
     HeptaKernelNativePostExecutionStoresResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if store_jsonl_valid && store_capacity_ok {
             "ready"
         } else {
@@ -2452,7 +2452,7 @@ pub fn hepta_kernel_native_post_rollout_evidence_report(
 
     HeptaKernelNativePostRolloutEvidenceResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if rollout_evidence_ready {
             "ready"
         } else {
@@ -2660,7 +2660,7 @@ pub fn hepta_kernel_native_post_gray_release_evidence_report(
 
     HeptaKernelNativePostGrayReleaseEvidenceResponse {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         status: if gray_release_ready {
             "ready"
         } else if activation_preflight_ready {
@@ -3951,7 +3951,7 @@ pub fn build_hepta_kernel_telegram_production_readiness_status(
 
     HeptaKernelTelegramProductionReadinessStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: input.requested,
         status,
         ready,
@@ -4007,7 +4007,7 @@ pub fn build_hepta_kernel_telegram_live_soak_status(
 
     HeptaKernelTelegramLiveSoakStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: input.requested,
         status,
         side_effect_free: true,
@@ -5214,7 +5214,7 @@ pub fn build_hepta_kernel_telegram_receive_once_status(
 
     HeptaKernelTelegramReceiveOnceStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: input.requested,
         status: input.status,
         live_read_gate_env: input.live_read_gate_env,
@@ -5628,7 +5628,7 @@ pub fn build_hepta_kernel_telegram_drain_once_status(
 
     HeptaKernelTelegramDrainOnceStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: input.requested,
         status: input.status,
         gates: input.gates,
@@ -5827,7 +5827,7 @@ pub fn build_hepta_kernel_telegram_model_bridge_status(
 
     HeptaKernelTelegramModelBridgeStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: input.requested,
         status,
         model_turn_gate_env: input.model_turn_gate_env,
@@ -5862,7 +5862,7 @@ pub fn build_hepta_kernel_telegram_plugin_status(
     if !input.requested {
         return HeptaKernelTelegramPluginStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: false,
             status: "disabled",
             in_process_supervisor_ready: false,
@@ -5916,7 +5916,7 @@ pub fn build_hepta_kernel_telegram_plugin_status(
 
     HeptaKernelTelegramPluginStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: true,
         status,
         in_process_supervisor_ready: supervisor_ready,
@@ -5969,7 +5969,7 @@ pub fn build_hepta_kernel_telegram_model_turn_plan_status(
 
     HeptaKernelTelegramModelTurnPlanStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: input.requested,
         status,
         model_turn_bridge_ready: false,
@@ -6038,7 +6038,7 @@ pub fn build_hepta_kernel_telegram_send_plan_status(
 
     HeptaKernelTelegramSendPlanStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: input.requested,
         status,
         send_gate_env: input.send_gate_env,
@@ -6146,7 +6146,7 @@ pub fn build_hepta_kernel_telegram_cursor_status(
     if !input.requested {
         return HeptaKernelTelegramCursorStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: false,
             status: "disabled",
             cursor_path: input.cursor_path,
@@ -6168,7 +6168,7 @@ pub fn build_hepta_kernel_telegram_cursor_status(
 
     let mut status = HeptaKernelTelegramCursorStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: true,
         status: "missing",
         cursor_path: input.cursor_path,
@@ -6740,7 +6740,7 @@ pub fn build_hepta_kernel_telegram_poll_loop_status(
 
     HeptaKernelTelegramPollLoopStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: input.requested,
         status,
         poll_loop_gate_env: input.poll_loop_gate_env,
@@ -7211,7 +7211,7 @@ pub fn build_hepta_kernel_telegram_delivery_ledger_status(
     if !input.requested {
         return HeptaKernelTelegramDeliveryLedgerStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: false,
             status: "disabled",
             ledger_path: input.ledger_path,
@@ -7240,7 +7240,7 @@ pub fn build_hepta_kernel_telegram_delivery_ledger_status(
 
     let mut status = HeptaKernelTelegramDeliveryLedgerStatus {
         product: "Hepta",
-        runtime: "hepta-codex",
+        runtime: "hepta",
         requested: true,
         status: "missing",
         ledger_path: input.ledger_path,
@@ -9554,7 +9554,7 @@ not-json
     fn ready_kernel_poll_loop_status() -> HeptaKernelTelegramPollLoopStatus {
         HeptaKernelTelegramPollLoopStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: true,
             status: "armed",
             poll_loop_gate_env: "HEPTA_NATIVE_TELEGRAM_POLL_LOOP",
@@ -9582,7 +9582,7 @@ not-json
     fn ready_kernel_cursor_status() -> HeptaKernelTelegramCursorStatus {
         HeptaKernelTelegramCursorStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: true,
             status: "ready",
             cursor_path: ".hepta/telegram/ingress-drain-cursor.json",
@@ -9605,7 +9605,7 @@ not-json
     fn ready_kernel_delivery_ledger_status() -> HeptaKernelTelegramDeliveryLedgerStatus {
         HeptaKernelTelegramDeliveryLedgerStatus {
             product: "Hepta",
-            runtime: "hepta-codex",
+            runtime: "hepta",
             requested: true,
             status: "ready",
             ledger_path: ".hepta/telegram/delivery-ledger.jsonl",

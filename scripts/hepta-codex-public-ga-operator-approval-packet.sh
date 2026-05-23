@@ -7,7 +7,7 @@ PACKET_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-operator-approval-packet
 GA_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-readiness")"
 
 jq -e '
-  .runtime == "hepta-codex"
+  .runtime == "hepta"
   and .status == "ready"
   and .compatibility_mode == "native_public_ga_operator_approval_packet"
   and .side_effect_free == true
@@ -55,7 +55,7 @@ jq -e '
 
 report="$(jq -n \
   --arg product "Hepta" \
-  --arg runtime "hepta-codex" \
+  --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --argjson packet "$PACKET_JSON" \
   --argjson ga "$GA_JSON" \
