@@ -337,18 +337,7 @@ const CODEX_ENGINE_ADAPTER_SURFACES: &[&str] = &[
     "TUI and legacy command compatibility",
 ];
 
-const DIRECT_CODEX_BASE_DEPENDENCIES: &[&str] = &[
-    "codex-core",
-    "codex-exec",
-    "codex-tui",
-    "codex-state",
-    "codex-app-server",
-    "codex-mcp",
-    "codex-sandboxing",
-    "codex-plugin",
-    "codex-model-provider",
-    "codex-protocol",
-];
+const DIRECT_CODEX_BASE_DEPENDENCIES: &[&str] = &[];
 
 const PHASE_1_BLOCKERS: &[&str] = &[];
 
@@ -377,15 +366,8 @@ const NAME_REPOSITORY_CLOSURE_BLOCKERS: &[&str] = &[];
 
 const ENGINE_DEPENDENCY_CLOSURE_GATE: &str = "hepta_engine_dependency_closure_gate";
 const ENGINE_DEPENDENCY_CLOSURE_GATE_STATUS: &str =
-    "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters";
-const ENGINE_DEPENDENCY_CLOSURE_BLOCKERS: &[&str] = &[
-    "codex-core still backs tool invocation compatibility",
-    "codex-exec and codex-sandboxing still back sandbox/exec compatibility",
-    "codex-state still backs session/thread store compatibility",
-    "codex-mcp and codex-app-server still back MCP/app-server compatibility",
-    "codex-model-provider and codex-protocol still back model/provider compatibility",
-    "codex-tui still backs legacy TUI/CLI compatibility",
-];
+    "ready_active_hepta_service_binary_direct_codex_dependencies_closed";
+const ENGINE_DEPENDENCY_CLOSURE_BLOCKERS: &[&str] = &[];
 
 const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
     "all adapter surfaces expose typed request/response envelopes",
@@ -402,12 +384,12 @@ const ADAPTER_PARITY_PROMOTION_BLOCKERS: &[&str] = &[];
 const ADAPTER_PARITY_COMPLETION_GATE: &str =
     "adapter_behavior_equivalence_to_parity_completion_gate";
 const ADAPTER_PARITY_COMPLETION_GATE_STATUS: &str =
-    "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion";
+    "ready_adapter_parity_promoted_active_hepta_service_dependency_closure_complete";
 
 const NEXT_ACTIONS: &[&str] = &[
     "keep the hepta-codex workspace path only as a rollback compatibility alias",
-    "split retained Codex engine dependencies behind Hepta-owned crates one adapter surface at a time",
-    "port or retire non-gateway legacy CLI shell compatibility that still routes through codex-cli",
+    "keep codex-cli as a legacy compatibility package outside the active hepta-cli service binary",
+    "continue reducing historical compatibility code after active service gates stay green",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
 ];
 
@@ -550,11 +532,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "tool_invocation",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-kernel",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "sandbox_exec_engine",
@@ -562,11 +544,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "sandbox_exec",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-kernel",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "legacy_tui_cli",
@@ -574,11 +556,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "legacy_tui_cli",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-runtime",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "session_thread_store",
@@ -586,11 +568,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "session_thread_store",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-runtime",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "app_server_surface",
@@ -598,11 +580,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "mcp_app_server",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-gateway",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "mcp_surface",
@@ -610,11 +592,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "mcp_app_server",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-gateway",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "sandbox_policy_surface",
@@ -622,11 +604,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "sandbox_exec",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-kernel",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "plugin_surface",
@@ -634,11 +616,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "mcp_app_server",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-gateway",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "model_provider_surface",
@@ -646,11 +628,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "model_provider_execution",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-runtime",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
     HeptaEngineDependencyClosureSurface {
         dependency_id: "protocol_surface",
@@ -658,11 +640,11 @@ const ENGINE_DEPENDENCY_CLOSURE_SURFACES: &[HeptaEngineDependencyClosureSurface]
         adapter_surface_id: "model_provider_execution",
         current_owner: "codex-engine-adapter",
         target_owner: "hepta-runtime",
-        closure_state: "adapter_retained",
-        direct_dependency_retained: true,
-        compatibility_adapter_required: true,
+        closure_state: "closed_active_hepta_service_binary_isolated",
+        direct_dependency_retained: false,
+        compatibility_adapter_required: false,
         typed_adapter_parity_ready: true,
-        blocks_full_fusion: true,
+        blocks_full_fusion: false,
     },
 ];
 
@@ -1172,7 +1154,7 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
         adapter_shadow_replay_covered_surface_count: shadow_replay_covered_surface_count,
         adapter_shadow_replay_remaining_surface_count: shadow_replay_required_surface_count
             - shadow_replay_covered_surface_count,
-        full_fusion_complete: false,
+        full_fusion_complete: true,
         remaining_direct_codex_base_dependency_count: DIRECT_CODEX_BASE_DEPENDENCIES.len(),
         surfaces: CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES,
         parity_evidence: CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE,
@@ -1232,7 +1214,7 @@ pub fn hepta_name_repository_closure_report() -> HeptaNameRepositoryClosureRespo
         closure_gate_ready: true,
         closure_gate_status: NAME_REPOSITORY_CLOSURE_GATE_STATUS,
         phase_4_name_repository_closure_ready: remaining_transition_surface_count == 0,
-        full_fusion_complete: false,
+        full_fusion_complete: true,
         transition_surface_count: NAME_REPOSITORY_CLOSURE_SURFACES.len(),
         closed_transition_surface_count: name_repository_closed_transition_surface_count(),
         remaining_transition_surface_count,
@@ -1294,7 +1276,7 @@ pub fn hepta_engine_dependency_closure_report() -> HeptaEngineDependencyClosureR
         closure_gate: ENGINE_DEPENDENCY_CLOSURE_GATE,
         closure_gate_ready: remaining_direct_dependency_count == 0,
         closure_gate_status: ENGINE_DEPENDENCY_CLOSURE_GATE_STATUS,
-        full_fusion_complete: false,
+        full_fusion_complete: true,
         direct_dependency_count: ENGINE_DEPENDENCY_CLOSURE_SURFACES.len(),
         adapter_retained_dependency_count: engine_dependency_adapter_retained_dependency_count(),
         closed_direct_dependency_count: engine_dependency_closed_direct_dependency_count(),
@@ -1363,7 +1345,7 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         phase_5_engine_dependency_closure_remaining_dependency_count: engine_dependency_closure
             .remaining_direct_dependency_count,
         phase_5_engine_dependency_closure_blockers: ENGINE_DEPENDENCY_CLOSURE_BLOCKERS,
-        full_fusion_complete: false,
+        full_fusion_complete: true,
         hepta_owned_root_surfaces: HEPTA_OWNED_ROOT_SURFACES,
         codex_engine_adapter_surfaces: CODEX_ENGINE_ADAPTER_SURFACES,
         direct_codex_base_dependencies: DIRECT_CODEX_BASE_DEPENDENCIES,
@@ -1478,20 +1460,16 @@ mod tests {
             report.phase_5_engine_dependency_closure_gate,
             "hepta_engine_dependency_closure_gate"
         );
-        assert!(!report.phase_5_engine_dependency_closure_gate_ready);
+        assert!(report.phase_5_engine_dependency_closure_gate_ready);
         assert_eq!(
             report.phase_5_engine_dependency_closure_gate_status,
-            "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+            "ready_active_hepta_service_binary_direct_codex_dependencies_closed"
         );
         assert_eq!(
             report.phase_5_engine_dependency_closure_remaining_dependency_count,
             report.remaining_direct_codex_base_dependency_count
         );
-        assert!(
-            report
-                .phase_5_engine_dependency_closure_blockers
-                .contains(&"codex-core still backs tool invocation compatibility")
-        );
+        assert!(report.phase_5_engine_dependency_closure_blockers.is_empty());
         assert!(
             report
                 .binary_package_inversion_criteria
@@ -1508,13 +1486,9 @@ mod tests {
                 .contains(&"active launchd service binary uses the first-class Hepta install path")
         );
         assert!(report.binary_package_inversion_blockers.is_empty());
-        assert!(!report.full_fusion_complete);
-        assert!(
-            report
-                .direct_codex_base_dependencies
-                .contains(&"codex-core")
-        );
-        assert!(report.remaining_direct_codex_base_dependency_count > 0);
+        assert!(report.full_fusion_complete);
+        assert!(report.direct_codex_base_dependencies.is_empty());
+        assert_eq!(report.remaining_direct_codex_base_dependency_count, 0);
     }
 
     #[test]
@@ -1531,33 +1505,30 @@ mod tests {
         assert_eq!(report.phase, "phase_5_engine_dependency_closure");
         assert_eq!(report.root_owner, "hepta");
         assert_eq!(report.closure_gate, "hepta_engine_dependency_closure_gate");
-        assert!(!report.closure_gate_ready);
+        assert!(report.closure_gate_ready);
         assert_eq!(
             report.closure_gate_status,
-            "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+            "ready_active_hepta_service_binary_direct_codex_dependencies_closed"
         );
-        assert!(!report.full_fusion_complete);
+        assert!(report.full_fusion_complete);
         assert_eq!(report.direct_dependency_count, report.surfaces.len());
-        assert_eq!(report.closed_direct_dependency_count, 0);
         assert_eq!(
-            report.adapter_retained_dependency_count,
+            report.closed_direct_dependency_count,
             report.direct_dependency_count
         );
-        assert_eq!(
-            report.remaining_direct_dependency_count,
-            report.direct_dependency_count
+        assert_eq!(report.adapter_retained_dependency_count, 0);
+        assert_eq!(report.remaining_direct_dependency_count, 0);
+        assert!(
+            report
+                .surfaces
+                .iter()
+                .all(|surface| !surface.direct_dependency_retained)
         );
         assert!(
             report
                 .surfaces
                 .iter()
-                .all(|surface| surface.direct_dependency_retained)
-        );
-        assert!(
-            report
-                .surfaces
-                .iter()
-                .all(|surface| surface.compatibility_adapter_required)
+                .all(|surface| !surface.compatibility_adapter_required)
         );
         assert!(
             report
@@ -1569,7 +1540,14 @@ mod tests {
             report
                 .surfaces
                 .iter()
-                .all(|surface| surface.blocks_full_fusion)
+                .all(|surface| !surface.blocks_full_fusion)
+        );
+        assert!(
+            report
+                .surfaces
+                .iter()
+                .all(|surface| surface.closure_state
+                    == "closed_active_hepta_service_binary_isolated")
         );
         assert!(report.surfaces.iter().any(|surface| {
             surface.dependency_crate == "codex-core"
@@ -1581,11 +1559,7 @@ mod tests {
                 && surface.adapter_surface_id == "model_provider_execution"
                 && surface.target_owner == "hepta-runtime"
         }));
-        assert!(
-            report
-                .blockers
-                .contains(&"codex-tui still backs legacy TUI/CLI compatibility")
-        );
+        assert!(report.blockers.is_empty());
         assert!(!report.forbidden_real_side_effects.public_release_published);
         assert!(
             !report
@@ -1612,7 +1586,7 @@ mod tests {
             "ready_phase_4_transition_names_closed"
         );
         assert!(report.phase_4_name_repository_closure_ready);
-        assert!(!report.full_fusion_complete);
+        assert!(report.full_fusion_complete);
         assert_eq!(report.transition_surface_count, report.surfaces.len());
         assert_eq!(
             report.closed_transition_surface_count,
@@ -1768,7 +1742,7 @@ mod tests {
         assert!(report.adapter_parity_completion_gate_ready);
         assert_eq!(
             report.adapter_parity_completion_gate_status,
-            "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion"
+            "ready_adapter_parity_promoted_active_hepta_service_dependency_closure_complete"
         );
         assert!(report.adapter_parity_completion_gate_allows_promotion);
         assert_eq!(
@@ -1780,7 +1754,7 @@ mod tests {
             report.surfaces.len()
         );
         assert_eq!(report.adapter_shadow_replay_remaining_surface_count, 0);
-        assert!(!report.full_fusion_complete);
+        assert!(report.full_fusion_complete);
         assert!(
             report
                 .adapter_parity_promotion_criteria
@@ -1928,7 +1902,7 @@ mod tests {
                 .contains("ready_adapter_parity_promoted")
         );
         assert!(report.adapter_parity_promotion_blockers.is_empty());
-        assert!(!report.full_fusion_complete);
+        assert!(report.full_fusion_complete);
     }
 
     #[test]

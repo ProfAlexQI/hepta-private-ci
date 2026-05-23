@@ -7143,7 +7143,12 @@ name = "hepta-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "codex-cli",
+ "hepta-gateway",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
  "tokio",
 ]
 

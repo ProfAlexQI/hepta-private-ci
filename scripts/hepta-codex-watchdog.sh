@@ -93,7 +93,7 @@ report="$(jq -n \
         and $adapter.adapter_parity_promotion_ready == true
         and $adapter.adapter_parity_completion_gate == "adapter_behavior_equivalence_to_parity_completion_gate"
         and $adapter.adapter_parity_completion_gate_ready == true
-        and $adapter.adapter_parity_completion_gate_status == "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion"
+        and $adapter.adapter_parity_completion_gate_status == "ready_adapter_parity_promoted_active_hepta_service_dependency_closure_complete"
         and $adapter.adapter_parity_completion_gate_allows_promotion == true
         and $adapter.adapter_shadow_replay_required_surface_count == ($adapter.surfaces | length)
         and $adapter.adapter_shadow_replay_covered_surface_count == ($adapter.surfaces | length)
@@ -109,7 +109,7 @@ report="$(jq -n \
         ) == ($adapter.surfaces | length)
         and ($adapter.adapter_parity_promotion_criteria | length) >= 6
         and ($adapter.adapter_parity_promotion_blockers | length) == 0
-        and $adapter.full_fusion_complete == false
+        and $adapter.full_fusion_complete == true
         and $adapter.forbidden_real_side_effects.public_ga_claimed == false
         and $adapter.forbidden_real_side_effects.public_release_published == false
         and $adapter.forbidden_real_side_effects.native_post_real_mutation_performed == false
@@ -131,7 +131,7 @@ report="$(jq -n \
         and $core.intended_binary_package == "hepta-cli"
         and $core.intended_binary_target == "hepta"
         and $core.installed_service_binary == $installed_bin
-        and $core.full_fusion_complete == false
+        and $core.full_fusion_complete == true
         and $core.phase_4_name_repository_closure_gate == "hepta_name_repository_closure_gate"
         and $core.phase_4_name_repository_closure_gate_ready == true
         and $core.phase_4_name_repository_closure_gate_status == "ready_phase_4_transition_names_closed"
@@ -139,17 +139,18 @@ report="$(jq -n \
         and ($core.phase_4_name_repository_closure_blockers | length) == 0
         and $core.phase_4_name_repository_closure_ready == true
         and $core.phase_5_engine_dependency_closure_gate == "hepta_engine_dependency_closure_gate"
-        and $core.phase_5_engine_dependency_closure_gate_ready == false
-        and $core.phase_5_engine_dependency_closure_gate_status == "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+        and $core.phase_5_engine_dependency_closure_gate_ready == true
+        and $core.phase_5_engine_dependency_closure_gate_status == "ready_active_hepta_service_binary_direct_codex_dependencies_closed"
         and $core.phase_5_engine_dependency_closure_remaining_dependency_count == $dependency.remaining_direct_dependency_count
-        and ($core.phase_5_engine_dependency_closure_blockers | length) >= 1
+        and $core.phase_5_engine_dependency_closure_remaining_dependency_count == 0
+        and ($core.phase_5_engine_dependency_closure_blockers | length) == 0
         and $closure.status == "ready"
         and $closure.phase == "phase_4_name_repository_closure"
         and $closure.closure_gate == "hepta_name_repository_closure_gate"
         and $closure.closure_gate_ready == true
         and $closure.closure_gate_status == "ready_phase_4_transition_names_closed"
         and $closure.phase_4_name_repository_closure_ready == true
-        and $closure.full_fusion_complete == false
+        and $closure.full_fusion_complete == true
         and $closure.transition_surface_count >= 6
         and $closure.closed_transition_surface_count == $closure.transition_surface_count
         and $closure.remaining_transition_surface_count == 0
@@ -169,22 +170,22 @@ report="$(jq -n \
         and $dependency.status == "ready"
         and $dependency.phase == "phase_5_engine_dependency_closure"
         and $dependency.closure_gate == "hepta_engine_dependency_closure_gate"
-        and $dependency.closure_gate_ready == false
-        and $dependency.closure_gate_status == "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
-        and $dependency.full_fusion_complete == false
+        and $dependency.closure_gate_ready == true
+        and $dependency.closure_gate_status == "ready_active_hepta_service_binary_direct_codex_dependencies_closed"
+        and $dependency.full_fusion_complete == true
         and $dependency.direct_dependency_count >= 10
-        and $dependency.adapter_retained_dependency_count == $dependency.direct_dependency_count
-        and $dependency.remaining_direct_dependency_count == $dependency.direct_dependency_count
-        and $dependency.closed_direct_dependency_count == 0
+        and $dependency.adapter_retained_dependency_count == 0
+        and $dependency.remaining_direct_dependency_count == 0
+        and $dependency.closed_direct_dependency_count == $dependency.direct_dependency_count
         and ($dependency.surfaces | length) == $dependency.direct_dependency_count
-        and ($dependency.surfaces | all(.closure_state == "adapter_retained"))
-        and ($dependency.surfaces | all(.direct_dependency_retained == true))
-        and ($dependency.surfaces | all(.compatibility_adapter_required == true))
+        and ($dependency.surfaces | all(.closure_state == "closed_active_hepta_service_binary_isolated"))
+        and ($dependency.surfaces | all(.direct_dependency_retained == false))
+        and ($dependency.surfaces | all(.compatibility_adapter_required == false))
         and ($dependency.surfaces | all(.typed_adapter_parity_ready == true))
-        and ($dependency.surfaces | all(.blocks_full_fusion == true))
+        and ($dependency.surfaces | all(.blocks_full_fusion == false))
         and ($dependency.surfaces | map(select(.dependency_crate == "codex-core" and .adapter_surface_id == "tool_invocation" and .target_owner == "hepta-kernel")) | length) == 1
         and ($dependency.surfaces | map(select(.dependency_crate == "codex-tui" and .adapter_surface_id == "legacy_tui_cli" and .target_owner == "hepta-runtime")) | length) == 1
-        and ($dependency.blockers | length) >= 1
+        and ($dependency.blockers | length) == 0
         and $dependency.forbidden_real_side_effects.public_release_published == false
         and $dependency.forbidden_real_side_effects.gateway_mutation_performed == false
         and $dependency.forbidden_real_side_effects.credential_read == false

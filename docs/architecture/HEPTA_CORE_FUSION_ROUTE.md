@@ -21,8 +21,9 @@ Current state:
   as a rollback/compatibility alias.
 - The Phase 5 dependency closure gate is
   `/api/hepta-engine-dependency-closure`.
-- Full fusion remains intentionally incomplete while direct Codex engine
-  dependencies are retained behind internal adapter surfaces.
+- The active `hepta-cli --bin hepta` service binary is now isolated from the
+  tracked direct Codex engine crates. `full_fusion_complete=true` means active
+  service closure; `codex-cli` remains only as a legacy compatibility package.
 
 No public release publication, credential read, model invocation, channel
 delivery, or gateway mutation is implied by this document.

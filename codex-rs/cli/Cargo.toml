@@ -17,6 +17,10 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+default = ["codex-in-process-runner"]
+codex-in-process-runner = []
+
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }

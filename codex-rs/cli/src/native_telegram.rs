@@ -6,6 +6,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+#[cfg(feature = "codex-in-process-runner")]
 use codex_arg0::Arg0DispatchPaths;
 pub(crate) use hepta_gateway::{
     NativeTelegramConfigStatus, NativeTelegramConfigStatusInput, NativeTelegramCursorPlan,
@@ -66,6 +67,7 @@ use hepta_gateway::{
 use serde_json::Value;
 use sha2::Digest;
 use sha2::Sha256;
+#[cfg(feature = "codex-in-process-runner")]
 use tokio::runtime::Handle;
 
 const LEGACY_RUNTIME_SLUG: &str = "openclaw";
@@ -1050,6 +1052,20 @@ fn run_mlx_local_chat_completion(
 }
 
 fn run_hepta_in_process_model_turn(prompt: &str) -> Result<String, String> {
+    #[cfg(feature = "codex-in-process-runner")]
+    {
+        return run_hepta_in_process_model_turn_with_codex_exec(prompt);
+    }
+
+    #[cfg(not(feature = "codex-in-process-runner"))]
+    {
+        let _ = prompt;
+        Err("gated in-process Codex exec runner is not compiled into the active hepta-cli service binary".to_string())
+    }
+}
+
+#[cfg(feature = "codex-in-process-runner")]
+fn run_hepta_in_process_model_turn_with_codex_exec(prompt: &str) -> Result<String, String> {
     let prompt = prompt.trim();
     if prompt.is_empty() {
         return Err("Telegram model runner requires non-empty prompt material".to_string());

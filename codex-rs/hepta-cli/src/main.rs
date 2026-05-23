@@ -1,10 +1,15 @@
+#[path = "../../cli/src/native_gateway.rs"]
+mod native_gateway;
+#[path = "../../cli/src/native_telegram.rs"]
+mod native_telegram;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let Some(options) = codex_cli::native_gateway::parse_serve_ui_args_from_env()? else {
+    let Some(options) = native_gateway::parse_serve_ui_args_from_env()? else {
         anyhow::bail!(
-            "hepta-cli first-class package currently supports the --serve-ui gateway entrypoint; legacy CLI compatibility still routes through codex-cli"
+            "hepta-cli first-class package supports the --serve-ui gateway entrypoint; legacy CLI compatibility remains outside the active service binary"
         );
     };
 
-    codex_cli::native_gateway::run_native_gateway(options).await
+    native_gateway::run_native_gateway(options).await
 }

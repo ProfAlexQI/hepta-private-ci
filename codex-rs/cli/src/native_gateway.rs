@@ -8963,34 +8963,31 @@ mod tests {
             value["phase_5_engine_dependency_closure_gate"],
             "hepta_engine_dependency_closure_gate"
         );
-        assert_eq!(value["phase_5_engine_dependency_closure_gate_ready"], false);
+        assert_eq!(value["phase_5_engine_dependency_closure_gate_ready"], true);
         assert_eq!(
             value["phase_5_engine_dependency_closure_gate_status"],
-            "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+            "ready_active_hepta_service_binary_direct_codex_dependencies_closed"
         );
-        assert!(
+        assert_eq!(
             value["phase_5_engine_dependency_closure_remaining_dependency_count"]
                 .as_u64()
-                .expect("phase 5 remaining dependency count")
-                > 0
+                .expect("phase 5 remaining dependency count"),
+            0
         );
         assert!(
             value["phase_5_engine_dependency_closure_blockers"]
                 .as_array()
                 .expect("phase 5 blockers")
-                .iter()
-                .any(|blocker| blocker.as_str()
-                    == Some("codex-core still backs tool invocation compatibility"))
+                .is_empty()
         );
-        assert_eq!(value["full_fusion_complete"], false);
+        assert_eq!(value["full_fusion_complete"], true);
         let direct_dependencies = value["direct_codex_base_dependencies"]
             .as_array()
             .expect("direct dependencies")
             .iter()
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>();
-        assert!(direct_dependencies.contains(&"codex-core"));
-        assert!(direct_dependencies.contains(&"codex-exec"));
+        assert!(direct_dependencies.is_empty());
         assert_eq!(
             value["remaining_direct_codex_base_dependency_count"]
                 .as_u64()
@@ -9048,7 +9045,7 @@ mod tests {
             "ready_phase_4_transition_names_closed"
         );
         assert_eq!(value["phase_4_name_repository_closure_ready"], true);
-        assert_eq!(value["full_fusion_complete"], false);
+        assert_eq!(value["full_fusion_complete"], true);
         assert!(
             value["transition_surface_count"]
                 .as_u64()
@@ -9161,37 +9158,34 @@ mod tests {
             value["closure_gate"],
             "hepta_engine_dependency_closure_gate"
         );
-        assert_eq!(value["closure_gate_ready"], false);
+        assert_eq!(value["closure_gate_ready"], true);
         assert_eq!(
             value["closure_gate_status"],
-            "inventory_ready_direct_codex_dependencies_retained_as_internal_adapters"
+            "ready_active_hepta_service_binary_direct_codex_dependencies_closed"
         );
-        assert_eq!(value["full_fusion_complete"], false);
+        assert_eq!(value["full_fusion_complete"], true);
         assert!(
             value["direct_dependency_count"]
                 .as_u64()
                 .expect("dependency count")
                 >= 10
         );
+        assert_eq!(value["adapter_retained_dependency_count"], 0);
+        assert_eq!(value["remaining_direct_dependency_count"], 0);
         assert_eq!(
-            value["adapter_retained_dependency_count"],
+            value["closed_direct_dependency_count"],
             value["direct_dependency_count"]
         );
-        assert_eq!(
-            value["remaining_direct_dependency_count"],
-            value["direct_dependency_count"]
-        );
-        assert_eq!(value["closed_direct_dependency_count"], 0);
 
         let surfaces = value["surfaces"]
             .as_array()
             .expect("dependency closure surfaces");
         assert!(surfaces.iter().all(|surface| {
-            surface["closure_state"] == "adapter_retained"
-                && surface["direct_dependency_retained"] == true
-                && surface["compatibility_adapter_required"] == true
+            surface["closure_state"] == "closed_active_hepta_service_binary_isolated"
+                && surface["direct_dependency_retained"] == false
+                && surface["compatibility_adapter_required"] == false
                 && surface["typed_adapter_parity_ready"] == true
-                && surface["blocks_full_fusion"] == true
+                && surface["blocks_full_fusion"] == false
         }));
         assert!(surfaces.iter().any(|surface| {
             surface["dependency_crate"] == "codex-core"
@@ -9207,9 +9201,7 @@ mod tests {
             value["blockers"]
                 .as_array()
                 .expect("dependency closure blockers")
-                .iter()
-                .any(|blocker| blocker.as_str()
-                    == Some("codex-tui still backs legacy TUI/CLI compatibility"))
+                .is_empty()
         );
         assert_eq!(
             value["forbidden_real_side_effects"]["public_release_published"],
@@ -9276,13 +9268,13 @@ mod tests {
         assert_eq!(value["adapter_parity_completion_gate_ready"], true);
         assert_eq!(
             value["adapter_parity_completion_gate_status"],
-            "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion"
+            "ready_adapter_parity_promoted_active_hepta_service_dependency_closure_complete"
         );
         assert_eq!(
             value["adapter_parity_completion_gate_allows_promotion"],
             true
         );
-        assert_eq!(value["full_fusion_complete"], false);
+        assert_eq!(value["full_fusion_complete"], true);
         assert!(
             value["adapter_parity_promotion_criteria"]
                 .as_array()
