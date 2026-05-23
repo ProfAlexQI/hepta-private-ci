@@ -1,0 +1,17 @@
+[package]
+name = "hepta-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "hepta"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+codex-cli = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -625,7 +625,7 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NativeGatewayOptions {
+pub struct NativeGatewayOptions {
     pub(crate) bind_addr: String,
     pub(crate) with_telegram_plugin: bool,
     pub(crate) telegram_plugin_poll_ms: u64,
@@ -677,7 +677,7 @@ impl NativeGatewayOptions {
     }
 }
 
-pub(crate) fn parse_serve_ui_args(raw_args: &[String]) -> Result<Option<NativeGatewayOptions>> {
+pub fn parse_serve_ui_args(raw_args: &[String]) -> Result<Option<NativeGatewayOptions>> {
     match raw_args.first().map(String::as_str) {
         Some("--serve-ui") => {
             let options = NativeGatewayOptions::from_env_and_args(&raw_args[1..])?;
@@ -687,12 +687,12 @@ pub(crate) fn parse_serve_ui_args(raw_args: &[String]) -> Result<Option<NativeGa
     }
 }
 
-pub(crate) fn parse_serve_ui_args_from_env() -> Result<Option<NativeGatewayOptions>> {
+pub fn parse_serve_ui_args_from_env() -> Result<Option<NativeGatewayOptions>> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     parse_serve_ui_args(&args)
 }
 
-pub(crate) async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
+pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
     if !is_loopback_bind_addr(&options.bind_addr) && !allow_non_loopback_ui() {
         anyhow::bail!(
             "refusing to serve UI on non-loopback address {}; set HEPTA_ALLOW_NON_LOOPBACK_UI=1 only for an explicit local lab exposure",
@@ -8864,7 +8864,7 @@ mod tests {
         assert_eq!(value["codex_engine_role"], "internal_engine_adapter");
         assert_eq!(value["phase_1_root_ownership_inversion_ready"], true);
         assert_eq!(value["phase_2_engine_adapter_boundary_ready"], true);
-        assert_eq!(value["phase_3_binary_package_inversion_ready"], false);
+        assert_eq!(value["phase_3_binary_package_inversion_ready"], true);
         assert_eq!(
             value["binary_package_inversion_gate"],
             "hepta_first_class_binary_package_inversion_gate"
@@ -8872,19 +8872,18 @@ mod tests {
         assert_eq!(value["binary_package_inversion_gate_ready"], true);
         assert_eq!(
             value["binary_package_inversion_gate_status"],
-            "blocked_pending_hepta_cli_release_package_ownership"
+            "ready_hepta_cli_release_package_ownership_active"
         );
-        assert_eq!(value["active_binary_package"], "codex-cli");
+        assert_eq!(value["active_binary_package"], "hepta-cli");
         assert_eq!(value["active_binary_target"], "hepta");
         assert_eq!(value["intended_binary_package"], "hepta-cli");
         assert_eq!(value["intended_binary_target"], "hepta");
-        assert!(
+        assert_eq!(
             value["binary_package_inversion_blockers"]
                 .as_array()
                 .expect("binary package inversion blockers")
-                .iter()
-                .any(|item| item.as_str()
-                    == Some("active release binary is still built from package codex-cli"))
+                .len(),
+            0
         );
         assert_eq!(value["full_fusion_complete"], false);
         let direct_dependencies = value["direct_codex_base_dependencies"]

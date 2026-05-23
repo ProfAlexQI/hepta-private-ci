@@ -101,13 +101,13 @@ report="$(jq -n \
         and $core.status == "ready"
         and $core.phase == "phase_3_binary_package_inversion"
         and $core.phase_2_engine_adapter_boundary_ready == true
-        and $core.phase_3_binary_package_inversion_ready == false
+        and $core.phase_3_binary_package_inversion_ready == true
         and $core.binary_package_inversion_gate == "hepta_first_class_binary_package_inversion_gate"
         and $core.binary_package_inversion_gate_ready == true
-        and $core.binary_package_inversion_gate_status == "blocked_pending_hepta_cli_release_package_ownership"
+        and $core.binary_package_inversion_gate_status == "ready_hepta_cli_release_package_ownership_active"
         and ($core.binary_package_inversion_criteria | length) >= 6
-        and ($core.binary_package_inversion_blockers | length) >= 3
-        and $core.active_binary_package == "codex-cli"
+        and ($core.binary_package_inversion_blockers | length) == 0
+        and $core.active_binary_package == "hepta-cli"
         and $core.active_binary_target == "hepta"
         and $core.intended_binary_package == "hepta-cli"
         and $core.intended_binary_target == "hepta"

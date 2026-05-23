@@ -82,6 +82,7 @@ members = [
     "utils/cargo-bin",
     "git-utils",
     "hepta-core",
+    "hepta-cli",
     "hepta-kernel",
     "hepta-intelligence",
     "hepta-gateway",

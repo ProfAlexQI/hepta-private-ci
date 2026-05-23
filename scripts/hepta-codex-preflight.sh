@@ -25,7 +25,8 @@ cargo check --offline --manifest-path "$MANIFEST" -q \
   -p hepta-plugins \
   -p hepta-runtime \
   -p hepta-gateway \
-  -p codex-cli --bin hepta
+  -p codex-cli --bin hepta \
+  -p hepta-cli --bin hepta
 
 echo "[hepta-codex-preflight] adapter behavior-equivalence gate"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
@@ -58,8 +59,10 @@ else
 fi
 
 if [[ "$RUN_RELEASE" == "1" ]]; then
-  echo "[hepta-codex-preflight] release build"
+  echo "[hepta-codex-preflight] release build compatibility codex-cli"
   cargo build --release --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta
+  echo "[hepta-codex-preflight] release build active hepta-cli"
+  cargo build --release --offline --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
 else
   echo "[hepta-codex-preflight] release build skipped (set HEPTA_CODEX_PREFLIGHT_RELEASE=1)"
 fi

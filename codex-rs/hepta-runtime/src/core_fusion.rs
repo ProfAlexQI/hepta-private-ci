@@ -257,19 +257,18 @@ const BINARY_PACKAGE_INVERSION_CRITERIA: &[&str] = &[
     "active service binary path is known and watchdog-observed",
     "current release package and target are explicitly reported",
     "intended first-class Hepta package and target are explicitly reported",
+    "workspace exposes hepta-cli as the intended first-class release package",
+    "active release build is produced by hepta-cli --bin hepta",
+    "legacy codex-cli binary remains a compatibility test surface only",
     "Codex remains an internal engine adapter during the package transition",
     "public release and real mutation boundaries remain blocked",
 ];
 
-const BINARY_PACKAGE_INVERSION_BLOCKERS: &[&str] = &[
-    "active release binary is still built from package codex-cli",
-    "workspace does not yet expose hepta-cli as the first-class release package",
-    "installed service path still uses the hepta-codex transition runtime name",
-];
+const BINARY_PACKAGE_INVERSION_BLOCKERS: &[&str] = &[];
 
 const BINARY_PACKAGE_INVERSION_GATE: &str = "hepta_first_class_binary_package_inversion_gate";
 const BINARY_PACKAGE_INVERSION_GATE_STATUS: &str =
-    "blocked_pending_hepta_cli_release_package_ownership";
+    "ready_hepta_cli_release_package_ownership_active";
 
 const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
     "all adapter surfaces expose typed request/response envelopes",
@@ -289,7 +288,8 @@ const ADAPTER_PARITY_COMPLETION_GATE_STATUS: &str =
     "ready_adapter_parity_promoted_full_fusion_pending_binary_package_inversion";
 
 const NEXT_ACTIONS: &[&str] = &[
-    "promote the installed binary from codex-cli --bin hepta toward first-class Hepta binary ownership after adapter parity",
+    "close the transition runtime path and launchd naming from hepta-codex toward Hepta after package ownership inversion",
+    "port or retire non-gateway legacy CLI shell compatibility that still routes through codex-cli",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
 ];
 
@@ -900,13 +900,13 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         phase_1_root_ownership_inversion_ready: true,
         product_runtime_entrypoint_facade_ready: true,
         phase_2_engine_adapter_boundary_ready: true,
-        phase_3_binary_package_inversion_ready: false,
+        phase_3_binary_package_inversion_ready: true,
         binary_package_inversion_gate: BINARY_PACKAGE_INVERSION_GATE,
         binary_package_inversion_gate_ready: true,
         binary_package_inversion_gate_status: BINARY_PACKAGE_INVERSION_GATE_STATUS,
         binary_package_inversion_criteria: BINARY_PACKAGE_INVERSION_CRITERIA,
         binary_package_inversion_blockers: BINARY_PACKAGE_INVERSION_BLOCKERS,
-        active_binary_package: "codex-cli",
+        active_binary_package: "hepta-cli",
         active_binary_target: "hepta",
         intended_binary_package: "hepta-cli",
         intended_binary_target: "hepta",
@@ -984,7 +984,7 @@ mod tests {
         assert!(report.phase_1_root_ownership_inversion_ready);
         assert!(report.product_runtime_entrypoint_facade_ready);
         assert!(report.phase_2_engine_adapter_boundary_ready);
-        assert!(!report.phase_3_binary_package_inversion_ready);
+        assert!(report.phase_3_binary_package_inversion_ready);
         assert_eq!(
             report.binary_package_inversion_gate,
             "hepta_first_class_binary_package_inversion_gate"
@@ -992,9 +992,9 @@ mod tests {
         assert!(report.binary_package_inversion_gate_ready);
         assert_eq!(
             report.binary_package_inversion_gate_status,
-            "blocked_pending_hepta_cli_release_package_ownership"
+            "ready_hepta_cli_release_package_ownership_active"
         );
-        assert_eq!(report.active_binary_package, "codex-cli");
+        assert_eq!(report.active_binary_package, "hepta-cli");
         assert_eq!(report.active_binary_target, "hepta");
         assert_eq!(report.intended_binary_package, "hepta-cli");
         assert_eq!(report.intended_binary_target, "hepta");
@@ -1005,9 +1005,10 @@ mod tests {
         );
         assert!(
             report
-                .binary_package_inversion_blockers
-                .contains(&"active release binary is still built from package codex-cli")
+                .binary_package_inversion_criteria
+                .contains(&"active release build is produced by hepta-cli --bin hepta")
         );
+        assert!(report.binary_package_inversion_blockers.is_empty());
         assert!(!report.full_fusion_complete);
         assert!(
             report

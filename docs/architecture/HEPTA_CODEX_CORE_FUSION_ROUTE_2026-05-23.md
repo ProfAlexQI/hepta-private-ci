@@ -176,18 +176,20 @@ Current landed state:
 
 - `/api/hepta-core-fusion-readiness` now reports
   `phase=phase_3_binary_package_inversion`.
-- Phase 3 is started but not complete:
-  `phase_3_binary_package_inversion_ready=false`.
+- Phase 3 package ownership is now complete for the active gateway release:
+  `phase_3_binary_package_inversion_ready=true`.
 - The live route reports a dedicated
   `hepta_first_class_binary_package_inversion_gate`, with status
-  `blocked_pending_hepta_cli_release_package_ownership`.
-- The gate makes the remaining blockers explicit: the active release binary is
-  still built from package `codex-cli`, the workspace does not yet expose
-  `hepta-cli` as the first-class release package, and the installed service path
-  still uses the `hepta-codex` transition runtime name.
+  `ready_hepta_cli_release_package_ownership_active`.
+- The active release package is `hepta-cli` with target `hepta`; `codex-cli`
+  remains a compatibility test surface rather than the package that carries the
+  installed gateway release.
 - Watchdog now checks this Phase 3 state in addition to adapter parity, so full
-  fusion cannot be claimed while package ownership remains inverted through the
-  Codex package.
+  fusion cannot regress to Codex package ownership silently.
+- A first-class `hepta-cli` package now exists in the workspace and builds a
+  `hepta` binary for the native gateway `--serve-ui` entrypoint. Non-gateway
+  legacy CLI shell coverage is still tracked separately and does not block the
+  active gateway release package.
 
 ### Phase 4 - Name and Repository Closure
 
@@ -209,12 +211,13 @@ Acceptance:
 
 ## Immediate Safe Next Slice
 
-Advance to Phase 3:
+Advance after Phase 3:
 
-1. Start binary/package inversion: move from `codex-cli --bin hepta` toward a
-   first-class Hepta binary ownership model by introducing/promoting a
-   `hepta-cli` release package.
+1. Close transition naming: service path, runtime strings, and docs should move
+   from `hepta-codex` toward Hepta once rollback evidence is stable.
 2. Keep direct Codex dependencies explicit as internal engine-adapter
-   compatibility surfaces until the binary/package layer is inverted.
-3. Run focused checks, full preflight, release build, live install, and live
+   compatibility surfaces until repository/name closure is complete.
+3. Port or retire non-gateway legacy CLI shell compatibility that still routes
+   through `codex-cli`.
+4. Run focused checks, full preflight, release build, live install, and live
    gates before claiming full fusion.
