@@ -44,6 +44,10 @@ cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
 cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta \
   hepta_name_repository_closure -- --nocapture
 
+echo "[hepta-codex-preflight] active service dependency isolation gate"
+HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE=0 \
+  scripts/hepta-active-service-dependency-isolation.sh
+
 echo "[hepta-codex-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 

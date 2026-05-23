@@ -24,6 +24,9 @@ Current state:
 - The active `hepta-cli --bin hepta` service binary is now isolated from the
   tracked direct Codex engine crates. `full_fusion_complete=true` means active
   service closure; `codex-cli` remains only as a legacy compatibility package.
+- `scripts/hepta-active-service-dependency-isolation.sh` makes the active
+  service isolation check repeatable with an offline `hepta-cli` cargo-tree
+  gate and an optional live route contract check.
 
 No public release publication, credential read, model invocation, channel
 delivery, or gateway mutation is implied by this document.
