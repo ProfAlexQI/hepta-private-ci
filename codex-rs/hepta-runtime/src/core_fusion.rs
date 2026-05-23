@@ -78,6 +78,7 @@ pub struct HeptaCodexEngineAdapterSurface {
     pub codex_dependency: &'static str,
     pub adapter_contract: &'static str,
     pub migration_state: &'static str,
+    pub typed_request_response_envelope_ready: bool,
     pub live_mutation_allowed: bool,
 }
 
@@ -118,6 +119,40 @@ pub struct HeptaCodexEngineAdapterThreadingPlan {
     pub credential_read_by_plan: bool,
     pub session_store_mutated_by_plan: bool,
     pub external_network_read_by_plan: bool,
+    pub side_effect_free: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct HeptaCodexEngineAdapterEnvelopeInput<'a> {
+    pub operation: &'a str,
+    pub compatibility_dispatch_requested: bool,
+    pub live_mutation_requested: bool,
+    pub provider_invocation_requested: bool,
+    pub credential_read_requested: bool,
+    pub session_store_mutation_requested: bool,
+    pub external_network_read_requested: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaCodexEngineAdapterEnvelope {
+    pub product: &'static str,
+    pub root_owner: &'static str,
+    pub adapter_owner: &'static str,
+    pub surface_id: &'static str,
+    pub hepta_boundary_owner: &'static str,
+    pub codex_dependency: &'static str,
+    pub operation: String,
+    pub request_envelope_ready: bool,
+    pub response_envelope_ready: bool,
+    pub typed_request_response_envelope_ready: bool,
+    pub compatibility_dispatch_requested: bool,
+    pub compatibility_dispatch_allowed: bool,
+    pub live_mutation_requested: bool,
+    pub live_mutation_allowed: bool,
+    pub provider_invocation_requested: bool,
+    pub credential_read_requested: bool,
+    pub session_store_mutation_requested: bool,
+    pub external_network_read_requested: bool,
     pub side_effect_free: bool,
 }
 
@@ -167,6 +202,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-model-provider",
         adapter_contract: "model invocation must enter through a Hepta-owned request/response boundary before provider dispatch",
         migration_state: "adapter_threaded_compatibility_dispatch",
+        typed_request_response_envelope_ready: false,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -175,6 +211,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-state",
         adapter_contract: "session and thread persistence must be described as Hepta records before Codex store compatibility is used",
         migration_state: "adapter_threaded_compatibility_dispatch",
+        typed_request_response_envelope_ready: false,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -183,6 +220,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-core",
         adapter_contract: "tool calls must carry Hepta policy, approval, and side-effect classification before Codex tool execution",
         migration_state: "adapter_threaded_compatibility_dispatch",
+        typed_request_response_envelope_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -191,6 +229,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-exec",
         adapter_contract: "exec and sandbox requests must pass Hepta policy gates before Codex sandbox compatibility runs",
         migration_state: "adapter_threaded_compatibility_dispatch",
+        typed_request_response_envelope_ready: true,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -199,6 +238,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-mcp",
         adapter_contract: "MCP and app-server traffic must remain behind read-only Hepta route contracts until explicit adapter parity",
         migration_state: "adapter_threaded_compatibility_dispatch",
+        typed_request_response_envelope_ready: false,
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -207,6 +247,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         codex_dependency: "codex-tui",
         adapter_contract: "legacy TUI and CLI behavior must remain compatibility-dispatched until first-class Hepta binary parity",
         migration_state: "adapter_threaded_compatibility_dispatch",
+        typed_request_response_envelope_ready: false,
         live_mutation_allowed: false,
     },
 ];
@@ -306,6 +347,18 @@ pub fn hepta_codex_legacy_tui_cli_adapter_threading_plan(
     )
 }
 
+pub fn hepta_codex_tool_invocation_adapter_envelope(
+    input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
+) -> HeptaCodexEngineAdapterEnvelope {
+    hepta_codex_engine_adapter_envelope("tool_invocation", "hepta-kernel", "codex-core", input)
+}
+
+pub fn hepta_codex_sandbox_exec_adapter_envelope(
+    input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
+) -> HeptaCodexEngineAdapterEnvelope {
+    hepta_codex_engine_adapter_envelope("sandbox_exec", "hepta-kernel", "codex-exec", input)
+}
+
 fn hepta_codex_engine_adapter_threading_plan(
     surface_id: &'static str,
     hepta_boundary_owner: &'static str,
@@ -335,6 +388,46 @@ fn hepta_codex_engine_adapter_threading_plan(
         session_store_mutated_by_plan: false,
         external_network_read_by_plan: false,
         side_effect_free: true,
+    }
+}
+
+fn hepta_codex_engine_adapter_envelope(
+    surface_id: &'static str,
+    hepta_boundary_owner: &'static str,
+    codex_dependency: &'static str,
+    input: HeptaCodexEngineAdapterEnvelopeInput<'_>,
+) -> HeptaCodexEngineAdapterEnvelope {
+    let operation = input.operation.trim();
+    let side_effect_requested = input.live_mutation_requested
+        || input.provider_invocation_requested
+        || input.credential_read_requested
+        || input.session_store_mutation_requested
+        || input.external_network_read_requested;
+
+    HeptaCodexEngineAdapterEnvelope {
+        product: "Hepta",
+        root_owner: "hepta",
+        adapter_owner: "codex-engine-adapter",
+        surface_id,
+        hepta_boundary_owner,
+        codex_dependency,
+        operation: if operation.is_empty() {
+            "codex_compatibility_dispatch".to_string()
+        } else {
+            operation.to_string()
+        },
+        request_envelope_ready: true,
+        response_envelope_ready: true,
+        typed_request_response_envelope_ready: true,
+        compatibility_dispatch_requested: input.compatibility_dispatch_requested,
+        compatibility_dispatch_allowed: input.compatibility_dispatch_requested,
+        live_mutation_requested: input.live_mutation_requested,
+        live_mutation_allowed: false,
+        provider_invocation_requested: input.provider_invocation_requested,
+        credential_read_requested: input.credential_read_requested,
+        session_store_mutation_requested: input.session_store_mutation_requested,
+        external_network_read_requested: input.external_network_read_requested,
+        side_effect_free: !side_effect_requested,
     }
 }
 
@@ -428,12 +521,14 @@ fn classify_first_cli_arg(arg: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        HeptaProductRuntimeEntrypointInput, hepta_codex_engine_adapter_boundary_report,
+        HeptaCodexEngineAdapterEnvelopeInput, HeptaProductRuntimeEntrypointInput,
+        hepta_codex_engine_adapter_boundary_report,
         hepta_codex_legacy_tui_cli_adapter_threading_plan,
         hepta_codex_mcp_app_server_adapter_threading_plan,
         hepta_codex_model_provider_adapter_threading_plan,
-        hepta_codex_sandbox_exec_adapter_threading_plan,
+        hepta_codex_sandbox_exec_adapter_envelope, hepta_codex_sandbox_exec_adapter_threading_plan,
         hepta_codex_session_thread_store_adapter_threading_plan,
+        hepta_codex_tool_invocation_adapter_envelope,
         hepta_codex_tool_invocation_adapter_threading_plan, hepta_core_fusion_readiness_report,
         hepta_product_runtime_entrypoint_plan,
     };
@@ -545,6 +640,12 @@ mod tests {
                 .iter()
                 .all(|surface| surface.migration_state == "adapter_threaded_compatibility_dispatch")
         );
+        assert!(report.surfaces.iter().any(|surface| {
+            surface.surface_id == "tool_invocation" && surface.typed_request_response_envelope_ready
+        }));
+        assert!(report.surfaces.iter().any(|surface| {
+            surface.surface_id == "sandbox_exec" && surface.typed_request_response_envelope_ready
+        }));
     }
 
     #[test]
@@ -626,5 +727,50 @@ mod tests {
         assert!(plans.iter().all(|plan| !plan.credential_read_by_plan));
         assert!(plans.iter().all(|plan| !plan.session_store_mutated_by_plan));
         assert!(plans.iter().all(|plan| !plan.external_network_read_by_plan));
+    }
+
+    #[test]
+    fn tool_and_sandbox_adapter_envelopes_are_typed_and_side_effect_free() {
+        let input = HeptaCodexEngineAdapterEnvelopeInput {
+            operation: "compat_dispatch",
+            compatibility_dispatch_requested: true,
+            live_mutation_requested: false,
+            provider_invocation_requested: false,
+            credential_read_requested: false,
+            session_store_mutation_requested: false,
+            external_network_read_requested: false,
+        };
+        let tool = hepta_codex_tool_invocation_adapter_envelope(input);
+        let sandbox = hepta_codex_sandbox_exec_adapter_envelope(input);
+
+        for envelope in [tool, sandbox] {
+            assert_eq!(envelope.root_owner, "hepta");
+            assert!(envelope.request_envelope_ready);
+            assert!(envelope.response_envelope_ready);
+            assert!(envelope.typed_request_response_envelope_ready);
+            assert!(envelope.compatibility_dispatch_requested);
+            assert!(envelope.compatibility_dispatch_allowed);
+            assert!(!envelope.live_mutation_allowed);
+            assert!(envelope.side_effect_free);
+        }
+    }
+
+    #[test]
+    fn adapter_envelope_marks_side_effect_requests_without_allowing_live_mutation() {
+        let envelope =
+            hepta_codex_tool_invocation_adapter_envelope(HeptaCodexEngineAdapterEnvelopeInput {
+                operation: "tool_live_request",
+                compatibility_dispatch_requested: true,
+                live_mutation_requested: true,
+                provider_invocation_requested: false,
+                credential_read_requested: false,
+                session_store_mutation_requested: false,
+                external_network_read_requested: true,
+            });
+
+        assert!(envelope.live_mutation_requested);
+        assert!(envelope.external_network_read_requested);
+        assert!(!envelope.live_mutation_allowed);
+        assert!(!envelope.side_effect_free);
     }
 }

@@ -1839,6 +1839,17 @@ fn assert_hepta_codex_session_thread_store_adapter_threaded(operation: &'static 
 
 fn assert_hepta_codex_tool_invocation_adapter_threaded(operation: &'static str) {
     let plan = hepta_gateway::hepta_codex_tool_invocation_adapter_threading_plan(operation);
+    let envelope = hepta_gateway::hepta_codex_tool_invocation_adapter_envelope(
+        hepta_gateway::HeptaCodexEngineAdapterEnvelopeInput {
+            operation,
+            compatibility_dispatch_requested: true,
+            live_mutation_requested: false,
+            provider_invocation_requested: false,
+            credential_read_requested: false,
+            session_store_mutation_requested: false,
+            external_network_read_requested: false,
+        },
+    );
 
     debug_assert_eq!(plan.root_owner, "hepta");
     debug_assert_eq!(plan.surface_id, "tool_invocation");
@@ -1849,10 +1860,26 @@ fn assert_hepta_codex_tool_invocation_adapter_threaded(operation: &'static str) 
     debug_assert!(plan.side_effect_free);
     debug_assert!(!plan.live_mutation_allowed_by_plan);
     debug_assert!(!plan.provider_invoked_by_plan);
+    debug_assert!(envelope.request_envelope_ready);
+    debug_assert!(envelope.response_envelope_ready);
+    debug_assert!(envelope.typed_request_response_envelope_ready);
+    debug_assert!(envelope.compatibility_dispatch_allowed);
+    debug_assert!(envelope.side_effect_free);
 }
 
 fn assert_hepta_codex_sandbox_exec_adapter_threaded(operation: &'static str) {
     let plan = hepta_gateway::hepta_codex_sandbox_exec_adapter_threading_plan(operation);
+    let envelope = hepta_gateway::hepta_codex_sandbox_exec_adapter_envelope(
+        hepta_gateway::HeptaCodexEngineAdapterEnvelopeInput {
+            operation,
+            compatibility_dispatch_requested: true,
+            live_mutation_requested: false,
+            provider_invocation_requested: false,
+            credential_read_requested: false,
+            session_store_mutation_requested: false,
+            external_network_read_requested: false,
+        },
+    );
 
     debug_assert_eq!(plan.root_owner, "hepta");
     debug_assert_eq!(plan.surface_id, "sandbox_exec");
@@ -1863,6 +1890,11 @@ fn assert_hepta_codex_sandbox_exec_adapter_threaded(operation: &'static str) {
     debug_assert!(plan.side_effect_free);
     debug_assert!(!plan.live_mutation_allowed_by_plan);
     debug_assert!(!plan.external_network_read_by_plan);
+    debug_assert!(envelope.request_envelope_ready);
+    debug_assert!(envelope.response_envelope_ready);
+    debug_assert!(envelope.typed_request_response_envelope_ready);
+    debug_assert!(envelope.compatibility_dispatch_allowed);
+    debug_assert!(envelope.side_effect_free);
 }
 
 fn assert_hepta_codex_mcp_app_server_adapter_threaded(operation: &'static str) {

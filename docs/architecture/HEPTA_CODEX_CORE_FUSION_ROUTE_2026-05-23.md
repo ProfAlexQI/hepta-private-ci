@@ -105,6 +105,8 @@ Current landed state:
   sandbox commands, MCP/app-server commands, debug model/state/app-server paths,
   apply, stdio bridge, and exec-server dispatch call Hepta-owned adapter
   threading plans before entering Codex compatibility dispatch.
+- Tool invocation and sandbox/exec now also carry typed adapter
+  request/response envelopes before compatibility dispatch.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -149,9 +151,8 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Replace no-op/threading assertions with typed adapter request/response
-   envelopes for the highest-risk surfaces first: tool invocation and
-   sandbox/exec.
+1. Extend typed adapter request/response envelopes to model-provider,
+   session/thread-store, MCP/app-server, and legacy TUI/CLI surfaces.
 2. Keep direct Codex dependencies explicit until each adapter has parity gates.
 3. Run focused checks, full preflight, release build, live install, and live
    gates before advancing toward binary/package inversion.
