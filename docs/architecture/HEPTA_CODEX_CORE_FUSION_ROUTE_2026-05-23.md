@@ -126,6 +126,10 @@ Current landed state:
   tool approval/side-effect classification, sandbox policy, MCP/app-server
   route shape, and legacy CLI command classification. The watchdog enforces
   that these checks are present and marked as preserving observable behavior.
+- The preflight matrix now has a dedicated adapter behavior-equivalence gate:
+  it runs targeted runtime and native-gateway tests before the broader gateway
+  and UI/native app checks, requiring exact per-surface behavior evidence while
+  keeping `adapter_parity_complete=false`.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -170,9 +174,9 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Tie the behavior-equivalence evidence to dedicated per-surface preflight
-   gates, so final `adapter_parity_complete=true` cannot be promoted by report
-   shape alone.
+1. Add a promotion-only adapter parity completion gate that consumes the
+   behavior-equivalence preflight evidence and still refuses promotion until
+   live shadow replay or equivalent stronger coverage exists.
 2. Keep direct Codex dependencies explicit until adapter parity has enforced
    evidence beyond typed envelope presence.
 3. Run focused checks, full preflight, release build, live install, and live

@@ -867,6 +867,66 @@ mod tests {
     }
 
     #[test]
+    fn codex_engine_adapter_behavior_equivalence_gate_is_per_surface_and_non_promotional() {
+        let report = hepta_codex_engine_adapter_boundary_report();
+        let expected_checks = [
+            (
+                "model_provider_execution",
+                "provider_selection_and_invocation_policy_preserved_without_model_call",
+            ),
+            (
+                "session_thread_store",
+                "session_identity_and_persistence_intent_preserved_without_store_write",
+            ),
+            (
+                "tool_invocation",
+                "tool_policy_approval_and_side_effect_classification_preserved",
+            ),
+            (
+                "sandbox_exec",
+                "sandbox_policy_exec_intent_and_mutation_boundary_preserved",
+            ),
+            (
+                "mcp_app_server",
+                "mcp_app_server_route_shape_preserved_without_daemon_mutation",
+            ),
+            (
+                "legacy_tui_cli",
+                "legacy_command_classification_and_compatibility_path_preserved",
+            ),
+        ];
+
+        assert_eq!(report.parity_evidence.len(), expected_checks.len());
+        for (surface_id, behavior_check) in expected_checks {
+            let evidence = report
+                .parity_evidence
+                .iter()
+                .find(|item| item.surface_id == surface_id)
+                .unwrap_or_else(|| panic!("missing behavior evidence for {surface_id}"));
+
+            assert_eq!(evidence.behavior_equivalence_check, behavior_check);
+            assert!(evidence.behavior_equivalence_checked);
+            assert!(evidence.observable_behavior_preserved);
+            assert!(evidence.compatibility_dispatch_checked);
+            assert!(evidence.live_mutation_blocked);
+            assert!(evidence.forbidden_side_effects_blocked);
+            assert!(evidence.evidence_ready);
+        }
+
+        assert!(!report.adapter_parity_complete);
+        assert!(!report.adapter_parity_promotion_ready);
+        assert!(
+            report
+                .adapter_parity_promotion_blockers
+                .iter()
+                .any(|blocker| {
+                    blocker.contains("live shadow replay coverage")
+                        || blocker.contains("dedicated per-surface failing preflight gates")
+                })
+        );
+    }
+
+    #[test]
     fn codex_engine_adapter_boundary_is_side_effect_free() {
         let side_effects = hepta_codex_engine_adapter_boundary_report().forbidden_real_side_effects;
 
