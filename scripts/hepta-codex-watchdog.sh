@@ -74,6 +74,18 @@ report="$(jq -n \
         and $adapter.adapter_parity_completion_gate_ready == true
         and $adapter.adapter_parity_completion_gate_status == "blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage"
         and $adapter.adapter_parity_completion_gate_allows_promotion == false
+        and $adapter.adapter_shadow_replay_required_surface_count == ($adapter.surfaces | length)
+        and $adapter.adapter_shadow_replay_covered_surface_count >= 2
+        and $adapter.adapter_shadow_replay_remaining_surface_count == (($adapter.surfaces | length) - $adapter.adapter_shadow_replay_covered_surface_count)
+        and (
+          $adapter.parity_evidence
+          | map(select(
+              .shadow_replay_checked == true
+              and .shadow_replay_observable_match == true
+              and .shadow_replay_side_effect_free == true
+            ))
+          | length
+        ) >= 2
         and ($adapter.adapter_parity_promotion_criteria | length) >= 6
         and ($adapter.adapter_parity_promotion_blockers | length) >= 1
         and $adapter.full_fusion_complete == false
@@ -133,6 +145,18 @@ report="$(jq -n \
     adapter_parity_completion_gate_ready:$adapter.adapter_parity_completion_gate_ready,
     adapter_parity_completion_gate_status:$adapter.adapter_parity_completion_gate_status,
     adapter_parity_completion_gate_allows_promotion:$adapter.adapter_parity_completion_gate_allows_promotion,
+    adapter_shadow_replay_required_surface_count:$adapter.adapter_shadow_replay_required_surface_count,
+    adapter_shadow_replay_covered_surface_count:$adapter.adapter_shadow_replay_covered_surface_count,
+    adapter_shadow_replay_remaining_surface_count:$adapter.adapter_shadow_replay_remaining_surface_count,
+    adapter_shadow_replay_ready_count:(
+      $adapter.parity_evidence
+      | map(select(
+          .shadow_replay_checked == true
+          and .shadow_replay_observable_match == true
+          and .shadow_replay_side_effect_free == true
+        ))
+      | length
+    ),
     adapter_parity_promotion_blocker_count:($adapter.adapter_parity_promotion_blockers | length),
     full_fusion_complete:$adapter.full_fusion_complete,
     side_effects:{

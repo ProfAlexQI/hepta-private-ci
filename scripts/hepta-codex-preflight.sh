@@ -33,6 +33,10 @@ cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
 cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta \
   hepta_codex_engine_adapter_boundary -- --nocapture
 
+echo "[hepta-codex-preflight] adapter shadow-replay gate"
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
+  model_provider_and_session_shadow_replay -- --nocapture
+
 echo "[hepta-codex-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 

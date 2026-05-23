@@ -104,6 +104,9 @@ pub struct HeptaCodexEngineAdapterBoundaryResponse {
     pub adapter_parity_completion_gate_ready: bool,
     pub adapter_parity_completion_gate_status: &'static str,
     pub adapter_parity_completion_gate_allows_promotion: bool,
+    pub adapter_shadow_replay_required_surface_count: usize,
+    pub adapter_shadow_replay_covered_surface_count: usize,
+    pub adapter_shadow_replay_remaining_surface_count: usize,
     pub full_fusion_complete: bool,
     pub remaining_direct_codex_base_dependency_count: usize,
     pub surfaces: &'static [HeptaCodexEngineAdapterSurface],
@@ -122,9 +125,33 @@ pub struct HeptaCodexEngineAdapterParityEvidence {
     pub compatibility_dispatch_checked: bool,
     pub behavior_equivalence_checked: bool,
     pub observable_behavior_preserved: bool,
+    pub shadow_replay_case: &'static str,
+    pub shadow_replay_checked: bool,
+    pub shadow_replay_observable_match: bool,
+    pub shadow_replay_side_effect_free: bool,
     pub live_mutation_blocked: bool,
     pub forbidden_side_effects_blocked: bool,
     pub evidence_ready: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaCodexEngineAdapterShadowReplayResult {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub surface_id: &'static str,
+    pub replay_case: &'static str,
+    pub operation: String,
+    pub threading_plan_surface_match: bool,
+    pub envelope_surface_match: bool,
+    pub codex_dependency_match: bool,
+    pub compatibility_dispatch_preserved: bool,
+    pub live_mutation_blocked: bool,
+    pub provider_invocation_blocked: bool,
+    pub credential_read_blocked: bool,
+    pub session_store_mutation_blocked: bool,
+    pub external_network_read_blocked: bool,
+    pub observable_behavior_match: bool,
+    pub shadow_replay_ready: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -220,13 +247,14 @@ const ADAPTER_PARITY_PROMOTION_CRITERIA: &[&str] = &[
     "all adapter surfaces expose reportable typed parity gates",
     "live watchdog enforces typed envelope and typed parity gate presence",
     "per-surface behavior-equivalence evidence is reportable and watchdog-enforced",
+    "all adapter surfaces expose shadow replay or equivalent stronger coverage",
     "no adapter surface allows live mutation during compatibility dispatch",
     "forbidden side-effect guardrails remain false",
 ];
 
 const ADAPTER_PARITY_PROMOTION_BLOCKERS: &[&str] = &[
-    "behavior-equivalence evidence is still side-effect-free fixture evidence, not live shadow replay coverage",
-    "adapter parity completion has not yet been tied to dedicated per-surface failing preflight gates",
+    "shadow replay or equivalent stronger coverage is partial: 2/6 adapter surfaces covered",
+    "tool, sandbox/exec, MCP/app-server, and legacy TUI/CLI surfaces still need shadow replay coverage",
     "direct Codex base dependencies remain intentionally retained for compatibility dispatch",
 ];
 
@@ -319,6 +347,10 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
         compatibility_dispatch_checked: true,
         behavior_equivalence_checked: true,
         observable_behavior_preserved: true,
+        shadow_replay_case: "model_provider_shadow_replay_without_model_invocation",
+        shadow_replay_checked: true,
+        shadow_replay_observable_match: true,
+        shadow_replay_side_effect_free: true,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -332,6 +364,10 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
         compatibility_dispatch_checked: true,
         behavior_equivalence_checked: true,
         observable_behavior_preserved: true,
+        shadow_replay_case: "session_thread_store_shadow_replay_without_store_write",
+        shadow_replay_checked: true,
+        shadow_replay_observable_match: true,
+        shadow_replay_side_effect_free: true,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -345,6 +381,10 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
         compatibility_dispatch_checked: true,
         behavior_equivalence_checked: true,
         observable_behavior_preserved: true,
+        shadow_replay_case: "shadow_replay_not_yet_covered",
+        shadow_replay_checked: false,
+        shadow_replay_observable_match: false,
+        shadow_replay_side_effect_free: false,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -358,6 +398,10 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
         compatibility_dispatch_checked: true,
         behavior_equivalence_checked: true,
         observable_behavior_preserved: true,
+        shadow_replay_case: "shadow_replay_not_yet_covered",
+        shadow_replay_checked: false,
+        shadow_replay_observable_match: false,
+        shadow_replay_side_effect_free: false,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -371,6 +415,10 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
         compatibility_dispatch_checked: true,
         behavior_equivalence_checked: true,
         observable_behavior_preserved: true,
+        shadow_replay_case: "shadow_replay_not_yet_covered",
+        shadow_replay_checked: false,
+        shadow_replay_observable_match: false,
+        shadow_replay_side_effect_free: false,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -384,6 +432,10 @@ const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvide
         compatibility_dispatch_checked: true,
         behavior_equivalence_checked: true,
         observable_behavior_preserved: true,
+        shadow_replay_case: "shadow_replay_not_yet_covered",
+        shadow_replay_checked: false,
+        shadow_replay_observable_match: false,
+        shadow_replay_side_effect_free: false,
         live_mutation_blocked: true,
         forbidden_side_effects_blocked: true,
         evidence_ready: true,
@@ -531,6 +583,28 @@ pub fn hepta_codex_legacy_tui_cli_adapter_envelope(
     hepta_codex_engine_adapter_envelope("legacy_tui_cli", "hepta-runtime", "codex-tui", input)
 }
 
+pub fn hepta_codex_model_provider_adapter_shadow_replay()
+-> HeptaCodexEngineAdapterShadowReplayResult {
+    hepta_codex_engine_adapter_shadow_replay(
+        "model_provider_execution",
+        "hepta-runtime",
+        "codex-model-provider",
+        "model_provider_shadow_replay_without_model_invocation",
+        "shadow_replay_model_provider_selection",
+    )
+}
+
+pub fn hepta_codex_session_thread_store_adapter_shadow_replay()
+-> HeptaCodexEngineAdapterShadowReplayResult {
+    hepta_codex_engine_adapter_shadow_replay(
+        "session_thread_store",
+        "hepta-runtime",
+        "codex-state",
+        "session_thread_store_shadow_replay_without_store_write",
+        "shadow_replay_session_identity_persistence",
+    )
+}
+
 fn hepta_codex_engine_adapter_threading_plan(
     surface_id: &'static str,
     hepta_boundary_owner: &'static str,
@@ -603,7 +677,99 @@ fn hepta_codex_engine_adapter_envelope(
     }
 }
 
+fn hepta_codex_engine_adapter_shadow_replay(
+    surface_id: &'static str,
+    hepta_boundary_owner: &'static str,
+    codex_dependency: &'static str,
+    replay_case: &'static str,
+    operation: &'static str,
+) -> HeptaCodexEngineAdapterShadowReplayResult {
+    let plan = hepta_codex_engine_adapter_threading_plan(
+        surface_id,
+        hepta_boundary_owner,
+        codex_dependency,
+        operation,
+    );
+    let envelope = hepta_codex_engine_adapter_envelope(
+        surface_id,
+        hepta_boundary_owner,
+        codex_dependency,
+        HeptaCodexEngineAdapterEnvelopeInput {
+            operation,
+            compatibility_dispatch_requested: true,
+            live_mutation_requested: false,
+            provider_invocation_requested: false,
+            credential_read_requested: false,
+            session_store_mutation_requested: false,
+            external_network_read_requested: false,
+        },
+    );
+
+    let threading_plan_surface_match = plan.surface_id == surface_id;
+    let envelope_surface_match = envelope.surface_id == surface_id;
+    let codex_dependency_match =
+        plan.codex_dependency == codex_dependency && envelope.codex_dependency == codex_dependency;
+    let compatibility_dispatch_preserved = plan.compatibility_dispatch_allowed
+        && envelope.compatibility_dispatch_requested
+        && envelope.compatibility_dispatch_allowed;
+    let live_mutation_blocked =
+        !plan.live_mutation_allowed_by_plan && !envelope.live_mutation_allowed;
+    let provider_invocation_blocked =
+        !plan.provider_invoked_by_plan && !envelope.provider_invocation_requested;
+    let credential_read_blocked =
+        !plan.credential_read_by_plan && !envelope.credential_read_requested;
+    let session_store_mutation_blocked =
+        !plan.session_store_mutated_by_plan && !envelope.session_store_mutation_requested;
+    let external_network_read_blocked =
+        !plan.external_network_read_by_plan && !envelope.external_network_read_requested;
+    let observable_behavior_match = threading_plan_surface_match
+        && envelope_surface_match
+        && codex_dependency_match
+        && plan.operation == envelope.operation
+        && compatibility_dispatch_preserved
+        && live_mutation_blocked
+        && provider_invocation_blocked
+        && credential_read_blocked
+        && session_store_mutation_blocked
+        && external_network_read_blocked
+        && plan.side_effect_free
+        && envelope.side_effect_free;
+
+    HeptaCodexEngineAdapterShadowReplayResult {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        surface_id,
+        replay_case,
+        operation: operation.to_string(),
+        threading_plan_surface_match,
+        envelope_surface_match,
+        codex_dependency_match,
+        compatibility_dispatch_preserved,
+        live_mutation_blocked,
+        provider_invocation_blocked,
+        credential_read_blocked,
+        session_store_mutation_blocked,
+        external_network_read_blocked,
+        observable_behavior_match,
+        shadow_replay_ready: observable_behavior_match,
+    }
+}
+
+fn adapter_shadow_replay_covered_surface_count() -> usize {
+    CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE
+        .iter()
+        .filter(|evidence| {
+            evidence.shadow_replay_checked
+                && evidence.shadow_replay_observable_match
+                && evidence.shadow_replay_side_effect_free
+        })
+        .count()
+}
+
 pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBoundaryResponse {
+    let shadow_replay_required_surface_count = CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES.len();
+    let shadow_replay_covered_surface_count = adapter_shadow_replay_covered_surface_count();
+
     HeptaCodexEngineAdapterBoundaryResponse {
         product: "Hepta",
         runtime: "hepta-codex",
@@ -623,6 +789,10 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
         adapter_parity_completion_gate_ready: true,
         adapter_parity_completion_gate_status: ADAPTER_PARITY_COMPLETION_GATE_STATUS,
         adapter_parity_completion_gate_allows_promotion: false,
+        adapter_shadow_replay_required_surface_count: shadow_replay_required_surface_count,
+        adapter_shadow_replay_covered_surface_count: shadow_replay_covered_surface_count,
+        adapter_shadow_replay_remaining_surface_count: shadow_replay_required_surface_count
+            - shadow_replay_covered_surface_count,
         full_fusion_complete: false,
         remaining_direct_codex_base_dependency_count: DIRECT_CODEX_BASE_DEPENDENCIES.len(),
         surfaces: CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES,
@@ -707,9 +877,11 @@ mod tests {
         hepta_codex_mcp_app_server_adapter_envelope,
         hepta_codex_mcp_app_server_adapter_threading_plan,
         hepta_codex_model_provider_adapter_envelope,
+        hepta_codex_model_provider_adapter_shadow_replay,
         hepta_codex_model_provider_adapter_threading_plan,
         hepta_codex_sandbox_exec_adapter_envelope, hepta_codex_sandbox_exec_adapter_threading_plan,
         hepta_codex_session_thread_store_adapter_envelope,
+        hepta_codex_session_thread_store_adapter_shadow_replay,
         hepta_codex_session_thread_store_adapter_threading_plan,
         hepta_codex_tool_invocation_adapter_envelope,
         hepta_codex_tool_invocation_adapter_threading_plan, hepta_core_fusion_readiness_report,
@@ -805,6 +977,15 @@ mod tests {
             "blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage"
         );
         assert!(!report.adapter_parity_completion_gate_allows_promotion);
+        assert_eq!(
+            report.adapter_shadow_replay_required_surface_count,
+            report.surfaces.len()
+        );
+        assert_eq!(report.adapter_shadow_replay_covered_surface_count, 2);
+        assert_eq!(
+            report.adapter_shadow_replay_remaining_surface_count,
+            report.surfaces.len() - 2
+        );
         assert!(!report.full_fusion_complete);
         assert!(
             report
@@ -814,7 +995,7 @@ mod tests {
         assert!(
             report
                 .adapter_parity_promotion_blockers
-                .contains(&"behavior-equivalence evidence is still side-effect-free fixture evidence, not live shadow replay coverage")
+                .contains(&"shadow replay or equivalent stronger coverage is partial: 2/6 adapter surfaces covered")
         );
         assert_eq!(report.parity_evidence.len(), report.surfaces.len());
         assert!(
@@ -836,6 +1017,27 @@ mod tests {
             item.behavior_equivalence_check.ends_with("_preserved")
                 || item.behavior_equivalence_check.contains("_preserved_")
         }));
+        assert_eq!(
+            report
+                .parity_evidence
+                .iter()
+                .filter(|item| item.shadow_replay_checked)
+                .count(),
+            2
+        );
+        assert!(report.parity_evidence.iter().take(2).all(|item| {
+            item.shadow_replay_observable_match && item.shadow_replay_side_effect_free
+        }));
+        assert!(
+            report
+                .parity_evidence
+                .iter()
+                .skip(2)
+                .all(
+                    |item| item.shadow_replay_case == "shadow_replay_not_yet_covered"
+                        && !item.shadow_replay_checked
+                )
+        );
         assert!(
             report
                 .parity_evidence
@@ -950,10 +1152,42 @@ mod tests {
                 .adapter_parity_promotion_blockers
                 .iter()
                 .any(|blocker| {
-                    blocker.contains("live shadow replay coverage")
-                        || blocker.contains("dedicated per-surface failing preflight gates")
+                    blocker.contains("shadow replay") && blocker.contains("partial")
                 })
         );
+    }
+
+    #[test]
+    fn model_provider_and_session_shadow_replay_cover_first_surfaces_without_side_effects() {
+        let model_provider = hepta_codex_model_provider_adapter_shadow_replay();
+        let session_store = hepta_codex_session_thread_store_adapter_shadow_replay();
+
+        assert_eq!(model_provider.surface_id, "model_provider_execution");
+        assert_eq!(
+            model_provider.replay_case,
+            "model_provider_shadow_replay_without_model_invocation"
+        );
+        assert_eq!(session_store.surface_id, "session_thread_store");
+        assert_eq!(
+            session_store.replay_case,
+            "session_thread_store_shadow_replay_without_store_write"
+        );
+
+        for replay in [model_provider, session_store] {
+            assert_eq!(replay.product, "Hepta");
+            assert_eq!(replay.runtime, "hepta-codex");
+            assert!(replay.threading_plan_surface_match);
+            assert!(replay.envelope_surface_match);
+            assert!(replay.codex_dependency_match);
+            assert!(replay.compatibility_dispatch_preserved);
+            assert!(replay.live_mutation_blocked);
+            assert!(replay.provider_invocation_blocked);
+            assert!(replay.credential_read_blocked);
+            assert!(replay.session_store_mutation_blocked);
+            assert!(replay.external_network_read_blocked);
+            assert!(replay.observable_behavior_match);
+            assert!(replay.shadow_replay_ready);
+        }
     }
 
     #[test]

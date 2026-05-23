@@ -8956,13 +8956,25 @@ mod tests {
                 .as_array()
                 .expect("adapter parity blockers")
                 .iter()
-                .any(|item| item
-                    .as_str()
-                    .is_some_and(|blocker| { blocker.contains("behavior-equivalence evidence") }))
+                .any(|item| item.as_str().is_some_and(|blocker| {
+                    blocker.contains("shadow replay") && blocker.contains("partial")
+                }))
         );
 
         let surfaces = value["surfaces"].as_array().expect("surfaces array");
         assert!(surfaces.len() >= 6);
+        assert_eq!(
+            value["adapter_shadow_replay_required_surface_count"].as_u64(),
+            Some(surfaces.len() as u64)
+        );
+        assert_eq!(
+            value["adapter_shadow_replay_covered_surface_count"].as_u64(),
+            Some(2)
+        );
+        assert_eq!(
+            value["adapter_shadow_replay_remaining_surface_count"].as_u64(),
+            Some((surfaces.len() - 2) as u64)
+        );
         let parity_evidence = value["parity_evidence"]
             .as_array()
             .expect("parity evidence array");
@@ -8991,6 +9003,29 @@ mod tests {
             item["behavior_equivalence_check"]
                 .as_str()
                 .is_some_and(|check| check.contains("preserved"))
+        }));
+        assert_eq!(
+            parity_evidence
+                .iter()
+                .filter(|item| {
+                    item["shadow_replay_checked"]
+                        .as_bool()
+                        .is_some_and(|checked| checked)
+                })
+                .count(),
+            2
+        );
+        assert!(parity_evidence.iter().take(2).all(|item| {
+            item["shadow_replay_observable_match"]
+                .as_bool()
+                .is_some_and(|matched| matched)
+                && item["shadow_replay_side_effect_free"]
+                    .as_bool()
+                    .is_some_and(|free| free)
+        }));
+        assert!(parity_evidence.iter().skip(2).all(|item| {
+            item["shadow_replay_case"].as_str() == Some("shadow_replay_not_yet_covered")
+                && item["shadow_replay_checked"].as_bool() == Some(false)
         }));
         assert!(surfaces.iter().all(|surface| {
             surface["live_mutation_allowed"]

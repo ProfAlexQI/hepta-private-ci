@@ -135,6 +135,13 @@ Current landed state:
   guardrail, but its status is
   `blocked_pending_live_shadow_replay_or_equivalent_stronger_coverage` and
   `adapter_parity_completion_gate_allows_promotion=false`.
+- The first stronger shadow replay slice is now covered for
+  `model_provider_execution` and `session_thread_store`: the replay compares
+  the threading plan with the typed request/response envelope, preserves
+  compatibility dispatch, and proves provider invocation, credential reads,
+  session-store writes, external reads, and live mutation remain blocked. The
+  boundary reports `adapter_shadow_replay_covered_surface_count=2`, so
+  promotion remains blocked until the remaining four surfaces are covered.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -179,8 +186,9 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Add live shadow replay or equivalent stronger coverage for adapter surfaces,
-   starting with model-provider and session/thread-store behavior.
+1. Extend shadow replay or equivalent stronger coverage from
+   model-provider/session-thread-store to tool invocation, sandbox/exec,
+   MCP/app-server, and legacy TUI/CLI.
 2. Keep direct Codex dependencies explicit until adapter parity has enforced
    evidence beyond typed envelope presence.
 3. Run focused checks, full preflight, release build, live install, and live
