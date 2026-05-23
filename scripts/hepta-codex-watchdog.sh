@@ -61,6 +61,11 @@ report="$(jq -n \
         and ($adapter.surfaces | all(.typed_request_response_envelope_ready == true))
         and ($adapter.surfaces | all(.typed_adapter_parity_gate_ready == true))
         and ($adapter.surfaces | all(.live_mutation_allowed == false))
+        and ($adapter.parity_evidence | length) >= 6
+        and ($adapter.parity_evidence | all(.evidence_ready == true))
+        and ($adapter.parity_evidence | all(.compatibility_dispatch_checked == true))
+        and ($adapter.parity_evidence | all(.live_mutation_blocked == true))
+        and ($adapter.parity_evidence | all(.forbidden_side_effects_blocked == true))
         and $adapter.adapter_parity_complete == false
         and $adapter.adapter_parity_promotion_ready == false
         and ($adapter.adapter_parity_promotion_criteria | length) >= 6
@@ -111,6 +116,8 @@ report="$(jq -n \
     native_post_store_lines:$stores.total_line_count,
     adapter_boundary_status:$adapter.status,
     adapter_surface_count:($adapter.surfaces | length),
+    adapter_parity_evidence_count:($adapter.parity_evidence | length),
+    adapter_parity_evidence_ready_count:($adapter.parity_evidence | map(select(.evidence_ready == true)) | length),
     adapter_typed_envelope_ready_count:($adapter.surfaces | map(select(.typed_request_response_envelope_ready == true)) | length),
     adapter_typed_parity_gate_ready_count:($adapter.surfaces | map(select(.typed_adapter_parity_gate_ready == true)) | length),
     adapter_parity_complete:$adapter.adapter_parity_complete,

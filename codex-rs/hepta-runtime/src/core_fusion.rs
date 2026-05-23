@@ -103,8 +103,21 @@ pub struct HeptaCodexEngineAdapterBoundaryResponse {
     pub full_fusion_complete: bool,
     pub remaining_direct_codex_base_dependency_count: usize,
     pub surfaces: &'static [HeptaCodexEngineAdapterSurface],
+    pub parity_evidence: &'static [HeptaCodexEngineAdapterParityEvidence],
     pub forbidden_real_side_effects: HeptaCoreFusionForbiddenSideEffects,
     pub next_actions: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct HeptaCodexEngineAdapterParityEvidence {
+    pub surface_id: &'static str,
+    pub evidence_gate: &'static str,
+    pub typed_envelope_ready: bool,
+    pub typed_parity_gate_ready: bool,
+    pub compatibility_dispatch_checked: bool,
+    pub live_mutation_blocked: bool,
+    pub forbidden_side_effects_blocked: bool,
+    pub evidence_ready: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -281,6 +294,69 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         typed_adapter_parity_gate: "legacy_tui_cli_typed_envelope_compatibility_dispatch_gate",
         typed_adapter_parity_gate_ready: true,
         live_mutation_allowed: false,
+    },
+];
+
+const CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE: &[HeptaCodexEngineAdapterParityEvidence] = &[
+    HeptaCodexEngineAdapterParityEvidence {
+        surface_id: "model_provider_execution",
+        evidence_gate: "model_provider_compatibility_dispatch_evidence",
+        typed_envelope_ready: true,
+        typed_parity_gate_ready: true,
+        compatibility_dispatch_checked: true,
+        live_mutation_blocked: true,
+        forbidden_side_effects_blocked: true,
+        evidence_ready: true,
+    },
+    HeptaCodexEngineAdapterParityEvidence {
+        surface_id: "session_thread_store",
+        evidence_gate: "session_thread_store_compatibility_dispatch_evidence",
+        typed_envelope_ready: true,
+        typed_parity_gate_ready: true,
+        compatibility_dispatch_checked: true,
+        live_mutation_blocked: true,
+        forbidden_side_effects_blocked: true,
+        evidence_ready: true,
+    },
+    HeptaCodexEngineAdapterParityEvidence {
+        surface_id: "tool_invocation",
+        evidence_gate: "tool_invocation_compatibility_dispatch_evidence",
+        typed_envelope_ready: true,
+        typed_parity_gate_ready: true,
+        compatibility_dispatch_checked: true,
+        live_mutation_blocked: true,
+        forbidden_side_effects_blocked: true,
+        evidence_ready: true,
+    },
+    HeptaCodexEngineAdapterParityEvidence {
+        surface_id: "sandbox_exec",
+        evidence_gate: "sandbox_exec_compatibility_dispatch_evidence",
+        typed_envelope_ready: true,
+        typed_parity_gate_ready: true,
+        compatibility_dispatch_checked: true,
+        live_mutation_blocked: true,
+        forbidden_side_effects_blocked: true,
+        evidence_ready: true,
+    },
+    HeptaCodexEngineAdapterParityEvidence {
+        surface_id: "mcp_app_server",
+        evidence_gate: "mcp_app_server_compatibility_dispatch_evidence",
+        typed_envelope_ready: true,
+        typed_parity_gate_ready: true,
+        compatibility_dispatch_checked: true,
+        live_mutation_blocked: true,
+        forbidden_side_effects_blocked: true,
+        evidence_ready: true,
+    },
+    HeptaCodexEngineAdapterParityEvidence {
+        surface_id: "legacy_tui_cli",
+        evidence_gate: "legacy_tui_cli_compatibility_dispatch_evidence",
+        typed_envelope_ready: true,
+        typed_parity_gate_ready: true,
+        compatibility_dispatch_checked: true,
+        live_mutation_blocked: true,
+        forbidden_side_effects_blocked: true,
+        evidence_ready: true,
     },
 ];
 
@@ -516,6 +592,7 @@ pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBo
         full_fusion_complete: false,
         remaining_direct_codex_base_dependency_count: DIRECT_CODEX_BASE_DEPENDENCIES.len(),
         surfaces: CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES,
+        parity_evidence: CODEX_ENGINE_ADAPTER_PARITY_EVIDENCE,
         forbidden_real_side_effects: HeptaCoreFusionForbiddenSideEffects {
             public_ga_claimed: false,
             public_release_published: false,
@@ -694,6 +771,25 @@ mod tests {
             report
                 .adapter_parity_promotion_blockers
                 .contains(&"per-surface compatibility evidence has not yet been promoted beyond typed envelope/gate presence")
+        );
+        assert_eq!(report.parity_evidence.len(), report.surfaces.len());
+        assert!(
+            report
+                .parity_evidence
+                .iter()
+                .all(|item| item.evidence_ready)
+        );
+        assert!(
+            report
+                .parity_evidence
+                .iter()
+                .all(|item| item.compatibility_dispatch_checked)
+        );
+        assert!(
+            report
+                .parity_evidence
+                .iter()
+                .all(|item| item.live_mutation_blocked && item.forbidden_side_effects_blocked)
         );
         assert_eq!(
             report.remaining_direct_codex_base_dependency_count,

@@ -117,6 +117,10 @@ Current landed state:
   for `adapter_parity_complete=true`; current state is intentionally
   `adapter_parity_promotion_ready=false` until per-surface compatibility
   evidence goes beyond typed envelope/gate presence.
+- Per-surface compatibility evidence records are now reported for all six
+  surfaces and enforced by the watchdog, covering typed envelope readiness,
+  typed parity gate readiness, compatibility dispatch checks, live-mutation
+  blocking, and forbidden side-effect blocking.
 - These plans are side-effect-free and preserve current Codex provider/session,
   tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
   providers, read credentials, mutate session stores, perform external reads,
@@ -161,8 +165,9 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Add per-surface compatibility evidence records, then wire them into the
-   promotion criteria for `adapter_parity_complete=true`.
+1. Promote per-surface evidence from compatibility-dispatch presence to
+   behavior-equivalence checks where each Codex adapter preserves observable
+   semantics.
 2. Keep direct Codex dependencies explicit until adapter parity has enforced
    evidence beyond typed envelope presence.
 3. Run focused checks, full preflight, release build, live install, and live

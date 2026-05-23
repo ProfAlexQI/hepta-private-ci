@@ -8950,6 +8950,20 @@ mod tests {
 
         let surfaces = value["surfaces"].as_array().expect("surfaces array");
         assert!(surfaces.len() >= 6);
+        let parity_evidence = value["parity_evidence"]
+            .as_array()
+            .expect("parity evidence array");
+        assert_eq!(parity_evidence.len(), surfaces.len());
+        assert!(
+            parity_evidence
+                .iter()
+                .all(|item| { item["evidence_ready"].as_bool().is_some_and(|ready| ready) })
+        );
+        assert!(parity_evidence.iter().all(|item| {
+            item["compatibility_dispatch_checked"]
+                .as_bool()
+                .is_some_and(|checked| checked)
+        }));
         assert!(surfaces.iter().all(|surface| {
             surface["live_mutation_allowed"]
                 .as_bool()
