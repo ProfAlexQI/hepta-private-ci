@@ -31,6 +31,22 @@ Set `HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=1` to perform a read-only
 `HEPTA_UPSTREAM_CODEX_BASE_HEAD` and either `HEPTA_UPSTREAM_CODEX_TARGET_HEAD`
 or remote observation to materialize a candidate diff range.
 
+The concrete local diff-range ledger gate is:
+
+```bash
+scripts/hepta-upstream-codex-diff-ledger.sh
+```
+
+This gate is also offline by default. It uses the local upstream import baseline
+`108234b5ebe6941764a6b8edbb37b2aa04369f07` and the local
+`refs/remotes/openai-codex/main` target, currently
+`7d47056ea42636271ac020b86347fbbef49490aa`, to classify the
+`codex-rs` diff range into provider/security, runtime/session/tool,
+legacy CLI/TUI compatibility, and product/release-governance buckets. Set
+`HEPTA_UPSTREAM_CODEX_DIFF_BASE_HEAD`, `HEPTA_UPSTREAM_CODEX_DIFF_TARGET_HEAD`,
+or `HEPTA_UPSTREAM_CODEX_DIFF_TARGET_REF` to audit a different already-present
+local range. The gate does not fetch or merge upstream.
+
 The local sync-lane gate is:
 
 ```bash
