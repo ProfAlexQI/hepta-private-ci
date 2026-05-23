@@ -927,6 +927,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 root_remote_auth_token_env.as_deref(),
                 "mcp-server",
             )?;
+            assert_hepta_codex_mcp_app_server_adapter_threaded("mcp_server_dispatch");
             codex_mcp_server::run_main(
                 arg0_paths.clone(),
                 root_config_overrides,
@@ -942,6 +943,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
             )?;
             // Propagate any root-level config overrides (e.g. `-c key=value`).
             prepend_config_flags(&mut mcp_cli.config_overrides, root_config_overrides.clone());
+            assert_hepta_codex_mcp_app_server_adapter_threaded("mcp_cli_dispatch");
             mcp_cli.run().await?;
         }
         Some(Subcommand::Plugin(plugin_cli)) => {
@@ -998,6 +1000,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
             )?;
             match subcommand {
                 None => {
+                    assert_hepta_codex_mcp_app_server_adapter_threaded("app_server_dispatch");
                     let transport = listen;
                     let auth = auth.try_into_settings()?;
                     let runtime_options = codex_app_server::AppServerRuntimeOptions {
@@ -1017,42 +1020,53 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     )
                     .await?;
                 }
-                Some(AppServerSubcommand::Daemon(daemon_cli)) => match daemon_cli.subcommand {
-                    AppServerDaemonSubcommand::Start => {
-                        print_app_server_daemon_output(AppServerLifecycleCommand::Start).await?;
-                    }
-                    AppServerDaemonSubcommand::Bootstrap(bootstrap_cli) => {
-                        let output =
-                            codex_app_server_daemon::bootstrap(AppServerBootstrapOptions {
-                                remote_control_enabled: bootstrap_cli.remote_control,
-                            })
+                Some(AppServerSubcommand::Daemon(daemon_cli)) => {
+                    assert_hepta_codex_mcp_app_server_adapter_threaded(
+                        "app_server_daemon_dispatch",
+                    );
+                    match daemon_cli.subcommand {
+                        AppServerDaemonSubcommand::Start => {
+                            print_app_server_daemon_output(AppServerLifecycleCommand::Start)
+                                .await?;
+                        }
+                        AppServerDaemonSubcommand::Bootstrap(bootstrap_cli) => {
+                            let output =
+                                codex_app_server_daemon::bootstrap(AppServerBootstrapOptions {
+                                    remote_control_enabled: bootstrap_cli.remote_control,
+                                })
+                                .await?;
+                            println!("{}", serde_json::to_string(&output)?);
+                        }
+                        AppServerDaemonSubcommand::Restart => {
+                            print_app_server_daemon_output(AppServerLifecycleCommand::Restart)
+                                .await?;
+                        }
+                        AppServerDaemonSubcommand::EnableRemoteControl => {
+                            print_app_server_remote_control_output(
+                                AppServerRemoteControlMode::Enabled,
+                            )
                             .await?;
-                        println!("{}", serde_json::to_string(&output)?);
-                    }
-                    AppServerDaemonSubcommand::Restart => {
-                        print_app_server_daemon_output(AppServerLifecycleCommand::Restart).await?;
-                    }
-                    AppServerDaemonSubcommand::EnableRemoteControl => {
-                        print_app_server_remote_control_output(AppServerRemoteControlMode::Enabled)
+                        }
+                        AppServerDaemonSubcommand::DisableRemoteControl => {
+                            print_app_server_remote_control_output(
+                                AppServerRemoteControlMode::Disabled,
+                            )
                             .await?;
+                        }
+                        AppServerDaemonSubcommand::Stop => {
+                            print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
+                        }
+                        AppServerDaemonSubcommand::Version => {
+                            print_app_server_daemon_output(AppServerLifecycleCommand::Version)
+                                .await?;
+                        }
+                        AppServerDaemonSubcommand::PidUpdateLoop => {
+                            codex_app_server_daemon::run_pid_update_loop().await?;
+                        }
                     }
-                    AppServerDaemonSubcommand::DisableRemoteControl => {
-                        print_app_server_remote_control_output(
-                            AppServerRemoteControlMode::Disabled,
-                        )
-                        .await?;
-                    }
-                    AppServerDaemonSubcommand::Stop => {
-                        print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
-                    }
-                    AppServerDaemonSubcommand::Version => {
-                        print_app_server_daemon_output(AppServerLifecycleCommand::Version).await?;
-                    }
-                    AppServerDaemonSubcommand::PidUpdateLoop => {
-                        codex_app_server_daemon::run_pid_update_loop().await?;
-                    }
-                },
+                }
                 Some(AppServerSubcommand::Proxy(proxy_cli)) => {
+                    assert_hepta_codex_mcp_app_server_adapter_threaded("app_server_proxy_dispatch");
                     let socket_path = match proxy_cli.socket_path {
                         Some(socket_path) => socket_path,
                         None => {
@@ -1063,6 +1077,9 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     codex_stdio_to_uds::run(socket_path.as_path()).await?;
                 }
                 Some(AppServerSubcommand::GenerateTs(gen_cli)) => {
+                    assert_hepta_codex_mcp_app_server_adapter_threaded(
+                        "app_server_generate_ts_dispatch",
+                    );
                     let options = codex_app_server_protocol::GenerateTsOptions {
                         experimental_api: gen_cli.experimental,
                         ..Default::default()
@@ -1074,12 +1091,18 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     )?;
                 }
                 Some(AppServerSubcommand::GenerateJsonSchema(gen_cli)) => {
+                    assert_hepta_codex_mcp_app_server_adapter_threaded(
+                        "app_server_generate_json_schema_dispatch",
+                    );
                     codex_app_server_protocol::generate_json_with_experimental(
                         &gen_cli.out_dir,
                         gen_cli.experimental,
                     )?;
                 }
                 Some(AppServerSubcommand::GenerateInternalJsonSchema(gen_cli)) => {
+                    assert_hepta_codex_mcp_app_server_adapter_threaded(
+                        "app_server_generate_internal_json_schema_dispatch",
+                    );
                     codex_app_server_protocol::generate_internal_json_schema(&gen_cli.out_dir)?;
                 }
             }
@@ -1096,10 +1119,12 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 .unwrap_or(RemoteControlSubcommand::Start)
             {
                 RemoteControlSubcommand::Start => {
+                    assert_hepta_codex_mcp_app_server_adapter_threaded("remote_control_start");
                     let output = codex_app_server_daemon::ensure_remote_control_started().await?;
                     println!("{}", serde_json::to_string(&output)?);
                 }
                 RemoteControlSubcommand::Stop => {
+                    assert_hepta_codex_mcp_app_server_adapter_threaded("remote_control_stop");
                     print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
                 }
             }
@@ -1277,6 +1302,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     &mut seatbelt_cli.config_overrides,
                     root_config_overrides.clone(),
                 );
+                assert_hepta_codex_sandbox_exec_adapter_threaded("sandbox_macos_dispatch");
                 codex_cli::run_command_under_seatbelt(
                     seatbelt_cli,
                     arg0_paths.codex_linux_sandbox_exe.clone(),
@@ -1293,6 +1319,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     &mut landlock_cli.config_overrides,
                     root_config_overrides.clone(),
                 );
+                assert_hepta_codex_sandbox_exec_adapter_threaded("sandbox_linux_dispatch");
                 codex_cli::run_command_under_landlock(
                     landlock_cli,
                     arg0_paths.codex_linux_sandbox_exe.clone(),
@@ -1309,6 +1336,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     &mut windows_cli.config_overrides,
                     root_config_overrides.clone(),
                 );
+                assert_hepta_codex_sandbox_exec_adapter_threaded("sandbox_windows_dispatch");
                 codex_cli::run_command_under_windows(
                     windows_cli,
                     arg0_paths.codex_linux_sandbox_exe.clone(),
@@ -1331,6 +1359,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     root_remote_auth_token_env.as_deref(),
                     "debug app-server",
                 )?;
+                assert_hepta_codex_mcp_app_server_adapter_threaded("debug_app_server_dispatch");
                 run_debug_app_server_command(cmd).await?;
             }
             DebugSubcommand::PromptInput(cmd) => {
@@ -1371,6 +1400,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     root_remote_auth_token_env.as_deref(),
                     "execpolicy check",
                 )?;
+                assert_hepta_codex_sandbox_exec_adapter_threaded("execpolicy_check_dispatch");
                 run_execpolicycheck(cmd)?
             }
         },
@@ -1384,6 +1414,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 &mut apply_cli.config_overrides,
                 root_config_overrides.clone(),
             );
+            assert_hepta_codex_tool_invocation_adapter_threaded("apply_dispatch");
             run_apply_command(apply_cli, /*cwd*/ None).await?;
         }
         Some(Subcommand::ResponsesApiProxy(args)) => {
@@ -1401,6 +1432,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 root_remote_auth_token_env.as_deref(),
                 "stdio-to-uds",
             )?;
+            assert_hepta_codex_mcp_app_server_adapter_threaded("stdio_to_uds_dispatch");
             let socket_path = cmd.socket_path;
             codex_stdio_to_uds::run(socket_path.as_path()).await?;
         }
@@ -1410,6 +1442,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 root_remote_auth_token_env.as_deref(),
                 "exec-server",
             )?;
+            assert_hepta_codex_sandbox_exec_adapter_threaded("exec_server_dispatch");
             run_exec_server_command(cmd, &arg0_paths).await?;
         }
         Some(Subcommand::Features(FeaturesCli { sub })) => match sub {
@@ -1769,6 +1802,9 @@ fn prepend_config_flags(
 fn assert_hepta_codex_runtime_adapters_threaded(operation: &'static str) {
     assert_hepta_codex_model_provider_adapter_threaded(operation);
     assert_hepta_codex_session_thread_store_adapter_threaded(operation);
+    assert_hepta_codex_tool_invocation_adapter_threaded(operation);
+    assert_hepta_codex_sandbox_exec_adapter_threaded(operation);
+    assert_hepta_codex_legacy_tui_cli_adapter_threaded(operation);
 }
 
 fn assert_hepta_codex_model_provider_adapter_threaded(operation: &'static str) {
@@ -1799,6 +1835,61 @@ fn assert_hepta_codex_session_thread_store_adapter_threaded(operation: &'static 
     debug_assert!(!plan.live_mutation_allowed_by_plan);
     debug_assert!(!plan.session_store_mutated_by_plan);
     debug_assert!(!plan.external_network_read_by_plan);
+}
+
+fn assert_hepta_codex_tool_invocation_adapter_threaded(operation: &'static str) {
+    let plan = hepta_gateway::hepta_codex_tool_invocation_adapter_threading_plan(operation);
+
+    debug_assert_eq!(plan.root_owner, "hepta");
+    debug_assert_eq!(plan.surface_id, "tool_invocation");
+    debug_assert_eq!(plan.codex_dependency, "codex-core");
+    debug_assert!(plan.adapter_threaded);
+    debug_assert!(plan.compatibility_dispatch_allowed);
+    debug_assert!(plan.direct_codex_dependency_retained);
+    debug_assert!(plan.side_effect_free);
+    debug_assert!(!plan.live_mutation_allowed_by_plan);
+    debug_assert!(!plan.provider_invoked_by_plan);
+}
+
+fn assert_hepta_codex_sandbox_exec_adapter_threaded(operation: &'static str) {
+    let plan = hepta_gateway::hepta_codex_sandbox_exec_adapter_threading_plan(operation);
+
+    debug_assert_eq!(plan.root_owner, "hepta");
+    debug_assert_eq!(plan.surface_id, "sandbox_exec");
+    debug_assert_eq!(plan.codex_dependency, "codex-exec");
+    debug_assert!(plan.adapter_threaded);
+    debug_assert!(plan.compatibility_dispatch_allowed);
+    debug_assert!(plan.direct_codex_dependency_retained);
+    debug_assert!(plan.side_effect_free);
+    debug_assert!(!plan.live_mutation_allowed_by_plan);
+    debug_assert!(!plan.external_network_read_by_plan);
+}
+
+fn assert_hepta_codex_mcp_app_server_adapter_threaded(operation: &'static str) {
+    let plan = hepta_gateway::hepta_codex_mcp_app_server_adapter_threading_plan(operation);
+
+    debug_assert_eq!(plan.root_owner, "hepta");
+    debug_assert_eq!(plan.surface_id, "mcp_app_server");
+    debug_assert_eq!(plan.codex_dependency, "codex-mcp");
+    debug_assert!(plan.adapter_threaded);
+    debug_assert!(plan.compatibility_dispatch_allowed);
+    debug_assert!(plan.direct_codex_dependency_retained);
+    debug_assert!(plan.side_effect_free);
+    debug_assert!(!plan.live_mutation_allowed_by_plan);
+    debug_assert!(!plan.external_network_read_by_plan);
+}
+
+fn assert_hepta_codex_legacy_tui_cli_adapter_threaded(operation: &'static str) {
+    let plan = hepta_gateway::hepta_codex_legacy_tui_cli_adapter_threading_plan(operation);
+
+    debug_assert_eq!(plan.root_owner, "hepta");
+    debug_assert_eq!(plan.surface_id, "legacy_tui_cli");
+    debug_assert_eq!(plan.codex_dependency, "codex-tui");
+    debug_assert!(plan.adapter_threaded);
+    debug_assert!(plan.compatibility_dispatch_allowed);
+    debug_assert!(plan.direct_codex_dependency_retained);
+    debug_assert!(plan.side_effect_free);
+    debug_assert!(!plan.live_mutation_allowed_by_plan);
 }
 
 fn reject_remote_mode_for_subcommand(
@@ -1992,6 +2083,8 @@ async fn run_interactive_tui(
     remote_auth_token_env: Option<String>,
     arg0_paths: Arg0DispatchPaths,
 ) -> std::io::Result<AppExitInfo> {
+    assert_hepta_codex_runtime_adapters_threaded("interactive_tui_run_main");
+
     if let Some(prompt) = interactive.prompt.take() {
         // Normalize CRLF/CR to LF so CLI-provided text can't leak `\r` into TUI state.
         interactive.prompt = Some(prompt.replace("\r\n", "\n").replace('\r', "\n"));

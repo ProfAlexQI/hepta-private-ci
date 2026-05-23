@@ -156,7 +156,6 @@ const DIRECT_CODEX_BASE_DEPENDENCIES: &[&str] = &[
 const PHASE_1_BLOCKERS: &[&str] = &[];
 
 const NEXT_ACTIONS: &[&str] = &[
-    "extend CodexEngineAdapter contracts from model/session compatibility dispatch into tool, sandbox, MCP, app-server, and legacy TUI surfaces",
     "promote the installed binary from codex-cli --bin hepta toward first-class Hepta binary ownership after adapter parity",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
 ];
@@ -183,7 +182,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         hepta_boundary_owner: "hepta-kernel",
         codex_dependency: "codex-core",
         adapter_contract: "tool calls must carry Hepta policy, approval, and side-effect classification before Codex tool execution",
-        migration_state: "boundary_defined_adapter_pending",
+        migration_state: "adapter_threaded_compatibility_dispatch",
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -191,7 +190,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         hepta_boundary_owner: "hepta-kernel",
         codex_dependency: "codex-exec",
         adapter_contract: "exec and sandbox requests must pass Hepta policy gates before Codex sandbox compatibility runs",
-        migration_state: "boundary_defined_adapter_pending",
+        migration_state: "adapter_threaded_compatibility_dispatch",
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -199,7 +198,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         hepta_boundary_owner: "hepta-gateway",
         codex_dependency: "codex-mcp",
         adapter_contract: "MCP and app-server traffic must remain behind read-only Hepta route contracts until explicit adapter parity",
-        migration_state: "boundary_defined_adapter_pending",
+        migration_state: "adapter_threaded_compatibility_dispatch",
         live_mutation_allowed: false,
     },
     HeptaCodexEngineAdapterSurface {
@@ -207,7 +206,7 @@ const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] 
         hepta_boundary_owner: "hepta-runtime",
         codex_dependency: "codex-tui",
         adapter_contract: "legacy TUI and CLI behavior must remain compatibility-dispatched until first-class Hepta binary parity",
-        migration_state: "boundary_defined_adapter_pending",
+        migration_state: "adapter_threaded_compatibility_dispatch",
         live_mutation_allowed: false,
     },
 ];
@@ -259,6 +258,50 @@ pub fn hepta_codex_session_thread_store_adapter_threading_plan(
         "session_thread_store",
         "hepta-runtime",
         "codex-state",
+        operation.as_ref(),
+    )
+}
+
+pub fn hepta_codex_tool_invocation_adapter_threading_plan(
+    operation: impl AsRef<str>,
+) -> HeptaCodexEngineAdapterThreadingPlan {
+    hepta_codex_engine_adapter_threading_plan(
+        "tool_invocation",
+        "hepta-kernel",
+        "codex-core",
+        operation.as_ref(),
+    )
+}
+
+pub fn hepta_codex_sandbox_exec_adapter_threading_plan(
+    operation: impl AsRef<str>,
+) -> HeptaCodexEngineAdapterThreadingPlan {
+    hepta_codex_engine_adapter_threading_plan(
+        "sandbox_exec",
+        "hepta-kernel",
+        "codex-exec",
+        operation.as_ref(),
+    )
+}
+
+pub fn hepta_codex_mcp_app_server_adapter_threading_plan(
+    operation: impl AsRef<str>,
+) -> HeptaCodexEngineAdapterThreadingPlan {
+    hepta_codex_engine_adapter_threading_plan(
+        "mcp_app_server",
+        "hepta-gateway",
+        "codex-mcp",
+        operation.as_ref(),
+    )
+}
+
+pub fn hepta_codex_legacy_tui_cli_adapter_threading_plan(
+    operation: impl AsRef<str>,
+) -> HeptaCodexEngineAdapterThreadingPlan {
+    hepta_codex_engine_adapter_threading_plan(
+        "legacy_tui_cli",
+        "hepta-runtime",
+        "codex-tui",
         operation.as_ref(),
     )
 }
@@ -386,9 +429,13 @@ fn classify_first_cli_arg(arg: &str) -> &'static str {
 mod tests {
     use super::{
         HeptaProductRuntimeEntrypointInput, hepta_codex_engine_adapter_boundary_report,
+        hepta_codex_legacy_tui_cli_adapter_threading_plan,
+        hepta_codex_mcp_app_server_adapter_threading_plan,
         hepta_codex_model_provider_adapter_threading_plan,
+        hepta_codex_sandbox_exec_adapter_threading_plan,
         hepta_codex_session_thread_store_adapter_threading_plan,
-        hepta_core_fusion_readiness_report, hepta_product_runtime_entrypoint_plan,
+        hepta_codex_tool_invocation_adapter_threading_plan, hepta_core_fusion_readiness_report,
+        hepta_product_runtime_entrypoint_plan,
     };
 
     #[test]
@@ -492,14 +539,12 @@ mod tests {
                 .iter()
                 .all(|surface| !surface.live_mutation_allowed)
         );
-        assert!(report.surfaces.iter().any(|surface| {
-            surface.surface_id == "model_provider_execution"
-                && surface.migration_state == "adapter_threaded_compatibility_dispatch"
-        }));
-        assert!(report.surfaces.iter().any(|surface| {
-            surface.surface_id == "session_thread_store"
-                && surface.migration_state == "adapter_threaded_compatibility_dispatch"
-        }));
+        assert!(
+            report
+                .surfaces
+                .iter()
+                .all(|surface| surface.migration_state == "adapter_threaded_compatibility_dispatch")
+        );
     }
 
     #[test]
@@ -547,5 +592,39 @@ mod tests {
         assert!(!plan.session_store_mutated_by_plan);
         assert!(!plan.external_network_read_by_plan);
         assert!(plan.side_effect_free);
+    }
+
+    #[test]
+    fn remaining_adapter_threading_plans_preserve_side_effect_boundaries() {
+        let plans = [
+            hepta_codex_tool_invocation_adapter_threading_plan("exec_tool_dispatch"),
+            hepta_codex_sandbox_exec_adapter_threading_plan("sandbox_exec_dispatch"),
+            hepta_codex_mcp_app_server_adapter_threading_plan("mcp_app_server_dispatch"),
+            hepta_codex_legacy_tui_cli_adapter_threading_plan("legacy_tui_cli_dispatch"),
+        ];
+
+        let surface_ids = plans.iter().map(|plan| plan.surface_id).collect::<Vec<_>>();
+        assert_eq!(
+            surface_ids,
+            vec![
+                "tool_invocation",
+                "sandbox_exec",
+                "mcp_app_server",
+                "legacy_tui_cli"
+            ]
+        );
+        assert!(plans.iter().all(|plan| plan.adapter_threaded));
+        assert!(plans.iter().all(|plan| plan.compatibility_dispatch_allowed));
+        assert!(
+            plans
+                .iter()
+                .all(|plan| plan.direct_codex_dependency_retained)
+        );
+        assert!(plans.iter().all(|plan| plan.side_effect_free));
+        assert!(plans.iter().all(|plan| !plan.live_mutation_allowed_by_plan));
+        assert!(plans.iter().all(|plan| !plan.provider_invoked_by_plan));
+        assert!(plans.iter().all(|plan| !plan.credential_read_by_plan));
+        assert!(plans.iter().all(|plan| !plan.session_store_mutated_by_plan));
+        assert!(plans.iter().all(|plan| !plan.external_network_read_by_plan));
     }
 }

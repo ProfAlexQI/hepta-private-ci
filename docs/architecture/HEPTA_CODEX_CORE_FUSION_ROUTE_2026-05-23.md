@@ -97,15 +97,18 @@ Acceptance:
 Current landed state:
 
 - `/api/hepta-codex-engine-adapter-boundary` enumerates the adapter surfaces.
-- Model-provider execution and session/thread-store compatibility are now marked
-  `adapter_threaded_compatibility_dispatch`.
-- The `hepta` CLI entrypoint, `exec`, `review`, and debug model/state paths call
-  Hepta-owned adapter threading plans before entering Codex compatibility
-  dispatch.
-- These plans are side-effect-free and preserve current Codex provider/session
-  semantics; they do not invoke providers, read credentials, mutate session
-  stores, perform external reads, publish public release state, or cross
-  `task_publish` real mutation.
+- All six adapter surfaces are now marked
+  `adapter_threaded_compatibility_dispatch`: model-provider execution,
+  session/thread-store, tool invocation, sandbox/exec, MCP/app-server, and
+  legacy TUI/CLI.
+- The `hepta` CLI entrypoint, `exec`, `review`, resume/fork interactive flows,
+  sandbox commands, MCP/app-server commands, debug model/state/app-server paths,
+  apply, stdio bridge, and exec-server dispatch call Hepta-owned adapter
+  threading plans before entering Codex compatibility dispatch.
+- These plans are side-effect-free and preserve current Codex provider/session,
+  tool, sandbox, MCP/app-server, and legacy TUI semantics; they do not invoke
+  providers, read credentials, mutate session stores, perform external reads,
+  publish public release state, or cross `task_publish` real mutation.
 
 ### Phase 3 - Binary / Package Inversion
 
@@ -146,8 +149,9 @@ Acceptance:
 
 Continue Phase 2:
 
-1. Extend the same adapter threading pattern to tool invocation, sandbox/exec,
-   MCP/app-server, and legacy TUI/CLI surfaces.
+1. Replace no-op/threading assertions with typed adapter request/response
+   envelopes for the highest-risk surfaces first: tool invocation and
+   sandbox/exec.
 2. Keep direct Codex dependencies explicit until each adapter has parity gates.
 3. Run focused checks, full preflight, release build, live install, and live
    gates before advancing toward binary/package inversion.
