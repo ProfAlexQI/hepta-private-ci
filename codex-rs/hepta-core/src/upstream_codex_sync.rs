@@ -154,6 +154,42 @@ pub struct HeptaUpstreamCodexDiffLedgerReport {
     pub buckets: Vec<HeptaUpstreamCodexDiffLedgerBucket>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexProductGovernanceAbsorptionReport {
+    pub product: String,
+    pub status: String,
+    pub absorption_id: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub selected_bucket_id: String,
+    pub selected_bucket_risk: HeptaUpstreamCodexSyncRisk,
+    pub selected_changed_file_count: usize,
+    pub selected_commit_sample_count: usize,
+    pub source_ledger_gate: String,
+    pub absorption_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub selected_as_first_absorption_contract: bool,
+    pub low_risk_runtime_promotion: bool,
+    pub requires_hepta_translation: bool,
+    pub raw_upstream_doc_copy_allowed: bool,
+    pub raw_upstream_package_policy_copy_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub contract_ready: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub selected_paths: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -332,6 +368,70 @@ impl HeptaUpstreamCodexDiffLedgerReport {
             channel_delivery_performed: false,
             gateway_rpc_performed: false,
             buckets,
+        }
+    }
+}
+
+impl HeptaUpstreamCodexProductGovernanceAbsorptionReport {
+    pub fn native_default() -> Self {
+        let selected_paths = default_product_governance_selected_paths();
+        let selected_changed_file_count = selected_paths.len();
+        let selected_commit_sample_count = 40;
+        let contract_ready = selected_changed_file_count == 22
+            && selected_commit_sample_count > 0
+            && selected_paths
+                .iter()
+                .all(|path| path.starts_with("codex-rs/"))
+            && selected_paths
+                .iter()
+                .any(|path| path.ends_with("README.md"))
+            && selected_paths
+                .iter()
+                .any(|path| path.contains("request_plugin_install"));
+
+        Self {
+            product: "Hepta".into(),
+            status: if contract_ready { "ready" } else { "attention" }.into(),
+            absorption_id: "upstream-codex-product-governance-absorption-contract".into(),
+            upstream_repository: "https://github.com/openai/codex".into(),
+            candidate_diff_range:
+                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
+                    .into(),
+            selected_bucket_id: "product-doc-release-governance".into(),
+            selected_bucket_risk: HeptaUpstreamCodexSyncRisk::P2Product,
+            selected_changed_file_count,
+            selected_commit_sample_count,
+            source_ledger_gate: "scripts/hepta-upstream-codex-diff-ledger.sh".into(),
+            absorption_gate: "scripts/hepta-upstream-codex-product-governance-absorption.sh"
+                .into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            selected_as_first_absorption_contract: true,
+            low_risk_runtime_promotion: false,
+            requires_hepta_translation: true,
+            raw_upstream_doc_copy_allowed: false,
+            raw_upstream_package_policy_copy_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            contract_ready,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            selected_paths,
+            required_next_gates: vec![
+                "translate upstream product/docs/package deltas into Hepta release-governance wording"
+                    .into(),
+                "keep active dependency isolation green".into(),
+                "run clean preflight before any absorption patch".into(),
+                "require watchdog and long soak before release claims".into(),
+            ],
         }
     }
 }
@@ -675,6 +775,41 @@ pub fn hepta_upstream_codex_diff_ledger_report() -> HeptaUpstreamCodexDiffLedger
     HeptaUpstreamCodexDiffLedgerReport::native_default()
 }
 
+fn default_product_governance_selected_paths() -> Vec<String> {
+    [
+        "codex-rs/Cargo.lock",
+        "codex-rs/Cargo.toml",
+        "codex-rs/README.md",
+        "codex-rs/app-server/README.md",
+        "codex-rs/app-server/tests/suite/v2/plugin_install.rs",
+        "codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs",
+        "codex-rs/core-plugins/src/remote/remote_installed_plugin_sync.rs",
+        "codex-rs/core/README.md",
+        "codex-rs/core/src/tools/handlers/list_available_plugins_to_install.rs",
+        "codex-rs/core/src/tools/handlers/list_available_plugins_to_install_spec.rs",
+        "codex-rs/core/src/tools/handlers/request_plugin_install.rs",
+        "codex-rs/core/src/tools/handlers/request_plugin_install_spec.rs",
+        "codex-rs/core/tests/suite/request_plugin_install.rs",
+        "codex-rs/docs/protocol_v1.md",
+        "codex-rs/exec-server/README.md",
+        "codex-rs/install-context/Cargo.toml",
+        "codex-rs/install-context/src/lib.rs",
+        "codex-rs/linux-sandbox/README.md",
+        "codex-rs/network-proxy/README.md",
+        "codex-rs/skills/src/assets/samples/plugin-creator/references/installing-and-updating.md",
+        "codex-rs/tools/README.md",
+        "codex-rs/utils/pty/README.md",
+    ]
+    .iter()
+    .map(|path| (*path).into())
+    .collect()
+}
+
+pub fn hepta_upstream_codex_product_governance_absorption_report()
+-> HeptaUpstreamCodexProductGovernanceAbsorptionReport {
+    HeptaUpstreamCodexProductGovernanceAbsorptionReport::native_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -877,5 +1012,93 @@ mod tests {
             bucket.id == "product-doc-release-governance"
                 && bucket.promotion_gate.contains("long soak evidence")
         }));
+    }
+
+    #[test]
+    fn upstream_codex_product_governance_absorption_contract_is_ready_and_bounded() {
+        let report = hepta_upstream_codex_product_governance_absorption_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.absorption_id,
+            "upstream-codex-product-governance-absorption-contract"
+        );
+        assert_eq!(report.selected_bucket_id, "product-doc-release-governance");
+        assert!(matches!(
+            report.selected_bucket_risk,
+            HeptaUpstreamCodexSyncRisk::P2Product
+        ));
+        assert_eq!(report.selected_changed_file_count, 22);
+        assert!(report.selected_commit_sample_count > 0);
+        assert_eq!(
+            report.source_ledger_gate,
+            "scripts/hepta-upstream-codex-diff-ledger.sh"
+        );
+        assert_eq!(
+            report.absorption_gate,
+            "scripts/hepta-upstream-codex-product-governance-absorption.sh"
+        );
+        assert!(report.selected_as_first_absorption_contract);
+        assert!(!report.low_risk_runtime_promotion);
+        assert!(report.requires_hepta_translation);
+        assert!(!report.raw_upstream_doc_copy_allowed);
+        assert!(!report.raw_upstream_package_policy_copy_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(report.contract_ready);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+    }
+
+    #[test]
+    fn upstream_codex_product_governance_absorption_tracks_exact_selected_paths() {
+        let report = hepta_upstream_codex_product_governance_absorption_report();
+
+        assert_eq!(report.selected_paths.len(), 22);
+        assert!(
+            report
+                .selected_paths
+                .iter()
+                .all(|path| path.starts_with("codex-rs/"))
+        );
+        assert!(
+            report
+                .selected_paths
+                .iter()
+                .any(|path| path == "codex-rs/README.md")
+        );
+        assert!(
+            report
+                .selected_paths
+                .iter()
+                .any(|path| path == "codex-rs/Cargo.lock")
+        );
+        assert!(
+            report
+                .selected_paths
+                .iter()
+                .any(|path| path.contains("request_plugin_install"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("Hepta release-governance wording"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("active dependency isolation"))
+        );
     }
 }

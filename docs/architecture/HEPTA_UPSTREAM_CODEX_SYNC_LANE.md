@@ -47,6 +47,19 @@ legacy CLI/TUI compatibility, and product/release-governance buckets. Set
 or `HEPTA_UPSTREAM_CODEX_DIFF_TARGET_REF` to audit a different already-present
 local range. The gate does not fetch or merge upstream.
 
+The first selected absorption-contract gate is:
+
+```bash
+scripts/hepta-upstream-codex-product-governance-absorption.sh
+```
+
+This gate selects the `product-doc-release-governance` bucket as the first
+bounded absorption family. It verifies the 22 selected paths from the current
+diff ledger and requires Hepta-specific translation before any product,
+packaging, or release-governance wording is promoted. It explicitly does not
+copy upstream docs verbatim, wire active runtime code, fetch or merge upstream,
+or make a public release claim.
+
 The local sync-lane gate is:
 
 ```bash
