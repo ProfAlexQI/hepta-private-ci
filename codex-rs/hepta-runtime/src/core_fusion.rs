@@ -2,6 +2,10 @@ use serde::Serialize;
 
 pub const HEPTA_CORE_FUSION_READINESS_ENDPOINT: &str = "/api/hepta-core-fusion-readiness";
 pub const HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND: &str = "/hepta-core-fusion-readiness --json";
+pub const HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-codex-engine-adapter-boundary";
+pub const HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND: &str =
+    "/hepta-codex-engine-adapter-boundary --json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaCoreFusionReadinessResponse {
@@ -67,6 +71,36 @@ pub struct HeptaProductRuntimeEntrypointPlan {
     pub side_effect_free: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct HeptaCodexEngineAdapterSurface {
+    pub surface_id: &'static str,
+    pub hepta_boundary_owner: &'static str,
+    pub codex_dependency: &'static str,
+    pub adapter_contract: &'static str,
+    pub migration_state: &'static str,
+    pub live_mutation_allowed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeptaCodexEngineAdapterBoundaryResponse {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub source_command: &'static str,
+    pub native_route: bool,
+    pub phase: &'static str,
+    pub root_owner: &'static str,
+    pub adapter_owner: &'static str,
+    pub codex_engine_role: &'static str,
+    pub boundary_ready: bool,
+    pub adapter_parity_complete: bool,
+    pub full_fusion_complete: bool,
+    pub remaining_direct_codex_base_dependency_count: usize,
+    pub surfaces: &'static [HeptaCodexEngineAdapterSurface],
+    pub forbidden_real_side_effects: HeptaCoreFusionForbiddenSideEffects,
+    pub next_actions: &'static [&'static str],
+}
+
 const HEPTA_OWNED_ROOT_SURFACES: &[&str] = &[
     "hepta-core",
     "hepta-kernel",
@@ -102,9 +136,61 @@ const DIRECT_CODEX_BASE_DEPENDENCIES: &[&str] = &[
 const PHASE_1_BLOCKERS: &[&str] = &[];
 
 const NEXT_ACTIONS: &[&str] = &[
-    "introduce explicit CodexEngineAdapter boundaries for model/session/tool/sandbox/thread-store surfaces",
+    "thread CodexEngineAdapter contracts into model provider execution without changing provider semantics",
+    "thread CodexEngineAdapter contracts into session/thread-store compatibility without changing persistence semantics",
     "promote the installed binary from codex-cli --bin hepta toward first-class Hepta binary ownership after adapter parity",
     "keep public-release and task_publish real-mutation lines blocked until explicit operator approval",
+];
+
+const CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES: &[HeptaCodexEngineAdapterSurface] = &[
+    HeptaCodexEngineAdapterSurface {
+        surface_id: "model_provider_execution",
+        hepta_boundary_owner: "hepta-runtime",
+        codex_dependency: "codex-model-provider",
+        adapter_contract: "model invocation must enter through a Hepta-owned request/response boundary before provider dispatch",
+        migration_state: "boundary_defined_adapter_pending",
+        live_mutation_allowed: false,
+    },
+    HeptaCodexEngineAdapterSurface {
+        surface_id: "session_thread_store",
+        hepta_boundary_owner: "hepta-runtime",
+        codex_dependency: "codex-state",
+        adapter_contract: "session and thread persistence must be described as Hepta records before Codex store compatibility is used",
+        migration_state: "boundary_defined_adapter_pending",
+        live_mutation_allowed: false,
+    },
+    HeptaCodexEngineAdapterSurface {
+        surface_id: "tool_invocation",
+        hepta_boundary_owner: "hepta-kernel",
+        codex_dependency: "codex-core",
+        adapter_contract: "tool calls must carry Hepta policy, approval, and side-effect classification before Codex tool execution",
+        migration_state: "boundary_defined_adapter_pending",
+        live_mutation_allowed: false,
+    },
+    HeptaCodexEngineAdapterSurface {
+        surface_id: "sandbox_exec",
+        hepta_boundary_owner: "hepta-kernel",
+        codex_dependency: "codex-exec",
+        adapter_contract: "exec and sandbox requests must pass Hepta policy gates before Codex sandbox compatibility runs",
+        migration_state: "boundary_defined_adapter_pending",
+        live_mutation_allowed: false,
+    },
+    HeptaCodexEngineAdapterSurface {
+        surface_id: "mcp_app_server",
+        hepta_boundary_owner: "hepta-gateway",
+        codex_dependency: "codex-mcp",
+        adapter_contract: "MCP and app-server traffic must remain behind read-only Hepta route contracts until explicit adapter parity",
+        migration_state: "boundary_defined_adapter_pending",
+        live_mutation_allowed: false,
+    },
+    HeptaCodexEngineAdapterSurface {
+        surface_id: "legacy_tui_cli",
+        hepta_boundary_owner: "hepta-runtime",
+        codex_dependency: "codex-tui",
+        adapter_contract: "legacy TUI and CLI behavior must remain compatibility-dispatched until first-class Hepta binary parity",
+        migration_state: "boundary_defined_adapter_pending",
+        live_mutation_allowed: false,
+    },
 ];
 
 pub fn hepta_product_runtime_entrypoint_plan(
@@ -136,6 +222,38 @@ pub fn hepta_product_runtime_entrypoint_plan(
     }
 }
 
+pub fn hepta_codex_engine_adapter_boundary_report() -> HeptaCodexEngineAdapterBoundaryResponse {
+    HeptaCodexEngineAdapterBoundaryResponse {
+        product: "Hepta",
+        runtime: "hepta-codex",
+        status: "ready",
+        source_command: HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND,
+        native_route: true,
+        phase: "phase_2_engine_adapter_boundary",
+        root_owner: "hepta",
+        adapter_owner: "codex-engine-adapter",
+        codex_engine_role: "internal_engine_adapter",
+        boundary_ready: true,
+        adapter_parity_complete: false,
+        full_fusion_complete: false,
+        remaining_direct_codex_base_dependency_count: DIRECT_CODEX_BASE_DEPENDENCIES.len(),
+        surfaces: CODEX_ENGINE_ADAPTER_BOUNDARY_SURFACES,
+        forbidden_real_side_effects: HeptaCoreFusionForbiddenSideEffects {
+            public_ga_claimed: false,
+            public_release_published: false,
+            native_post_real_mutation_performed: false,
+            task_publish_real_mutation_performed: false,
+            telegram_send_performed: false,
+            gateway_mutation_performed: false,
+            launchd_mutated: false,
+            credential_read: false,
+            model_invoked: false,
+            external_network_read: false,
+        },
+        next_actions: NEXT_ACTIONS,
+    }
+}
+
 pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse {
     HeptaCoreFusionReadinessResponse {
         product: "Hepta",
@@ -143,9 +261,9 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         status: "ready",
         source_command: HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND,
         native_route: true,
-        compatibility_mode: "hepta_root_ownership_inversion_phase1",
+        compatibility_mode: "hepta_root_ownership_inversion_with_engine_adapter_boundary",
         side_effect_free: true,
-        phase: "phase_1_root_ownership_inversion",
+        phase: "phase_2_engine_adapter_boundary",
         root_owner: "hepta",
         product_runtime_owner: "hepta-runtime",
         gateway_owner: "hepta-gateway",
@@ -153,7 +271,7 @@ pub fn hepta_core_fusion_readiness_report() -> HeptaCoreFusionReadinessResponse 
         codex_engine_role: "internal_engine_adapter",
         phase_1_root_ownership_inversion_ready: true,
         product_runtime_entrypoint_facade_ready: true,
-        phase_2_engine_adapter_boundary_ready: false,
+        phase_2_engine_adapter_boundary_ready: true,
         phase_3_binary_package_inversion_ready: false,
         phase_4_name_repository_closure_ready: false,
         full_fusion_complete: false,
@@ -194,8 +312,8 @@ fn classify_first_cli_arg(arg: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        HeptaProductRuntimeEntrypointInput, hepta_core_fusion_readiness_report,
-        hepta_product_runtime_entrypoint_plan,
+        HeptaProductRuntimeEntrypointInput, hepta_codex_engine_adapter_boundary_report,
+        hepta_core_fusion_readiness_report, hepta_product_runtime_entrypoint_plan,
     };
 
     #[test]
@@ -209,6 +327,7 @@ mod tests {
         assert_eq!(report.codex_engine_role, "internal_engine_adapter");
         assert!(report.phase_1_root_ownership_inversion_ready);
         assert!(report.product_runtime_entrypoint_facade_ready);
+        assert!(report.phase_2_engine_adapter_boundary_ready);
         assert!(!report.full_fusion_complete);
         assert!(
             report
@@ -264,5 +383,54 @@ mod tests {
         assert!(plan.cli_parse_required);
         assert_eq!(plan.first_cli_arg_kind, "runtime_command");
         assert_eq!(plan.codex_engine_role, "internal_engine_adapter");
+    }
+
+    #[test]
+    fn codex_engine_adapter_boundary_lists_all_remaining_runtime_surfaces() {
+        let report = hepta_codex_engine_adapter_boundary_report();
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.root_owner, "hepta");
+        assert_eq!(report.adapter_owner, "codex-engine-adapter");
+        assert!(report.boundary_ready);
+        assert!(!report.adapter_parity_complete);
+        assert!(!report.full_fusion_complete);
+        assert_eq!(
+            report.remaining_direct_codex_base_dependency_count,
+            super::DIRECT_CODEX_BASE_DEPENDENCIES.len()
+        );
+
+        let surface_ids = report
+            .surfaces
+            .iter()
+            .map(|surface| surface.surface_id)
+            .collect::<Vec<_>>();
+        assert!(surface_ids.contains(&"model_provider_execution"));
+        assert!(surface_ids.contains(&"session_thread_store"));
+        assert!(surface_ids.contains(&"tool_invocation"));
+        assert!(surface_ids.contains(&"sandbox_exec"));
+        assert!(surface_ids.contains(&"mcp_app_server"));
+        assert!(surface_ids.contains(&"legacy_tui_cli"));
+        assert!(
+            report
+                .surfaces
+                .iter()
+                .all(|surface| !surface.live_mutation_allowed)
+        );
+    }
+
+    #[test]
+    fn codex_engine_adapter_boundary_is_side_effect_free() {
+        let side_effects = hepta_codex_engine_adapter_boundary_report().forbidden_real_side_effects;
+
+        assert!(!side_effects.public_ga_claimed);
+        assert!(!side_effects.public_release_published);
+        assert!(!side_effects.native_post_real_mutation_performed);
+        assert!(!side_effects.task_publish_real_mutation_performed);
+        assert!(!side_effects.telegram_send_performed);
+        assert!(!side_effects.gateway_mutation_performed);
+        assert!(!side_effects.credential_read);
+        assert!(!side_effects.model_invoked);
+        assert!(!side_effects.external_network_read);
     }
 }

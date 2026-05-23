@@ -93,9 +93,12 @@ pub use config_store::{
     DEFAULT_CONFIG_STORE_ID, DEFAULT_CONFIG_STORE_PATH, HeptaConfigStore,
 };
 pub use core_fusion::{
-    HEPTA_CORE_FUSION_READINESS_ENDPOINT, HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND,
-    HeptaCoreFusionForbiddenSideEffects, HeptaCoreFusionReadinessResponse,
-    HeptaProductRuntimeEntrypointInput, HeptaProductRuntimeEntrypointPlan,
+    HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+    HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND, HEPTA_CORE_FUSION_READINESS_ENDPOINT,
+    HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND, HeptaCodexEngineAdapterBoundaryResponse,
+    HeptaCodexEngineAdapterSurface, HeptaCoreFusionForbiddenSideEffects,
+    HeptaCoreFusionReadinessResponse, HeptaProductRuntimeEntrypointInput,
+    HeptaProductRuntimeEntrypointPlan, hepta_codex_engine_adapter_boundary_report,
     hepta_core_fusion_readiness_report, hepta_product_runtime_entrypoint_plan,
 };
 pub use delivery_queue::{

@@ -15,6 +15,8 @@ use hepta_gateway::DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR;
 use hepta_gateway::DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS;
 use hepta_gateway::DEFAULT_NATIVE_POST_STORE_MAX_BYTES;
 use hepta_gateway::DEFAULT_NATIVE_POST_STORE_MAX_LINES;
+use hepta_gateway::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
+use hepta_gateway::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
 use hepta_gateway::HEPTA_CORE_FUSION_READINESS_ENDPOINT;
 use hepta_gateway::HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND;
 use hepta_gateway::NATIVE_POST_ACTIVATION_PLAN_ENDPOINT;
@@ -86,7 +88,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 65;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 66;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
 const HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED_ENV: &str = "HEPTA_CHANNEL_LIVE_DELIVERY_VERIFIED";
@@ -283,6 +285,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND,
         capability: "hepta-core-fusion-readiness",
         side_effect_boundary: "read-only core fusion readiness report; no publish, model call, credential read, or mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+        source_command: HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND,
+        capability: "hepta-codex-engine-adapter-boundary",
+        side_effect_boundary: "read-only CodexEngineAdapter boundary report; no provider, model, credential, exec, session, or gateway mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -955,6 +964,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_gateway::hepta_core_fusion_readiness_report()),
                 );
             }
+            HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_gateway::hepta_codex_engine_adapter_boundary_report()),
+                );
+            }
             "/api/operator-snapshot" => {
                 return (
                     "200 OK",
@@ -1347,6 +1363,7 @@ fn index_html(
         <p><code>/api/hepta-legacy-compatibility-closure</code> closes the old Hepta CLI/script family gap as native read-only route/script coverage, without reenabling live execution.</p>
         <p><code>/api/hepta-public-ga-readiness</code> aggregates the public GA readiness blockers and explicit operator approvals without publishing, reading credentials, or invoking live channels.</p>
         <p><code>/api/hepta-core-fusion-readiness</code> reports Hepta as root runtime owner and Codex as an internal engine adapter while keeping remaining direct Codex base dependencies explicit.</p>
+        <p><code>/api/hepta-codex-engine-adapter-boundary</code> enumerates model, session, tool, sandbox, MCP, app-server, and legacy TUI/CLI adapter contracts before any Codex base dependency is removed.</p>
       </section>
       <section class="panel">
         <p>Readiness payload:</p>
@@ -1394,6 +1411,7 @@ fn native_gateway_json(
             HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT,
         hepta_public_ga_readiness_endpoint: HEPTA_PUBLIC_GA_READINESS_ENDPOINT,
         hepta_core_fusion_readiness_endpoint: HEPTA_CORE_FUSION_READINESS_ENDPOINT,
+        hepta_codex_engine_adapter_boundary_endpoint: HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
         telegram_plugin_requested: options.with_telegram_plugin,
         telegram_plugin_status: telegram_plugin.status,
         telegram_plugin_native_supervisor_ready: telegram_plugin.in_process_supervisor_ready,
@@ -6877,6 +6895,7 @@ struct NativeGatewayResponse<'a> {
     hepta_public_ga_operator_approval_packet_endpoint: &'static str,
     hepta_public_ga_readiness_endpoint: &'static str,
     hepta_core_fusion_readiness_endpoint: &'static str,
+    hepta_codex_engine_adapter_boundary_endpoint: &'static str,
     telegram_plugin_requested: bool,
     telegram_plugin_status: &'static str,
     telegram_plugin_native_supervisor_ready: bool,
@@ -8834,7 +8853,7 @@ mod tests {
         );
         assert_eq!(
             value["compatibility_mode"],
-            "hepta_root_ownership_inversion_phase1"
+            "hepta_root_ownership_inversion_with_engine_adapter_boundary"
         );
         assert_eq!(value["side_effect_free"], true);
         assert_eq!(value["root_owner"], "hepta");
@@ -8843,7 +8862,7 @@ mod tests {
         assert_eq!(value["engine_adapter_owner"], "codex-engine-adapter");
         assert_eq!(value["codex_engine_role"], "internal_engine_adapter");
         assert_eq!(value["phase_1_root_ownership_inversion_ready"], true);
-        assert_eq!(value["phase_2_engine_adapter_boundary_ready"], false);
+        assert_eq!(value["phase_2_engine_adapter_boundary_ready"], true);
         assert_eq!(value["full_fusion_complete"], false);
         let direct_dependencies = value["direct_codex_base_dependencies"]
             .as_array()
@@ -8880,6 +8899,65 @@ mod tests {
             false
         );
         assert_eq!(value["forbidden_real_side_effects"]["model_invoked"], false);
+    }
+
+    #[test]
+    fn hepta_codex_engine_adapter_boundary_reports_surfaces_without_side_effects() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("engine adapter boundary json");
+        assert_eq!(value["runtime"], "hepta-codex");
+        assert_eq!(
+            value["source_command"],
+            HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND
+        );
+        assert_eq!(value["phase"], "phase_2_engine_adapter_boundary");
+        assert_eq!(value["root_owner"], "hepta");
+        assert_eq!(value["adapter_owner"], "codex-engine-adapter");
+        assert_eq!(value["boundary_ready"], true);
+        assert_eq!(value["adapter_parity_complete"], false);
+        assert_eq!(value["full_fusion_complete"], false);
+
+        let surfaces = value["surfaces"].as_array().expect("surfaces array");
+        assert!(surfaces.len() >= 6);
+        assert!(surfaces.iter().all(|surface| {
+            surface["live_mutation_allowed"]
+                .as_bool()
+                .is_some_and(|allowed| !allowed)
+        }));
+        let surface_ids = surfaces
+            .iter()
+            .filter_map(|surface| surface["surface_id"].as_str())
+            .collect::<Vec<_>>();
+        assert!(surface_ids.contains(&"model_provider_execution"));
+        assert!(surface_ids.contains(&"session_thread_store"));
+        assert!(surface_ids.contains(&"sandbox_exec"));
+
+        assert_eq!(
+            value["forbidden_real_side_effects"]["public_ga_claimed"],
+            false
+        );
+        assert_eq!(
+            value["forbidden_real_side_effects"]["credential_read"],
+            false
+        );
+        assert_eq!(value["forbidden_real_side_effects"]["model_invoked"], false);
+        assert_eq!(
+            value["forbidden_real_side_effects"]["gateway_mutation_performed"],
+            false
+        );
     }
 
     #[test]

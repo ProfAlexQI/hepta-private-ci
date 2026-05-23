@@ -18,7 +18,7 @@ jq -e '
   and .compatibility_mode == "native_provider_channel_runtime_dry_run_plan"
   and .side_effect_free == true
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 65
+  and .native_gateway_source_command_count == 66
   and .missing_route_count == 0
   and .plan_family_count == 5
   and .covered_old_ops_file_count == 43
@@ -62,7 +62,7 @@ for payload in "$RELEASE_JSON" "$MEMORY_JSON" "$LOCAL_JSON" "$CHANNEL_JSON" "$RU
   jq -e '
     .runtime == "hepta-codex"
     and .current_hepta_codex_script_total == 17
-    and .native_gateway_source_command_count == 65
+    and .native_gateway_source_command_count == 66
     and .missing_route_count == 0
   ' <<<"$payload" >/dev/null
 done
