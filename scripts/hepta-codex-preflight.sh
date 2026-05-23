@@ -61,6 +61,9 @@ scripts/hepta-upstream-codex-product-governance-absorption.sh
 echo "[hepta-codex-preflight] upstream Codex product-governance translation gate"
 scripts/hepta-upstream-codex-product-governance-translation.sh
 
+echo "[hepta-codex-preflight] upstream Codex legacy compatibility absorption gate"
+scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh

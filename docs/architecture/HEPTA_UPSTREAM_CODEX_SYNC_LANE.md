@@ -73,6 +73,18 @@ exec, network, and release-governance deltas into Hepta-owned policy language.
 It keeps public release claims, active runtime wiring, and live plugin mutation
 behind Hepta gates and operator approval.
 
+The P1 compatibility absorption-contract gate is:
+
+```bash
+scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh
+```
+
+This gate selects the `legacy-cli-tui-compatibility` bucket. It keeps upstream
+CLI, TUI, code-mode, terminal-detection, and `utils/cli` deltas as compatibility
+snapshot inputs until explicit Hepta command contracts, behavior-equivalence,
+shadow-replay, active dependency isolation, and Hepta-native parity gates are
+green. It does not promote Codex CLI/TUI behavior into the active Hepta service.
+
 The local sync-lane gate is:
 
 ```bash

@@ -39,6 +39,9 @@ Current state:
 - `scripts/hepta-upstream-codex-product-governance-translation.sh` verifies the
   Hepta-owned translation packet for that selected product/release-governance
   family, keeping upstream docs/package wording out of active runtime claims.
+- `scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh` selects the
+  P1 CLI/TUI/code-mode compatibility family as an intake contract while keeping
+  Codex CLI/TUI behavior out of the active Hepta runtime.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

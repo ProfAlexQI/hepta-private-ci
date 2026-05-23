@@ -227,6 +227,39 @@ pub struct HeptaUpstreamCodexProductGovernanceTranslationReport {
     pub hepta_actions: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexLegacyCompatibilityAbsorptionReport {
+    pub product: String,
+    pub status: String,
+    pub absorption_id: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub selected_bucket_id: String,
+    pub selected_bucket_risk: HeptaUpstreamCodexSyncRisk,
+    pub selected_changed_file_count: usize,
+    pub source_ledger_gate: String,
+    pub absorption_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub retained_as_compatibility_snapshot: bool,
+    pub requires_hepta_command_contract: bool,
+    pub active_cli_tui_promotion_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub contract_ready: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub sample_surfaces: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -529,6 +562,69 @@ impl HeptaUpstreamCodexProductGovernanceTranslationReport {
             channel_delivery_performed: false,
             gateway_rpc_performed: false,
             hepta_actions,
+        }
+    }
+}
+
+impl HeptaUpstreamCodexLegacyCompatibilityAbsorptionReport {
+    pub fn native_default() -> Self {
+        let sample_surfaces: Vec<String> = vec![
+            "codex-rs/cli compatibility commands".into(),
+            "codex-rs/tui compatibility presentation".into(),
+            "codex-rs/code-mode compatibility runtime".into(),
+            "terminal-detection and utils/cli helpers".into(),
+        ];
+        let selected_changed_file_count = 128;
+        let contract_ready = selected_changed_file_count == 128
+            && sample_surfaces
+                .iter()
+                .any(|surface| surface.contains("cli"))
+            && sample_surfaces
+                .iter()
+                .any(|surface| surface.contains("tui"))
+            && sample_surfaces
+                .iter()
+                .any(|surface| surface.contains("code-mode"));
+
+        Self {
+            product: "Hepta".into(),
+            status: if contract_ready { "ready" } else { "attention" }.into(),
+            absorption_id: "upstream-codex-legacy-compatibility-absorption-contract".into(),
+            upstream_repository: "https://github.com/openai/codex".into(),
+            candidate_diff_range:
+                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
+                    .into(),
+            selected_bucket_id: "legacy-cli-tui-compatibility".into(),
+            selected_bucket_risk: HeptaUpstreamCodexSyncRisk::P1Compatibility,
+            selected_changed_file_count,
+            source_ledger_gate: "scripts/hepta-upstream-codex-diff-ledger.sh".into(),
+            absorption_gate: "scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh"
+                .into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            retained_as_compatibility_snapshot: true,
+            requires_hepta_command_contract: true,
+            active_cli_tui_promotion_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            contract_ready,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            sample_surfaces,
+            required_next_gates: vec![
+                "map legacy CLI/TUI deltas to explicit Hepta command contracts".into(),
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+                "run behavior-equivalence and shadow-replay before promotion".into(),
+                "do not promote compatibility UI behavior without Hepta-native parity".into(),
+            ],
         }
     }
 }
@@ -912,6 +1008,11 @@ pub fn hepta_upstream_codex_product_governance_translation_report()
     HeptaUpstreamCodexProductGovernanceTranslationReport::native_default()
 }
 
+pub fn hepta_upstream_codex_legacy_compatibility_absorption_report()
+-> HeptaUpstreamCodexLegacyCompatibilityAbsorptionReport {
+    HeptaUpstreamCodexLegacyCompatibilityAbsorptionReport::native_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1288,6 +1389,84 @@ mod tests {
                 .hepta_actions
                 .iter()
                 .any(|action| action.contains("long soak"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_legacy_compatibility_absorption_is_ready_and_bounded() {
+        let report = hepta_upstream_codex_legacy_compatibility_absorption_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.absorption_id,
+            "upstream-codex-legacy-compatibility-absorption-contract"
+        );
+        assert_eq!(report.selected_bucket_id, "legacy-cli-tui-compatibility");
+        assert!(matches!(
+            report.selected_bucket_risk,
+            HeptaUpstreamCodexSyncRisk::P1Compatibility
+        ));
+        assert_eq!(report.selected_changed_file_count, 128);
+        assert_eq!(
+            report.source_ledger_gate,
+            "scripts/hepta-upstream-codex-diff-ledger.sh"
+        );
+        assert_eq!(
+            report.absorption_gate,
+            "scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh"
+        );
+        assert!(report.retained_as_compatibility_snapshot);
+        assert!(report.requires_hepta_command_contract);
+        assert!(!report.active_cli_tui_promotion_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(report.contract_ready);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+    }
+
+    #[test]
+    fn upstream_codex_legacy_compatibility_absorption_tracks_required_surfaces() {
+        let report = hepta_upstream_codex_legacy_compatibility_absorption_report();
+
+        assert!(
+            report
+                .sample_surfaces
+                .iter()
+                .any(|surface| surface.contains("cli"))
+        );
+        assert!(
+            report
+                .sample_surfaces
+                .iter()
+                .any(|surface| surface.contains("tui"))
+        );
+        assert!(
+            report
+                .sample_surfaces
+                .iter()
+                .any(|surface| surface.contains("code-mode"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("Hepta command contracts"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("shadow-replay"))
         );
     }
 }
