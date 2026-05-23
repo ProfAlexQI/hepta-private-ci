@@ -6768,7 +6768,6 @@ fn hepta_public_ga_operator_approval_packet_report(
     let approval_packet_ready = route_matrix.ready
         && ga.local_gate_matrix_ready
         && ga.local_reports_synchronized
-        && !ga.public_ga_ready
         && !ga.external_public_release_performed;
 
     HeptaPublicGaOperatorApprovalPacketResponse {

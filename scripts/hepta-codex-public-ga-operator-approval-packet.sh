@@ -8,13 +8,13 @@ GA_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-readiness")"
 
 jq -e '
   .runtime == "hepta-codex"
-  and (.status == "ready" or .status == "attention")
+  and .status == "ready"
   and .compatibility_mode == "native_public_ga_operator_approval_packet"
   and .side_effect_free == true
   and .current_hepta_codex_script_total == 17
   and .native_gateway_source_command_count == 64
   and .missing_route_count == 0
-  and (.approval_packet_ready == true or .public_ga_ready == true)
+  and .approval_packet_ready == true
   and .safe_default_mode == "plan_only_no_live_mutation"
   and .irreversible_actions_blocked_by_default == true
   and (.public_ga_ready == false or .public_ga_ready == true)
