@@ -45,6 +45,7 @@ use serde_json::{Value, json};
 mod agent_harness;
 mod approval_broker;
 mod config_store;
+mod core_fusion;
 mod delivery_queue;
 mod doctor;
 mod events;
@@ -90,6 +91,11 @@ pub use config_store::{
     ConfigRestartRefreshRecord, ConfigRestartRefreshReport, ConfigSchemaEntry,
     ConfigSchemaEntryReport, ConfigStoreEvent, ConfigStoreFile, ConfigStoreReport,
     DEFAULT_CONFIG_STORE_ID, DEFAULT_CONFIG_STORE_PATH, HeptaConfigStore,
+};
+pub use core_fusion::{
+    HEPTA_CORE_FUSION_READINESS_ENDPOINT, HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND,
+    HeptaCoreFusionForbiddenSideEffects, HeptaCoreFusionReadinessResponse,
+    hepta_core_fusion_readiness_report,
 };
 pub use delivery_queue::{
     ChannelSendHandoffInput, ChannelSendHandoffReport, DEFAULT_DELIVERY_LEASE_MS,

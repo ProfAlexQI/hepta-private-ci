@@ -12,7 +12,7 @@ jq -e '
   and .compatibility_mode == "native_public_ga_operator_approval_packet"
   and .side_effect_free == true
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 64
+  and .native_gateway_source_command_count == 65
   and .missing_route_count == 0
   and .approval_packet_ready == true
   and .safe_default_mode == "plan_only_no_live_mutation"

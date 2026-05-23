@@ -14,7 +14,7 @@ jq -e '
   and .old_hepta_rough_command_reference_count == 574
   and .old_hepta_script_total == 20
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 64
+  and .native_gateway_source_command_count == 65
   and .missing_route_count == 0
   and .ops_family_count == 5
   and .ops_file_family_covered_count == 65
@@ -33,7 +33,7 @@ jq -e '
 jq -e '
   .runtime == "hepta-codex"
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 64
+  and .native_gateway_source_command_count == 65
   and .route_matrix_ready == true
   and .missing_route_count == 0
   and (.telegram_live_send_enabled == false or .telegram_live_send_enabled == true)
