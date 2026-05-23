@@ -261,6 +261,50 @@ pub fn native_post_duplicate_check_required(
     )
 }
 
+pub fn native_post_rate_limit_check_required(
+    execution_admission: &NativePostExecutionAdmission,
+    duplicate_check_performed: bool,
+    duplicate_found: bool,
+    duplicate_check_error: Option<&'static str>,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_rate_limit_check_required(
+        execution_admission,
+        duplicate_check_performed,
+        duplicate_found,
+        duplicate_check_error,
+    )
+}
+
+pub fn native_post_store_capacity_check_required(
+    execution_admission: &NativePostExecutionAdmission,
+    duplicate_check_performed: bool,
+    duplicate_found: bool,
+    duplicate_check_error: Option<&'static str>,
+    rate_limited: bool,
+    rate_limit_check_error: Option<&'static str>,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_store_capacity_check_required(
+        execution_admission,
+        duplicate_check_performed,
+        duplicate_found,
+        duplicate_check_error,
+        rate_limited,
+        rate_limit_check_error,
+    )
+}
+
+pub fn native_post_store_write_attempt_required(
+    capacity_check_performed: bool,
+    store_capacity_ok: bool,
+    store_capacity_check_error: Option<&'static str>,
+) -> bool {
+    hepta_kernel::hepta_kernel_native_post_store_write_attempt_required(
+        capacity_check_performed,
+        store_capacity_ok,
+        store_capacity_check_error,
+    )
+}
+
 pub fn native_post_real_handler_scope_matches(
     plan_kind: &str,
     handler_scope: Option<&str>,

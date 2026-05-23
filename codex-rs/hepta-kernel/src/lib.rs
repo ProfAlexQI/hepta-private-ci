@@ -1532,6 +1532,42 @@ pub fn hepta_kernel_native_post_duplicate_check_required(
         && idempotency_evidence.key_fingerprint.is_some()
 }
 
+pub fn hepta_kernel_native_post_rate_limit_check_required(
+    execution_admission: &HeptaKernelNativePostExecutionAdmission,
+    duplicate_check_performed: bool,
+    duplicate_found: bool,
+    duplicate_check_error: Option<&'static str>,
+) -> bool {
+    execution_admission.current_plan_executes_real_handler
+        && !(duplicate_check_performed && duplicate_found)
+        && duplicate_check_error.is_none()
+}
+
+pub fn hepta_kernel_native_post_store_capacity_check_required(
+    execution_admission: &HeptaKernelNativePostExecutionAdmission,
+    duplicate_check_performed: bool,
+    duplicate_found: bool,
+    duplicate_check_error: Option<&'static str>,
+    rate_limited: bool,
+    rate_limit_check_error: Option<&'static str>,
+) -> bool {
+    hepta_kernel_native_post_rate_limit_check_required(
+        execution_admission,
+        duplicate_check_performed,
+        duplicate_found,
+        duplicate_check_error,
+    ) && !rate_limited
+        && rate_limit_check_error.is_none()
+}
+
+pub fn hepta_kernel_native_post_store_write_attempt_required(
+    capacity_check_performed: bool,
+    store_capacity_ok: bool,
+    store_capacity_check_error: Option<&'static str>,
+) -> bool {
+    capacity_check_performed && store_capacity_ok && store_capacity_check_error.is_none()
+}
+
 pub fn hepta_kernel_native_post_real_handler_scope_matches(
     plan_kind: &str,
     handler_scope: Option<&str>,
@@ -8118,6 +8154,30 @@ mod tests {
         assert!(hepta_kernel_native_post_duplicate_check_required(
             &matched,
             &idempotency
+        ));
+        assert!(hepta_kernel_native_post_rate_limit_check_required(
+            &matched, true, false, None
+        ));
+        assert!(!hepta_kernel_native_post_rate_limit_check_required(
+            &matched, true, true, None
+        ));
+        assert!(!hepta_kernel_native_post_rate_limit_check_required(
+            &matched,
+            true,
+            false,
+            Some("native_post_idempotency_check_failed")
+        ));
+        assert!(hepta_kernel_native_post_store_capacity_check_required(
+            &matched, true, false, None, false, None
+        ));
+        assert!(!hepta_kernel_native_post_store_capacity_check_required(
+            &matched, true, false, None, true, None
+        ));
+        assert!(hepta_kernel_native_post_store_write_attempt_required(
+            true, true, None
+        ));
+        assert!(!hepta_kernel_native_post_store_write_attempt_required(
+            true, false, None
         ));
 
         let mut no_key_idempotency = idempotency.clone();

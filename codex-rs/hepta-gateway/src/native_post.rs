@@ -40,10 +40,11 @@ pub use hepta_runtime::{
     native_post_execution_store_write_report, native_post_idempotency_duplicate_present_in_content,
     native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
     native_post_plan_parameter, native_post_plan_route_specs,
-    native_post_rate_limit_recent_present_in_content, native_post_real_handler_scope_matches,
-    native_post_real_handler_scope_selected_kinds,
+    native_post_rate_limit_check_required, native_post_rate_limit_recent_present_in_content,
+    native_post_real_handler_scope_matches, native_post_real_handler_scope_selected_kinds,
     native_post_real_handler_scope_single_selected_kind, native_post_redacted_fingerprint,
-    native_post_rollback_contract,
+    native_post_rollback_contract, native_post_store_capacity_check_required,
+    native_post_store_write_attempt_required,
 };
 
 pub fn native_post_plan_report(
@@ -258,10 +259,12 @@ pub fn native_post_real_handler_harness(
     } else {
         (false, None)
     };
-    let duplicate_suppressed = duplicate_check_performed && duplicate_found;
-    let rate_limit_check_performed = execution_admission.current_plan_executes_real_handler
-        && !duplicate_suppressed
-        && duplicate_check_error.is_none();
+    let rate_limit_check_performed = native_post_rate_limit_check_required(
+        execution_admission,
+        duplicate_check_performed,
+        duplicate_found,
+        duplicate_check_error,
+    );
     let (rate_limited, rate_limit_check_error) = if rate_limit_check_performed {
         match native_post_rate_limit_recent_present(
             store_root,
@@ -274,11 +277,14 @@ pub fn native_post_real_handler_harness(
     } else {
         (false, None)
     };
-    let capacity_check_performed = execution_admission.current_plan_executes_real_handler
-        && !duplicate_suppressed
-        && duplicate_check_error.is_none()
-        && !rate_limited
-        && rate_limit_check_error.is_none();
+    let capacity_check_performed = native_post_store_capacity_check_required(
+        execution_admission,
+        duplicate_check_performed,
+        duplicate_found,
+        duplicate_check_error,
+        rate_limited,
+        rate_limit_check_error,
+    );
     let pending_record = if capacity_check_performed {
         Some(native_post_execution_store_record(
             spec,
@@ -304,8 +310,11 @@ pub fn native_post_real_handler_harness(
     } else {
         (true, None)
     };
-    let store_write_attempted =
-        capacity_check_performed && store_capacity_ok && store_capacity_check_error.is_none();
+    let store_write_attempted = native_post_store_write_attempt_required(
+        capacity_check_performed,
+        store_capacity_ok,
+        store_capacity_check_error,
+    );
     let (store_write_succeeded, store_write_report, store_write_error) = if store_write_attempted {
         match persist_native_post_execution_store_record(
             store_root,
@@ -682,6 +691,26 @@ mod tests {
         assert!(super::native_post_duplicate_check_required(
             &matched,
             &idempotency
+        ));
+        assert!(super::native_post_rate_limit_check_required(
+            &matched, true, false, None
+        ));
+        assert!(!super::native_post_rate_limit_check_required(
+            &matched, true, true, None
+        ));
+        assert!(super::native_post_store_capacity_check_required(
+            &matched, true, false, None, false, None
+        ));
+        assert!(!super::native_post_store_capacity_check_required(
+            &matched, true, false, None, true, None
+        ));
+        assert!(super::native_post_store_write_attempt_required(
+            true, true, None
+        ));
+        assert!(!super::native_post_store_write_attempt_required(
+            true,
+            true,
+            Some("native_post_store_capacity_check_failed")
         ));
     }
 
