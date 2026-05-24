@@ -934,6 +934,58 @@ pub struct HeptaUpstreamCodexActivationPacketDryRunReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceRequirement {
+    pub id: String,
+    pub required: bool,
+    pub recorded: bool,
+    pub fresh: bool,
+    pub source_gate: String,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceLedgerReport {
+    pub product: String,
+    pub status: String,
+    pub ledger_id: String,
+    pub ledger_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_dry_run_gate: String,
+    pub evidence_ledger_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub dry_run_validator_ready: bool,
+    pub activation_packet_recorded: bool,
+    pub required_evidence_count: usize,
+    pub recorded_evidence_count: usize,
+    pub fresh_evidence_count: usize,
+    pub evidence_ledger_ready: bool,
+    pub evidence_recorded: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub evidence_requirements: Vec<HeptaUpstreamCodexActivationEvidenceRequirement>,
+    pub ledger_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -2688,6 +2740,158 @@ fn default_activation_packet_dry_run_fixtures(
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceLedgerReport {
+    pub fn native_default() -> Self {
+        let dry_run = HeptaUpstreamCodexActivationPacketDryRunReport::native_default();
+        let evidence_requirements = default_activation_evidence_requirements();
+        let required_evidence_count = evidence_requirements
+            .iter()
+            .filter(|requirement| requirement.required)
+            .count();
+        let recorded_evidence_count = evidence_requirements
+            .iter()
+            .filter(|requirement| requirement.required && requirement.recorded)
+            .count();
+        let fresh_evidence_count = evidence_requirements
+            .iter()
+            .filter(|requirement| requirement.required && requirement.fresh)
+            .count();
+        let evidence_recorded = false;
+        let active_wiring_allowed = false;
+        let evidence_ledger_ready = dry_run.dry_run_validator_ready
+            && !dry_run.activation_packet_recorded
+            && required_evidence_count == 8
+            && recorded_evidence_count == 0
+            && fresh_evidence_count == 0
+            && evidence_requirements.iter().all(|requirement| {
+                requirement.required && !requirement.recorded && !requirement.fresh
+            })
+            && !evidence_recorded
+            && !active_wiring_allowed;
+
+        Self {
+            product: "Hepta".into(),
+            status: if evidence_ledger_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            ledger_id: "upstream-codex-activation-evidence-ledger-checklist".into(),
+            ledger_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_LEDGER.md".into(),
+            upstream_repository: dry_run.upstream_repository,
+            candidate_diff_range: dry_run.candidate_diff_range,
+            source_dry_run_gate: dry_run.dry_run_validator_gate,
+            evidence_ledger_gate: "scripts/hepta-upstream-codex-activation-evidence-ledger.sh"
+                .into(),
+            active_dependency_isolation_gate: dry_run.active_dependency_isolation_gate,
+            dry_run_validator_ready: dry_run.dry_run_validator_ready,
+            activation_packet_recorded: dry_run.activation_packet_recorded,
+            required_evidence_count,
+            recorded_evidence_count,
+            fresh_evidence_count,
+            evidence_ledger_ready,
+            evidence_recorded,
+            active_wiring_allowed,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            evidence_requirements,
+            ledger_invariants: vec![
+                "evidence ledger is a checklist only and records no concrete evidence by default".into(),
+                "all eight required evidence slots are required but unrecorded".into(),
+                "freshness starts false until evidence ids are bound to current live gates".into(),
+                "activation packet remains unrecorded while evidence is missing".into(),
+                "public release and artifact-write decisions stay denied".into(),
+            ],
+            required_next_gates: vec![
+                "record a concrete activation request id before any active wiring".into(),
+                "record an operator approval id and hashed operator identity before any active wiring".into(),
+                "bind live dependency-isolation, watchdog, browser-smoke, long-soak, and rollback evidence ids".into(),
+                "rerun the activation packet dry-run validator after concrete evidence is recorded".into(),
+                "rerun clean preflight and live gates before considering any operator-approved activation packet".into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_requirement(
+    id: &str,
+    source_gate: &str,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationEvidenceRequirement {
+    HeptaUpstreamCodexActivationEvidenceRequirement {
+        id: id.into(),
+        required: true,
+        recorded: false,
+        fresh: false,
+        source_gate: source_gate.into(),
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_evidence_requirements() -> Vec<HeptaUpstreamCodexActivationEvidenceRequirement>
+{
+    vec![
+        activation_evidence_requirement(
+            "activation_request_id",
+            "operator activation request record",
+            "unique activation request binding all evidence records",
+        ),
+        activation_evidence_requirement(
+            "operator_approval_id",
+            "operator approval packet",
+            "explicit operator approval for the requested activation",
+        ),
+        activation_evidence_requirement(
+            "operator_identity_hash",
+            "operator approval packet",
+            "hashed operator identity with no raw account or credential detail",
+        ),
+        activation_evidence_requirement(
+            "live_dependency_isolation_evidence_id",
+            "scripts/hepta-active-service-dependency-isolation.sh",
+            "fresh live active-service dependency isolation evidence",
+        ),
+        activation_evidence_requirement(
+            "watchdog_evidence_id",
+            "scripts/hepta-codex-watchdog.sh",
+            "fresh watchdog evidence for the active service",
+        ),
+        activation_evidence_requirement(
+            "browser_smoke_evidence_id",
+            "scripts/hepta-codex-browser-visual-smoke.sh",
+            "fresh browser visual smoke evidence",
+        ),
+        activation_evidence_requirement(
+            "long_soak_evidence_id",
+            "scripts/hepta-codex-live-soak.sh",
+            "fresh long-soak evidence for the active service",
+        ),
+        activation_evidence_requirement(
+            "rollback_plan_id",
+            "operator rollback plan record",
+            "explicit rollback anchor for the requested activation",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -3234,6 +3438,11 @@ pub fn hepta_upstream_codex_activation_request_packet_report()
 pub fn hepta_upstream_codex_activation_packet_dry_run_report()
 -> HeptaUpstreamCodexActivationPacketDryRunReport {
     HeptaUpstreamCodexActivationPacketDryRunReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_ledger_report()
+-> HeptaUpstreamCodexActivationEvidenceLedgerReport {
+    HeptaUpstreamCodexActivationEvidenceLedgerReport::native_default()
 }
 
 #[cfg(test)]
@@ -5043,6 +5252,92 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("concrete activation packet"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_ledger_is_ready_but_empty() {
+        let report = hepta_upstream_codex_activation_evidence_ledger_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.ledger_id,
+            "upstream-codex-activation-evidence-ledger-checklist"
+        );
+        assert_eq!(
+            report.ledger_doc_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_LEDGER.md"
+        );
+        assert_eq!(
+            report.source_dry_run_gate,
+            "scripts/hepta-upstream-codex-activation-packet-dry-run.sh"
+        );
+        assert_eq!(
+            report.evidence_ledger_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-ledger.sh"
+        );
+        assert!(report.dry_run_validator_ready);
+        assert!(!report.activation_packet_recorded);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.recorded_evidence_count, 0);
+        assert_eq!(report.fresh_evidence_count, 0);
+        assert!(report.evidence_ledger_ready);
+        assert!(!report.evidence_recorded);
+        assert!(!report.active_wiring_allowed);
+        assert!(
+            report
+                .evidence_requirements
+                .iter()
+                .all(|requirement| requirement.required
+                    && !requirement.recorded
+                    && !requirement.fresh)
+        );
+        assert!(report.evidence_requirements.iter().any(|requirement| {
+            requirement.id == "live_dependency_isolation_evidence_id"
+                && requirement.source_gate == "scripts/hepta-active-service-dependency-isolation.sh"
+        }));
+        assert!(
+            report
+                .evidence_requirements
+                .iter()
+                .any(|requirement| requirement.id == "rollback_plan_id")
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_ledger_preserves_denials_and_side_effects() {
+        let report = hepta_upstream_codex_activation_evidence_ledger_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .ledger_invariants
+                .iter()
+                .any(|invariant| invariant.contains("records no concrete evidence"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("concrete activation request id"))
         );
     }
 }

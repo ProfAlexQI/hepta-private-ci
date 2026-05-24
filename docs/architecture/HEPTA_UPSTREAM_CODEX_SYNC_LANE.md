@@ -289,6 +289,19 @@ three representative placeholder fixtures against the `14`-field schema and
 requires all three to stay blocked, with `0` allowed fixtures and public
 release/artifact-write decisions false.
 
+The activation evidence ledger gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-ledger.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_LEDGER.md`. It
+defines `8` required evidence slots for activation request id, operator
+approval, hashed identity, live dependency isolation, watchdog, browser smoke,
+long soak, and rollback plan. It keeps recorded evidence and fresh evidence at
+`0`, so active wiring remains false.
+
 The local sync-lane gate is:
 
 ```bash

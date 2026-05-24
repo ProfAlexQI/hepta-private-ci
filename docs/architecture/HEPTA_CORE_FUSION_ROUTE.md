@@ -111,6 +111,9 @@ Current state:
   placeholder activation packet fixtures against that schema: all `3` fixtures
   remain blocked, `0` fixtures are allowed, and public release/artifact-write
   decisions stay false.
+- `scripts/hepta-upstream-codex-activation-evidence-ledger.sh` defines the
+  activation evidence checklist: `8` required evidence slots, `0` recorded
+  evidence ids, `0` fresh evidence ids, and active wiring still false.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

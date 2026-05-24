@@ -84,3 +84,8 @@ The follow-up activation packet dry-run gate is
 `scripts/hepta-upstream-codex-activation-packet-dry-run.sh`. It validates
 placeholder fixtures and requires incomplete activation packets to remain
 blocked before any concrete operator-approved packet can be considered.
+
+The follow-up activation evidence ledger gate is
+`scripts/hepta-upstream-codex-activation-evidence-ledger.sh`. It defines the
+required evidence slots and keeps all evidence unrecorded until a concrete
+operator-approved activation packet exists.

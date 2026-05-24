@@ -90,6 +90,8 @@ account, provider, or channel secret may be recorded in the packet.
 
 - Validate placeholder/incomplete activation packets with
   `scripts/hepta-upstream-codex-activation-packet-dry-run.sh`.
+- Define required activation evidence slots with
+  `scripts/hepta-upstream-codex-activation-evidence-ledger.sh`.
 - Record a concrete `activation_request_id` before any active wiring.
 - Record an operator approval id and hashed operator identity before any active
   wiring.
