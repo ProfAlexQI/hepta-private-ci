@@ -505,6 +505,61 @@ pub struct HeptaUpstreamCodexAbsorptionReplayReadinessReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexPromotionDecision {
+    pub bucket_id: String,
+    pub risk: HeptaUpstreamCodexSyncRisk,
+    pub selected_changed_file_count: usize,
+    pub absorption_replay_ready: bool,
+    pub required_surface_promotion_packet: String,
+    pub surface_promotion_packet_ready: bool,
+    pub active_promotion_allowed: bool,
+    pub blocker: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexPromotionReadinessReport {
+    pub product: String,
+    pub status: String,
+    pub decision_id: String,
+    pub decision_packet_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_readiness_gate: String,
+    pub promotion_readiness_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub assessed_bucket_count: usize,
+    pub required_assessed_bucket_count: usize,
+    pub absorption_replay_ready_count: usize,
+    pub required_absorption_replay_ready_count: usize,
+    pub required_surface_promotion_packet_count: usize,
+    pub completed_surface_promotion_packet_count: usize,
+    pub promotable_bucket_count: usize,
+    pub promotion_blocked_bucket_count: usize,
+    pub readiness_source_ready: bool,
+    pub active_promotion_ready: bool,
+    pub decision_ready: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub decisions: Vec<HeptaUpstreamCodexPromotionDecision>,
+    pub promotion_blockers: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -1375,6 +1430,147 @@ impl HeptaUpstreamCodexAbsorptionReplayReadinessReport {
     }
 }
 
+impl HeptaUpstreamCodexPromotionReadinessReport {
+    pub fn native_default() -> Self {
+        let decisions = vec![
+            HeptaUpstreamCodexPromotionDecision {
+                bucket_id: "product-doc-release-governance".into(),
+                risk: HeptaUpstreamCodexSyncRisk::P2Product,
+                selected_changed_file_count: 22,
+                absorption_replay_ready: true,
+                required_surface_promotion_packet:
+                    "release-governance-claim-promotion-packet".into(),
+                surface_promotion_packet_ready: false,
+                active_promotion_allowed: false,
+                blocker:
+                    "release claims still require a dedicated operator-approved claim packet"
+                        .into(),
+            },
+            HeptaUpstreamCodexPromotionDecision {
+                bucket_id: "legacy-cli-tui-compatibility".into(),
+                risk: HeptaUpstreamCodexSyncRisk::P1Compatibility,
+                selected_changed_file_count: 128,
+                absorption_replay_ready: true,
+                required_surface_promotion_packet: "hepta-cli-tui-parity-promotion-packet".into(),
+                surface_promotion_packet_ready: false,
+                active_promotion_allowed: false,
+                blocker: "legacy CLI/TUI behavior needs a Hepta-native parity packet before use"
+                    .into(),
+            },
+            HeptaUpstreamCodexPromotionDecision {
+                bucket_id: "provider-credential-sandbox-security".into(),
+                risk: HeptaUpstreamCodexSyncRisk::P0Security,
+                selected_changed_file_count: 104,
+                absorption_replay_ready: true,
+                required_surface_promotion_packet:
+                    "provider-security-policy-promotion-packet".into(),
+                surface_promotion_packet_ready: false,
+                active_promotion_allowed: false,
+                blocker:
+                    "provider, credential, sandbox, and network deltas need a P0 security promotion packet"
+                        .into(),
+            },
+            HeptaUpstreamCodexPromotionDecision {
+                bucket_id: "runtime-session-tool-mcp-appserver".into(),
+                risk: HeptaUpstreamCodexSyncRisk::P0Runtime,
+                selected_changed_file_count: 462,
+                absorption_replay_ready: true,
+                required_surface_promotion_packet:
+                    "runtime-appserver-route-event-promotion-packet".into(),
+                surface_promotion_packet_ready: false,
+                active_promotion_allowed: false,
+                blocker:
+                    "runtime, session, tool, MCP, and app-server deltas need route/event promotion evidence"
+                        .into(),
+            },
+        ];
+        let assessed_bucket_count = decisions.len();
+        let required_assessed_bucket_count = 4;
+        let absorption_replay_ready_count = decisions
+            .iter()
+            .filter(|decision| decision.absorption_replay_ready)
+            .count();
+        let required_absorption_replay_ready_count = 4;
+        let required_surface_promotion_packet_count = decisions.len();
+        let completed_surface_promotion_packet_count = decisions
+            .iter()
+            .filter(|decision| decision.surface_promotion_packet_ready)
+            .count();
+        let promotable_bucket_count = decisions
+            .iter()
+            .filter(|decision| decision.active_promotion_allowed)
+            .count();
+        let promotion_blocked_bucket_count = assessed_bucket_count - promotable_bucket_count;
+        let readiness_source_ready = assessed_bucket_count == required_assessed_bucket_count
+            && absorption_replay_ready_count == required_absorption_replay_ready_count;
+        let active_promotion_ready = readiness_source_ready
+            && completed_surface_promotion_packet_count == required_surface_promotion_packet_count
+            && promotable_bucket_count == assessed_bucket_count;
+        let decision_ready = readiness_source_ready
+            && !active_promotion_ready
+            && promotion_blocked_bucket_count == required_assessed_bucket_count;
+        let promotion_blockers = decisions
+            .iter()
+            .map(|decision| decision.blocker.clone())
+            .collect();
+
+        Self {
+            product: "Hepta".into(),
+            status: if decision_ready { "ready" } else { "attention" }.into(),
+            decision_id: "upstream-codex-promotion-readiness".into(),
+            decision_packet_path: "docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_READINESS.md"
+                .into(),
+            upstream_repository: "https://github.com/openai/codex".into(),
+            candidate_diff_range:
+                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
+                    .into(),
+            source_readiness_gate: "scripts/hepta-upstream-codex-absorption-replay-readiness.sh"
+                .into(),
+            promotion_readiness_gate: "scripts/hepta-upstream-codex-promotion-readiness.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            assessed_bucket_count,
+            required_assessed_bucket_count,
+            absorption_replay_ready_count,
+            required_absorption_replay_ready_count,
+            required_surface_promotion_packet_count,
+            completed_surface_promotion_packet_count,
+            promotable_bucket_count,
+            promotion_blocked_bucket_count,
+            readiness_source_ready,
+            active_promotion_ready,
+            decision_ready,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            decisions,
+            promotion_blockers,
+            required_next_gates: vec![
+                "write per-surface promotion packets before active behavior changes".into(),
+                "prove P0 provider/security promotion with redacted credentials and network policy"
+                    .into(),
+                "prove P0 runtime/app-server promotion with route/event and shadow-replay evidence"
+                    .into(),
+                "prove P1 CLI/TUI promotion with Hepta-native parity evidence".into(),
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+            ],
+        }
+    }
+}
+
 fn sync_contract(
     id: &str,
     risk: HeptaUpstreamCodexSyncRisk,
@@ -1787,6 +1983,11 @@ pub fn hepta_upstream_codex_runtime_appserver_replay_report()
 pub fn hepta_upstream_codex_absorption_replay_readiness_report()
 -> HeptaUpstreamCodexAbsorptionReplayReadinessReport {
     HeptaUpstreamCodexAbsorptionReplayReadinessReport::native_default()
+}
+
+pub fn hepta_upstream_codex_promotion_readiness_report()
+-> HeptaUpstreamCodexPromotionReadinessReport {
+    HeptaUpstreamCodexPromotionReadinessReport::native_default()
 }
 
 #[cfg(test)]
@@ -2839,6 +3040,89 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("newer upstream Codex range"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_promotion_readiness_is_decided_but_not_open() {
+        let report = hepta_upstream_codex_promotion_readiness_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.decision_id, "upstream-codex-promotion-readiness");
+        assert_eq!(
+            report.decision_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_READINESS.md"
+        );
+        assert_eq!(
+            report.source_readiness_gate,
+            "scripts/hepta-upstream-codex-absorption-replay-readiness.sh"
+        );
+        assert_eq!(
+            report.promotion_readiness_gate,
+            "scripts/hepta-upstream-codex-promotion-readiness.sh"
+        );
+        assert_eq!(
+            report.assessed_bucket_count,
+            report.required_assessed_bucket_count
+        );
+        assert_eq!(
+            report.absorption_replay_ready_count,
+            report.required_absorption_replay_ready_count
+        );
+        assert_eq!(report.required_surface_promotion_packet_count, 4);
+        assert_eq!(report.completed_surface_promotion_packet_count, 0);
+        assert_eq!(report.promotable_bucket_count, 0);
+        assert_eq!(report.promotion_blocked_bucket_count, 4);
+        assert!(report.readiness_source_ready);
+        assert!(report.decision_ready);
+        assert!(!report.active_promotion_ready);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+    }
+
+    #[test]
+    fn upstream_codex_promotion_readiness_blocks_all_selected_buckets() {
+        let report = hepta_upstream_codex_promotion_readiness_report();
+
+        assert_eq!(report.decisions.len(), 4);
+        assert_eq!(report.promotion_blockers.len(), 4);
+        assert!(report.decisions.iter().all(|decision| {
+            decision.absorption_replay_ready
+                && !decision.surface_promotion_packet_ready
+                && !decision.active_promotion_allowed
+        }));
+        assert!(report.decisions.iter().any(|decision| decision.bucket_id
+            == "provider-credential-sandbox-security"
+            && decision.risk == HeptaUpstreamCodexSyncRisk::P0Security));
+        assert!(report.decisions.iter().any(|decision| decision.bucket_id
+            == "runtime-session-tool-mcp-appserver"
+            && decision.risk == HeptaUpstreamCodexSyncRisk::P0Runtime));
+        assert!(report.decisions.iter().any(|decision| {
+            decision.bucket_id == "legacy-cli-tui-compatibility"
+                && decision
+                    .required_surface_promotion_packet
+                    .contains("parity")
+        }));
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("per-surface promotion packets"))
         );
     }
 }

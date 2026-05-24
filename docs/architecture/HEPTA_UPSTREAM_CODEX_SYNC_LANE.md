@@ -170,6 +170,21 @@ has been ported into active Hepta code; it only closes readiness for the
 selected bucket contracts while keeping active Codex engine dependencies,
 runtime wiring, automatic rebase, gateway RPC, and public release claims false.
 
+The promotion-readiness decision gate is:
+
+```bash
+scripts/hepta-upstream-codex-promotion-readiness.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_READINESS.md`. It consumes the
+absorption/replay readiness result and explicitly decides that `4 / 4` selected
+buckets are assessed, `4 / 4` absorption/replay sources are ready, but `0`
+surface promotion packets are complete and `0` buckets are promotable. The gate
+therefore keeps active promotion closed until dedicated release-governance,
+CLI/TUI parity, provider/security, and runtime/app-server promotion packets
+exist.
+
 The local sync-lane gate is:
 
 ```bash

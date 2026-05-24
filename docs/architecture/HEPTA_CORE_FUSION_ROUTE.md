@@ -68,6 +68,10 @@ Current state:
   contracts, and four translation/replay packets while keeping active Codex
   engine dependencies, runtime wiring, automatic rebase, and public release
   claims false.
+- `scripts/hepta-upstream-codex-promotion-readiness.sh` turns the intake/replay
+  map into an explicit promotion decision: four selected buckets are assessed,
+  four absorption/replay sources are ready, zero surface promotion packets are
+  complete, and zero buckets are promotable, so active promotion remains closed.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime
