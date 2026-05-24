@@ -140,6 +140,10 @@ Current state:
   evidence record can become trusted evidence: operator approval, activation
   request binding, active binary SHA, route/status hash, artifact hash or
   redacted path, freshness window, and trusted source verification.
+- `scripts/hepta-upstream-codex-activation-trusted-record-shape-validator.sh`
+  proves partially verified trusted-record shapes and public release/artifact
+  write attempts remain blocked until all evidence records are fresh, bound,
+  trusted, and operator-approved.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

@@ -376,6 +376,20 @@ request binding, active binary SHA, route/status hash, artifact hash or
 redacted path, freshness window, and trusted source verification. All accepted
 record counts remain `0`, so active wiring remains false.
 
+The trusted record shape validator gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-trusted-record-shape-validator.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_TRUSTED_RECORD_SHAPE_VALIDATOR.md`.
+It tests `partial-trusted-records` and
+`public-claim-attempt-with-trusted-shape` fixtures. Both stay blocked, public
+release and artifact writes stay false, and active wiring remains false until
+all `8` evidence records satisfy every freshness, binding, trust, and operator
+approval requirement.
+
 The local sync-lane gate is:
 
 ```bash

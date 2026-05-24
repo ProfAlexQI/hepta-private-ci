@@ -102,8 +102,10 @@ Every evidence record must satisfy all seven checks before it can be accepted:
 
 ## Required Next Gates
 
-- Replace placeholders with operator-approved evidence records.
-- Bind every evidence record to the activation request id and active binary SHA.
-- Verify route/status and artifact hashes for live dependency, watchdog,
-  browser, soak, and rollback evidence.
-- Rerun freshness policy and clean preflight after trusted evidence is recorded.
+- Run the trusted record shape validator:
+  `scripts/hepta-upstream-codex-activation-trusted-record-shape-validator.sh`.
+- Prove partially verified trusted-record shapes remain blocked.
+- Prove public release claims and release artifact writes remain blocked when
+  freshness or any verification check is incomplete.
+- Replace fixtures only after a real operator-approved activation request is
+  recorded and all seven checks pass for every required evidence record.

@@ -1371,6 +1371,82 @@ pub struct HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationTrustedRecordShapeValidatorFixture {
+    pub fixture_id: String,
+    pub fixture_kind: String,
+    pub evidence_record_count: usize,
+    pub schema_complete_record_count: usize,
+    pub required_verification_count_per_record: usize,
+    pub total_required_verification_count: usize,
+    pub total_satisfied_verification_count: usize,
+    pub operator_approval_verified_record_count: usize,
+    pub request_binding_verified_record_count: usize,
+    pub active_binary_sha_verified_record_count: usize,
+    pub route_or_status_hash_verified_record_count: usize,
+    pub artifact_hash_verified_record_count: usize,
+    pub freshness_window_satisfied_record_count: usize,
+    pub trusted_source_verified_record_count: usize,
+    pub accepted_record_count: usize,
+    pub blocked_record_count: usize,
+    pub public_release_claim_requested: bool,
+    pub release_artifact_write_requested: bool,
+    pub validation_status: String,
+    pub active_wiring_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationTrustedRecordShapeValidatorReport {
+    pub product: String,
+    pub status: String,
+    pub validator_id: String,
+    pub validator_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_trusted_acceptance_matrix_gate: String,
+    pub trusted_record_shape_validator_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_trusted_acceptance_matrix_ready: bool,
+    pub required_evidence_count: usize,
+    pub fixture_count: usize,
+    pub partial_trusted_fixture_count: usize,
+    pub public_claim_attempt_fixture_count: usize,
+    pub blocked_fixture_count: usize,
+    pub allowed_fixture_count: usize,
+    pub required_verification_count_per_record: usize,
+    pub total_required_verification_count_per_fixture: usize,
+    pub max_satisfied_verification_count: usize,
+    pub trusted_record_shape_validator_ready: bool,
+    pub activation_blocked_by_shape_validator: bool,
+    pub activation_allowed_by_shape_validator: bool,
+    pub shape_denial_reason: String,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub fixtures: Vec<HeptaUpstreamCodexActivationTrustedRecordShapeValidatorFixture>,
+    pub shape_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -4273,6 +4349,221 @@ fn default_activation_trusted_evidence_acceptance_matrix_entries(
         .collect()
 }
 
+impl HeptaUpstreamCodexActivationTrustedRecordShapeValidatorReport {
+    pub fn native_default() -> Self {
+        let matrix =
+            HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport::native_default();
+        let fixtures = default_activation_trusted_record_shape_validator_fixtures(&matrix);
+        let required_evidence_count = matrix.required_evidence_count;
+        let fixture_count = fixtures.len();
+        let partial_trusted_fixture_count = fixtures
+            .iter()
+            .filter(|fixture| fixture.fixture_kind == "partial_trusted_records")
+            .count();
+        let public_claim_attempt_fixture_count = fixtures
+            .iter()
+            .filter(|fixture| fixture.fixture_kind == "public_claim_attempt")
+            .count();
+        let blocked_fixture_count = fixtures
+            .iter()
+            .filter(|fixture| fixture.validation_status == "blocked")
+            .count();
+        let allowed_fixture_count = fixtures
+            .iter()
+            .filter(|fixture| fixture.validation_status == "allowed")
+            .count();
+        let required_verification_count_per_record = matrix.required_verification_count_per_record;
+        let total_required_verification_count_per_fixture =
+            required_evidence_count * required_verification_count_per_record;
+        let max_satisfied_verification_count = fixtures
+            .iter()
+            .map(|fixture| fixture.total_satisfied_verification_count)
+            .max()
+            .unwrap_or_default();
+        let activation_allowed_by_shape_validator = false;
+        let activation_blocked_by_shape_validator = true;
+        let shape_denial_reason =
+            "partial or public-claim trusted-record shapes stay blocked until every record is fresh, bound, trusted, and operator-approved"
+                .to_string();
+        let trusted_record_shape_validator_ready = matrix.trusted_evidence_acceptance_matrix_ready
+            && required_evidence_count == 8
+            && fixture_count == 2
+            && partial_trusted_fixture_count == 1
+            && public_claim_attempt_fixture_count == 1
+            && blocked_fixture_count == fixture_count
+            && allowed_fixture_count == 0
+            && required_verification_count_per_record == 7
+            && total_required_verification_count_per_fixture == 56
+            && max_satisfied_verification_count < total_required_verification_count_per_fixture
+            && fixtures.iter().all(|fixture| {
+                !fixture.active_wiring_allowed
+                    && !fixture.public_release_claim_allowed
+                    && !fixture.release_artifact_write_allowed
+            })
+            && activation_blocked_by_shape_validator
+            && !activation_allowed_by_shape_validator;
+
+        Self {
+            product: "Hepta".into(),
+            status: if trusted_record_shape_validator_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            validator_id: "upstream-codex-activation-trusted-record-shape-validator".into(),
+            validator_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_TRUSTED_RECORD_SHAPE_VALIDATOR.md"
+                    .into(),
+            upstream_repository: matrix.upstream_repository,
+            candidate_diff_range: matrix.candidate_diff_range,
+            source_trusted_acceptance_matrix_gate: matrix.trusted_acceptance_matrix_gate,
+            trusted_record_shape_validator_gate:
+                "scripts/hepta-upstream-codex-activation-trusted-record-shape-validator.sh"
+                    .into(),
+            active_dependency_isolation_gate: matrix.active_dependency_isolation_gate,
+            source_trusted_acceptance_matrix_ready: matrix
+                .trusted_evidence_acceptance_matrix_ready,
+            required_evidence_count,
+            fixture_count,
+            partial_trusted_fixture_count,
+            public_claim_attempt_fixture_count,
+            blocked_fixture_count,
+            allowed_fixture_count,
+            required_verification_count_per_record,
+            total_required_verification_count_per_fixture,
+            max_satisfied_verification_count,
+            trusted_record_shape_validator_ready,
+            activation_blocked_by_shape_validator,
+            activation_allowed_by_shape_validator,
+            shape_denial_reason,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            fixtures,
+            shape_invariants: vec![
+                "partially verified evidence records are not trusted evidence".into(),
+                "public release claims stay blocked when any evidence record is incomplete"
+                    .into(),
+                "release artifact writes stay blocked when freshness is missing".into(),
+                "active wiring stays false for every trusted-record shape fixture".into(),
+                "shape validation is report-only and performs no upstream or runtime mutation"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "record a real operator-approved activation request before replacing fixtures"
+                    .into(),
+                "verify all seven checks for every required evidence record".into(),
+                "rerun clean preflight, live gates, browser smoke, and long soak after evidence recording"
+                    .into(),
+                "require a separate explicit operator decision before any public claim or artifact write"
+                    .into(),
+            ],
+        }
+    }
+}
+
+fn activation_trusted_record_shape_validator_fixture(
+    fixture_id: &str,
+    fixture_kind: &str,
+    matrix: &HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport,
+    verified_counts: (usize, usize, usize, usize, usize, usize, usize),
+    public_release_claim_requested: bool,
+    release_artifact_write_requested: bool,
+    denial_reason: &str,
+) -> HeptaUpstreamCodexActivationTrustedRecordShapeValidatorFixture {
+    let (
+        operator_approval_verified_record_count,
+        request_binding_verified_record_count,
+        active_binary_sha_verified_record_count,
+        route_or_status_hash_verified_record_count,
+        artifact_hash_verified_record_count,
+        freshness_window_satisfied_record_count,
+        trusted_source_verified_record_count,
+    ) = verified_counts;
+    let evidence_record_count = matrix.required_evidence_count;
+    let required_verification_count_per_record = matrix.required_verification_count_per_record;
+    let total_required_verification_count =
+        evidence_record_count * required_verification_count_per_record;
+    let total_satisfied_verification_count = operator_approval_verified_record_count
+        + request_binding_verified_record_count
+        + active_binary_sha_verified_record_count
+        + route_or_status_hash_verified_record_count
+        + artifact_hash_verified_record_count
+        + freshness_window_satisfied_record_count
+        + trusted_source_verified_record_count;
+
+    HeptaUpstreamCodexActivationTrustedRecordShapeValidatorFixture {
+        fixture_id: fixture_id.into(),
+        fixture_kind: fixture_kind.into(),
+        evidence_record_count,
+        schema_complete_record_count: matrix.schema_complete_verification_entry_count,
+        required_verification_count_per_record,
+        total_required_verification_count,
+        total_satisfied_verification_count,
+        operator_approval_verified_record_count,
+        request_binding_verified_record_count,
+        active_binary_sha_verified_record_count,
+        route_or_status_hash_verified_record_count,
+        artifact_hash_verified_record_count,
+        freshness_window_satisfied_record_count,
+        trusted_source_verified_record_count,
+        accepted_record_count: 0,
+        blocked_record_count: evidence_record_count,
+        public_release_claim_requested,
+        release_artifact_write_requested,
+        validation_status: "blocked".into(),
+        active_wiring_allowed: false,
+        public_release_claim_allowed: false,
+        release_artifact_write_allowed: false,
+        denial_reason: denial_reason.into(),
+    }
+}
+
+fn default_activation_trusted_record_shape_validator_fixtures(
+    matrix: &HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport,
+) -> Vec<HeptaUpstreamCodexActivationTrustedRecordShapeValidatorFixture> {
+    let required = matrix.required_evidence_count;
+    vec![
+        activation_trusted_record_shape_validator_fixture(
+            "partial-trusted-records",
+            "partial_trusted_records",
+            matrix,
+            (required, required, required, required, 0, 0, 0),
+            false,
+            false,
+            "partial trusted-record shape is missing artifact hashes, freshness, and trusted source verification",
+        ),
+        activation_trusted_record_shape_validator_fixture(
+            "public-claim-attempt-with-trusted-shape",
+            "public_claim_attempt",
+            matrix,
+            (
+                required, required, required, required, required, 0, required,
+            ),
+            true,
+            true,
+            "public release and artifact write attempts remain blocked while freshness is incomplete",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -4854,6 +5145,11 @@ pub fn hepta_upstream_codex_activation_evidence_record_denied_fixture_report()
 pub fn hepta_upstream_codex_activation_trusted_evidence_acceptance_matrix_report()
 -> HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport {
     HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_trusted_record_shape_validator_report()
+-> HeptaUpstreamCodexActivationTrustedRecordShapeValidatorReport {
+    HeptaUpstreamCodexActivationTrustedRecordShapeValidatorReport::native_default()
 }
 
 #[cfg(test)]
@@ -7276,6 +7572,114 @@ mod tests {
                 .acceptance_invariants
                 .iter()
                 .any(|invariant| invariant.contains("not trusted evidence"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_trusted_record_shape_validator_blocks_partial_trust() {
+        let report = hepta_upstream_codex_activation_trusted_record_shape_validator_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.validator_id,
+            "upstream-codex-activation-trusted-record-shape-validator"
+        );
+        assert_eq!(
+            report.source_trusted_acceptance_matrix_gate,
+            "scripts/hepta-upstream-codex-activation-trusted-evidence-acceptance-matrix.sh"
+        );
+        assert_eq!(
+            report.trusted_record_shape_validator_gate,
+            "scripts/hepta-upstream-codex-activation-trusted-record-shape-validator.sh"
+        );
+        assert!(report.source_trusted_acceptance_matrix_ready);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.fixture_count, 2);
+        assert_eq!(report.partial_trusted_fixture_count, 1);
+        assert_eq!(report.public_claim_attempt_fixture_count, 1);
+        assert_eq!(report.blocked_fixture_count, 2);
+        assert_eq!(report.allowed_fixture_count, 0);
+        assert_eq!(report.required_verification_count_per_record, 7);
+        assert_eq!(report.total_required_verification_count_per_fixture, 56);
+        assert_eq!(report.max_satisfied_verification_count, 48);
+        assert!(report.trusted_record_shape_validator_ready);
+        assert!(report.activation_blocked_by_shape_validator);
+        assert!(!report.activation_allowed_by_shape_validator);
+        assert!(!report.active_wiring_allowed);
+
+        let partial = report
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.fixture_id == "partial-trusted-records")
+            .expect("partial trusted fixture");
+        assert_eq!(partial.total_satisfied_verification_count, 32);
+        assert_eq!(partial.artifact_hash_verified_record_count, 0);
+        assert_eq!(partial.freshness_window_satisfied_record_count, 0);
+        assert_eq!(partial.trusted_source_verified_record_count, 0);
+        assert_eq!(partial.accepted_record_count, 0);
+        assert_eq!(partial.blocked_record_count, 8);
+        assert_eq!(partial.validation_status, "blocked");
+        assert!(!partial.active_wiring_allowed);
+    }
+
+    #[test]
+    fn upstream_codex_activation_trusted_record_shape_validator_preserves_public_denials() {
+        let report = hepta_upstream_codex_activation_trusted_record_shape_validator_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .shape_denial_reason
+                .contains("partial or public-claim")
+        );
+
+        let public_claim = report
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.fixture_id == "public-claim-attempt-with-trusted-shape")
+            .expect("public claim fixture");
+        assert!(public_claim.public_release_claim_requested);
+        assert!(public_claim.release_artifact_write_requested);
+        assert_eq!(public_claim.total_satisfied_verification_count, 48);
+        assert_eq!(public_claim.artifact_hash_verified_record_count, 8);
+        assert_eq!(public_claim.freshness_window_satisfied_record_count, 0);
+        assert_eq!(public_claim.trusted_source_verified_record_count, 8);
+        assert_eq!(public_claim.validation_status, "blocked");
+        assert!(!public_claim.public_release_claim_allowed);
+        assert!(!public_claim.release_artifact_write_allowed);
+        assert!(
+            public_claim
+                .denial_reason
+                .contains("freshness is incomplete")
+        );
+        assert!(report.fixtures.iter().all(|fixture| {
+            !fixture.active_wiring_allowed
+                && !fixture.public_release_claim_allowed
+                && !fixture.release_artifact_write_allowed
+        }));
+        assert!(
+            report
+                .shape_invariants
+                .iter()
+                .any(|invariant| invariant.contains("partially verified"))
         );
     }
 }
