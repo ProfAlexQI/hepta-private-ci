@@ -188,6 +188,11 @@ Current state:
   binds future receipt output-path selection to fresh live evidence and the
   active Hepta binary SHA. The binding records are schema-only by default, no
   path is selected, and filesystem persistence/workspace writes remain blocked.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview.sh`
+  models dry-run sink write previews over allowed redacted output roots. Payload
+  hashes and output paths can be planned deterministically, but filesystem
+  persistence, workspace writes, evidence receipt persistence, public release
+  claims, and release artifact writes remain blocked.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

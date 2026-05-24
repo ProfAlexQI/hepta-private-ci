@@ -79,3 +79,8 @@ allowlisted root is not enough to choose a filesystem destination; the future
 receipt sink must also bind fresh live evidence, active binary SHA, trusted
 source verification, operator approval, activation request identity, and
 rollback evidence before persistence can be considered.
+
+Next gate:
+`scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview.sh`
+models redacted sink write previews with deterministic payload hashes while
+keeping filesystem persistence and workspace writes blocked.

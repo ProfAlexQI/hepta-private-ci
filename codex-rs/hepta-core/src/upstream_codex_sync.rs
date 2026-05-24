@@ -2223,6 +2223,85 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEviden
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewFixture {
+    pub fixture_id: String,
+    pub allowed_output_path_entry_name: String,
+    pub redacted_output_path: String,
+    pub deterministic_payload_hash: String,
+    pub fresh_live_evidence_bound: bool,
+    pub active_binary_sha_bound: bool,
+    pub trusted_source_bound: bool,
+    pub operator_approval_bound: bool,
+    pub public_claim_requested: bool,
+    pub release_artifact_write_requested: bool,
+    pub preview_status: String,
+    pub filesystem_persistence_allowed: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewReport {
+    pub product: String,
+    pub status: String,
+    pub filesystem_sink_write_preview_id: String,
+    pub filesystem_sink_write_preview_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_filesystem_output_path_evidence_binding_gate: String,
+    pub filesystem_sink_write_preview_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_filesystem_output_path_evidence_binding_ready: bool,
+    pub required_preview_fixture_count: usize,
+    pub preview_fixture_count: usize,
+    pub allowed_output_path_entry_count: usize,
+    pub previewed_output_path_count: usize,
+    pub deterministic_payload_hash_count: usize,
+    pub redacted_output_path_preview_count: usize,
+    pub fresh_live_evidence_bound_fixture_count: usize,
+    pub active_binary_sha_bound_fixture_count: usize,
+    pub trusted_source_bound_fixture_count: usize,
+    pub operator_approval_bound_fixture_count: usize,
+    pub blocked_preview_fixture_count: usize,
+    pub allowed_preview_fixture_count: usize,
+    pub public_claim_attempt_fixture_count: usize,
+    pub release_artifact_write_attempt_fixture_count: usize,
+    pub filesystem_persistence_allowed_count: usize,
+    pub workspace_write_performed_count: usize,
+    pub evidence_receipt_persisted_count: usize,
+    pub sink_write_preview_ready: bool,
+    pub activation_blocked_by_sink_write_preview: bool,
+    pub activation_allowed_by_sink_write_preview: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub command_invocation_performed: bool,
+    pub receipt_persistence_execution: bool,
+    pub materialization_execution: bool,
+    pub filesystem_persistence_execution: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub preview_fixtures:
+        Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewFixture>,
+    pub preview_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -7392,6 +7471,173 @@ impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBind
     }
 }
 
+impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewReport {
+    pub fn native_default() -> Self {
+        let binding =
+            HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBindingReport::native_default();
+        let preview_fixtures =
+            default_activation_evidence_receipt_filesystem_sink_write_preview_fixtures();
+        let required_preview_fixture_count = 3;
+        let preview_fixture_count = preview_fixtures.len();
+        let allowed_output_path_entry_count = binding.allowed_output_path_entry_count;
+        let previewed_output_path_count = preview_fixtures.len();
+        let deterministic_payload_hash_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.deterministic_payload_hash.starts_with("sha256:"))
+            .count();
+        let redacted_output_path_preview_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.redacted_output_path.starts_with("<redacted:"))
+            .count();
+        let fresh_live_evidence_bound_fixture_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.fresh_live_evidence_bound)
+            .count();
+        let active_binary_sha_bound_fixture_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.active_binary_sha_bound)
+            .count();
+        let trusted_source_bound_fixture_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.trusted_source_bound)
+            .count();
+        let operator_approval_bound_fixture_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.operator_approval_bound)
+            .count();
+        let blocked_preview_fixture_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.preview_status == "blocked_preview")
+            .count();
+        let allowed_preview_fixture_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.preview_status == "allowed")
+            .count();
+        let public_claim_attempt_fixture_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.public_claim_requested)
+            .count();
+        let release_artifact_write_attempt_fixture_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.release_artifact_write_requested)
+            .count();
+        let filesystem_persistence_allowed_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.filesystem_persistence_allowed)
+            .count();
+        let workspace_write_performed_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.workspace_write_performed)
+            .count();
+        let evidence_receipt_persisted_count = preview_fixtures
+            .iter()
+            .filter(|fixture| fixture.evidence_receipt_persisted)
+            .count();
+        let sink_write_preview_ready = binding.output_path_evidence_binding_ready
+            && preview_fixture_count == required_preview_fixture_count
+            && allowed_output_path_entry_count == 3
+            && previewed_output_path_count == required_preview_fixture_count
+            && deterministic_payload_hash_count == required_preview_fixture_count
+            && redacted_output_path_preview_count == required_preview_fixture_count
+            && fresh_live_evidence_bound_fixture_count == required_preview_fixture_count
+            && active_binary_sha_bound_fixture_count == required_preview_fixture_count
+            && trusted_source_bound_fixture_count == required_preview_fixture_count
+            && operator_approval_bound_fixture_count == required_preview_fixture_count
+            && blocked_preview_fixture_count == required_preview_fixture_count
+            && allowed_preview_fixture_count == 0
+            && public_claim_attempt_fixture_count == 1
+            && release_artifact_write_attempt_fixture_count == 1
+            && filesystem_persistence_allowed_count == 0
+            && workspace_write_performed_count == 0
+            && evidence_receipt_persisted_count == 0;
+        let activation_blocked_by_sink_write_preview = true;
+        let activation_allowed_by_sink_write_preview = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if sink_write_preview_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            filesystem_sink_write_preview_id:
+                "upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview"
+                    .into(),
+            filesystem_sink_write_preview_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_SINK_WRITE_PREVIEW.md"
+                    .into(),
+            upstream_repository: binding.upstream_repository,
+            candidate_diff_range: binding.candidate_diff_range,
+            source_filesystem_output_path_evidence_binding_gate: binding
+                .filesystem_output_path_evidence_binding_gate,
+            filesystem_sink_write_preview_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview.sh"
+                    .into(),
+            active_dependency_isolation_gate: binding.active_dependency_isolation_gate,
+            source_filesystem_output_path_evidence_binding_ready: binding
+                .output_path_evidence_binding_ready,
+            required_preview_fixture_count,
+            preview_fixture_count,
+            allowed_output_path_entry_count,
+            previewed_output_path_count,
+            deterministic_payload_hash_count,
+            redacted_output_path_preview_count,
+            fresh_live_evidence_bound_fixture_count,
+            active_binary_sha_bound_fixture_count,
+            trusted_source_bound_fixture_count,
+            operator_approval_bound_fixture_count,
+            blocked_preview_fixture_count,
+            allowed_preview_fixture_count,
+            public_claim_attempt_fixture_count,
+            release_artifact_write_attempt_fixture_count,
+            filesystem_persistence_allowed_count,
+            workspace_write_performed_count,
+            evidence_receipt_persisted_count,
+            sink_write_preview_ready,
+            activation_blocked_by_sink_write_preview,
+            activation_allowed_by_sink_write_preview,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            command_invocation_performed: false,
+            receipt_persistence_execution: false,
+            materialization_execution: false,
+            filesystem_persistence_execution: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            preview_fixtures,
+            preview_invariants: vec![
+                "sink write previews can select only redacted allowlisted roots".into(),
+                "deterministic payload hashes are preview evidence, not write authority".into(),
+                "filesystem persistence remains disabled until a separate execution gate exists"
+                    .into(),
+                "public release and artifact attempts stay blocked by release governance".into(),
+            ],
+            required_next_gates: vec![
+                "add a filesystem persistence execution-denial matrix before any workspace write"
+                    .into(),
+                "bind preview payload hashes to a future explicit persistence approval id".into(),
+                "keep public artifact paths behind separate release-governance approval".into(),
+            ],
+        }
+    }
+}
+
 fn filesystem_persistence_approval_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -7605,6 +7851,62 @@ fn default_activation_evidence_receipt_filesystem_output_path_evidence_bindings(
             "activation_evidence_dry_run_root",
             true,
             "binds the selected output root to the rollback plan before any persistence",
+        ),
+    ]
+}
+
+fn filesystem_sink_write_preview_fixture(
+    fixture_id: &str,
+    allowed_output_path_entry_name: &str,
+    redacted_output_path: &str,
+    deterministic_payload_hash: &str,
+    public_claim_requested: bool,
+    release_artifact_write_requested: bool,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewFixture {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewFixture {
+        fixture_id: fixture_id.into(),
+        allowed_output_path_entry_name: allowed_output_path_entry_name.into(),
+        redacted_output_path: redacted_output_path.into(),
+        deterministic_payload_hash: deterministic_payload_hash.into(),
+        fresh_live_evidence_bound: true,
+        active_binary_sha_bound: true,
+        trusted_source_bound: true,
+        operator_approval_bound: true,
+        public_claim_requested,
+        release_artifact_write_requested,
+        preview_status: "blocked_preview".into(),
+        filesystem_persistence_allowed: false,
+        workspace_write_performed: false,
+        evidence_receipt_persisted: false,
+    }
+}
+
+fn default_activation_evidence_receipt_filesystem_sink_write_preview_fixtures()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewFixture> {
+    vec![
+        filesystem_sink_write_preview_fixture(
+            "receipt-root-sink-write-preview",
+            "activation_evidence_receipts_root",
+            "<redacted:hepta-activation-evidence-receipts/receipt-preview.json>",
+            "sha256:preview-receipt-root-payload",
+            false,
+            false,
+        ),
+        filesystem_sink_write_preview_fixture(
+            "dry-run-root-sink-write-preview",
+            "activation_evidence_dry_run_root",
+            "<redacted:hepta-activation-evidence-dry-run/receipt-preview.json>",
+            "sha256:preview-dry-run-root-payload",
+            false,
+            false,
+        ),
+        filesystem_sink_write_preview_fixture(
+            "public-artifact-sink-write-preview-attempt",
+            "activation_evidence_operator_packet_root",
+            "<redacted:hepta-operator-activation-packets/public-artifact-attempt.json>",
+            "sha256:preview-public-artifact-attempt-payload",
+            true,
+            true,
         ),
     ]
 }
@@ -8250,6 +8552,11 @@ pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_a
 pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_evidence_binding_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBindingReport {
     HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBindingReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_sink_write_preview_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewReport::native_default()
 }
 
 #[cfg(test)]
@@ -11747,6 +12054,95 @@ mod tests {
                 .binding_invariants
                 .iter()
                 .any(|invariant| invariant.contains("fresh live evidence binding"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_sink_write_preview_is_ready() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_sink_write_preview_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.filesystem_sink_write_preview_id,
+            "upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview"
+        );
+        assert_eq!(
+            report.source_filesystem_output_path_evidence_binding_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding.sh"
+        );
+        assert_eq!(
+            report.filesystem_sink_write_preview_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview.sh"
+        );
+        assert!(report.source_filesystem_output_path_evidence_binding_ready);
+        assert_eq!(report.required_preview_fixture_count, 3);
+        assert_eq!(report.preview_fixture_count, 3);
+        assert_eq!(report.allowed_output_path_entry_count, 3);
+        assert_eq!(report.previewed_output_path_count, 3);
+        assert_eq!(report.deterministic_payload_hash_count, 3);
+        assert_eq!(report.redacted_output_path_preview_count, 3);
+        assert_eq!(report.fresh_live_evidence_bound_fixture_count, 3);
+        assert_eq!(report.active_binary_sha_bound_fixture_count, 3);
+        assert_eq!(report.trusted_source_bound_fixture_count, 3);
+        assert_eq!(report.operator_approval_bound_fixture_count, 3);
+        assert_eq!(report.blocked_preview_fixture_count, 3);
+        assert_eq!(report.allowed_preview_fixture_count, 0);
+        assert_eq!(report.public_claim_attempt_fixture_count, 1);
+        assert_eq!(report.release_artifact_write_attempt_fixture_count, 1);
+        assert_eq!(report.filesystem_persistence_allowed_count, 0);
+        assert!(report.sink_write_preview_ready);
+        assert!(report.preview_fixtures.iter().all(|fixture| {
+            fixture.redacted_output_path.starts_with("<redacted:")
+                && fixture.deterministic_payload_hash.starts_with("sha256:")
+                && fixture.preview_status == "blocked_preview"
+        }));
+        assert!(report.preview_fixtures.iter().any(|fixture| {
+            fixture.fixture_id == "public-artifact-sink-write-preview-attempt"
+                && fixture.public_claim_requested
+                && fixture.release_artifact_write_requested
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_sink_write_preview_blocks_effects() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_sink_write_preview_report();
+
+        assert!(report.activation_blocked_by_sink_write_preview);
+        assert!(!report.activation_allowed_by_sink_write_preview);
+        assert_eq!(report.filesystem_persistence_allowed_count, 0);
+        assert_eq!(report.workspace_write_performed_count, 0);
+        assert_eq!(report.evidence_receipt_persisted_count, 0);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.command_invocation_performed);
+        assert!(!report.receipt_persistence_execution);
+        assert!(!report.materialization_execution);
+        assert!(!report.filesystem_persistence_execution);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .preview_invariants
+                .iter()
+                .any(|invariant| invariant.contains("not write authority"))
         );
     }
 }

@@ -538,6 +538,21 @@ is selected, active binary SHA/fresh evidence/trusted source counts remain `0`,
 and filesystem persistence, workspace writes, evidence persistence, and public
 release/artifact decisions remain blocked.
 
+The activation evidence receipt filesystem sink write preview gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_SINK_WRITE_PREVIEW.md`.
+It models `3` dry-run sink write previews over allowed redacted output roots.
+Each preview has fresh live evidence binding, active binary SHA binding,
+trusted source binding, operator approval binding, a redacted output path, and a
+deterministic payload hash. All previews remain `blocked_preview`: filesystem
+persistence count is `0`, workspace write count is `0`, evidence receipt
+persistence count is `0`, and public claim/artifact attempts remain blocked.
+
 The local sync-lane gate is:
 
 ```bash
