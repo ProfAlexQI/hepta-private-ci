@@ -79,3 +79,8 @@ The follow-up activation request packet schema gate is
 `scripts/hepta-upstream-codex-activation-request-packet.sh`. It defines the
 required activation request fields and keeps the packet unrecorded, active
 wiring disallowed, and public release/artifact decisions false by default.
+
+The follow-up activation packet dry-run gate is
+`scripts/hepta-upstream-codex-activation-packet-dry-run.sh`. It validates
+placeholder fixtures and requires incomplete activation packets to remain
+blocked before any concrete operator-approved packet can be considered.

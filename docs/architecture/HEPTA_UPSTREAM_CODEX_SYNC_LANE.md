@@ -277,6 +277,18 @@ records the required `14`-field activation packet schema, including
 gate evidence ids, rollback plan id, and release-decision fields. It keeps the
 activation packet unrecorded and active wiring false by default.
 
+The activation packet dry-run validator gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-packet-dry-run.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_PACKET_DRY_RUN.md`. It runs
+three representative placeholder fixtures against the `14`-field schema and
+requires all three to stay blocked, with `0` allowed fixtures and public
+release/artifact-write decisions false.
+
 The local sync-lane gate is:
 
 ```bash

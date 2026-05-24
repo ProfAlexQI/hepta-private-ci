@@ -106,6 +106,9 @@ scripts/hepta-upstream-codex-active-wiring-precondition.sh
 echo "[hepta-codex-preflight] upstream Codex activation request packet gate"
 scripts/hepta-upstream-codex-activation-request-packet.sh
 
+echo "[hepta-codex-preflight] upstream Codex activation packet dry-run gate"
+scripts/hepta-upstream-codex-activation-packet-dry-run.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh

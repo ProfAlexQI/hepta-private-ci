@@ -107,6 +107,10 @@ Current state:
   approved buckets/surfaces, live evidence ids, rollback plan id, and release
   decisions. The schema is ready, no packet is recorded, and active wiring
   remains false.
+- `scripts/hepta-upstream-codex-activation-packet-dry-run.sh` validates
+  placeholder activation packet fixtures against that schema: all `3` fixtures
+  remain blocked, `0` fixtures are allowed, and public release/artifact-write
+  decisions stay false.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

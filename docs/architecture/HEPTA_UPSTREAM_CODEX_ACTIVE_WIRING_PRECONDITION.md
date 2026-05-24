@@ -70,6 +70,8 @@ code wiring by itself.
 
 - Record the activation request packet schema with
   `scripts/hepta-upstream-codex-activation-request-packet.sh`.
+- Validate placeholder/incomplete activation packets with
+  `scripts/hepta-upstream-codex-activation-packet-dry-run.sh`.
 - Bind any future activation request to a concrete `activation_request_id`.
 - Record an operator approval id and hashed operator identity before any active
   wiring.

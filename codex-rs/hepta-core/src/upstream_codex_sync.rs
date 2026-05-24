@@ -873,6 +873,67 @@ pub struct HeptaUpstreamCodexActivationRequestPacketReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationPacketDryRunFixture {
+    pub fixture_id: String,
+    pub title: String,
+    pub recorded_required_field_count: usize,
+    pub missing_required_field_count: usize,
+    pub operator_approval_recorded: bool,
+    pub activation_request_id_recorded: bool,
+    pub live_evidence_recorded: bool,
+    pub rollback_plan_recorded: bool,
+    pub public_release_claim_requested: bool,
+    pub release_artifact_write_requested: bool,
+    pub validation_status: String,
+    pub blocked_reason: String,
+    pub active_wiring_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationPacketDryRunReport {
+    pub product: String,
+    pub status: String,
+    pub validator_id: String,
+    pub validator_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_packet_gate: String,
+    pub dry_run_validator_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub activation_packet_schema_ready: bool,
+    pub activation_packet_recorded: bool,
+    pub required_schema_field_count: usize,
+    pub fixture_count: usize,
+    pub blocked_fixture_count: usize,
+    pub allowed_fixture_count: usize,
+    pub dry_run_validator_ready: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub fixtures: Vec<HeptaUpstreamCodexActivationPacketDryRunFixture>,
+    pub validation_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -2458,6 +2519,175 @@ impl HeptaUpstreamCodexActivationRequestPacketReport {
     }
 }
 
+impl HeptaUpstreamCodexActivationPacketDryRunReport {
+    pub fn native_default() -> Self {
+        let packet = HeptaUpstreamCodexActivationRequestPacketReport::native_default();
+        let fixtures =
+            default_activation_packet_dry_run_fixtures(packet.required_schema_field_count);
+        let fixture_count = fixtures.len();
+        let blocked_fixture_count = fixtures
+            .iter()
+            .filter(|fixture| {
+                fixture.validation_status == "blocked"
+                    && !fixture.active_wiring_allowed
+                    && !fixture.public_release_claim_allowed
+                    && !fixture.release_artifact_write_allowed
+            })
+            .count();
+        let allowed_fixture_count = fixtures
+            .iter()
+            .filter(|fixture| fixture.active_wiring_allowed)
+            .count();
+        let active_wiring_allowed = false;
+        let dry_run_validator_ready = packet.activation_packet_schema_ready
+            && !packet.activation_packet_recorded
+            && packet.required_schema_field_count == 14
+            && fixture_count == 3
+            && blocked_fixture_count == fixture_count
+            && allowed_fixture_count == 0
+            && !active_wiring_allowed;
+
+        Self {
+            product: "Hepta".into(),
+            status: if dry_run_validator_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            validator_id: "upstream-codex-activation-packet-dry-run-validator".into(),
+            validator_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_PACKET_DRY_RUN.md".into(),
+            upstream_repository: packet.upstream_repository,
+            candidate_diff_range: packet.candidate_diff_range,
+            source_packet_gate: packet.activation_request_packet_gate,
+            dry_run_validator_gate: "scripts/hepta-upstream-codex-activation-packet-dry-run.sh"
+                .into(),
+            active_dependency_isolation_gate: packet.active_dependency_isolation_gate,
+            activation_packet_schema_ready: packet.activation_packet_schema_ready,
+            activation_packet_recorded: packet.activation_packet_recorded,
+            required_schema_field_count: packet.required_schema_field_count,
+            fixture_count,
+            blocked_fixture_count,
+            allowed_fixture_count,
+            dry_run_validator_ready,
+            active_wiring_allowed,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            fixtures,
+            validation_invariants: vec![
+                "dry-run fixtures cannot activate wiring without all required fields".into(),
+                "operator approval and activation request id must both be recorded".into(),
+                "live evidence and rollback fields must be present before activation".into(),
+                "public release and artifact-write requests are denied by default".into(),
+                "the dry-run validator performs no upstream or runtime side effects".into(),
+            ],
+            required_next_gates: vec![
+                "replace placeholder fixtures with a concrete activation packet only after operator approval".into(),
+                "bind the activation packet to fresh dependency-isolation, watchdog, browser-smoke, long-soak, and rollback evidence ids".into(),
+                "keep active Codex engine dependency false unless a separate dependency-change review approves it".into(),
+                "keep public release and artifact-write decisions false until release governance approves them".into(),
+                "rerun clean preflight and live gates after any future concrete activation packet is recorded".into(),
+            ],
+        }
+    }
+}
+
+fn activation_packet_dry_run_fixture(
+    required_schema_field_count: usize,
+    fixture_id: &str,
+    title: &str,
+    recorded_required_field_count: usize,
+    operator_approval_recorded: bool,
+    activation_request_id_recorded: bool,
+    live_evidence_recorded: bool,
+    rollback_plan_recorded: bool,
+    public_release_claim_requested: bool,
+    release_artifact_write_requested: bool,
+    blocked_reason: &str,
+) -> HeptaUpstreamCodexActivationPacketDryRunFixture {
+    HeptaUpstreamCodexActivationPacketDryRunFixture {
+        fixture_id: fixture_id.into(),
+        title: title.into(),
+        recorded_required_field_count,
+        missing_required_field_count: required_schema_field_count
+            .saturating_sub(recorded_required_field_count),
+        operator_approval_recorded,
+        activation_request_id_recorded,
+        live_evidence_recorded,
+        rollback_plan_recorded,
+        public_release_claim_requested,
+        release_artifact_write_requested,
+        validation_status: "blocked".into(),
+        blocked_reason: blocked_reason.into(),
+        active_wiring_allowed: false,
+        public_release_claim_allowed: false,
+        release_artifact_write_allowed: false,
+    }
+}
+
+fn default_activation_packet_dry_run_fixtures(
+    required_schema_field_count: usize,
+) -> Vec<HeptaUpstreamCodexActivationPacketDryRunFixture> {
+    vec![
+        activation_packet_dry_run_fixture(
+            required_schema_field_count,
+            "empty-placeholder",
+            "empty placeholder packet",
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            "all required activation fields are missing",
+        ),
+        activation_packet_dry_run_fixture(
+            required_schema_field_count,
+            "operator-only-placeholder",
+            "operator marker without activation evidence",
+            2,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            "activation request id, live evidence, and rollback plan are missing",
+        ),
+        activation_packet_dry_run_fixture(
+            required_schema_field_count,
+            "public-claim-attempt-without-evidence",
+            "public claim request without approval evidence",
+            6,
+            true,
+            true,
+            false,
+            false,
+            true,
+            true,
+            "public release and artifact-write requests remain denied without full evidence",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -2999,6 +3229,11 @@ pub fn hepta_upstream_codex_active_wiring_precondition_report()
 pub fn hepta_upstream_codex_activation_request_packet_report()
 -> HeptaUpstreamCodexActivationRequestPacketReport {
     HeptaUpstreamCodexActivationRequestPacketReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_packet_dry_run_report()
+-> HeptaUpstreamCodexActivationPacketDryRunReport {
+    HeptaUpstreamCodexActivationPacketDryRunReport::native_default()
 }
 
 #[cfg(test)]
@@ -4715,6 +4950,99 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("concrete activation_request_id"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_packet_dry_run_blocks_incomplete_fixtures() {
+        let report = hepta_upstream_codex_activation_packet_dry_run_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.validator_id,
+            "upstream-codex-activation-packet-dry-run-validator"
+        );
+        assert_eq!(
+            report.validator_doc_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_PACKET_DRY_RUN.md"
+        );
+        assert_eq!(
+            report.source_packet_gate,
+            "scripts/hepta-upstream-codex-activation-request-packet.sh"
+        );
+        assert_eq!(
+            report.dry_run_validator_gate,
+            "scripts/hepta-upstream-codex-activation-packet-dry-run.sh"
+        );
+        assert!(report.activation_packet_schema_ready);
+        assert!(!report.activation_packet_recorded);
+        assert_eq!(report.required_schema_field_count, 14);
+        assert_eq!(report.fixture_count, 3);
+        assert_eq!(report.blocked_fixture_count, report.fixture_count);
+        assert_eq!(report.allowed_fixture_count, 0);
+        assert!(report.dry_run_validator_ready);
+        assert!(!report.active_wiring_allowed);
+
+        let empty = report
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.fixture_id == "empty-placeholder")
+            .expect("empty placeholder fixture");
+        assert_eq!(empty.recorded_required_field_count, 0);
+        assert_eq!(empty.missing_required_field_count, 14);
+        assert!(!empty.active_wiring_allowed);
+
+        let public_attempt = report
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.fixture_id == "public-claim-attempt-without-evidence")
+            .expect("public claim attempt fixture");
+        assert!(public_attempt.public_release_claim_requested);
+        assert!(public_attempt.release_artifact_write_requested);
+        assert!(!public_attempt.public_release_claim_allowed);
+        assert!(!public_attempt.release_artifact_write_allowed);
+    }
+
+    #[test]
+    fn upstream_codex_activation_packet_dry_run_preserves_denials_and_side_effects() {
+        let report = hepta_upstream_codex_activation_packet_dry_run_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .validation_invariants
+                .iter()
+                .any(|invariant| { invariant.contains("dry-run fixtures cannot activate wiring") })
+        );
+        assert!(
+            report
+                .validation_invariants
+                .iter()
+                .any(|invariant| invariant.contains("public release and artifact-write"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("concrete activation packet"))
         );
     }
 }
