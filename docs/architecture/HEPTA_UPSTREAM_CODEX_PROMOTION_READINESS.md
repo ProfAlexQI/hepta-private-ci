@@ -13,7 +13,7 @@ bucket is allowed to move from report-only intake into active Hepta behavior.
 - Assessed buckets: `4 / 4`
 - Absorption/replay source readiness: `4 / 4`
 - Required surface promotion packets: `4`
-- Completed surface promotion packets: `1`
+- Completed surface promotion packets: `2`
 - Promotable buckets: `0`
 - Promotion-blocked buckets: `4`
 - Active promotion ready: `false`
@@ -28,8 +28,8 @@ The decision packet is ready, but active promotion is not open.
   parity packet before use.
 - `provider-credential-sandbox-security`: provider/security promotion packet is
   ready, but active adapter wiring remains blocked.
-- `runtime-session-tool-mcp-appserver`: runtime, session, tool, MCP, and
-  app-server deltas need route/event promotion evidence.
+- `runtime-session-tool-mcp-appserver`: runtime/app-server promotion packet is
+  ready, but active route/event wiring remains blocked.
 
 ## Required Promotion Packets
 

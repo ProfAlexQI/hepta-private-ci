@@ -67,6 +67,11 @@ Current state:
   runtime/app-server replay packet for app-server protocol, daemon/transport,
   session/thread-store, tool/MCP, exec/hook, and side-effect boundaries, still
   with no active runtime, app-server, or tool/MCP promotion.
+- `scripts/hepta-upstream-codex-runtime-appserver-promotion.sh` verifies the P0
+  runtime/app-server route-event promotion packet: all seven local promotion
+  conditions are ready, but active runtime, app-server, tool/MCP, channel, and
+  gateway promotion remain blocked until active adapter parity and operator
+  approval are explicit.
 - `scripts/hepta-upstream-codex-absorption-replay-readiness.sh` summarizes the
   upstream Codex intake/replay map as four selected buckets, four absorption
   contracts, and four translation/replay packets while keeping active Codex
@@ -74,7 +79,7 @@ Current state:
   claims false.
 - `scripts/hepta-upstream-codex-promotion-readiness.sh` turns the intake/replay
   map into an explicit promotion decision: four selected buckets are assessed,
-  four absorption/replay sources are ready, one surface promotion packet is
+  four absorption/replay sources are ready, two surface promotion packets are
   complete, and zero buckets are promotable, so active promotion remains closed.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and

@@ -495,6 +495,49 @@ pub struct HeptaUpstreamCodexRuntimeAppServerReplayReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexRuntimeAppServerPromotionReport {
+    pub product: String,
+    pub status: String,
+    pub promotion_id: String,
+    pub promotion_packet_path: String,
+    pub selected_bucket_id: String,
+    pub selected_changed_file_count: usize,
+    pub source_replay_gate: String,
+    pub promotion_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub app_server_route_event_contract_ready: bool,
+    pub session_thread_lifecycle_contract_ready: bool,
+    pub tool_mcp_request_envelope_ready: bool,
+    pub exec_hook_event_loop_replay_ready: bool,
+    pub adapter_shadow_replay_ready: bool,
+    pub operator_approval_model_ready: bool,
+    pub side_effect_boundary_ready: bool,
+    pub required_promotion_condition_count: usize,
+    pub ready_promotion_condition_count: usize,
+    pub promotion_packet_ready: bool,
+    pub active_runtime_promotion_allowed: bool,
+    pub active_app_server_promotion_allowed: bool,
+    pub active_tool_mcp_promotion_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub promotion_conditions: Vec<String>,
+    pub remaining_blockers: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaUpstreamCodexAbsorptionReplayReadinessReport {
     pub product: String,
     pub status: String,
@@ -1440,6 +1483,83 @@ impl HeptaUpstreamCodexRuntimeAppServerReplayReport {
     }
 }
 
+impl HeptaUpstreamCodexRuntimeAppServerPromotionReport {
+    pub fn native_default() -> Self {
+        let promotion_conditions: Vec<String> = vec![
+            "app-server route and event contract is documented".into(),
+            "session and thread lifecycle promotion remains bounded".into(),
+            "tool and MCP request envelopes remain replay-only".into(),
+            "exec hook and runtime event-loop replay remains local".into(),
+            "adapter shadow replay remains required before active behavior changes".into(),
+            "operator approval model is explicit before live mutation".into(),
+            "side-effect boundary keeps runtime wiring, channels, and gateway RPC off".into(),
+        ];
+        let required_promotion_condition_count = 7;
+        let ready_promotion_condition_count = promotion_conditions.len();
+        let promotion_packet_ready =
+            ready_promotion_condition_count == required_promotion_condition_count;
+
+        Self {
+            product: "Hepta".into(),
+            status: if promotion_packet_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            promotion_id: "runtime-appserver-route-event-promotion-packet".into(),
+            promotion_packet_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_RUNTIME_APPSERVER_PROMOTION.md".into(),
+            selected_bucket_id: "runtime-session-tool-mcp-appserver".into(),
+            selected_changed_file_count: 462,
+            source_replay_gate: "scripts/hepta-upstream-codex-runtime-appserver-replay.sh".into(),
+            promotion_gate: "scripts/hepta-upstream-codex-runtime-appserver-promotion.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            app_server_route_event_contract_ready: true,
+            session_thread_lifecycle_contract_ready: true,
+            tool_mcp_request_envelope_ready: true,
+            exec_hook_event_loop_replay_ready: true,
+            adapter_shadow_replay_ready: true,
+            operator_approval_model_ready: true,
+            side_effect_boundary_ready: true,
+            required_promotion_condition_count,
+            ready_promotion_condition_count,
+            promotion_packet_ready,
+            active_runtime_promotion_allowed: false,
+            active_app_server_promotion_allowed: false,
+            active_tool_mcp_promotion_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            promotion_conditions,
+            remaining_blockers: vec![
+                "active runtime route/event wiring is not part of this packet".into(),
+                "live app-server promotion remains forbidden".into(),
+                "live tool and MCP invocation promotion remains forbidden".into(),
+                "gateway RPC and channel delivery remain forbidden".into(),
+            ],
+            required_next_gates: vec![
+                "prove active route/event adapter parity before runtime wiring".into(),
+                "require operator approval before live app-server or tool/MCP behavior".into(),
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+                "rerun promotion readiness after each per-surface promotion packet".into(),
+            ],
+        }
+    }
+}
+
 impl HeptaUpstreamCodexAbsorptionReplayReadinessReport {
     pub fn native_default() -> Self {
         let covered_buckets: Vec<String> = vec![
@@ -1596,10 +1716,10 @@ impl HeptaUpstreamCodexPromotionReadinessReport {
                 absorption_replay_ready: true,
                 required_surface_promotion_packet:
                     "runtime-appserver-route-event-promotion-packet".into(),
-                surface_promotion_packet_ready: false,
+                surface_promotion_packet_ready: true,
                 active_promotion_allowed: false,
                 blocker:
-                    "runtime, session, tool, MCP, and app-server deltas need route/event promotion evidence"
+                    "runtime/app-server promotion packet is ready, but active route/event wiring remains blocked"
                         .into(),
             },
         ];
@@ -2102,6 +2222,11 @@ pub fn hepta_upstream_codex_runtime_appserver_absorption_report()
 pub fn hepta_upstream_codex_runtime_appserver_replay_report()
 -> HeptaUpstreamCodexRuntimeAppServerReplayReport {
     HeptaUpstreamCodexRuntimeAppServerReplayReport::native_default()
+}
+
+pub fn hepta_upstream_codex_runtime_appserver_promotion_report()
+-> HeptaUpstreamCodexRuntimeAppServerPromotionReport {
+    HeptaUpstreamCodexRuntimeAppServerPromotionReport::native_default()
 }
 
 pub fn hepta_upstream_codex_absorption_replay_readiness_report()
@@ -3119,6 +3244,85 @@ mod tests {
     }
 
     #[test]
+    fn upstream_codex_runtime_appserver_promotion_packet_is_ready_but_not_active() {
+        let report = hepta_upstream_codex_runtime_appserver_promotion_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.promotion_id,
+            "runtime-appserver-route-event-promotion-packet"
+        );
+        assert_eq!(
+            report.promotion_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_RUNTIME_APPSERVER_PROMOTION.md"
+        );
+        assert_eq!(
+            report.selected_bucket_id,
+            "runtime-session-tool-mcp-appserver"
+        );
+        assert_eq!(report.selected_changed_file_count, 462);
+        assert_eq!(
+            report.source_replay_gate,
+            "scripts/hepta-upstream-codex-runtime-appserver-replay.sh"
+        );
+        assert_eq!(
+            report.promotion_gate,
+            "scripts/hepta-upstream-codex-runtime-appserver-promotion.sh"
+        );
+        assert_eq!(
+            report.ready_promotion_condition_count,
+            report.required_promotion_condition_count
+        );
+        assert!(report.app_server_route_event_contract_ready);
+        assert!(report.session_thread_lifecycle_contract_ready);
+        assert!(report.tool_mcp_request_envelope_ready);
+        assert!(report.exec_hook_event_loop_replay_ready);
+        assert!(report.adapter_shadow_replay_ready);
+        assert!(report.operator_approval_model_ready);
+        assert!(report.side_effect_boundary_ready);
+        assert!(report.promotion_packet_ready);
+        assert!(!report.active_runtime_promotion_allowed);
+        assert!(!report.active_app_server_promotion_allowed);
+        assert!(!report.active_tool_mcp_promotion_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+    }
+
+    #[test]
+    fn upstream_codex_runtime_appserver_promotion_tracks_blockers() {
+        let report = hepta_upstream_codex_runtime_appserver_promotion_report();
+
+        assert_eq!(report.promotion_conditions.len(), 7);
+        assert_eq!(report.remaining_blockers.len(), 4);
+        assert!(
+            report
+                .promotion_conditions
+                .iter()
+                .any(|condition| condition.contains("route and event contract"))
+        );
+        assert!(
+            report
+                .remaining_blockers
+                .iter()
+                .any(|blocker| blocker.contains("gateway RPC"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("route/event adapter parity"))
+        );
+    }
+
+    #[test]
     fn upstream_codex_absorption_replay_readiness_is_ready_and_bounded() {
         let report = hepta_upstream_codex_absorption_replay_readiness_report();
 
@@ -3273,7 +3477,7 @@ mod tests {
             report.required_absorption_replay_ready_count
         );
         assert_eq!(report.required_surface_promotion_packet_count, 4);
-        assert_eq!(report.completed_surface_promotion_packet_count, 1);
+        assert_eq!(report.completed_surface_promotion_packet_count, 2);
         assert_eq!(report.promotable_bucket_count, 0);
         assert_eq!(report.promotion_blocked_bucket_count, 4);
         assert!(report.readiness_source_ready);
@@ -3312,7 +3516,8 @@ mod tests {
             && decision.surface_promotion_packet_ready));
         assert!(report.decisions.iter().any(|decision| decision.bucket_id
             == "runtime-session-tool-mcp-appserver"
-            && decision.risk == HeptaUpstreamCodexSyncRisk::P0Runtime));
+            && decision.risk == HeptaUpstreamCodexSyncRisk::P0Runtime
+            && decision.surface_promotion_packet_ready));
         assert!(report.decisions.iter().any(|decision| {
             decision.bucket_id == "legacy-cli-tui-compatibility"
                 && decision

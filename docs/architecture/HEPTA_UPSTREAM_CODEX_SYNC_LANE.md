@@ -168,6 +168,19 @@ behavior, and side-effect boundaries. It still performs no active runtime
 promotion, app-server promotion, tool/MCP promotion, runtime wiring, credential
 read, provider invocation, channel delivery, gateway RPC, or public release.
 
+The P0 runtime/app-server promotion packet gate is:
+
+```bash
+scripts/hepta-upstream-codex-runtime-appserver-promotion.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_RUNTIME_APPSERVER_PROMOTION.md`. It
+marks the runtime/app-server route-event promotion packet ready with `7 / 7`
+promotion conditions while still keeping active runtime promotion, app-server
+promotion, tool/MCP promotion, runtime code wiring, channel delivery, gateway
+RPC, and public release claims false.
+
 The absorption/replay readiness gate is:
 
 ```bash
@@ -192,10 +205,10 @@ scripts/hepta-upstream-codex-promotion-readiness.sh
 This gate verifies
 `docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_READINESS.md`. It consumes the
 absorption/replay readiness result and explicitly decides that `4 / 4` selected
-buckets are assessed, `4 / 4` absorption/replay sources are ready, `1` surface
+buckets are assessed, `4 / 4` absorption/replay sources are ready, `2` surface
 promotion packet is complete, and `0` buckets are promotable. The gate therefore
-keeps active promotion closed until the remaining release-governance, CLI/TUI
-parity, runtime/app-server promotion packets and active-wiring evidence exist.
+keeps active promotion closed until the remaining release-governance and CLI/TUI
+parity promotion packets plus active-wiring evidence exist.
 
 The local sync-lane gate is:
 
