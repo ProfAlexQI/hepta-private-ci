@@ -1571,6 +1571,78 @@ pub struct HeptaUpstreamCodexActivationEvidenceRecordingDryRunReceiptReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceRecordingDeniedReceiptAttempt {
+    pub attempt_id: String,
+    pub attempt_kind: String,
+    pub receipt_field_count: usize,
+    pub recorded_receipt_field_count: usize,
+    pub accepted_trusted_record_count: usize,
+    pub fresh_trusted_record_count: usize,
+    pub operator_approval_recorded: bool,
+    pub activation_request_recorded: bool,
+    pub public_claim_requested: bool,
+    pub release_artifact_write_requested: bool,
+    pub receipt_materialized: bool,
+    pub workspace_write_allowed: bool,
+    pub active_wiring_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub denial_status: String,
+    pub denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceRecordingDenialMatrixReport {
+    pub product: String,
+    pub status: String,
+    pub matrix_id: String,
+    pub matrix_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_receipt_gate: String,
+    pub evidence_recording_denial_matrix_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_receipt_gate_ready: bool,
+    pub required_denied_attempt_count: usize,
+    pub denied_receipt_attempt_count: usize,
+    pub allowed_receipt_attempt_count: usize,
+    pub max_recorded_receipt_field_count: usize,
+    pub max_accepted_trusted_record_count: usize,
+    pub max_fresh_trusted_record_count: usize,
+    pub public_claim_attempt_count: usize,
+    pub release_artifact_write_attempt_count: usize,
+    pub receipt_sink_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+    pub trusted_record_materialized: bool,
+    pub no_write_sink_ready: bool,
+    pub activation_blocked_by_no_write_sink: bool,
+    pub activation_allowed_by_no_write_sink: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub denied_receipt_attempts:
+        Vec<HeptaUpstreamCodexActivationEvidenceRecordingDeniedReceiptAttempt>,
+    pub no_write_sink_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -5073,6 +5145,213 @@ fn default_activation_evidence_recording_receipt_fields()
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceRecordingDenialMatrixReport {
+    pub fn native_default() -> Self {
+        let receipt =
+            HeptaUpstreamCodexActivationEvidenceRecordingDryRunReceiptReport::native_default();
+        let denied_receipt_attempts =
+            default_activation_evidence_recording_denied_receipt_attempts();
+        let required_denied_attempt_count = denied_receipt_attempts.len();
+        let denied_receipt_attempt_count = denied_receipt_attempts
+            .iter()
+            .filter(|attempt| attempt.denial_status == "blocked")
+            .count();
+        let allowed_receipt_attempt_count = denied_receipt_attempts
+            .iter()
+            .filter(|attempt| {
+                attempt.receipt_materialized
+                    || attempt.workspace_write_allowed
+                    || attempt.active_wiring_allowed
+                    || attempt.public_release_claim_allowed
+                    || attempt.release_artifact_write_allowed
+            })
+            .count();
+        let max_recorded_receipt_field_count = denied_receipt_attempts
+            .iter()
+            .map(|attempt| attempt.recorded_receipt_field_count)
+            .max()
+            .unwrap_or(0);
+        let max_accepted_trusted_record_count = denied_receipt_attempts
+            .iter()
+            .map(|attempt| attempt.accepted_trusted_record_count)
+            .max()
+            .unwrap_or(0);
+        let max_fresh_trusted_record_count = denied_receipt_attempts
+            .iter()
+            .map(|attempt| attempt.fresh_trusted_record_count)
+            .max()
+            .unwrap_or(0);
+        let public_claim_attempt_count = denied_receipt_attempts
+            .iter()
+            .filter(|attempt| attempt.public_claim_requested)
+            .count();
+        let release_artifact_write_attempt_count = denied_receipt_attempts
+            .iter()
+            .filter(|attempt| attempt.release_artifact_write_requested)
+            .count();
+        let receipt_sink_write_performed = false;
+        let evidence_receipt_persisted = false;
+        let trusted_record_materialized = false;
+        let no_write_sink_ready = receipt.evidence_recording_dry_run_ready
+            && required_denied_attempt_count == 3
+            && denied_receipt_attempt_count == required_denied_attempt_count
+            && allowed_receipt_attempt_count == 0
+            && max_recorded_receipt_field_count == receipt.required_receipt_field_count
+            && max_accepted_trusted_record_count == receipt.required_trusted_record_count
+            && max_fresh_trusted_record_count == receipt.required_trusted_record_count
+            && public_claim_attempt_count == 1
+            && release_artifact_write_attempt_count == 1
+            && !receipt_sink_write_performed
+            && !evidence_receipt_persisted
+            && !trusted_record_materialized;
+        let activation_blocked_by_no_write_sink = true;
+        let activation_allowed_by_no_write_sink = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if no_write_sink_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            matrix_id: "upstream-codex-activation-evidence-recording-denial-matrix".into(),
+            matrix_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECORDING_DENIAL_MATRIX.md"
+                    .into(),
+            upstream_repository: receipt.upstream_repository,
+            candidate_diff_range: receipt.candidate_diff_range,
+            source_receipt_gate: receipt.evidence_recording_dry_run_receipt_gate,
+            evidence_recording_denial_matrix_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-recording-denial-matrix.sh"
+                    .into(),
+            active_dependency_isolation_gate: receipt.active_dependency_isolation_gate,
+            source_receipt_gate_ready: receipt.evidence_recording_dry_run_ready,
+            required_denied_attempt_count,
+            denied_receipt_attempt_count,
+            allowed_receipt_attempt_count,
+            max_recorded_receipt_field_count,
+            max_accepted_trusted_record_count,
+            max_fresh_trusted_record_count,
+            public_claim_attempt_count,
+            release_artifact_write_attempt_count,
+            receipt_sink_write_performed,
+            evidence_receipt_persisted,
+            trusted_record_materialized,
+            no_write_sink_ready,
+            activation_blocked_by_no_write_sink,
+            activation_allowed_by_no_write_sink,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            denied_receipt_attempts,
+            no_write_sink_invariants: vec![
+                "denied receipt attempts can be fully shaped without being persisted".into(),
+                "receipt sink writes remain false until an explicit operator-approved recording path is opened".into(),
+                "public-claim-shaped receipt attempts stay blocked by default".into(),
+                "no denied fixture can enable active runtime wiring or release artifact writes".into(),
+            ],
+            required_next_gates: vec![
+                "define an operator-approved receipt persistence command before any workspace write"
+                    .into(),
+                "bind persisted receipts to fresh trusted record ids and live SHA evidence".into(),
+                "rerun denial matrix before accepting any public-claim-shaped receipt".into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_recording_denied_receipt_attempt(
+    attempt_id: &str,
+    attempt_kind: &str,
+    recorded_receipt_field_count: usize,
+    accepted_trusted_record_count: usize,
+    fresh_trusted_record_count: usize,
+    operator_approval_recorded: bool,
+    activation_request_recorded: bool,
+    public_claim_requested: bool,
+    release_artifact_write_requested: bool,
+    denial_reason: &str,
+) -> HeptaUpstreamCodexActivationEvidenceRecordingDeniedReceiptAttempt {
+    HeptaUpstreamCodexActivationEvidenceRecordingDeniedReceiptAttempt {
+        attempt_id: attempt_id.into(),
+        attempt_kind: attempt_kind.into(),
+        receipt_field_count: 12,
+        recorded_receipt_field_count,
+        accepted_trusted_record_count,
+        fresh_trusted_record_count,
+        operator_approval_recorded,
+        activation_request_recorded,
+        public_claim_requested,
+        release_artifact_write_requested,
+        receipt_materialized: false,
+        workspace_write_allowed: false,
+        active_wiring_allowed: false,
+        public_release_claim_allowed: false,
+        release_artifact_write_allowed: false,
+        denial_status: "blocked".into(),
+        denial_reason: denial_reason.into(),
+    }
+}
+
+fn default_activation_evidence_recording_denied_receipt_attempts()
+-> Vec<HeptaUpstreamCodexActivationEvidenceRecordingDeniedReceiptAttempt> {
+    vec![
+        activation_evidence_recording_denied_receipt_attempt(
+            "partial-receipt-fields",
+            "partial_receipt_fields",
+            5,
+            3,
+            0,
+            false,
+            true,
+            false,
+            false,
+            "partial receipt fields and stale trusted records cannot be persisted",
+        ),
+        activation_evidence_recording_denied_receipt_attempt(
+            "operator-approved-but-stale-evidence",
+            "operator_approved_stale_evidence",
+            12,
+            8,
+            0,
+            true,
+            true,
+            false,
+            false,
+            "operator approval alone cannot bypass stale trusted evidence",
+        ),
+        activation_evidence_recording_denied_receipt_attempt(
+            "public-claim-release-artifact-attempt",
+            "public_claim_release_artifact_attempt",
+            12,
+            8,
+            8,
+            true,
+            true,
+            true,
+            true,
+            "public release claim and artifact writes require a separate explicit release path",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -5669,6 +5948,11 @@ pub fn hepta_upstream_codex_activation_evidence_completeness_scoreboard_report()
 pub fn hepta_upstream_codex_activation_evidence_recording_dry_run_receipt_report()
 -> HeptaUpstreamCodexActivationEvidenceRecordingDryRunReceiptReport {
     HeptaUpstreamCodexActivationEvidenceRecordingDryRunReceiptReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_recording_denial_matrix_report()
+-> HeptaUpstreamCodexActivationEvidenceRecordingDenialMatrixReport {
+    HeptaUpstreamCodexActivationEvidenceRecordingDenialMatrixReport::native_default()
 }
 
 #[cfg(test)]
@@ -8355,6 +8639,94 @@ mod tests {
                 .receipt_invariants
                 .iter()
                 .any(|invariant| invariant.contains("no evidence is recorded"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_recording_denial_matrix_blocks_attempts() {
+        let report = hepta_upstream_codex_activation_evidence_recording_denial_matrix_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.matrix_id,
+            "upstream-codex-activation-evidence-recording-denial-matrix"
+        );
+        assert_eq!(
+            report.source_receipt_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-recording-dry-run-receipt.sh"
+        );
+        assert_eq!(
+            report.evidence_recording_denial_matrix_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-recording-denial-matrix.sh"
+        );
+        assert!(report.source_receipt_gate_ready);
+        assert_eq!(report.required_denied_attempt_count, 3);
+        assert_eq!(report.denied_receipt_attempt_count, 3);
+        assert_eq!(report.allowed_receipt_attempt_count, 0);
+        assert_eq!(report.max_recorded_receipt_field_count, 12);
+        assert_eq!(report.max_accepted_trusted_record_count, 8);
+        assert_eq!(report.max_fresh_trusted_record_count, 8);
+        assert_eq!(report.public_claim_attempt_count, 1);
+        assert_eq!(report.release_artifact_write_attempt_count, 1);
+        assert!(report.no_write_sink_ready);
+        assert!(
+            report
+                .denied_receipt_attempts
+                .iter()
+                .all(|attempt| attempt.denial_status == "blocked")
+        );
+        assert!(
+            report
+                .denied_receipt_attempts
+                .iter()
+                .any(|attempt| attempt.attempt_kind == "public_claim_release_artifact_attempt")
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_recording_denial_matrix_preserves_no_write_sink() {
+        let report = hepta_upstream_codex_activation_evidence_recording_denial_matrix_report();
+
+        assert!(!report.receipt_sink_write_performed);
+        assert!(!report.evidence_receipt_persisted);
+        assert!(!report.trusted_record_materialized);
+        assert!(report.activation_blocked_by_no_write_sink);
+        assert!(!report.activation_allowed_by_no_write_sink);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .denied_receipt_attempts
+                .iter()
+                .all(|attempt| !attempt.receipt_materialized
+                    && !attempt.workspace_write_allowed
+                    && !attempt.active_wiring_allowed
+                    && !attempt.public_release_claim_allowed
+                    && !attempt.release_artifact_write_allowed)
+        );
+        assert!(
+            report
+                .no_write_sink_invariants
+                .iter()
+                .any(|invariant| invariant.contains("fully shaped without being persisted"))
         );
     }
 }

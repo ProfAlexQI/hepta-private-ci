@@ -415,6 +415,19 @@ It defines the redacted receipt schema for future evidence recording. All `12`
 receipt fields remain absent by default, accepted/fresh trusted evidence counts
 remain `0`, and active wiring/public claim decisions stay false.
 
+The activation evidence recording denial matrix gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-recording-denial-matrix.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECORDING_DENIAL_MATRIX.md`.
+It covers `3` denied receipt attempts, including partial receipt fields, stale
+trusted evidence, and a public-claim/release-artifact attempt. All attempts stay
+blocked; no receipt is persisted, no workspace write is allowed, and active
+wiring/public claim decisions remain false.
+
 The local sync-lane gate is:
 
 ```bash

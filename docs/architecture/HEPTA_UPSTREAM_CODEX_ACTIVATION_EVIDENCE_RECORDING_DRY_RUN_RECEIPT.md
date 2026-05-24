@@ -94,7 +94,11 @@ redacted local artifact paths, rollback plan id, and the receipt/request ids.
 
 ## Required Next Gates
 
-- Bind receipt fields to a real activation request id.
+- Run `scripts/hepta-upstream-codex-activation-evidence-recording-denial-matrix.sh`
+  to prove partial, stale, and public-claim-shaped receipt attempts still route
+  to the no-write sink.
+- Bind receipt fields to a real activation request id only after an explicit
+  operator-approved recording command exists.
 - Record fresh trusted evidence ids only after live gate evidence is captured.
-- Write evidence receipts through an explicit operator-approved recording path.
-- Rerun scoreboard and receipt gates before any active runtime wiring.
+- Rerun scoreboard, receipt, and denial matrix gates before any active runtime
+  wiring.

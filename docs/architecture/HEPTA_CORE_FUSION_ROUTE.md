@@ -151,6 +151,10 @@ Current state:
 - `scripts/hepta-upstream-codex-activation-evidence-recording-dry-run-receipt.sh`
   defines the redacted evidence-recording receipt schema and proves it records
   `0` evidence by default, so active wiring and release claims stay blocked.
+- `scripts/hepta-upstream-codex-activation-evidence-recording-denial-matrix.sh`
+  proves partial, stale, and public-claim-shaped receipt attempts are routed to
+  a no-write sink and cannot persist evidence, activate wiring, or write release
+  artifacts by default.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime
