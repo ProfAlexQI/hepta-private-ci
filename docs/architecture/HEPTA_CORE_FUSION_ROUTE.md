@@ -42,6 +42,10 @@ Current state:
 - `scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh` selects the
   P1 CLI/TUI/code-mode compatibility family as an intake contract while keeping
   Codex CLI/TUI behavior out of the active Hepta runtime.
+- `scripts/hepta-upstream-codex-legacy-compatibility-replay.sh` verifies the P1
+  CLI/TUI/code-mode command-contract replay packet while keeping CLI command
+  shape, TUI presentation, code-mode callbacks, terminal helpers, and dependency
+  boundaries report-only with no active CLI/TUI promotion.
 - `scripts/hepta-upstream-codex-provider-security-absorption.sh` selects the P0
   provider/auth/config/exec/sandbox/network-proxy family as an intake contract
   while keeping provider and security-policy behavior out of the active runtime

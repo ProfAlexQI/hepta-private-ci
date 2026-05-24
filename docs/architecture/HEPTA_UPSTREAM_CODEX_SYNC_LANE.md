@@ -85,6 +85,20 @@ snapshot inputs until explicit Hepta command contracts, behavior-equivalence,
 shadow-replay, active dependency isolation, and Hepta-native parity gates are
 green. It does not promote Codex CLI/TUI behavior into the active Hepta service.
 
+The P1 compatibility replay gate is:
+
+```bash
+scripts/hepta-upstream-codex-legacy-compatibility-replay.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_LEGACY_COMPATIBILITY_REPLAY.md`. It
+turns the legacy compatibility intake contract into local replay evidence for
+CLI command shape, TUI presentation, code-mode runtime callbacks, terminal/PTY
+helpers, and the active dependency boundary. It still performs no active CLI/TUI
+promotion, active runtime wiring, Codex engine dependency promotion, gateway RPC,
+or public release claim.
+
 The P0 provider/security absorption-contract gate is:
 
 ```bash
