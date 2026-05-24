@@ -390,6 +390,19 @@ release and artifact writes stay false, and active wiring remains false until
 all `8` evidence records satisfy every freshness, binding, trust, and operator
 approval requirement.
 
+The activation evidence completeness scoreboard gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-completeness-scoreboard.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_COMPLETENESS_SCOREBOARD.md`.
+It summarizes `10` activation evidence gate families. All are ready and all
+continue blocking activation without trusted evidence; accepted trusted record
+count and fresh trusted record count remain `0`, so operator-approved
+activation readiness remains false.
+
 The local sync-lane gate is:
 
 ```bash

@@ -1447,6 +1447,66 @@ pub struct HeptaUpstreamCodexActivationTrustedRecordShapeValidatorReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceCompletenessGateFamily {
+    pub gate_id: String,
+    pub gate_script: String,
+    pub gate_ready: bool,
+    pub blocks_activation_without_trusted_evidence: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceCompletenessScoreboardReport {
+    pub product: String,
+    pub status: String,
+    pub scoreboard_id: String,
+    pub scoreboard_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_trusted_record_shape_validator_gate: String,
+    pub evidence_completeness_scoreboard_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_trusted_record_shape_validator_ready: bool,
+    pub required_gate_family_count: usize,
+    pub ready_gate_family_count: usize,
+    pub activation_blocking_gate_family_count: usize,
+    pub required_evidence_count: usize,
+    pub required_trusted_record_count: usize,
+    pub accepted_trusted_record_count: usize,
+    pub fresh_trusted_record_count: usize,
+    pub operator_approval_recorded: bool,
+    pub activation_request_recorded: bool,
+    pub public_claim_attempt_blocked: bool,
+    pub release_artifact_write_attempt_blocked: bool,
+    pub operator_approved_activation_ready: bool,
+    pub evidence_completeness_scoreboard_ready: bool,
+    pub activation_blocked_by_scoreboard: bool,
+    pub activation_allowed_by_scoreboard: bool,
+    pub scoreboard_denial_reason: String,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub gate_families: Vec<HeptaUpstreamCodexActivationEvidenceCompletenessGateFamily>,
+    pub scoreboard_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -4564,6 +4624,198 @@ fn default_activation_trusted_record_shape_validator_fixtures(
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceCompletenessScoreboardReport {
+    pub fn native_default() -> Self {
+        let shape_validator =
+            HeptaUpstreamCodexActivationTrustedRecordShapeValidatorReport::native_default();
+        let gate_families = default_activation_evidence_completeness_gate_families();
+        let required_gate_family_count = gate_families.len();
+        let ready_gate_family_count = gate_families
+            .iter()
+            .filter(|family| family.gate_ready)
+            .count();
+        let activation_blocking_gate_family_count = gate_families
+            .iter()
+            .filter(|family| family.blocks_activation_without_trusted_evidence)
+            .count();
+        let required_evidence_count = shape_validator.required_evidence_count;
+        let required_trusted_record_count = required_evidence_count;
+        let accepted_trusted_record_count = 0;
+        let fresh_trusted_record_count = 0;
+        let operator_approval_recorded = false;
+        let activation_request_recorded = false;
+        let public_claim_attempt_blocked = shape_validator.fixtures.iter().any(|fixture| {
+            fixture.fixture_id == "public-claim-attempt-with-trusted-shape"
+                && fixture.public_release_claim_requested
+                && fixture.release_artifact_write_requested
+                && !fixture.public_release_claim_allowed
+        });
+        let release_artifact_write_attempt_blocked =
+            shape_validator.fixtures.iter().any(|fixture| {
+                fixture.fixture_id == "public-claim-attempt-with-trusted-shape"
+                    && fixture.release_artifact_write_requested
+                    && !fixture.release_artifact_write_allowed
+            });
+        let operator_approved_activation_ready = false;
+        let activation_allowed_by_scoreboard = false;
+        let activation_blocked_by_scoreboard = true;
+        let scoreboard_denial_reason =
+            "activation evidence gate families are ready, but no real activation request or fresh trusted evidence records exist"
+                .to_string();
+        let evidence_completeness_scoreboard_ready = shape_validator
+            .trusted_record_shape_validator_ready
+            && required_gate_family_count == 10
+            && ready_gate_family_count == required_gate_family_count
+            && activation_blocking_gate_family_count == required_gate_family_count
+            && required_evidence_count == 8
+            && required_trusted_record_count == 8
+            && accepted_trusted_record_count == 0
+            && fresh_trusted_record_count == 0
+            && !operator_approval_recorded
+            && !activation_request_recorded
+            && public_claim_attempt_blocked
+            && release_artifact_write_attempt_blocked
+            && !operator_approved_activation_ready
+            && activation_blocked_by_scoreboard
+            && !activation_allowed_by_scoreboard;
+
+        Self {
+            product: "Hepta".into(),
+            status: if evidence_completeness_scoreboard_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            scoreboard_id: "upstream-codex-activation-evidence-completeness-scoreboard".into(),
+            scoreboard_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_COMPLETENESS_SCOREBOARD.md"
+                    .into(),
+            upstream_repository: shape_validator.upstream_repository,
+            candidate_diff_range: shape_validator.candidate_diff_range,
+            source_trusted_record_shape_validator_gate: shape_validator
+                .trusted_record_shape_validator_gate,
+            evidence_completeness_scoreboard_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-completeness-scoreboard.sh"
+                    .into(),
+            active_dependency_isolation_gate: shape_validator.active_dependency_isolation_gate,
+            source_trusted_record_shape_validator_ready: shape_validator
+                .trusted_record_shape_validator_ready,
+            required_gate_family_count,
+            ready_gate_family_count,
+            activation_blocking_gate_family_count,
+            required_evidence_count,
+            required_trusted_record_count,
+            accepted_trusted_record_count,
+            fresh_trusted_record_count,
+            operator_approval_recorded,
+            activation_request_recorded,
+            public_claim_attempt_blocked,
+            release_artifact_write_attempt_blocked,
+            operator_approved_activation_ready,
+            evidence_completeness_scoreboard_ready,
+            activation_blocked_by_scoreboard,
+            activation_allowed_by_scoreboard,
+            scoreboard_denial_reason,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            gate_families,
+            scoreboard_invariants: vec![
+                "all activation evidence gate families can be ready while activation remains denied"
+                    .into(),
+                "zero accepted trusted records means operator-approved activation is not ready"
+                    .into(),
+                "public claim and release artifact attempts remain blocked by the scoreboard"
+                    .into(),
+                "scoreboard readiness does not record evidence or mutate active runtime state".into(),
+            ],
+            required_next_gates: vec![
+                "record a real activation request id and operator approval id".into(),
+                "replace fixture evidence with fresh trusted records for all eight required evidence ids"
+                    .into(),
+                "rerun evidence completeness scoreboard after live gates and long soak".into(),
+                "require explicit public-claim and artifact-write approval before external release actions"
+                    .into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_completeness_gate_family(
+    gate_id: &str,
+    gate_script: &str,
+) -> HeptaUpstreamCodexActivationEvidenceCompletenessGateFamily {
+    HeptaUpstreamCodexActivationEvidenceCompletenessGateFamily {
+        gate_id: gate_id.into(),
+        gate_script: gate_script.into(),
+        gate_ready: true,
+        blocks_activation_without_trusted_evidence: true,
+    }
+}
+
+fn default_activation_evidence_completeness_gate_families()
+-> Vec<HeptaUpstreamCodexActivationEvidenceCompletenessGateFamily> {
+    vec![
+        activation_evidence_completeness_gate_family(
+            "activation-request-packet",
+            "scripts/hepta-upstream-codex-activation-request-packet.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-packet-dry-run",
+            "scripts/hepta-upstream-codex-activation-packet-dry-run.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-evidence-ledger",
+            "scripts/hepta-upstream-codex-activation-evidence-ledger.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-readiness-closure",
+            "scripts/hepta-upstream-codex-activation-readiness-closure.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-denied-sample",
+            "scripts/hepta-upstream-codex-activation-denied-sample.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-evidence-freshness-policy",
+            "scripts/hepta-upstream-codex-activation-evidence-freshness-policy.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-evidence-binding-record",
+            "scripts/hepta-upstream-codex-activation-evidence-binding-record.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-evidence-denied-fixture",
+            "scripts/hepta-upstream-codex-activation-evidence-denied-fixture.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-trusted-evidence-acceptance-matrix",
+            "scripts/hepta-upstream-codex-activation-trusted-evidence-acceptance-matrix.sh",
+        ),
+        activation_evidence_completeness_gate_family(
+            "activation-trusted-record-shape-validator",
+            "scripts/hepta-upstream-codex-activation-trusted-record-shape-validator.sh",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -5150,6 +5402,11 @@ pub fn hepta_upstream_codex_activation_trusted_evidence_acceptance_matrix_report
 pub fn hepta_upstream_codex_activation_trusted_record_shape_validator_report()
 -> HeptaUpstreamCodexActivationTrustedRecordShapeValidatorReport {
     HeptaUpstreamCodexActivationTrustedRecordShapeValidatorReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_completeness_scoreboard_report()
+-> HeptaUpstreamCodexActivationEvidenceCompletenessScoreboardReport {
+    HeptaUpstreamCodexActivationEvidenceCompletenessScoreboardReport::native_default()
 }
 
 #[cfg(test)]
@@ -7680,6 +7937,81 @@ mod tests {
                 .shape_invariants
                 .iter()
                 .any(|invariant| invariant.contains("partially verified"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_completeness_scoreboard_summarizes_gate_families() {
+        let report = hepta_upstream_codex_activation_evidence_completeness_scoreboard_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.scoreboard_id,
+            "upstream-codex-activation-evidence-completeness-scoreboard"
+        );
+        assert_eq!(
+            report.source_trusted_record_shape_validator_gate,
+            "scripts/hepta-upstream-codex-activation-trusted-record-shape-validator.sh"
+        );
+        assert_eq!(
+            report.evidence_completeness_scoreboard_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-completeness-scoreboard.sh"
+        );
+        assert!(report.source_trusted_record_shape_validator_ready);
+        assert_eq!(report.required_gate_family_count, 10);
+        assert_eq!(report.ready_gate_family_count, 10);
+        assert_eq!(report.activation_blocking_gate_family_count, 10);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.required_trusted_record_count, 8);
+        assert_eq!(report.accepted_trusted_record_count, 0);
+        assert_eq!(report.fresh_trusted_record_count, 0);
+        assert!(report.public_claim_attempt_blocked);
+        assert!(report.release_artifact_write_attempt_blocked);
+        assert!(report.evidence_completeness_scoreboard_ready);
+        assert!(report.activation_blocked_by_scoreboard);
+        assert!(!report.activation_allowed_by_scoreboard);
+        assert!(!report.active_wiring_allowed);
+        assert!(report.gate_families.iter().all(|family| {
+            family.gate_ready && family.blocks_activation_without_trusted_evidence
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_completeness_scoreboard_preserves_denials() {
+        let report = hepta_upstream_codex_activation_evidence_completeness_scoreboard_report();
+
+        assert!(!report.operator_approval_recorded);
+        assert!(!report.activation_request_recorded);
+        assert!(!report.operator_approved_activation_ready);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .scoreboard_denial_reason
+                .contains("no real activation request")
+        );
+        assert!(
+            report
+                .scoreboard_invariants
+                .iter()
+                .any(|invariant| invariant.contains("activation remains denied"))
         );
     }
 }

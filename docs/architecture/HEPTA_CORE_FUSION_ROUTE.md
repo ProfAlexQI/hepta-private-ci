@@ -144,6 +144,10 @@ Current state:
   proves partially verified trusted-record shapes and public release/artifact
   write attempts remain blocked until all evidence records are fresh, bound,
   trusted, and operator-approved.
+- `scripts/hepta-upstream-codex-activation-evidence-completeness-scoreboard.sh`
+  summarizes all `10` activation evidence gate families and proves
+  operator-approved activation readiness still remains false until a real
+  activation request and fresh trusted records exist.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

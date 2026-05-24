@@ -119,9 +119,9 @@ release claims, or release artifact writes.
 
 ## Required Next Gates
 
+- Run the evidence completeness scoreboard:
+  `scripts/hepta-upstream-codex-activation-evidence-completeness-scoreboard.sh`.
+- Summarize all activation evidence gate families before replacing fixtures.
 - Record a real operator-approved activation request before replacing fixtures.
-- Verify all seven checks for every required evidence record.
-- Rerun clean preflight, live gates, browser smoke, and long soak after evidence
-  recording.
-- Require a separate explicit operator decision before any public claim or
-  artifact write.
+- Verify all seven checks for every required evidence record, then rerun clean
+  preflight, live gates, browser smoke, and long soak.
