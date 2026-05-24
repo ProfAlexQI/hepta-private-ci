@@ -13,7 +13,7 @@ bucket is allowed to move from report-only intake into active Hepta behavior.
 - Assessed buckets: `4 / 4`
 - Absorption/replay source readiness: `4 / 4`
 - Required surface promotion packets: `4`
-- Completed surface promotion packets: `0`
+- Completed surface promotion packets: `1`
 - Promotable buckets: `0`
 - Promotion-blocked buckets: `4`
 - Active promotion ready: `false`
@@ -26,8 +26,8 @@ The decision packet is ready, but active promotion is not open.
   operator-approved claim packet.
 - `legacy-cli-tui-compatibility`: legacy CLI/TUI behavior needs a Hepta-native
   parity packet before use.
-- `provider-credential-sandbox-security`: provider, credential, sandbox, and
-  network deltas need a P0 security promotion packet.
+- `provider-credential-sandbox-security`: provider/security promotion packet is
+  ready, but active adapter wiring remains blocked.
 - `runtime-session-tool-mcp-appserver`: runtime, session, tool, MCP, and
   app-server deltas need route/event promotion evidence.
 
@@ -35,7 +35,7 @@ The decision packet is ready, but active promotion is not open.
 
 - `release-governance-claim-promotion-packet`
 - `hepta-cli-tui-parity-promotion-packet`
-- `provider-security-policy-promotion-packet`
+- `upstream-codex-provider-security-promotion-packet`
 - `runtime-appserver-route-event-promotion-packet`
 
 ## Boundaries

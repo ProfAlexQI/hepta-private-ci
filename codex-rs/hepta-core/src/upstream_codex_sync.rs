@@ -374,6 +374,48 @@ pub struct HeptaUpstreamCodexProviderSecurityReplayReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexProviderSecurityPromotionReport {
+    pub product: String,
+    pub status: String,
+    pub promotion_id: String,
+    pub promotion_packet_path: String,
+    pub selected_bucket_id: String,
+    pub selected_changed_file_count: usize,
+    pub source_replay_gate: String,
+    pub promotion_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub redacted_provider_contract_ready: bool,
+    pub auth_credential_redaction_ready: bool,
+    pub approval_policy_replay_ready: bool,
+    pub sandbox_exec_replay_ready: bool,
+    pub network_policy_replay_ready: bool,
+    pub operator_approval_model_ready: bool,
+    pub side_effect_boundary_ready: bool,
+    pub required_promotion_condition_count: usize,
+    pub ready_promotion_condition_count: usize,
+    pub promotion_packet_ready: bool,
+    pub active_provider_promotion_allowed: bool,
+    pub active_security_policy_promotion_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub promotion_conditions: Vec<String>,
+    pub remaining_blockers: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaUpstreamCodexRuntimeAppServerAbsorptionReport {
     pub product: String,
     pub status: String,
@@ -1160,6 +1202,83 @@ impl HeptaUpstreamCodexProviderSecurityReplayReport {
     }
 }
 
+impl HeptaUpstreamCodexProviderSecurityPromotionReport {
+    pub fn native_default() -> Self {
+        let promotion_conditions: Vec<String> = vec![
+            "redacted provider catalog and endpoint contract is documented".into(),
+            "auth and credential handling remains redacted".into(),
+            "approval policy replay remains dry-run only".into(),
+            "sandbox and exec policy replay remains local".into(),
+            "network policy replay keeps live network allowance disabled".into(),
+            "operator approval model is explicit before live mutation".into(),
+            "side-effect boundary keeps providers, credentials, channels, and gateway RPC off"
+                .into(),
+        ];
+        let required_promotion_condition_count = 7;
+        let ready_promotion_condition_count = promotion_conditions.len();
+        let promotion_packet_ready =
+            ready_promotion_condition_count == required_promotion_condition_count;
+
+        Self {
+            product: "Hepta".into(),
+            status: if promotion_packet_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            promotion_id: "upstream-codex-provider-security-promotion-packet".into(),
+            promotion_packet_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_PROVIDER_SECURITY_PROMOTION.md".into(),
+            selected_bucket_id: "provider-credential-sandbox-security".into(),
+            selected_changed_file_count: 104,
+            source_replay_gate: "scripts/hepta-upstream-codex-provider-security-replay.sh".into(),
+            promotion_gate: "scripts/hepta-upstream-codex-provider-security-promotion.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            redacted_provider_contract_ready: true,
+            auth_credential_redaction_ready: true,
+            approval_policy_replay_ready: true,
+            sandbox_exec_replay_ready: true,
+            network_policy_replay_ready: true,
+            operator_approval_model_ready: true,
+            side_effect_boundary_ready: true,
+            required_promotion_condition_count,
+            ready_promotion_condition_count,
+            promotion_packet_ready,
+            active_provider_promotion_allowed: false,
+            active_security_policy_promotion_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            promotion_conditions,
+            remaining_blockers: vec![
+                "active provider adapter wiring is not part of this packet".into(),
+                "live credential reads remain forbidden".into(),
+                "live provider invocation remains forbidden".into(),
+                "live network allowance remains forbidden".into(),
+            ],
+            required_next_gates: vec![
+                "prove active provider adapter parity before runtime wiring".into(),
+                "require operator approval before credential or provider use".into(),
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+                "rerun promotion readiness after each per-surface promotion packet".into(),
+            ],
+        }
+    }
+}
+
 impl HeptaUpstreamCodexRuntimeAppServerAbsorptionReport {
     pub fn native_default() -> Self {
         let runtime_surfaces: Vec<String> = vec![
@@ -1463,11 +1582,11 @@ impl HeptaUpstreamCodexPromotionReadinessReport {
                 selected_changed_file_count: 104,
                 absorption_replay_ready: true,
                 required_surface_promotion_packet:
-                    "provider-security-policy-promotion-packet".into(),
-                surface_promotion_packet_ready: false,
+                    "upstream-codex-provider-security-promotion-packet".into(),
+                surface_promotion_packet_ready: true,
                 active_promotion_allowed: false,
                 blocker:
-                    "provider, credential, sandbox, and network deltas need a P0 security promotion packet"
+                    "provider/security promotion packet is ready, but active adapter wiring remains blocked"
                         .into(),
             },
             HeptaUpstreamCodexPromotionDecision {
@@ -1968,6 +2087,11 @@ pub fn hepta_upstream_codex_provider_security_absorption_report()
 pub fn hepta_upstream_codex_provider_security_replay_report()
 -> HeptaUpstreamCodexProviderSecurityReplayReport {
     HeptaUpstreamCodexProviderSecurityReplayReport::native_default()
+}
+
+pub fn hepta_upstream_codex_provider_security_promotion_report()
+-> HeptaUpstreamCodexProviderSecurityPromotionReport {
+    HeptaUpstreamCodexProviderSecurityPromotionReport::native_default()
 }
 
 pub fn hepta_upstream_codex_runtime_appserver_absorption_report()
@@ -2724,6 +2848,84 @@ mod tests {
     }
 
     #[test]
+    fn upstream_codex_provider_security_promotion_packet_is_ready_but_not_active() {
+        let report = hepta_upstream_codex_provider_security_promotion_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.promotion_id,
+            "upstream-codex-provider-security-promotion-packet"
+        );
+        assert_eq!(
+            report.promotion_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_PROVIDER_SECURITY_PROMOTION.md"
+        );
+        assert_eq!(
+            report.selected_bucket_id,
+            "provider-credential-sandbox-security"
+        );
+        assert_eq!(report.selected_changed_file_count, 104);
+        assert_eq!(
+            report.source_replay_gate,
+            "scripts/hepta-upstream-codex-provider-security-replay.sh"
+        );
+        assert_eq!(
+            report.promotion_gate,
+            "scripts/hepta-upstream-codex-provider-security-promotion.sh"
+        );
+        assert_eq!(
+            report.ready_promotion_condition_count,
+            report.required_promotion_condition_count
+        );
+        assert!(report.redacted_provider_contract_ready);
+        assert!(report.auth_credential_redaction_ready);
+        assert!(report.approval_policy_replay_ready);
+        assert!(report.sandbox_exec_replay_ready);
+        assert!(report.network_policy_replay_ready);
+        assert!(report.operator_approval_model_ready);
+        assert!(report.side_effect_boundary_ready);
+        assert!(report.promotion_packet_ready);
+        assert!(!report.active_provider_promotion_allowed);
+        assert!(!report.active_security_policy_promotion_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+    }
+
+    #[test]
+    fn upstream_codex_provider_security_promotion_tracks_blockers() {
+        let report = hepta_upstream_codex_provider_security_promotion_report();
+
+        assert_eq!(report.promotion_conditions.len(), 7);
+        assert_eq!(report.remaining_blockers.len(), 4);
+        assert!(
+            report
+                .promotion_conditions
+                .iter()
+                .any(|condition| condition.contains("network policy"))
+        );
+        assert!(
+            report
+                .remaining_blockers
+                .iter()
+                .any(|blocker| blocker.contains("credential reads"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("adapter parity"))
+        );
+    }
+
+    #[test]
     fn upstream_codex_runtime_appserver_absorption_is_ready_and_bounded() {
         let report = hepta_upstream_codex_runtime_appserver_absorption_report();
 
@@ -3071,7 +3273,7 @@ mod tests {
             report.required_absorption_replay_ready_count
         );
         assert_eq!(report.required_surface_promotion_packet_count, 4);
-        assert_eq!(report.completed_surface_promotion_packet_count, 0);
+        assert_eq!(report.completed_surface_promotion_packet_count, 1);
         assert_eq!(report.promotable_bucket_count, 0);
         assert_eq!(report.promotion_blocked_bucket_count, 4);
         assert!(report.readiness_source_ready);
@@ -3102,13 +3304,12 @@ mod tests {
         assert_eq!(report.decisions.len(), 4);
         assert_eq!(report.promotion_blockers.len(), 4);
         assert!(report.decisions.iter().all(|decision| {
-            decision.absorption_replay_ready
-                && !decision.surface_promotion_packet_ready
-                && !decision.active_promotion_allowed
+            decision.absorption_replay_ready && !decision.active_promotion_allowed
         }));
         assert!(report.decisions.iter().any(|decision| decision.bucket_id
             == "provider-credential-sandbox-security"
-            && decision.risk == HeptaUpstreamCodexSyncRisk::P0Security));
+            && decision.risk == HeptaUpstreamCodexSyncRisk::P0Security
+            && decision.surface_promotion_packet_ready));
         assert!(report.decisions.iter().any(|decision| decision.bucket_id
             == "runtime-session-tool-mcp-appserver"
             && decision.risk == HeptaUpstreamCodexSyncRisk::P0Runtime));

@@ -127,6 +127,19 @@ sandbox/exec replay, network-proxy replay, and side-effect boundary replay. It
 still performs no credential read, provider invocation, gateway RPC, active
 provider promotion, active security-policy promotion, or active runtime wiring.
 
+The P0 provider/security promotion packet gate is:
+
+```bash
+scripts/hepta-upstream-codex-provider-security-promotion.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_PROVIDER_SECURITY_PROMOTION.md`. It
+marks the provider/security per-surface promotion packet ready with `7 / 7`
+promotion conditions while still keeping active provider promotion,
+security-policy promotion, credential reads, provider invocation, live network
+allowance, gateway RPC, and public release claims false.
+
 The P0 runtime/app-server absorption-contract gate is:
 
 ```bash
@@ -179,11 +192,10 @@ scripts/hepta-upstream-codex-promotion-readiness.sh
 This gate verifies
 `docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_READINESS.md`. It consumes the
 absorption/replay readiness result and explicitly decides that `4 / 4` selected
-buckets are assessed, `4 / 4` absorption/replay sources are ready, but `0`
-surface promotion packets are complete and `0` buckets are promotable. The gate
-therefore keeps active promotion closed until dedicated release-governance,
-CLI/TUI parity, provider/security, and runtime/app-server promotion packets
-exist.
+buckets are assessed, `4 / 4` absorption/replay sources are ready, `1` surface
+promotion packet is complete, and `0` buckets are promotable. The gate therefore
+keeps active promotion closed until the remaining release-governance, CLI/TUI
+parity, runtime/app-server promotion packets and active-wiring evidence exist.
 
 The local sync-lane gate is:
 

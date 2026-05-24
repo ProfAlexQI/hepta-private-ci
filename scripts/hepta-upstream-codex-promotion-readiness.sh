@@ -26,11 +26,11 @@ fi
 require_doc_text "upstream-codex-promotion-readiness"
 require_doc_text "Assessed buckets: \`4 / 4\`"
 require_doc_text "Absorption/replay source readiness: \`4 / 4\`"
-require_doc_text "Completed surface promotion packets: \`0\`"
+require_doc_text "Completed surface promotion packets: \`1\`"
 require_doc_text "Promotable buckets: \`0\`"
 require_doc_text "Promotion-blocked buckets: \`4\`"
 require_doc_text "Active promotion ready: \`false\`"
-require_doc_text "provider-security-policy-promotion-packet"
+require_doc_text "upstream-codex-provider-security-promotion-packet"
 require_doc_text "runtime-appserver-route-event-promotion-packet"
 require_doc_text "No active Codex engine dependency"
 require_doc_text "No public release claim"
@@ -59,7 +59,7 @@ report="$(
         absorption_replay_ready_count:4,
         required_absorption_replay_ready_count:4,
         required_surface_promotion_packet_count:4,
-        completed_surface_promotion_packet_count:0,
+        completed_surface_promotion_packet_count:1,
         promotable_bucket_count:0,
         promotion_blocked_bucket_count:4,
         readiness_source_ready:true,
@@ -69,7 +69,7 @@ report="$(
       required_promotion_packets:[
         "release-governance-claim-promotion-packet",
         "hepta-cli-tui-parity-promotion-packet",
-        "provider-security-policy-promotion-packet",
+        "upstream-codex-provider-security-promotion-packet",
         "runtime-appserver-route-event-promotion-packet"
       ],
       promotion_policy:{

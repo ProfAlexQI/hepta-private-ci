@@ -73,6 +73,9 @@ scripts/hepta-upstream-codex-provider-security-absorption.sh
 echo "[hepta-codex-preflight] upstream Codex provider/security replay gate"
 scripts/hepta-upstream-codex-provider-security-replay.sh
 
+echo "[hepta-codex-preflight] upstream Codex provider/security promotion gate"
+scripts/hepta-upstream-codex-provider-security-promotion.sh
+
 echo "[hepta-codex-preflight] upstream Codex runtime/app-server absorption gate"
 scripts/hepta-upstream-codex-runtime-appserver-absorption.sh
 

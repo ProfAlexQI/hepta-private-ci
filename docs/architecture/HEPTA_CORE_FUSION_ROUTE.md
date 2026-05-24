@@ -55,6 +55,10 @@ Current state:
   provider/security replay packet: redacted provider contracts, credential
   redaction, approval-policy replay, sandbox/exec replay, network-proxy replay,
   and side-effect boundaries, still with no active provider/security promotion.
+- `scripts/hepta-upstream-codex-provider-security-promotion.sh` verifies the P0
+  provider/security promotion packet: all seven local promotion conditions are
+  ready, but active provider/security promotion remains blocked until active
+  adapter parity, operator approval, and credential/network gates are explicit.
 - `scripts/hepta-upstream-codex-runtime-appserver-absorption.sh` selects the P0
   app-server/session/thread/tool/MCP/hooks/exec family as an intake contract
   while keeping runtime behavior out of the active service until route/event,
@@ -70,7 +74,7 @@ Current state:
   claims false.
 - `scripts/hepta-upstream-codex-promotion-readiness.sh` turns the intake/replay
   map into an explicit promotion decision: four selected buckets are assessed,
-  four absorption/replay sources are ready, zero surface promotion packets are
+  four absorption/replay sources are ready, one surface promotion packet is
   complete, and zero buckets are promotable, so active promotion remains closed.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
