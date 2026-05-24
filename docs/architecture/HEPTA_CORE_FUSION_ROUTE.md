@@ -125,6 +125,12 @@ Current state:
   defines per-slot freshness requirements for the `8` evidence ids. All
   evidence remains absent by default, so activation stays blocked even when the
   sample packet shape is complete.
+- `scripts/hepta-upstream-codex-activation-evidence-binding-record.sh`
+  defines the concrete evidence record schema for all `8` evidence ids:
+  evidence record id, source gate, timestamp, active binary SHA,
+  route/status hash, artifact hash or redacted path, and activation request id
+  binding. It records `0` concrete evidence records, so activation stays
+  blocked.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

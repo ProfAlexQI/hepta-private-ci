@@ -1141,6 +1141,82 @@ pub struct HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceBindingRecordSchemaField {
+    pub name: String,
+    pub required: bool,
+    pub recorded: bool,
+    pub redacted_or_hashed: bool,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceBindingRecordManifestEntry {
+    pub evidence_id: String,
+    pub source_gate: String,
+    pub required_schema_field_count: usize,
+    pub recorded_schema_field_count: usize,
+    pub evidence_recorded: bool,
+    pub timestamp_recorded: bool,
+    pub active_binary_sha_bound: bool,
+    pub route_or_status_hash_bound: bool,
+    pub artifact_hash_or_redacted_path_bound: bool,
+    pub activation_request_id_bound: bool,
+    pub binding_denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport {
+    pub product: String,
+    pub status: String,
+    pub manifest_id: String,
+    pub manifest_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_freshness_policy_gate: String,
+    pub binding_manifest_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub freshness_policy_ready: bool,
+    pub required_evidence_count: usize,
+    pub binding_record_count: usize,
+    pub missing_binding_record_count: usize,
+    pub recorded_binding_record_count: usize,
+    pub required_record_schema_field_count: usize,
+    pub recorded_record_schema_field_count: usize,
+    pub timestamped_record_count: usize,
+    pub binary_sha_bound_record_count: usize,
+    pub route_or_status_hash_bound_record_count: usize,
+    pub artifact_hash_or_redacted_path_bound_record_count: usize,
+    pub activation_request_id_bound_record_count: usize,
+    pub binding_manifest_ready: bool,
+    pub activation_blocked_by_binding_manifest: bool,
+    pub activation_allowed_by_binding_manifest: bool,
+    pub binding_denial_reason: String,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub binding_schema_fields: Vec<HeptaUpstreamCodexActivationEvidenceBindingRecordSchemaField>,
+    pub binding_records: Vec<HeptaUpstreamCodexActivationEvidenceBindingRecordManifestEntry>,
+    pub binding_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -3427,6 +3503,238 @@ fn default_activation_evidence_freshness_policy_entries()
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport {
+    pub fn native_default() -> Self {
+        let freshness = HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport::native_default();
+        let binding_schema_fields = default_activation_evidence_binding_record_schema_fields();
+        let binding_records =
+            default_activation_evidence_binding_record_manifest_entries(&freshness);
+        let required_evidence_count = freshness.required_evidence_count;
+        let binding_record_count = binding_records.len();
+        let missing_binding_record_count = binding_records
+            .iter()
+            .filter(|record| !record.evidence_recorded)
+            .count();
+        let recorded_binding_record_count = binding_records
+            .iter()
+            .filter(|record| record.evidence_recorded)
+            .count();
+        let required_record_schema_field_count = binding_schema_fields.len();
+        let recorded_record_schema_field_count = binding_schema_fields
+            .iter()
+            .filter(|field| field.required && field.recorded)
+            .count();
+        let timestamped_record_count = binding_records
+            .iter()
+            .filter(|record| record.timestamp_recorded)
+            .count();
+        let binary_sha_bound_record_count = binding_records
+            .iter()
+            .filter(|record| record.active_binary_sha_bound)
+            .count();
+        let route_or_status_hash_bound_record_count = binding_records
+            .iter()
+            .filter(|record| record.route_or_status_hash_bound)
+            .count();
+        let artifact_hash_or_redacted_path_bound_record_count = binding_records
+            .iter()
+            .filter(|record| record.artifact_hash_or_redacted_path_bound)
+            .count();
+        let activation_request_id_bound_record_count = binding_records
+            .iter()
+            .filter(|record| record.activation_request_id_bound)
+            .count();
+        let activation_allowed_by_binding_manifest = false;
+        let activation_blocked_by_binding_manifest = true;
+        let binding_denial_reason =
+            "all evidence binding records are schema-only and unrecorded".to_string();
+        let binding_manifest_ready = freshness.freshness_policy_ready
+            && required_evidence_count == 8
+            && binding_record_count == required_evidence_count
+            && missing_binding_record_count == required_evidence_count
+            && recorded_binding_record_count == 0
+            && required_record_schema_field_count == 7
+            && recorded_record_schema_field_count == 0
+            && timestamped_record_count == 0
+            && binary_sha_bound_record_count == 0
+            && route_or_status_hash_bound_record_count == 0
+            && artifact_hash_or_redacted_path_bound_record_count == 0
+            && activation_request_id_bound_record_count == 0
+            && activation_blocked_by_binding_manifest
+            && !activation_allowed_by_binding_manifest;
+
+        Self {
+            product: "Hepta".into(),
+            status: if binding_manifest_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            manifest_id: "upstream-codex-activation-evidence-binding-record-manifest"
+                .into(),
+            manifest_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_BINDING_RECORD.md"
+                    .into(),
+            upstream_repository: freshness.upstream_repository,
+            candidate_diff_range: freshness.candidate_diff_range,
+            source_freshness_policy_gate: freshness.freshness_policy_gate,
+            binding_manifest_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-binding-record.sh".into(),
+            active_dependency_isolation_gate: freshness.active_dependency_isolation_gate,
+            freshness_policy_ready: freshness.freshness_policy_ready,
+            required_evidence_count,
+            binding_record_count,
+            missing_binding_record_count,
+            recorded_binding_record_count,
+            required_record_schema_field_count,
+            recorded_record_schema_field_count,
+            timestamped_record_count,
+            binary_sha_bound_record_count,
+            route_or_status_hash_bound_record_count,
+            artifact_hash_or_redacted_path_bound_record_count,
+            activation_request_id_bound_record_count,
+            binding_manifest_ready,
+            activation_blocked_by_binding_manifest,
+            activation_allowed_by_binding_manifest,
+            binding_denial_reason,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            binding_schema_fields,
+            binding_records,
+            binding_invariants: vec![
+                "binding manifest defines record shape without recording evidence".into(),
+                "every evidence record must bind to an activation request id".into(),
+                "live evidence records must bind active binary sha and route or status hash"
+                    .into(),
+                "artifact-bearing records must use artifact hash or redacted artifact path"
+                    .into(),
+                "schema-only binding records keep active wiring, public release, and artifact writes denied"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "materialize concrete evidence records only after operator approval".into(),
+                "populate timestamp, active binary sha, route/status hash, artifact hash or redacted path, and activation request binding for every evidence slot"
+                    .into(),
+                "rerun freshness policy against recorded evidence before allowing activation review"
+                    .into(),
+                "rerun clean preflight, live gates, and long soak before any active wiring decision"
+                    .into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_binding_record_schema_field(
+    name: &str,
+    redacted_or_hashed: bool,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationEvidenceBindingRecordSchemaField {
+    HeptaUpstreamCodexActivationEvidenceBindingRecordSchemaField {
+        name: name.into(),
+        required: true,
+        recorded: false,
+        redacted_or_hashed,
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_evidence_binding_record_schema_fields()
+-> Vec<HeptaUpstreamCodexActivationEvidenceBindingRecordSchemaField> {
+    vec![
+        activation_evidence_binding_record_schema_field(
+            "evidence_record_id",
+            false,
+            "stable id for the evidence record",
+        ),
+        activation_evidence_binding_record_schema_field(
+            "source_gate",
+            false,
+            "gate or document that produced the evidence",
+        ),
+        activation_evidence_binding_record_schema_field(
+            "recorded_at_unix_ms",
+            false,
+            "timestamp used for freshness evaluation",
+        ),
+        activation_evidence_binding_record_schema_field(
+            "active_binary_sha256",
+            false,
+            "active Hepta binary sha bound to live evidence",
+        ),
+        activation_evidence_binding_record_schema_field(
+            "route_or_status_hash",
+            true,
+            "hash of the route response or status payload used as evidence",
+        ),
+        activation_evidence_binding_record_schema_field(
+            "artifact_sha256_or_redacted_path",
+            true,
+            "artifact hash or redacted local path for browser/soak/rollback evidence",
+        ),
+        activation_evidence_binding_record_schema_field(
+            "activation_request_id_binding",
+            false,
+            "activation request id that this evidence record authorizes",
+        ),
+    ]
+}
+
+fn activation_evidence_binding_record_manifest_entry(
+    evidence_id: &str,
+    source_gate: &str,
+    required_schema_field_count: usize,
+) -> HeptaUpstreamCodexActivationEvidenceBindingRecordManifestEntry {
+    HeptaUpstreamCodexActivationEvidenceBindingRecordManifestEntry {
+        evidence_id: evidence_id.into(),
+        source_gate: source_gate.into(),
+        required_schema_field_count,
+        recorded_schema_field_count: 0,
+        evidence_recorded: false,
+        timestamp_recorded: false,
+        active_binary_sha_bound: false,
+        route_or_status_hash_bound: false,
+        artifact_hash_or_redacted_path_bound: false,
+        activation_request_id_bound: false,
+        binding_denial_reason: format!("{evidence_id} binding record is not recorded"),
+    }
+}
+
+fn default_activation_evidence_binding_record_manifest_entries(
+    freshness: &HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport,
+) -> Vec<HeptaUpstreamCodexActivationEvidenceBindingRecordManifestEntry> {
+    let required_schema_field_count =
+        default_activation_evidence_binding_record_schema_fields().len();
+    freshness
+        .freshness_entries
+        .iter()
+        .map(|entry| {
+            activation_evidence_binding_record_manifest_entry(
+                &entry.evidence_id,
+                &entry.source_gate,
+                required_schema_field_count,
+            )
+        })
+        .collect()
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -3993,6 +4301,11 @@ pub fn hepta_upstream_codex_activation_denied_sample_report()
 pub fn hepta_upstream_codex_activation_evidence_freshness_policy_report()
 -> HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport {
     HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_binding_record_manifest_report()
+-> HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport {
+    HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport::native_default()
 }
 
 #[cfg(test)]
@@ -6132,6 +6445,101 @@ mod tests {
                 .policy_invariants
                 .iter()
                 .any(|invariant| invariant.contains("records no evidence"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_binding_record_manifest_defines_schema() {
+        let report = hepta_upstream_codex_activation_evidence_binding_record_manifest_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.manifest_id,
+            "upstream-codex-activation-evidence-binding-record-manifest"
+        );
+        assert_eq!(
+            report.source_freshness_policy_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-freshness-policy.sh"
+        );
+        assert_eq!(
+            report.binding_manifest_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-binding-record.sh"
+        );
+        assert!(report.freshness_policy_ready);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.binding_record_count, 8);
+        assert_eq!(report.missing_binding_record_count, 8);
+        assert_eq!(report.recorded_binding_record_count, 0);
+        assert_eq!(report.required_record_schema_field_count, 7);
+        assert_eq!(report.recorded_record_schema_field_count, 0);
+        assert_eq!(report.timestamped_record_count, 0);
+        assert_eq!(report.binary_sha_bound_record_count, 0);
+        assert_eq!(report.route_or_status_hash_bound_record_count, 0);
+        assert_eq!(report.artifact_hash_or_redacted_path_bound_record_count, 0);
+        assert_eq!(report.activation_request_id_bound_record_count, 0);
+        assert!(report.binding_manifest_ready);
+        assert!(report.activation_blocked_by_binding_manifest);
+        assert!(!report.activation_allowed_by_binding_manifest);
+        assert!(!report.active_wiring_allowed);
+
+        let field_names: Vec<_> = report
+            .binding_schema_fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+        assert!(field_names.contains(&"evidence_record_id"));
+        assert!(field_names.contains(&"source_gate"));
+        assert!(field_names.contains(&"recorded_at_unix_ms"));
+        assert!(field_names.contains(&"active_binary_sha256"));
+        assert!(field_names.contains(&"route_or_status_hash"));
+        assert!(field_names.contains(&"artifact_sha256_or_redacted_path"));
+        assert!(field_names.contains(&"activation_request_id_binding"));
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_binding_record_manifest_preserves_denials() {
+        let report = hepta_upstream_codex_activation_evidence_binding_record_manifest_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .binding_denial_reason
+                .contains("schema-only and unrecorded")
+        );
+        assert!(report.binding_records.iter().all(|record| {
+            record.required_schema_field_count == 7
+                && record.recorded_schema_field_count == 0
+                && !record.evidence_recorded
+                && !record.timestamp_recorded
+                && !record.active_binary_sha_bound
+                && !record.route_or_status_hash_bound
+                && !record.artifact_hash_or_redacted_path_bound
+                && !record.activation_request_id_bound
+                && record.binding_denial_reason.contains("not recorded")
+        }));
+        assert!(
+            report
+                .binding_invariants
+                .iter()
+                .any(|invariant| invariant.contains("without recording evidence"))
         );
     }
 }

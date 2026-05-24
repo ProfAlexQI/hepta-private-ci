@@ -69,5 +69,7 @@ evidence. Packet shape alone is not an activation grant.
   and rollback evidence.
 - Define evidence freshness and absence denial policy with
   `scripts/hepta-upstream-codex-activation-evidence-freshness-policy.sh`.
+- Define concrete evidence binding records with
+  `scripts/hepta-upstream-codex-activation-evidence-binding-record.sh`.
 - Rerun activation readiness closure after concrete approval and evidence.
 - Run clean preflight and live gates before any active wiring decision.

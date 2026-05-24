@@ -337,6 +337,19 @@ It defines freshness anchors and max-age policies for all `8` evidence slots.
 The current policy records no evidence, so missing evidence remains an explicit
 denial reason and active wiring stays false.
 
+The activation evidence binding record gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-binding-record.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_BINDING_RECORD.md`.
+It defines the concrete evidence record schema for all `8` evidence ids:
+evidence record id, source gate, timestamp, active binary SHA, route/status
+hash, artifact hash or redacted path, and activation request id binding. It
+keeps recorded binding records at `0`, so active wiring remains false.
+
 The local sync-lane gate is:
 
 ```bash

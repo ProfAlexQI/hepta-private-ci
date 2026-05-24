@@ -107,8 +107,9 @@ does not convert the denied activation sample into an approval.
 
 ## Required Next Gates
 
-- Bind each required evidence slot to a concrete evidence id.
+- Define concrete evidence binding records with
+  `scripts/hepta-upstream-codex-activation-evidence-binding-record.sh`.
 - Timestamp and hash every live dependency, watchdog, browser, soak, and
-  rollback evidence record.
+  rollback evidence record only after an operator-approved activation request.
 - Rerun the denied-sample gate after replacing absence with concrete evidence.
 - Rerun clean preflight and live gates before any active wiring decision.
