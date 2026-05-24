@@ -114,6 +114,10 @@ Current state:
 - `scripts/hepta-upstream-codex-activation-evidence-ledger.sh` defines the
   activation evidence checklist: `8` required evidence slots, `0` recorded
   evidence ids, `0` fresh evidence ids, and active wiring still false.
+- `scripts/hepta-upstream-codex-activation-readiness-closure.sh` closes the
+  activation readiness summary: schema, dry-run, and evidence-ledger inputs are
+  ready, but activation remains denied by default until a concrete
+  operator-approved packet with fresh evidence exists.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

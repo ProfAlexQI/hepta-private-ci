@@ -74,6 +74,8 @@ code wiring by itself.
   `scripts/hepta-upstream-codex-activation-packet-dry-run.sh`.
 - Define required activation evidence slots with
   `scripts/hepta-upstream-codex-activation-evidence-ledger.sh`.
+- Close the readiness summary with
+  `scripts/hepta-upstream-codex-activation-readiness-closure.sh`.
 - Bind any future activation request to a concrete `activation_request_id`.
 - Record an operator approval id and hashed operator identity before any active
   wiring.

@@ -71,6 +71,8 @@ claims, or release artifact writes.
 
 - Define required activation evidence slots with
   `scripts/hepta-upstream-codex-activation-evidence-ledger.sh`.
+- Close the readiness summary with
+  `scripts/hepta-upstream-codex-activation-readiness-closure.sh`.
 - Replace placeholder fixtures with a concrete activation packet only after
   operator approval.
 - Bind the activation packet to fresh dependency-isolation, watchdog,

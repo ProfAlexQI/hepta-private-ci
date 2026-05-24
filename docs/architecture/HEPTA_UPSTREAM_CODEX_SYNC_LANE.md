@@ -302,6 +302,18 @@ approval, hashed identity, live dependency isolation, watchdog, browser smoke,
 long soak, and rollback plan. It keeps recorded evidence and fresh evidence at
 `0`, so active wiring remains false.
 
+The activation readiness closure gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-readiness-closure.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_READINESS_CLOSURE.md`. It
+requires the activation request schema, dry-run validator, and evidence ledger
+to be ready while keeping operator-approved activation, active wiring, public
+release claims, and release artifact writes denied by default.
+
 The local sync-lane gate is:
 
 ```bash

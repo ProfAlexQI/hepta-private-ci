@@ -986,6 +986,57 @@ pub struct HeptaUpstreamCodexActivationEvidenceLedgerReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationReadinessClosureReport {
+    pub product: String,
+    pub status: String,
+    pub closure_id: String,
+    pub closure_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_packet_gate: String,
+    pub source_dry_run_gate: String,
+    pub source_evidence_ledger_gate: String,
+    pub activation_readiness_closure_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub activation_packet_schema_ready: bool,
+    pub dry_run_validator_ready: bool,
+    pub evidence_ledger_ready: bool,
+    pub activation_packet_recorded: bool,
+    pub evidence_recorded: bool,
+    pub required_schema_field_count: usize,
+    pub blocked_fixture_count: usize,
+    pub allowed_fixture_count: usize,
+    pub required_evidence_count: usize,
+    pub recorded_evidence_count: usize,
+    pub fresh_evidence_count: usize,
+    pub readiness_inputs_ready: bool,
+    pub activation_denied_by_default: bool,
+    pub activation_readiness_closure_ready: bool,
+    pub operator_approved_activation_ready: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub closure_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -2892,6 +2943,111 @@ fn default_activation_evidence_requirements() -> Vec<HeptaUpstreamCodexActivatio
     ]
 }
 
+impl HeptaUpstreamCodexActivationReadinessClosureReport {
+    pub fn native_default() -> Self {
+        let packet = HeptaUpstreamCodexActivationRequestPacketReport::native_default();
+        let dry_run = HeptaUpstreamCodexActivationPacketDryRunReport::native_default();
+        let ledger = HeptaUpstreamCodexActivationEvidenceLedgerReport::native_default();
+
+        let readiness_inputs_ready = packet.activation_packet_schema_ready
+            && dry_run.dry_run_validator_ready
+            && ledger.evidence_ledger_ready
+            && packet.required_schema_field_count == 14
+            && dry_run.blocked_fixture_count == 3
+            && dry_run.allowed_fixture_count == 0
+            && ledger.required_evidence_count == 8
+            && ledger.recorded_evidence_count == 0
+            && ledger.fresh_evidence_count == 0;
+        let activation_packet_recorded = packet.activation_packet_recorded
+            || dry_run.activation_packet_recorded
+            || ledger.activation_packet_recorded;
+        let evidence_recorded = ledger.evidence_recorded;
+        let active_wiring_allowed = packet.active_wiring_allowed
+            || dry_run.active_wiring_allowed
+            || ledger.active_wiring_allowed;
+        let operator_approved_activation_ready = false;
+        let activation_denied_by_default = !activation_packet_recorded
+            && !evidence_recorded
+            && !operator_approved_activation_ready
+            && !active_wiring_allowed;
+        let activation_readiness_closure_ready =
+            readiness_inputs_ready && activation_denied_by_default;
+
+        Self {
+            product: "Hepta".into(),
+            status: if activation_readiness_closure_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            closure_id: "upstream-codex-activation-readiness-closure-denial".into(),
+            closure_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_READINESS_CLOSURE.md".into(),
+            upstream_repository: ledger.upstream_repository,
+            candidate_diff_range: ledger.candidate_diff_range,
+            source_packet_gate: dry_run.source_packet_gate,
+            source_dry_run_gate: ledger.source_dry_run_gate,
+            source_evidence_ledger_gate: ledger.evidence_ledger_gate,
+            activation_readiness_closure_gate:
+                "scripts/hepta-upstream-codex-activation-readiness-closure.sh".into(),
+            active_dependency_isolation_gate: ledger.active_dependency_isolation_gate,
+            activation_packet_schema_ready: packet.activation_packet_schema_ready,
+            dry_run_validator_ready: dry_run.dry_run_validator_ready,
+            evidence_ledger_ready: ledger.evidence_ledger_ready,
+            activation_packet_recorded,
+            evidence_recorded,
+            required_schema_field_count: packet.required_schema_field_count,
+            blocked_fixture_count: dry_run.blocked_fixture_count,
+            allowed_fixture_count: dry_run.allowed_fixture_count,
+            required_evidence_count: ledger.required_evidence_count,
+            recorded_evidence_count: ledger.recorded_evidence_count,
+            fresh_evidence_count: ledger.fresh_evidence_count,
+            readiness_inputs_ready,
+            activation_denied_by_default,
+            activation_readiness_closure_ready,
+            operator_approved_activation_ready,
+            active_wiring_allowed,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            closure_invariants: vec![
+                "activation packet schema, dry-run validator, and evidence ledger are ready"
+                    .into(),
+                "no concrete activation packet is recorded by default".into(),
+                "no activation evidence is recorded or fresh by default".into(),
+                "operator-approved activation is not ready without a concrete packet and fresh evidence"
+                    .into(),
+                "active wiring, public release claims, and artifact writes stay denied".into(),
+            ],
+            required_next_gates: vec![
+                "record a concrete operator-approved activation packet".into(),
+                "bind all eight evidence slots to fresh live gate evidence".into(),
+                "rerun dry-run validation against the concrete activation packet".into(),
+                "rerun clean preflight, live gates, and long soak before any active wiring decision"
+                    .into(),
+                "keep active Hepta service dependency isolation green throughout activation review"
+                    .into(),
+            ],
+        }
+    }
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -3443,6 +3599,11 @@ pub fn hepta_upstream_codex_activation_packet_dry_run_report()
 pub fn hepta_upstream_codex_activation_evidence_ledger_report()
 -> HeptaUpstreamCodexActivationEvidenceLedgerReport {
     HeptaUpstreamCodexActivationEvidenceLedgerReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_readiness_closure_report()
+-> HeptaUpstreamCodexActivationReadinessClosureReport {
+    HeptaUpstreamCodexActivationReadinessClosureReport::native_default()
 }
 
 #[cfg(test)]
@@ -5338,6 +5499,90 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("concrete activation request id"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_readiness_closure_is_ready_and_denied() {
+        let report = hepta_upstream_codex_activation_readiness_closure_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.closure_id,
+            "upstream-codex-activation-readiness-closure-denial"
+        );
+        assert_eq!(
+            report.closure_doc_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_READINESS_CLOSURE.md"
+        );
+        assert_eq!(
+            report.source_packet_gate,
+            "scripts/hepta-upstream-codex-activation-request-packet.sh"
+        );
+        assert_eq!(
+            report.source_dry_run_gate,
+            "scripts/hepta-upstream-codex-activation-packet-dry-run.sh"
+        );
+        assert_eq!(
+            report.source_evidence_ledger_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-ledger.sh"
+        );
+        assert_eq!(
+            report.activation_readiness_closure_gate,
+            "scripts/hepta-upstream-codex-activation-readiness-closure.sh"
+        );
+        assert!(report.activation_packet_schema_ready);
+        assert!(report.dry_run_validator_ready);
+        assert!(report.evidence_ledger_ready);
+        assert_eq!(report.required_schema_field_count, 14);
+        assert_eq!(report.blocked_fixture_count, 3);
+        assert_eq!(report.allowed_fixture_count, 0);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.recorded_evidence_count, 0);
+        assert_eq!(report.fresh_evidence_count, 0);
+        assert!(report.readiness_inputs_ready);
+        assert!(report.activation_denied_by_default);
+        assert!(report.activation_readiness_closure_ready);
+        assert!(!report.operator_approved_activation_ready);
+        assert!(!report.activation_packet_recorded);
+        assert!(!report.evidence_recorded);
+        assert!(!report.active_wiring_allowed);
+    }
+
+    #[test]
+    fn upstream_codex_activation_readiness_closure_preserves_denials_and_side_effects() {
+        let report = hepta_upstream_codex_activation_readiness_closure_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .closure_invariants
+                .iter()
+                .any(|invariant| invariant.contains("denied"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("fresh live gate evidence"))
         );
     }
 }

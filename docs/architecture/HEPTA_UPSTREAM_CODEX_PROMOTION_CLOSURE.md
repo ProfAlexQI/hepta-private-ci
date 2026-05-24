@@ -89,3 +89,8 @@ The follow-up activation evidence ledger gate is
 `scripts/hepta-upstream-codex-activation-evidence-ledger.sh`. It defines the
 required evidence slots and keeps all evidence unrecorded until a concrete
 operator-approved activation packet exists.
+
+The follow-up activation readiness closure gate is
+`scripts/hepta-upstream-codex-activation-readiness-closure.sh`. It summarizes
+the request schema, dry-run validator, and evidence ledger as ready while
+keeping activation denied by default.

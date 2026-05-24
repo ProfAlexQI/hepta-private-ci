@@ -73,6 +73,8 @@ default and does not allow active runtime wiring.
 
 ## Required Next Gates
 
+- Close the readiness summary with
+  `scripts/hepta-upstream-codex-activation-readiness-closure.sh`.
 - Record a concrete activation request id before any active wiring.
 - Record an operator approval id and hashed operator identity before any active
   wiring.
