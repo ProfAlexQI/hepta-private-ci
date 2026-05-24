@@ -97,6 +97,9 @@ scripts/hepta-upstream-codex-absorption-replay-readiness.sh
 echo "[hepta-codex-preflight] upstream Codex promotion readiness gate"
 scripts/hepta-upstream-codex-promotion-readiness.sh
 
+echo "[hepta-codex-preflight] upstream Codex promotion closure gate"
+scripts/hepta-upstream-codex-promotion-closure.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh

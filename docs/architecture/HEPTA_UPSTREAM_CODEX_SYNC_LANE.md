@@ -236,6 +236,19 @@ promotion packets are complete, and `0` buckets are promotable. The gate
 therefore keeps active promotion closed until explicit active-wiring/public-claim
 approval evidence exists.
 
+The promotion closure/denial gate is:
+
+```bash
+scripts/hepta-upstream-codex-promotion-closure.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_CLOSURE.md`. It consumes the
+promotion-readiness decision and makes the final invariant explicit: all `4`
+required promotion packets are complete, `0` buckets are promotable, all `4`
+buckets remain blocked from active promotion, `active_promotion_ready=false`,
+and public release/GA claims plus release artifact writes remain false.
+
 The local sync-lane gate is:
 
 ```bash

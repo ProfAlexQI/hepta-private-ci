@@ -731,6 +731,47 @@ pub struct HeptaUpstreamCodexPromotionReadinessReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexPromotionClosureReport {
+    pub product: String,
+    pub status: String,
+    pub closure_id: String,
+    pub closure_packet_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_promotion_readiness_gate: String,
+    pub closure_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub required_surface_promotion_packet_count: usize,
+    pub completed_surface_promotion_packet_count: usize,
+    pub all_surface_promotion_packets_complete: bool,
+    pub promotable_bucket_count: usize,
+    pub promotion_blocked_bucket_count: usize,
+    pub active_promotion_ready: bool,
+    pub active_promotion_denial_ready: bool,
+    pub closure_ready: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub closure_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -2053,6 +2094,80 @@ impl HeptaUpstreamCodexPromotionReadinessReport {
     }
 }
 
+impl HeptaUpstreamCodexPromotionClosureReport {
+    pub fn native_default() -> Self {
+        let readiness = HeptaUpstreamCodexPromotionReadinessReport::native_default();
+        let all_surface_promotion_packets_complete = readiness
+            .completed_surface_promotion_packet_count
+            == readiness.required_surface_promotion_packet_count
+            && readiness.required_surface_promotion_packet_count == 4;
+        let active_promotion_denial_ready = all_surface_promotion_packets_complete
+            && readiness.promotable_bucket_count == 0
+            && readiness.promotion_blocked_bucket_count == readiness.assessed_bucket_count
+            && !readiness.active_promotion_ready
+            && !readiness.active_runtime_code_wiring_allowed
+            && !readiness.active_runtime_dependency_allowed
+            && !readiness.active_runtime_auto_rebase_allowed
+            && !readiness.active_codex_engine_dependency_allowed
+            && !readiness.public_release_claim_allowed;
+        let closure_ready = readiness.decision_ready && active_promotion_denial_ready;
+
+        Self {
+            product: "Hepta".into(),
+            status: if closure_ready { "ready" } else { "attention" }.into(),
+            closure_id: "upstream-codex-promotion-closure-denial".into(),
+            closure_packet_path: "docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_CLOSURE.md"
+                .into(),
+            upstream_repository: readiness.upstream_repository,
+            candidate_diff_range: readiness.candidate_diff_range,
+            source_promotion_readiness_gate: readiness.promotion_readiness_gate,
+            closure_gate: "scripts/hepta-upstream-codex-promotion-closure.sh".into(),
+            active_dependency_isolation_gate: readiness.active_dependency_isolation_gate,
+            required_surface_promotion_packet_count: readiness
+                .required_surface_promotion_packet_count,
+            completed_surface_promotion_packet_count: readiness
+                .completed_surface_promotion_packet_count,
+            all_surface_promotion_packets_complete,
+            promotable_bucket_count: readiness.promotable_bucket_count,
+            promotion_blocked_bucket_count: readiness.promotion_blocked_bucket_count,
+            active_promotion_ready: readiness.active_promotion_ready,
+            active_promotion_denial_ready,
+            closure_ready,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            closure_invariants: vec![
+                "all four required surface promotion packets are complete".into(),
+                "zero selected upstream Codex buckets are promotable by default".into(),
+                "all four selected upstream Codex buckets remain active-promotion blocked".into(),
+                "active Hepta runtime keeps zero tracked Codex engine dependencies".into(),
+                "public release and public GA claims remain operator-gated".into(),
+            ],
+            required_next_gates: vec![
+                "require explicit operator approval before active runtime wiring".into(),
+                "rerun live active-service dependency isolation before any activation".into(),
+                "rerun watchdog, browser smoke, and long soak before any public claim".into(),
+                "treat newer upstream Codex ranges as new snapshot intake, not auto-rebase".into(),
+            ],
+        }
+    }
+}
+
 fn sync_contract(
     id: &str,
     risk: HeptaUpstreamCodexSyncRisk,
@@ -2490,6 +2605,10 @@ pub fn hepta_upstream_codex_absorption_replay_readiness_report()
 pub fn hepta_upstream_codex_promotion_readiness_report()
 -> HeptaUpstreamCodexPromotionReadinessReport {
     HeptaUpstreamCodexPromotionReadinessReport::native_default()
+}
+
+pub fn hepta_upstream_codex_promotion_closure_report() -> HeptaUpstreamCodexPromotionClosureReport {
+    HeptaUpstreamCodexPromotionClosureReport::native_default()
 }
 
 #[cfg(test)]
@@ -3962,6 +4081,77 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("per-surface promotion packets"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_promotion_closure_completes_packets_but_denies_activation() {
+        let report = hepta_upstream_codex_promotion_closure_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.closure_id, "upstream-codex-promotion-closure-denial");
+        assert_eq!(
+            report.closure_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_CLOSURE.md"
+        );
+        assert_eq!(
+            report.source_promotion_readiness_gate,
+            "scripts/hepta-upstream-codex-promotion-readiness.sh"
+        );
+        assert_eq!(
+            report.closure_gate,
+            "scripts/hepta-upstream-codex-promotion-closure.sh"
+        );
+        assert_eq!(report.required_surface_promotion_packet_count, 4);
+        assert_eq!(report.completed_surface_promotion_packet_count, 4);
+        assert!(report.all_surface_promotion_packets_complete);
+        assert_eq!(report.promotable_bucket_count, 0);
+        assert_eq!(report.promotion_blocked_bucket_count, 4);
+        assert!(!report.active_promotion_ready);
+        assert!(report.active_promotion_denial_ready);
+        assert!(report.closure_ready);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+    }
+
+    #[test]
+    fn upstream_codex_promotion_closure_preserves_side_effect_boundaries() {
+        let report = hepta_upstream_codex_promotion_closure_report();
+
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert_eq!(report.closure_invariants.len(), 5);
+        assert!(report.closure_invariants.iter().any(|invariant| {
+            invariant.contains("all four required surface promotion packets are complete")
+        }));
+        assert!(report.closure_invariants.iter().any(|invariant| {
+            invariant.contains("zero selected upstream Codex buckets are promotable")
+        }));
+        assert!(
+            report.required_next_gates.iter().any(
+                |gate| gate.contains("explicit operator approval before active runtime wiring")
+            )
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("newer upstream Codex ranges as new snapshot intake"))
         );
     }
 }

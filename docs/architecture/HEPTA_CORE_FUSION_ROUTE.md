@@ -91,6 +91,11 @@ Current state:
   map into an explicit promotion decision: four selected buckets are assessed,
   four absorption/replay sources are ready, four surface promotion packets are
   complete, and zero buckets are promotable, so active promotion remains closed.
+- `scripts/hepta-upstream-codex-promotion-closure.sh` closes the current
+  promotion cycle as a denial proof: all four required surface promotion
+  packets are complete, zero buckets are promotable, all four buckets remain
+  blocked from active promotion, and public release/GA claims plus release
+  artifact writes remain false.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

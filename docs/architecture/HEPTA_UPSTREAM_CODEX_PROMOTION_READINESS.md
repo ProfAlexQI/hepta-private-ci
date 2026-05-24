@@ -52,3 +52,8 @@ The decision packet is ready, but active promotion is not open.
 
 Active behavior changes require per-surface promotion packets plus active
 dependency isolation, watchdog, operator approval, and soak evidence.
+
+The closure/denial follow-up gate is
+`scripts/hepta-upstream-codex-promotion-closure.sh`. It records that all four
+surface promotion packets are complete while active promotion, public release
+claims, public GA claims, and release artifact writes remain closed.
