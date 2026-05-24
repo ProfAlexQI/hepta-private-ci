@@ -55,7 +55,7 @@ json_array_from_stdin() {
 
 bucket_paths_json() {
   local pattern="$1"
-  printf '%s\n' "$changed_paths" | grep -E "$pattern" | json_array_from_stdin
+  { printf '%s\n' "$changed_paths" | grep -E "$pattern" || true; } | json_array_from_stdin
 }
 
 provider_paths="$(
@@ -116,6 +116,9 @@ buckets_json="$(
 all_buckets_populated="$(
   jq 'all(.[]; .changed_file_count > 0)' <<<"$buckets_json"
 )"
+populated_bucket_count="$(
+  jq '[.[] | select(.changed_file_count > 0)] | length' <<<"$buckets_json"
+)"
 
 commit_sample_json="$(
   git log --pretty=format:'%H%x09%s' "$diff_range" --max-count=30 |
@@ -143,12 +146,13 @@ report="$(
     --argjson changed_file_count "$changed_file_count" \
     --argjson require_descendant "$(if [[ "$REQUIRE_DESCENDANT" == "1" ]]; then echo true; else echo false; fi)" \
     --argjson all_buckets_populated "$all_buckets_populated" \
+    --argjson populated_bucket_count "$populated_bucket_count" \
     --argjson buckets "$buckets_json" \
     --argjson commit_sample "$commit_sample_json" \
     --argjson path_sample "$path_sample_json" \
     '{
       product:$product,
-      status:(if ($commit_count > 0 and $changed_file_count > 0 and $all_buckets_populated) then "ready" else "attention" end),
+      status:(if ($commit_count > 0 and $changed_file_count > 0 and $populated_bucket_count > 0) then "ready" else "attention" end),
       ledger_id:$ledger,
       upstream_repository:$upstream,
       manifest:$manifest,
@@ -168,6 +172,8 @@ report="$(
         commit_count:$commit_count,
         changed_file_count:$changed_file_count,
         all_buckets_populated:$all_buckets_populated,
+        populated_bucket_count:$populated_bucket_count,
+        narrow_delta_ready:($commit_count > 0 and $changed_file_count > 0 and $populated_bucket_count > 0),
         commit_sample:$commit_sample,
         changed_path_sample:$path_sample
       },
@@ -202,8 +208,8 @@ report="$(
 
 printf '%s\n' "$report"
 
-if [[ "$commit_count" -le 0 || "$changed_file_count" -le 0 || "$all_buckets_populated" != "true" ]]; then
-  echo "diff ledger is incomplete: commits=$commit_count changed_files=$changed_file_count all_buckets_populated=$all_buckets_populated" >&2
+if [[ "$commit_count" -le 0 || "$changed_file_count" -le 0 || "$populated_bucket_count" -le 0 ]]; then
+  echo "diff ledger is incomplete: commits=$commit_count changed_files=$changed_file_count populated_bucket_count=$populated_bucket_count all_buckets_populated=$all_buckets_populated" >&2
   exit 1
 fi
 

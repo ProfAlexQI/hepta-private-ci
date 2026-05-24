@@ -47,6 +47,22 @@ legacy CLI/TUI compatibility, and product/release-governance buckets. Set
 or `HEPTA_UPSTREAM_CODEX_DIFF_TARGET_REF` to audit a different already-present
 local range. The gate does not fetch or merge upstream.
 
+For narrow upstream deltas, not every bucket must be populated. The ledger emits
+`populated_bucket_count` and `narrow_delta_ready` so a one-bucket update can
+still be tracked without pretending that provider/security or runtime/app-server
+surfaces changed. The latest observed narrow range is
+`7d47056ea42636271ac020b86347fbbef49490aa..9f42c89c0112771dc29100a6f3fc904049b2655f`,
+which contains upstream `feat(doctor): add environment diagnostics (#24261)`.
+Its Hepta-owned absorption gate is:
+
+```bash
+scripts/hepta-upstream-codex-doctor-environment-diagnostics-absorption.sh
+```
+
+That gate maps the upstream doctor environment diagnostics into redacted
+Hepta-native doctor dry-run contracts while keeping Codex CLI/TUI code,
+active runtime wiring, and public release claims blocked.
+
 The first selected absorption-contract gate is:
 
 ```bash

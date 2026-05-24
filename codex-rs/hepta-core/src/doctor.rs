@@ -116,6 +116,11 @@ pub enum DoctorDryRunCheckKind {
     ConfigRepairPreview,
     PluginRepairPreview,
     ProxyValidate,
+    SystemEnvironment,
+    GitEnvironment,
+    TerminalEnvironment,
+    TerminalTitle,
+    StartupWarnings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,12 +164,18 @@ pub struct DoctorDryRunReport {
     pub config_repair_preview_check: bool,
     pub plugin_repair_preview_check: bool,
     pub proxy_validate_check: bool,
+    pub system_environment_check: bool,
+    pub git_environment_check: bool,
+    pub terminal_environment_check: bool,
+    pub terminal_title_check: bool,
+    pub startup_warning_check: bool,
     pub config_written: bool,
     pub package_manager_invoked: bool,
     pub plugin_installed: bool,
     pub listener_started: bool,
     pub credential_value_read: bool,
     pub external_network_read: bool,
+    pub raw_environment_value_exposed: bool,
     pub dry_run_checks_ready: bool,
     pub checks: Vec<DoctorDryRunCheck>,
 }
@@ -196,6 +207,26 @@ impl DoctorDryRunReport {
                 "proxy-validate-no-listener",
                 DoctorDryRunCheckKind::ProxyValidate,
             ),
+            DoctorDryRunCheck::new(
+                "system-environment-redacted-local-only",
+                DoctorDryRunCheckKind::SystemEnvironment,
+            ),
+            DoctorDryRunCheck::new(
+                "git-environment-redacted-local-only",
+                DoctorDryRunCheckKind::GitEnvironment,
+            ),
+            DoctorDryRunCheck::new(
+                "terminal-environment-redacted-local-only",
+                DoctorDryRunCheckKind::TerminalEnvironment,
+            ),
+            DoctorDryRunCheck::new(
+                "terminal-title-redacted-local-only",
+                DoctorDryRunCheckKind::TerminalTitle,
+            ),
+            DoctorDryRunCheck::new(
+                "startup-warning-count-redacted-local-only",
+                DoctorDryRunCheckKind::StartupWarnings,
+            ),
         ])
     }
 
@@ -222,6 +253,12 @@ impl DoctorDryRunReport {
         let config_repair_preview_check = has_kind(DoctorDryRunCheckKind::ConfigRepairPreview);
         let plugin_repair_preview_check = has_kind(DoctorDryRunCheckKind::PluginRepairPreview);
         let proxy_validate_check = has_kind(DoctorDryRunCheckKind::ProxyValidate);
+        let system_environment_check = has_kind(DoctorDryRunCheckKind::SystemEnvironment);
+        let git_environment_check = has_kind(DoctorDryRunCheckKind::GitEnvironment);
+        let terminal_environment_check = has_kind(DoctorDryRunCheckKind::TerminalEnvironment);
+        let terminal_title_check = has_kind(DoctorDryRunCheckKind::TerminalTitle);
+        let startup_warning_check = has_kind(DoctorDryRunCheckKind::StartupWarnings);
+        let raw_environment_value_exposed = false;
         let dry_run_checks_ready = check_count > 0
             && check_count == checks_passed
             && doctor_snapshot_check
@@ -230,12 +267,18 @@ impl DoctorDryRunReport {
             && config_repair_preview_check
             && plugin_repair_preview_check
             && proxy_validate_check
+            && system_environment_check
+            && git_environment_check
+            && terminal_environment_check
+            && terminal_title_check
+            && startup_warning_check
             && !config_written
             && !package_manager_invoked
             && !plugin_installed
             && !listener_started
             && !credential_value_read
-            && !external_network_read;
+            && !external_network_read
+            && !raw_environment_value_exposed;
 
         Self {
             check_count,
@@ -246,12 +289,18 @@ impl DoctorDryRunReport {
             config_repair_preview_check,
             plugin_repair_preview_check,
             proxy_validate_check,
+            system_environment_check,
+            git_environment_check,
+            terminal_environment_check,
+            terminal_title_check,
+            startup_warning_check,
             config_written,
             package_manager_invoked,
             plugin_installed,
             listener_started,
             credential_value_read,
             external_network_read,
+            raw_environment_value_exposed,
             dry_run_checks_ready,
             checks,
         }
@@ -499,7 +548,7 @@ mod tests {
     fn doctor_onboarding_update_dry_run_checks_are_real_and_side_effect_free() {
         let report = DoctorDryRunReport::native_default();
 
-        assert_eq!(report.check_count, 6);
+        assert_eq!(report.check_count, 11);
         assert_eq!(report.checks_passed, report.check_count);
         assert!(report.doctor_snapshot_check);
         assert!(report.onboarding_plan_check);
@@ -507,12 +556,18 @@ mod tests {
         assert!(report.config_repair_preview_check);
         assert!(report.plugin_repair_preview_check);
         assert!(report.proxy_validate_check);
+        assert!(report.system_environment_check);
+        assert!(report.git_environment_check);
+        assert!(report.terminal_environment_check);
+        assert!(report.terminal_title_check);
+        assert!(report.startup_warning_check);
         assert!(!report.config_written);
         assert!(!report.package_manager_invoked);
         assert!(!report.plugin_installed);
         assert!(!report.listener_started);
         assert!(!report.credential_value_read);
         assert!(!report.external_network_read);
+        assert!(!report.raw_environment_value_exposed);
         assert!(report.dry_run_checks_ready);
     }
 }
