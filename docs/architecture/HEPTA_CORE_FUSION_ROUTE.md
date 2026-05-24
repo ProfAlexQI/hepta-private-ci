@@ -148,6 +148,9 @@ Current state:
   summarizes all `10` activation evidence gate families and proves
   operator-approved activation readiness still remains false until a real
   activation request and fresh trusted records exist.
+- `scripts/hepta-upstream-codex-activation-evidence-recording-dry-run-receipt.sh`
+  defines the redacted evidence-recording receipt schema and proves it records
+  `0` evidence by default, so active wiring and release claims stay blocked.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

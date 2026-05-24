@@ -89,9 +89,13 @@ All gate families below are ready and block activation without trusted evidence:
 
 ## Required Next Gates
 
-- Record a real activation request id and operator approval id.
+- Run
+  `scripts/hepta-upstream-codex-activation-evidence-recording-dry-run-receipt.sh`
+  to define the redacted receipt schema before any real evidence write path.
+- Bind receipt fields to a real activation request id and operator approval id.
 - Replace fixture evidence with fresh trusted records for all eight required
   evidence ids.
-- Rerun evidence completeness scoreboard after live gates and long soak.
+- Rerun evidence completeness scoreboard and receipt gates after live gates and
+  long soak.
 - Require explicit public-claim and artifact-write approval before external
   release actions.

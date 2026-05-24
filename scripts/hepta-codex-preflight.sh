@@ -136,6 +136,9 @@ scripts/hepta-upstream-codex-activation-trusted-record-shape-validator.sh
 echo "[hepta-codex-preflight] upstream Codex activation evidence completeness scoreboard gate"
 scripts/hepta-upstream-codex-activation-evidence-completeness-scoreboard.sh
 
+echo "[hepta-codex-preflight] upstream Codex activation evidence recording dry-run receipt gate"
+scripts/hepta-upstream-codex-activation-evidence-recording-dry-run-receipt.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh

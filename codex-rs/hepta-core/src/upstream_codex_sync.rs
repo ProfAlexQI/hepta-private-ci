@@ -1507,6 +1507,70 @@ pub struct HeptaUpstreamCodexActivationEvidenceCompletenessScoreboardReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceRecordingReceiptField {
+    pub name: String,
+    pub required: bool,
+    pub recorded: bool,
+    pub redacted_or_hashed: bool,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceRecordingDryRunReceiptReport {
+    pub product: String,
+    pub status: String,
+    pub receipt_id: String,
+    pub receipt_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_scoreboard_gate: String,
+    pub evidence_recording_dry_run_receipt_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_scoreboard_ready: bool,
+    pub required_receipt_field_count: usize,
+    pub recorded_receipt_field_count: usize,
+    pub redacted_or_hashed_field_count: usize,
+    pub required_evidence_count: usize,
+    pub required_trusted_record_count: usize,
+    pub accepted_trusted_record_count: usize,
+    pub fresh_trusted_record_count: usize,
+    pub operator_approval_recorded: bool,
+    pub activation_request_recorded: bool,
+    pub receipt_schema_ready: bool,
+    pub receipt_recorded: bool,
+    pub real_evidence_recorded: bool,
+    pub trusted_record_materialized: bool,
+    pub public_claim_attempt_blocked: bool,
+    pub release_artifact_write_attempt_blocked: bool,
+    pub evidence_recording_dry_run_ready: bool,
+    pub activation_blocked_by_receipt: bool,
+    pub activation_allowed_by_receipt: bool,
+    pub receipt_denial_reason: String,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub receipt_fields: Vec<HeptaUpstreamCodexActivationEvidenceRecordingReceiptField>,
+    pub receipt_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -4816,6 +4880,199 @@ fn default_activation_evidence_completeness_gate_families()
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceRecordingDryRunReceiptReport {
+    pub fn native_default() -> Self {
+        let scoreboard =
+            HeptaUpstreamCodexActivationEvidenceCompletenessScoreboardReport::native_default();
+        let receipt_fields = default_activation_evidence_recording_receipt_fields();
+        let required_receipt_field_count = receipt_fields.len();
+        let recorded_receipt_field_count =
+            receipt_fields.iter().filter(|field| field.recorded).count();
+        let redacted_or_hashed_field_count = receipt_fields
+            .iter()
+            .filter(|field| field.redacted_or_hashed)
+            .count();
+        let receipt_schema_ready = scoreboard.evidence_completeness_scoreboard_ready
+            && required_receipt_field_count == 12
+            && recorded_receipt_field_count == 0
+            && redacted_or_hashed_field_count >= 8
+            && receipt_fields
+                .iter()
+                .all(|field| field.required && !field.recorded);
+        let receipt_recorded = false;
+        let real_evidence_recorded = false;
+        let trusted_record_materialized = false;
+        let evidence_recording_dry_run_ready = receipt_schema_ready
+            && !receipt_recorded
+            && !real_evidence_recorded
+            && !trusted_record_materialized
+            && !scoreboard.operator_approval_recorded
+            && !scoreboard.activation_request_recorded
+            && scoreboard.accepted_trusted_record_count == 0
+            && scoreboard.fresh_trusted_record_count == 0
+            && scoreboard.public_claim_attempt_blocked
+            && scoreboard.release_artifact_write_attempt_blocked;
+        let activation_blocked_by_receipt = true;
+        let activation_allowed_by_receipt = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if evidence_recording_dry_run_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            receipt_id: "upstream-codex-activation-evidence-recording-dry-run-receipt".into(),
+            receipt_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECORDING_DRY_RUN_RECEIPT.md"
+                    .into(),
+            upstream_repository: scoreboard.upstream_repository,
+            candidate_diff_range: scoreboard.candidate_diff_range,
+            source_scoreboard_gate: scoreboard.evidence_completeness_scoreboard_gate,
+            evidence_recording_dry_run_receipt_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-recording-dry-run-receipt.sh"
+                    .into(),
+            active_dependency_isolation_gate: scoreboard.active_dependency_isolation_gate,
+            source_scoreboard_ready: scoreboard.evidence_completeness_scoreboard_ready,
+            required_receipt_field_count,
+            recorded_receipt_field_count,
+            redacted_or_hashed_field_count,
+            required_evidence_count: scoreboard.required_evidence_count,
+            required_trusted_record_count: scoreboard.required_trusted_record_count,
+            accepted_trusted_record_count: scoreboard.accepted_trusted_record_count,
+            fresh_trusted_record_count: scoreboard.fresh_trusted_record_count,
+            operator_approval_recorded: scoreboard.operator_approval_recorded,
+            activation_request_recorded: scoreboard.activation_request_recorded,
+            receipt_schema_ready,
+            receipt_recorded,
+            real_evidence_recorded,
+            trusted_record_materialized,
+            public_claim_attempt_blocked: scoreboard.public_claim_attempt_blocked,
+            release_artifact_write_attempt_blocked: scoreboard
+                .release_artifact_write_attempt_blocked,
+            evidence_recording_dry_run_ready,
+            activation_blocked_by_receipt,
+            activation_allowed_by_receipt,
+            receipt_denial_reason:
+                "recording receipt is schema-only; no real activation request, operator approval, fresh trusted records, or workspace write is present"
+                    .into(),
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            receipt_fields,
+            receipt_invariants: vec![
+                "receipt schema can be ready while no evidence is recorded".into(),
+                "all receipt fields remain absent until a real activation request exists".into(),
+                "redacted or hashed fields prevent raw operator identity and artifact leakage".into(),
+                "dry-run receipt readiness does not permit active wiring or public claims".into(),
+            ],
+            required_next_gates: vec![
+                "bind receipt fields to a real activation request id".into(),
+                "record fresh trusted evidence ids only after live gate evidence is captured".into(),
+                "write evidence receipts through an explicit operator-approved recording path".into(),
+                "rerun scoreboard and receipt gates before any active runtime wiring".into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_recording_receipt_field(
+    name: &str,
+    redacted_or_hashed: bool,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationEvidenceRecordingReceiptField {
+    HeptaUpstreamCodexActivationEvidenceRecordingReceiptField {
+        name: name.into(),
+        required: true,
+        recorded: false,
+        redacted_or_hashed,
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_evidence_recording_receipt_fields()
+-> Vec<HeptaUpstreamCodexActivationEvidenceRecordingReceiptField> {
+    vec![
+        activation_evidence_recording_receipt_field(
+            "evidence_recording_receipt_id",
+            true,
+            "unique receipt identifier for the dry-run evidence recording packet",
+        ),
+        activation_evidence_recording_receipt_field(
+            "activation_request_id",
+            true,
+            "binds the receipt to a single operator activation request",
+        ),
+        activation_evidence_recording_receipt_field(
+            "operator_approval_id",
+            true,
+            "binds the receipt to explicit operator approval",
+        ),
+        activation_evidence_recording_receipt_field(
+            "operator_identity_hash",
+            true,
+            "records operator identity only as a hash",
+        ),
+        activation_evidence_recording_receipt_field(
+            "accepted_trusted_record_ids",
+            true,
+            "lists accepted trusted evidence record identifiers",
+        ),
+        activation_evidence_recording_receipt_field(
+            "fresh_trusted_record_ids",
+            true,
+            "lists trusted evidence records still inside freshness windows",
+        ),
+        activation_evidence_recording_receipt_field(
+            "active_binary_sha256",
+            true,
+            "binds evidence to the active installed Hepta binary hash",
+        ),
+        activation_evidence_recording_receipt_field(
+            "route_or_status_hash_bundle",
+            true,
+            "binds evidence to live route and status response hashes",
+        ),
+        activation_evidence_recording_receipt_field(
+            "artifact_sha256_or_redacted_path_bundle",
+            true,
+            "binds evidence to artifact hashes or redacted local artifact paths",
+        ),
+        activation_evidence_recording_receipt_field(
+            "freshness_window_summary",
+            false,
+            "summarizes freshness window policy without raw evidence payloads",
+        ),
+        activation_evidence_recording_receipt_field(
+            "rollback_plan_id",
+            true,
+            "binds activation to an operator-reviewed rollback plan",
+        ),
+        activation_evidence_recording_receipt_field(
+            "public_claim_and_artifact_decision",
+            false,
+            "records explicit public-claim and release-artifact decisions",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -5407,6 +5664,11 @@ pub fn hepta_upstream_codex_activation_trusted_record_shape_validator_report()
 pub fn hepta_upstream_codex_activation_evidence_completeness_scoreboard_report()
 -> HeptaUpstreamCodexActivationEvidenceCompletenessScoreboardReport {
     HeptaUpstreamCodexActivationEvidenceCompletenessScoreboardReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_recording_dry_run_receipt_report()
+-> HeptaUpstreamCodexActivationEvidenceRecordingDryRunReceiptReport {
+    HeptaUpstreamCodexActivationEvidenceRecordingDryRunReceiptReport::native_default()
 }
 
 #[cfg(test)]
@@ -8012,6 +8274,87 @@ mod tests {
                 .scoreboard_invariants
                 .iter()
                 .any(|invariant| invariant.contains("activation remains denied"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_recording_dry_run_receipt_defines_redacted_schema() {
+        let report = hepta_upstream_codex_activation_evidence_recording_dry_run_receipt_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.receipt_id,
+            "upstream-codex-activation-evidence-recording-dry-run-receipt"
+        );
+        assert_eq!(
+            report.source_scoreboard_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-completeness-scoreboard.sh"
+        );
+        assert_eq!(
+            report.evidence_recording_dry_run_receipt_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-recording-dry-run-receipt.sh"
+        );
+        assert!(report.source_scoreboard_ready);
+        assert_eq!(report.required_receipt_field_count, 12);
+        assert_eq!(report.recorded_receipt_field_count, 0);
+        assert_eq!(report.redacted_or_hashed_field_count, 10);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.required_trusted_record_count, 8);
+        assert!(report.receipt_schema_ready);
+        assert!(report.evidence_recording_dry_run_ready);
+        assert!(report.receipt_fields.iter().all(|field| field.required));
+        assert!(report.receipt_fields.iter().all(|field| !field.recorded));
+        assert!(
+            report.receipt_fields.iter().any(|field| {
+                field.name == "operator_identity_hash" && field.redacted_or_hashed
+            })
+        );
+        assert!(report.receipt_fields.iter().any(|field| {
+            field.name == "artifact_sha256_or_redacted_path_bundle" && field.redacted_or_hashed
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_recording_dry_run_receipt_preserves_denials() {
+        let report = hepta_upstream_codex_activation_evidence_recording_dry_run_receipt_report();
+
+        assert!(!report.operator_approval_recorded);
+        assert!(!report.activation_request_recorded);
+        assert!(!report.receipt_recorded);
+        assert!(!report.real_evidence_recorded);
+        assert!(!report.trusted_record_materialized);
+        assert_eq!(report.accepted_trusted_record_count, 0);
+        assert_eq!(report.fresh_trusted_record_count, 0);
+        assert!(report.public_claim_attempt_blocked);
+        assert!(report.release_artifact_write_attempt_blocked);
+        assert!(report.activation_blocked_by_receipt);
+        assert!(!report.activation_allowed_by_receipt);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(report.receipt_denial_reason.contains("schema-only"));
+        assert!(
+            report
+                .receipt_invariants
+                .iter()
+                .any(|invariant| invariant.contains("no evidence is recorded"))
         );
     }
 }

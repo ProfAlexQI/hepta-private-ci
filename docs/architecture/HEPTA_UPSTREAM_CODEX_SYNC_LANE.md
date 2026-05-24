@@ -403,6 +403,18 @@ continue blocking activation without trusted evidence; accepted trusted record
 count and fresh trusted record count remain `0`, so operator-approved
 activation readiness remains false.
 
+The activation evidence recording dry-run receipt gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-recording-dry-run-receipt.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECORDING_DRY_RUN_RECEIPT.md`.
+It defines the redacted receipt schema for future evidence recording. All `12`
+receipt fields remain absent by default, accepted/fresh trusted evidence counts
+remain `0`, and active wiring/public claim decisions stay false.
+
 The local sync-lane gate is:
 
 ```bash
