@@ -179,6 +179,11 @@ Current state:
   filesystem persistence. The packet fields are schema-only and unrecorded by
   default, so filesystem persistence, workspace writes, evidence persistence,
   public release claims, and release artifact writes remain blocked.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist.sh`
+  defines the redacted receipt output-path allowlist that must exist before any
+  filesystem persistence target can be selected. No path is selected by default,
+  and source-tree, home-directory, release-artifact, and public-artifact paths
+  remain blocked from receipt persistence.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

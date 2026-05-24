@@ -2082,6 +2082,74 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceAppro
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistEntry {
+    pub name: String,
+    pub redacted_path: String,
+    pub allowed_for_receipt_persistence: bool,
+    pub blocked_for_public_artifact: bool,
+    pub requires_operator_approval: bool,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistReport {
+    pub product: String,
+    pub status: String,
+    pub filesystem_output_path_allowlist_id: String,
+    pub filesystem_output_path_allowlist_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_filesystem_persistence_approval_packet_gate: String,
+    pub filesystem_output_path_allowlist_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_filesystem_persistence_approval_packet_ready: bool,
+    pub required_allowlist_entry_count: usize,
+    pub allowlist_entry_count: usize,
+    pub allowed_output_path_entry_count: usize,
+    pub blocked_output_path_entry_count: usize,
+    pub redacted_output_path_entry_count: usize,
+    pub default_selected_output_path_count: usize,
+    pub source_tree_path_allowed: bool,
+    pub home_directory_path_allowed: bool,
+    pub release_artifact_path_allowed: bool,
+    pub public_artifact_path_allowed: bool,
+    pub receipt_output_path_allowlist_ready: bool,
+    pub filesystem_persistence_allowed: bool,
+    pub filesystem_persistence_execution_performed: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+    pub activation_blocked_by_output_path_allowlist: bool,
+    pub activation_allowed_by_output_path_allowlist: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub command_invocation_performed: bool,
+    pub receipt_persistence_execution: bool,
+    pub materialization_execution: bool,
+    pub filesystem_persistence_execution: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub allowlist_entries:
+        Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistEntry>,
+    pub allowlist_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -6993,6 +7061,129 @@ impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalPac
     }
 }
 
+impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistReport {
+    pub fn native_default() -> Self {
+        let approval =
+            HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalPacketReport::native_default();
+        let allowlist_entries =
+            default_activation_evidence_receipt_filesystem_output_path_allowlist_entries();
+        let required_allowlist_entry_count = 6;
+        let allowlist_entry_count = allowlist_entries.len();
+        let allowed_output_path_entry_count = allowlist_entries
+            .iter()
+            .filter(|entry| entry.allowed_for_receipt_persistence)
+            .count();
+        let blocked_output_path_entry_count =
+            allowlist_entry_count.saturating_sub(allowed_output_path_entry_count);
+        let redacted_output_path_entry_count = allowlist_entries
+            .iter()
+            .filter(|entry| entry.redacted_path.starts_with("<redacted:"))
+            .count();
+        let default_selected_output_path_count = 0;
+        let source_tree_path_allowed = false;
+        let home_directory_path_allowed = false;
+        let release_artifact_path_allowed = false;
+        let public_artifact_path_allowed = false;
+        let receipt_output_path_allowlist_ready = approval
+            .filesystem_persistence_approval_packet_ready
+            && allowlist_entry_count == required_allowlist_entry_count
+            && allowed_output_path_entry_count == 3
+            && blocked_output_path_entry_count == 3
+            && redacted_output_path_entry_count == required_allowlist_entry_count
+            && default_selected_output_path_count == 0
+            && !source_tree_path_allowed
+            && !home_directory_path_allowed
+            && !release_artifact_path_allowed
+            && !public_artifact_path_allowed;
+        let filesystem_persistence_allowed = false;
+        let filesystem_persistence_execution_performed = false;
+        let workspace_write_performed = false;
+        let evidence_receipt_persisted = false;
+        let activation_blocked_by_output_path_allowlist = true;
+        let activation_allowed_by_output_path_allowlist = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if receipt_output_path_allowlist_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            filesystem_output_path_allowlist_id:
+                "upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist"
+                    .into(),
+            filesystem_output_path_allowlist_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_OUTPUT_PATH_ALLOWLIST.md"
+                    .into(),
+            upstream_repository: approval.upstream_repository,
+            candidate_diff_range: approval.candidate_diff_range,
+            source_filesystem_persistence_approval_packet_gate: approval
+                .filesystem_persistence_approval_packet_gate,
+            filesystem_output_path_allowlist_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist.sh"
+                    .into(),
+            active_dependency_isolation_gate: approval.active_dependency_isolation_gate,
+            source_filesystem_persistence_approval_packet_ready: approval
+                .filesystem_persistence_approval_packet_ready,
+            required_allowlist_entry_count,
+            allowlist_entry_count,
+            allowed_output_path_entry_count,
+            blocked_output_path_entry_count,
+            redacted_output_path_entry_count,
+            default_selected_output_path_count,
+            source_tree_path_allowed,
+            home_directory_path_allowed,
+            release_artifact_path_allowed,
+            public_artifact_path_allowed,
+            receipt_output_path_allowlist_ready,
+            filesystem_persistence_allowed,
+            filesystem_persistence_execution_performed,
+            workspace_write_performed,
+            evidence_receipt_persisted,
+            activation_blocked_by_output_path_allowlist,
+            activation_allowed_by_output_path_allowlist,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            command_invocation_performed: false,
+            receipt_persistence_execution: false,
+            materialization_execution: false,
+            filesystem_persistence_execution: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            allowlist_entries,
+            allowlist_invariants: vec![
+                "receipt output paths must match an allowlisted redacted root before any filesystem persistence"
+                    .into(),
+                "source tree, home directory, release artifact, and public artifact paths are not receipt persistence targets"
+                    .into(),
+                "no output path is selected by default".into(),
+                "allowlist readiness is not filesystem write authority".into(),
+            ],
+            required_next_gates: vec![
+                "bind allowlisted output paths to fresh live evidence and active binary SHA".into(),
+                "add a dry-run receipt sink write preview before filesystem persistence".into(),
+                "keep public artifact paths behind separate release-governance approval".into(),
+            ],
+        }
+    }
+}
+
 fn filesystem_persistence_approval_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -7069,6 +7260,71 @@ fn default_activation_evidence_receipt_filesystem_persistence_approval_fields()
             "public_claim_and_artifact_decision",
             false,
             "keeps public release claims and artifact writes separately approved",
+        ),
+    ]
+}
+
+fn filesystem_output_path_allowlist_entry(
+    name: &str,
+    redacted_path: &str,
+    allowed_for_receipt_persistence: bool,
+    blocked_for_public_artifact: bool,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistEntry {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistEntry {
+        name: name.into(),
+        redacted_path: redacted_path.into(),
+        allowed_for_receipt_persistence,
+        blocked_for_public_artifact,
+        requires_operator_approval: true,
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_evidence_receipt_filesystem_output_path_allowlist_entries()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistEntry> {
+    vec![
+        filesystem_output_path_allowlist_entry(
+            "activation_evidence_receipts_root",
+            "<redacted:hepta-activation-evidence-receipts>",
+            true,
+            true,
+            "bounded local receipt sink for operator-approved activation evidence",
+        ),
+        filesystem_output_path_allowlist_entry(
+            "activation_evidence_dry_run_root",
+            "<redacted:hepta-activation-evidence-dry-run>",
+            true,
+            true,
+            "bounded local dry-run sink for receipt write previews",
+        ),
+        filesystem_output_path_allowlist_entry(
+            "activation_evidence_operator_packet_root",
+            "<redacted:hepta-operator-activation-packets>",
+            true,
+            true,
+            "bounded local operator packet sink for redacted evidence references",
+        ),
+        filesystem_output_path_allowlist_entry(
+            "source_tree_root",
+            "<redacted:hepta-source-tree>",
+            false,
+            true,
+            "source tree paths are not receipt persistence targets",
+        ),
+        filesystem_output_path_allowlist_entry(
+            "home_directory_root",
+            "<redacted:home-directory>",
+            false,
+            true,
+            "home directory paths are never direct receipt persistence targets",
+        ),
+        filesystem_output_path_allowlist_entry(
+            "release_artifact_root",
+            "<redacted:release-artifact-root>",
+            false,
+            true,
+            "release artifact paths require separate release-governance approval",
         ),
     ]
 }
@@ -7704,6 +7960,11 @@ pub fn hepta_upstream_codex_activation_evidence_receipt_materialization_dry_run_
 pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_persistence_approval_packet_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalPacketReport {
     HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalPacketReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_allowlist_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistReport::native_default()
 }
 
 #[cfg(test)]
@@ -11009,6 +11270,103 @@ mod tests {
                 .approval_packet_invariants
                 .iter()
                 .any(|invariant| invariant.contains("before any workspace write"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_output_path_allowlist_is_ready() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_allowlist_report(
+            );
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.filesystem_output_path_allowlist_id,
+            "upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist"
+        );
+        assert_eq!(
+            report.source_filesystem_persistence_approval_packet_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-approval-packet.sh"
+        );
+        assert_eq!(
+            report.filesystem_output_path_allowlist_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist.sh"
+        );
+        assert!(report.source_filesystem_persistence_approval_packet_ready);
+        assert_eq!(report.required_allowlist_entry_count, 6);
+        assert_eq!(report.allowlist_entry_count, 6);
+        assert_eq!(report.allowed_output_path_entry_count, 3);
+        assert_eq!(report.blocked_output_path_entry_count, 3);
+        assert_eq!(report.redacted_output_path_entry_count, 6);
+        assert_eq!(report.default_selected_output_path_count, 0);
+        assert!(!report.source_tree_path_allowed);
+        assert!(!report.home_directory_path_allowed);
+        assert!(!report.release_artifact_path_allowed);
+        assert!(!report.public_artifact_path_allowed);
+        assert!(report.receipt_output_path_allowlist_ready);
+        assert!(
+            report
+                .allowlist_entries
+                .iter()
+                .all(|entry| entry.requires_operator_approval)
+        );
+        assert!(
+            report
+                .allowlist_entries
+                .iter()
+                .any(|entry| entry.name == "activation_evidence_receipts_root")
+        );
+        assert!(
+            report
+                .allowlist_entries
+                .iter()
+                .any(|entry| entry.name == "release_artifact_root"
+                    && !entry.allowed_for_receipt_persistence)
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_output_path_allowlist_blocks_effects()
+    {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_allowlist_report(
+            );
+
+        assert!(report.activation_blocked_by_output_path_allowlist);
+        assert!(!report.activation_allowed_by_output_path_allowlist);
+        assert!(!report.filesystem_persistence_allowed);
+        assert!(!report.filesystem_persistence_execution_performed);
+        assert!(!report.workspace_write_performed);
+        assert!(!report.evidence_receipt_persisted);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.command_invocation_performed);
+        assert!(!report.receipt_persistence_execution);
+        assert!(!report.materialization_execution);
+        assert!(!report.filesystem_persistence_execution);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .allowlist_invariants
+                .iter()
+                .any(|invariant| invariant.contains("not filesystem write authority"))
         );
     }
 }

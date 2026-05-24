@@ -509,6 +509,20 @@ persistence. The packet is schema-only by default: `0` fields are recorded,
 filesystem persistence is false, workspace writes are false, evidence receipt
 persistence is false, and public release/artifact decisions remain blocked.
 
+The activation evidence receipt filesystem output path allowlist gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_OUTPUT_PATH_ALLOWLIST.md`.
+It defines `6` redacted path entries: `3` are eligible receipt sink roots and
+`3` are explicitly blocked roots. No path is selected by default, source-tree,
+home-directory, release-artifact, and public-artifact paths are false, and
+filesystem persistence, workspace writes, evidence persistence, and public
+release/artifact decisions remain blocked.
+
 The local sync-lane gate is:
 
 ```bash

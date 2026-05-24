@@ -79,3 +79,10 @@ This packet makes the write boundary explicit: deterministic materialization
 plans are not execution authority, and filesystem persistence still requires a
 complete approval packet, fresh trusted evidence, active binary SHA binding,
 and separate public artifact policy approval.
+
+Next gate:
+`scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist.sh`
+
+The next gate adds a redacted output-path allowlist before any future receipt
+write can target a filesystem sink. It keeps source-tree, home-directory,
+release-artifact, and public-artifact paths blocked from receipt persistence.
