@@ -74,3 +74,8 @@ The follow-up active-wiring precondition gate is
 operator approval, activation request id, live dependency isolation, watchdog,
 browser smoke, and long-soak prerequisites without opening active wiring by
 default.
+
+The follow-up activation request packet schema gate is
+`scripts/hepta-upstream-codex-activation-request-packet.sh`. It defines the
+required activation request fields and keeps the packet unrecorded, active
+wiring disallowed, and public release/artifact decisions false by default.

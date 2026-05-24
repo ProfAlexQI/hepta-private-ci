@@ -101,6 +101,12 @@ Current state:
   closure must be ready, an explicit operator approval and activation request id
   must exist, live dependency isolation/watchdog/browser smoke/long soak must be
   fresh, and active wiring remains false by default.
+- `scripts/hepta-upstream-codex-activation-request-packet.sh` defines the
+  concrete activation request packet schema: `14` required fields including
+  activation request id, operator approval id, hashed operator identity,
+  approved buckets/surfaces, live evidence ids, rollback plan id, and release
+  decisions. The schema is ready, no packet is recorded, and active wiring
+  remains false.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

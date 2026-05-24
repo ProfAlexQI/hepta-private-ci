@@ -818,6 +818,61 @@ pub struct HeptaUpstreamCodexActiveWiringPreconditionReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationRequestPacketField {
+    pub name: String,
+    pub required: bool,
+    pub recorded: bool,
+    pub redacted_or_hashed: bool,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationRequestPacketReport {
+    pub product: String,
+    pub status: String,
+    pub packet_id: String,
+    pub packet_schema_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_precondition_gate: String,
+    pub activation_request_packet_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub active_wiring_precondition_ready: bool,
+    pub active_wiring_allowed_by_precondition: bool,
+    pub operator_approval_required: bool,
+    pub operator_approval_recorded: bool,
+    pub activation_request_id_required: bool,
+    pub activation_request_id_recorded: bool,
+    pub required_schema_field_count: usize,
+    pub recorded_required_schema_field_count: usize,
+    pub schema_field_count: usize,
+    pub activation_packet_schema_ready: bool,
+    pub activation_packet_recorded: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub schema_fields: Vec<HeptaUpstreamCodexActivationRequestPacketField>,
+    pub packet_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -2297,8 +2352,10 @@ impl HeptaUpstreamCodexActiveWiringPreconditionReport {
                     .into(),
             ],
             required_next_gates: vec![
-                "record an operator approval packet before any active wiring".into(),
-                "bind any activation request to a concrete activation_request_id".into(),
+                "record the activation request packet schema before any active wiring".into(),
+                "bind any future activation request to a concrete activation_request_id".into(),
+                "record an operator approval id and hashed operator identity before any active wiring"
+                    .into(),
                 "rerun live active-service dependency isolation at activation time".into(),
                 "rerun watchdog, browser smoke, and long soak at activation time".into(),
                 "keep public release and public GA claims false until a separate release gate"
@@ -2306,6 +2363,189 @@ impl HeptaUpstreamCodexActiveWiringPreconditionReport {
             ],
         }
     }
+}
+
+impl HeptaUpstreamCodexActivationRequestPacketReport {
+    pub fn native_default() -> Self {
+        let precondition = HeptaUpstreamCodexActiveWiringPreconditionReport::native_default();
+        let schema_fields = default_activation_request_packet_fields();
+        let required_schema_field_count =
+            schema_fields.iter().filter(|field| field.required).count();
+        let recorded_required_schema_field_count = schema_fields
+            .iter()
+            .filter(|field| field.required && field.recorded)
+            .count();
+        let schema_field_count = schema_fields.len();
+        let operator_approval_recorded = false;
+        let activation_request_id_recorded = false;
+        let activation_packet_recorded = false;
+        let active_wiring_allowed = false;
+        let activation_packet_schema_ready = precondition.active_wiring_precondition_ready
+            && !precondition.active_wiring_allowed
+            && required_schema_field_count == schema_field_count
+            && recorded_required_schema_field_count == 0
+            && schema_fields
+                .iter()
+                .all(|field| field.required && !field.recorded)
+            && !operator_approval_recorded
+            && !activation_request_id_recorded
+            && !activation_packet_recorded
+            && !active_wiring_allowed;
+
+        Self {
+            product: "Hepta".into(),
+            status: if activation_packet_schema_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            packet_id: "upstream-codex-activation-request-packet-schema".into(),
+            packet_schema_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_REQUEST_PACKET.md".into(),
+            upstream_repository: precondition.upstream_repository,
+            candidate_diff_range: precondition.candidate_diff_range,
+            source_precondition_gate: precondition.active_wiring_precondition_gate,
+            activation_request_packet_gate:
+                "scripts/hepta-upstream-codex-activation-request-packet.sh".into(),
+            active_dependency_isolation_gate: precondition.active_dependency_isolation_gate,
+            active_wiring_precondition_ready: precondition.active_wiring_precondition_ready,
+            active_wiring_allowed_by_precondition: precondition.active_wiring_allowed,
+            operator_approval_required: precondition.explicit_operator_approval_required,
+            operator_approval_recorded,
+            activation_request_id_required: precondition.activation_request_id_required,
+            activation_request_id_recorded,
+            required_schema_field_count,
+            recorded_required_schema_field_count,
+            schema_field_count,
+            activation_packet_schema_ready,
+            activation_packet_recorded,
+            active_wiring_allowed,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            schema_fields,
+            packet_invariants: vec![
+                "packet schema is ready but no activation packet is recorded".into(),
+                "operator approval must be explicit and is not recorded by default".into(),
+                "activation request id must be concrete and is not recorded by default".into(),
+                "live dependency isolation, watchdog, browser smoke, long soak, and rollback evidence are required fields".into(),
+                "public release and artifact decisions stay false in the schema packet".into(),
+            ],
+            required_next_gates: vec![
+                "record a concrete activation_request_id before any active wiring".into(),
+                "record an operator approval id and hashed operator identity before any active wiring".into(),
+                "attach fresh live dependency isolation, watchdog, browser smoke, long-soak, and rollback evidence ids".into(),
+                "keep active Codex engine dependency and release artifact decisions false unless separately approved".into(),
+                "rerun clean preflight and live gates after any future activation packet is recorded".into(),
+            ],
+        }
+    }
+}
+
+fn activation_request_field(
+    name: &str,
+    redacted_or_hashed: bool,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationRequestPacketField {
+    HeptaUpstreamCodexActivationRequestPacketField {
+        name: name.into(),
+        required: true,
+        recorded: false,
+        redacted_or_hashed,
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_request_packet_fields() -> Vec<HeptaUpstreamCodexActivationRequestPacketField>
+{
+    vec![
+        activation_request_field(
+            "activation_request_id",
+            false,
+            "unique request id binding the activation review",
+        ),
+        activation_request_field(
+            "operator_approval_id",
+            false,
+            "explicit approval record for the requested activation",
+        ),
+        activation_request_field(
+            "operator_identity_hash",
+            true,
+            "hashed operator identity without exposing private account details",
+        ),
+        activation_request_field(
+            "approved_bucket_ids",
+            false,
+            "upstream Codex diff buckets approved for activation consideration",
+        ),
+        activation_request_field(
+            "approved_surface_ids",
+            false,
+            "Hepta surfaces approved for active wiring consideration",
+        ),
+        activation_request_field(
+            "requested_runtime_wiring_scope",
+            false,
+            "bounded active runtime code path requested for wiring",
+        ),
+        activation_request_field(
+            "requested_dependency_change_set",
+            false,
+            "explicit dependency changes requested for the active service",
+        ),
+        activation_request_field(
+            "live_dependency_isolation_evidence_id",
+            false,
+            "fresh active-service dependency isolation evidence",
+        ),
+        activation_request_field(
+            "watchdog_evidence_id",
+            false,
+            "fresh watchdog evidence for the requested activation",
+        ),
+        activation_request_field(
+            "browser_smoke_evidence_id",
+            false,
+            "fresh browser visual smoke evidence",
+        ),
+        activation_request_field(
+            "long_soak_evidence_id",
+            false,
+            "fresh long-soak evidence for the requested activation",
+        ),
+        activation_request_field(
+            "rollback_plan_id",
+            false,
+            "rollback anchor for the requested active wiring",
+        ),
+        activation_request_field(
+            "public_release_claim_decision",
+            false,
+            "explicit decision that public release claims remain separately gated",
+        ),
+        activation_request_field(
+            "release_artifact_write_decision",
+            false,
+            "explicit decision that release artifact writes remain separately gated",
+        ),
+    ]
 }
 
 fn sync_contract(
@@ -2754,6 +2994,11 @@ pub fn hepta_upstream_codex_promotion_closure_report() -> HeptaUpstreamCodexProm
 pub fn hepta_upstream_codex_active_wiring_precondition_report()
 -> HeptaUpstreamCodexActiveWiringPreconditionReport {
     HeptaUpstreamCodexActiveWiringPreconditionReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_request_packet_report()
+-> HeptaUpstreamCodexActivationRequestPacketReport {
+    HeptaUpstreamCodexActivationRequestPacketReport::native_default()
 }
 
 #[cfg(test)]
@@ -4374,7 +4619,102 @@ mod tests {
             report
                 .required_next_gates
                 .iter()
-                .any(|gate| gate.contains("record an operator approval packet"))
+                .any(|gate| gate.contains("activation request packet schema"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_request_packet_schema_is_ready_but_unrecorded() {
+        let report = hepta_upstream_codex_activation_request_packet_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.packet_id,
+            "upstream-codex-activation-request-packet-schema"
+        );
+        assert_eq!(
+            report.packet_schema_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_REQUEST_PACKET.md"
+        );
+        assert_eq!(
+            report.source_precondition_gate,
+            "scripts/hepta-upstream-codex-active-wiring-precondition.sh"
+        );
+        assert_eq!(
+            report.activation_request_packet_gate,
+            "scripts/hepta-upstream-codex-activation-request-packet.sh"
+        );
+        assert!(report.active_wiring_precondition_ready);
+        assert!(!report.active_wiring_allowed_by_precondition);
+        assert!(report.operator_approval_required);
+        assert!(!report.operator_approval_recorded);
+        assert!(report.activation_request_id_required);
+        assert!(!report.activation_request_id_recorded);
+        assert_eq!(report.schema_field_count, 14);
+        assert_eq!(
+            report.required_schema_field_count,
+            report.schema_field_count
+        );
+        assert_eq!(report.recorded_required_schema_field_count, 0);
+        assert!(report.activation_packet_schema_ready);
+        assert!(!report.activation_packet_recorded);
+        assert!(!report.active_wiring_allowed);
+        assert!(report.schema_fields.iter().any(|field| {
+            field.name == "activation_request_id" && field.required && !field.recorded
+        }));
+        assert!(
+            report.schema_fields.iter().any(|field| {
+                field.name == "operator_identity_hash" && field.redacted_or_hashed
+            })
+        );
+        assert!(
+            report
+                .schema_fields
+                .iter()
+                .any(|field| { field.name == "live_dependency_isolation_evidence_id" })
+        );
+        assert!(
+            report
+                .schema_fields
+                .iter()
+                .any(|field| { field.name == "release_artifact_write_decision" })
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_request_packet_preserves_denials_and_side_effects() {
+        let report = hepta_upstream_codex_activation_request_packet_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .packet_invariants
+                .iter()
+                .any(|invariant| invariant.contains("no activation packet is recorded"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("concrete activation_request_id"))
         );
     }
 }

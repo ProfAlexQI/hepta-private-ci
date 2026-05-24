@@ -264,6 +264,19 @@ long soak evidence. It keeps active runtime wiring, Codex engine dependency
 promotion, public release claims, public GA claims, and release artifact writes
 false.
 
+The activation request packet schema gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-request-packet.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_REQUEST_PACKET.md`. It
+records the required `14`-field activation packet schema, including
+`activation_request_id`, operator approval id, hashed operator identity, live
+gate evidence ids, rollback plan id, and release-decision fields. It keeps the
+activation packet unrecorded and active wiring false by default.
+
 The local sync-lane gate is:
 
 ```bash

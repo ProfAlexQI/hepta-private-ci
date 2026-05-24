@@ -68,8 +68,11 @@ code wiring by itself.
 
 ## Required Next Gates
 
-- Record an operator approval packet before any active wiring.
-- Bind any activation request to a concrete `activation_request_id`.
+- Record the activation request packet schema with
+  `scripts/hepta-upstream-codex-activation-request-packet.sh`.
+- Bind any future activation request to a concrete `activation_request_id`.
+- Record an operator approval id and hashed operator identity before any active
+  wiring.
 - Rerun live active-service dependency isolation at activation time.
 - Rerun watchdog, browser smoke, and long soak at activation time.
 - Keep public release and public GA claims false until a separate release gate.
