@@ -482,6 +482,20 @@ insufficient, fresh evidence without operator approval is insufficient, public
 artifact attempts require separate release-governance approval, and filesystem
 persistence remains `0`.
 
+The activation evidence receipt materialization dry-run gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-materialization-dry-run.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_MATERIALIZATION_DRY_RUN.md`.
+It models `3` deterministic redacted receipt materialization plans after the
+write-enable fixture gate. Payload hashes, redacted output paths, and
+materialization plans are present for each fixture, while materialization
+execution, filesystem persistence, workspace writes, evidence persistence, and
+public release/artifact decisions remain blocked.
+
 The local sync-lane gate is:
 
 ```bash

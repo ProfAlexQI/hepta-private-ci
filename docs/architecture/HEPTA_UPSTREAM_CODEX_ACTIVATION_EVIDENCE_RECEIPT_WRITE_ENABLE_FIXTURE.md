@@ -86,5 +86,5 @@ All fixtures explicitly request write enablement and remain blocked:
 ## Required Next Gates
 
 - Bind write-enable fixtures to fresh live gate evidence and active binary SHA.
-- Add a redacted receipt materialization dry run before filesystem writes.
+- Run the redacted receipt materialization dry run before filesystem writes.
 - Require release-governance approval before public artifact persistence.

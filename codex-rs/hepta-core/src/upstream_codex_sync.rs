@@ -1924,6 +1924,91 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixtureReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunFixture {
+    pub fixture_id: String,
+    pub fixture_kind: String,
+    pub explicit_write_enable_requested: bool,
+    pub operator_approval_recorded: bool,
+    pub activation_request_bound: bool,
+    pub accepted_trusted_record_count: usize,
+    pub fresh_trusted_record_count: usize,
+    pub active_binary_sha_bound: bool,
+    pub payload_hash_planned: bool,
+    pub redacted_output_path_planned: bool,
+    pub deterministic_materialization_plan: bool,
+    pub public_claim_requested: bool,
+    pub release_artifact_write_requested: bool,
+    pub public_artifact_policy_satisfied: bool,
+    pub dry_run_status: String,
+    pub filesystem_persistence_allowed: bool,
+    pub materialization_executed: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+    pub denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunReport {
+    pub product: String,
+    pub status: String,
+    pub materialization_dry_run_id: String,
+    pub materialization_dry_run_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_write_enable_fixture_gate: String,
+    pub materialization_dry_run_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_write_enable_fixture_ready: bool,
+    pub required_materialization_fixture_count: usize,
+    pub materialization_fixture_count: usize,
+    pub blocked_materialization_fixture_count: usize,
+    pub allowed_materialization_fixture_count: usize,
+    pub explicit_write_enable_requested_fixture_count: usize,
+    pub operator_approved_fixture_count: usize,
+    pub activation_request_bound_fixture_count: usize,
+    pub fresh_trusted_record_fixture_count: usize,
+    pub active_binary_sha_bound_fixture_count: usize,
+    pub payload_hash_planned_fixture_count: usize,
+    pub redacted_output_path_planned_fixture_count: usize,
+    pub deterministic_materialization_plan_count: usize,
+    pub public_claim_attempt_fixture_count: usize,
+    pub release_artifact_write_attempt_fixture_count: usize,
+    pub public_artifact_policy_satisfied_fixture_count: usize,
+    pub filesystem_persistence_allowed_count: usize,
+    pub materialization_executed_count: usize,
+    pub workspace_write_performed_count: usize,
+    pub evidence_receipt_persisted_count: usize,
+    pub materialization_dry_run_ready: bool,
+    pub activation_blocked_by_materialization_dry_run: bool,
+    pub activation_allowed_by_materialization_dry_run: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub command_invocation_performed: bool,
+    pub receipt_persistence_execution: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub materialization_fixtures:
+        Vec<HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunFixture>,
+    pub materialization_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -6443,6 +6528,254 @@ fn default_activation_evidence_receipt_write_enable_fixtures()
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunReport {
+    pub fn native_default() -> Self {
+        let write_enable =
+            HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixtureReport::native_default();
+        let materialization_fixtures =
+            default_activation_evidence_receipt_materialization_dry_run_fixtures();
+        let required_materialization_fixture_count = 3;
+        let materialization_fixture_count = materialization_fixtures.len();
+        let blocked_materialization_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.dry_run_status == "blocked_dry_run")
+            .count();
+        let allowed_materialization_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.dry_run_status == "allowed")
+            .count();
+        let explicit_write_enable_requested_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.explicit_write_enable_requested)
+            .count();
+        let operator_approved_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.operator_approval_recorded)
+            .count();
+        let activation_request_bound_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.activation_request_bound)
+            .count();
+        let fresh_trusted_record_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.fresh_trusted_record_count == 8)
+            .count();
+        let active_binary_sha_bound_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.active_binary_sha_bound)
+            .count();
+        let payload_hash_planned_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.payload_hash_planned)
+            .count();
+        let redacted_output_path_planned_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.redacted_output_path_planned)
+            .count();
+        let deterministic_materialization_plan_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.deterministic_materialization_plan)
+            .count();
+        let public_claim_attempt_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.public_claim_requested)
+            .count();
+        let release_artifact_write_attempt_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.release_artifact_write_requested)
+            .count();
+        let public_artifact_policy_satisfied_fixture_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.public_artifact_policy_satisfied)
+            .count();
+        let filesystem_persistence_allowed_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.filesystem_persistence_allowed)
+            .count();
+        let materialization_executed_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.materialization_executed)
+            .count();
+        let workspace_write_performed_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.workspace_write_performed)
+            .count();
+        let evidence_receipt_persisted_count = materialization_fixtures
+            .iter()
+            .filter(|fixture| fixture.evidence_receipt_persisted)
+            .count();
+        let materialization_dry_run_ready = write_enable.write_enable_fixture_contract_ready
+            && materialization_fixture_count == required_materialization_fixture_count
+            && blocked_materialization_fixture_count == required_materialization_fixture_count
+            && allowed_materialization_fixture_count == 0
+            && explicit_write_enable_requested_fixture_count == 3
+            && operator_approved_fixture_count == 2
+            && activation_request_bound_fixture_count == 3
+            && fresh_trusted_record_fixture_count == 2
+            && active_binary_sha_bound_fixture_count == 3
+            && payload_hash_planned_fixture_count == 3
+            && redacted_output_path_planned_fixture_count == 3
+            && deterministic_materialization_plan_count == 3
+            && public_claim_attempt_fixture_count == 1
+            && release_artifact_write_attempt_fixture_count == 1
+            && public_artifact_policy_satisfied_fixture_count == 2
+            && filesystem_persistence_allowed_count == 0
+            && materialization_executed_count == 0
+            && workspace_write_performed_count == 0
+            && evidence_receipt_persisted_count == 0;
+        let activation_blocked_by_materialization_dry_run = true;
+        let activation_allowed_by_materialization_dry_run = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if materialization_dry_run_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            materialization_dry_run_id:
+                "upstream-codex-activation-evidence-receipt-materialization-dry-run".into(),
+            materialization_dry_run_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_MATERIALIZATION_DRY_RUN.md"
+                    .into(),
+            upstream_repository: write_enable.upstream_repository,
+            candidate_diff_range: write_enable.candidate_diff_range,
+            source_write_enable_fixture_gate: write_enable.write_enable_fixture_gate,
+            materialization_dry_run_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-materialization-dry-run.sh"
+                    .into(),
+            active_dependency_isolation_gate: write_enable.active_dependency_isolation_gate,
+            source_write_enable_fixture_ready: write_enable.write_enable_fixture_contract_ready,
+            required_materialization_fixture_count,
+            materialization_fixture_count,
+            blocked_materialization_fixture_count,
+            allowed_materialization_fixture_count,
+            explicit_write_enable_requested_fixture_count,
+            operator_approved_fixture_count,
+            activation_request_bound_fixture_count,
+            fresh_trusted_record_fixture_count,
+            active_binary_sha_bound_fixture_count,
+            payload_hash_planned_fixture_count,
+            redacted_output_path_planned_fixture_count,
+            deterministic_materialization_plan_count,
+            public_claim_attempt_fixture_count,
+            release_artifact_write_attempt_fixture_count,
+            public_artifact_policy_satisfied_fixture_count,
+            filesystem_persistence_allowed_count,
+            materialization_executed_count,
+            workspace_write_performed_count,
+            evidence_receipt_persisted_count,
+            materialization_dry_run_ready,
+            activation_blocked_by_materialization_dry_run,
+            activation_allowed_by_materialization_dry_run,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            command_invocation_performed: false,
+            receipt_persistence_execution: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            materialization_fixtures,
+            materialization_invariants: vec![
+                "redacted receipt materialization is planned without executing persistence".into(),
+                "payload hashes and redacted output paths are deterministic dry-run fields".into(),
+                "write-enable requests still cannot cross the filesystem boundary".into(),
+                "public-claim or release-artifact requests keep materialization blocked".into(),
+            ],
+            required_next_gates: vec![
+                "bind materialization dry runs to fresh live evidence records".into(),
+                "add a filesystem persistence approval packet before any workspace write".into(),
+                "require release-governance approval before public artifact persistence".into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_receipt_materialization_dry_run_fixture(
+    fixture_id: &str,
+    fixture_kind: &str,
+    operator_approval_recorded: bool,
+    fresh_trusted_record_count: usize,
+    public_claim_requested: bool,
+    release_artifact_write_requested: bool,
+    public_artifact_policy_satisfied: bool,
+    denial_reason: &str,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunFixture {
+    HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunFixture {
+        fixture_id: fixture_id.into(),
+        fixture_kind: fixture_kind.into(),
+        explicit_write_enable_requested: true,
+        operator_approval_recorded,
+        activation_request_bound: true,
+        accepted_trusted_record_count: 8,
+        fresh_trusted_record_count,
+        active_binary_sha_bound: true,
+        payload_hash_planned: true,
+        redacted_output_path_planned: true,
+        deterministic_materialization_plan: true,
+        public_claim_requested,
+        release_artifact_write_requested,
+        public_artifact_policy_satisfied,
+        dry_run_status: "blocked_dry_run".into(),
+        filesystem_persistence_allowed: false,
+        materialization_executed: false,
+        workspace_write_performed: false,
+        evidence_receipt_persisted: false,
+        denial_reason: denial_reason.into(),
+    }
+}
+
+fn default_activation_evidence_receipt_materialization_dry_run_fixtures()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunFixture> {
+    vec![
+        activation_evidence_receipt_materialization_dry_run_fixture(
+            "materialization-without-operator-approval",
+            "missing_operator_approval",
+            false,
+            8,
+            false,
+            false,
+            true,
+            "materialization dry run is blocked because operator approval is absent",
+        ),
+        activation_evidence_receipt_materialization_dry_run_fixture(
+            "operator-approved-stale-materialization",
+            "operator_approved_stale_evidence",
+            true,
+            0,
+            false,
+            false,
+            true,
+            "materialization dry run is blocked because trusted records are not fresh",
+        ),
+        activation_evidence_receipt_materialization_dry_run_fixture(
+            "public-artifact-materialization-attempt",
+            "public_artifact_attempt",
+            true,
+            8,
+            true,
+            true,
+            false,
+            "public claim and release artifact requests require separate release-governance approval",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -7064,6 +7397,11 @@ pub fn hepta_upstream_codex_activation_evidence_receipt_no_write_sink_adapter_co
 pub fn hepta_upstream_codex_activation_evidence_receipt_write_enable_fixture_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixtureReport {
     HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixtureReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_materialization_dry_run_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunReport::native_default()
 }
 
 #[cfg(test)]
@@ -10180,6 +10518,101 @@ mod tests {
                 .write_enable_fixture_invariants
                 .iter()
                 .any(|invariant| invariant.contains("before any real write path exists"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_materialization_dry_run_is_ready() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_materialization_dry_run_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.materialization_dry_run_id,
+            "upstream-codex-activation-evidence-receipt-materialization-dry-run"
+        );
+        assert_eq!(
+            report.source_write_enable_fixture_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-write-enable-fixture.sh"
+        );
+        assert_eq!(
+            report.materialization_dry_run_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-materialization-dry-run.sh"
+        );
+        assert!(report.source_write_enable_fixture_ready);
+        assert_eq!(report.required_materialization_fixture_count, 3);
+        assert_eq!(report.materialization_fixture_count, 3);
+        assert_eq!(report.blocked_materialization_fixture_count, 3);
+        assert_eq!(report.allowed_materialization_fixture_count, 0);
+        assert_eq!(report.explicit_write_enable_requested_fixture_count, 3);
+        assert_eq!(report.operator_approved_fixture_count, 2);
+        assert_eq!(report.activation_request_bound_fixture_count, 3);
+        assert_eq!(report.fresh_trusted_record_fixture_count, 2);
+        assert_eq!(report.active_binary_sha_bound_fixture_count, 3);
+        assert_eq!(report.payload_hash_planned_fixture_count, 3);
+        assert_eq!(report.redacted_output_path_planned_fixture_count, 3);
+        assert_eq!(report.deterministic_materialization_plan_count, 3);
+        assert_eq!(report.public_claim_attempt_fixture_count, 1);
+        assert_eq!(report.release_artifact_write_attempt_fixture_count, 1);
+        assert_eq!(report.public_artifact_policy_satisfied_fixture_count, 2);
+        assert_eq!(report.filesystem_persistence_allowed_count, 0);
+        assert_eq!(report.materialization_executed_count, 0);
+        assert_eq!(report.workspace_write_performed_count, 0);
+        assert_eq!(report.evidence_receipt_persisted_count, 0);
+        assert!(report.materialization_dry_run_ready);
+        assert!(report.materialization_fixtures.iter().all(|fixture| {
+            fixture.payload_hash_planned
+                && fixture.redacted_output_path_planned
+                && fixture.deterministic_materialization_plan
+        }));
+        assert!(
+            report
+                .materialization_fixtures
+                .iter()
+                .any(|fixture| fixture.fixture_kind == "public_artifact_attempt")
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_materialization_dry_run_blocks_effects() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_materialization_dry_run_report();
+
+        assert!(report.activation_blocked_by_materialization_dry_run);
+        assert!(!report.activation_allowed_by_materialization_dry_run);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.command_invocation_performed);
+        assert!(!report.receipt_persistence_execution);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(report.materialization_fixtures.iter().all(|fixture| {
+            !fixture.filesystem_persistence_allowed
+                && !fixture.materialization_executed
+                && !fixture.workspace_write_performed
+                && !fixture.evidence_receipt_persisted
+        }));
+        assert!(
+            report
+                .materialization_invariants
+                .iter()
+                .any(|invariant| invariant.contains("without executing persistence"))
         );
     }
 }

@@ -170,6 +170,10 @@ Current state:
   models explicit write-enable requests after the no-write sink adapter. All
   `3` fixtures remain blocked, filesystem persistence stays `0`, and active
   wiring/public release decisions remain false.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-materialization-dry-run.sh`
+  plans deterministic redacted receipt payload/hash/output-path materialization
+  after write-enable fixtures while keeping materialization execution, workspace
+  writes, evidence persistence, and public artifact decisions blocked.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime
