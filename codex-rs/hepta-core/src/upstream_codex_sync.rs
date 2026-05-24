@@ -772,6 +772,52 @@ pub struct HeptaUpstreamCodexPromotionClosureReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActiveWiringPreconditionReport {
+    pub product: String,
+    pub status: String,
+    pub precondition_id: String,
+    pub precondition_packet_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_closure_gate: String,
+    pub active_wiring_precondition_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub promotion_closure_ready: bool,
+    pub all_surface_promotion_packets_complete: bool,
+    pub active_promotion_denial_ready: bool,
+    pub explicit_operator_approval_required: bool,
+    pub operator_approval_recorded: bool,
+    pub activation_request_id_required: bool,
+    pub activation_request_id_present: bool,
+    pub live_dependency_isolation_required: bool,
+    pub watchdog_required: bool,
+    pub browser_smoke_required: bool,
+    pub long_soak_required: bool,
+    pub active_wiring_precondition_ready: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub preconditions: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -2168,6 +2214,100 @@ impl HeptaUpstreamCodexPromotionClosureReport {
     }
 }
 
+impl HeptaUpstreamCodexActiveWiringPreconditionReport {
+    pub fn native_default() -> Self {
+        let closure = HeptaUpstreamCodexPromotionClosureReport::native_default();
+        let explicit_operator_approval_required = true;
+        let operator_approval_recorded = false;
+        let activation_request_id_required = true;
+        let activation_request_id_present = false;
+        let live_dependency_isolation_required = true;
+        let watchdog_required = true;
+        let browser_smoke_required = true;
+        let long_soak_required = true;
+        let active_wiring_allowed = false;
+        let active_wiring_precondition_ready = closure.closure_ready
+            && closure.all_surface_promotion_packets_complete
+            && closure.active_promotion_denial_ready
+            && explicit_operator_approval_required
+            && activation_request_id_required
+            && live_dependency_isolation_required
+            && watchdog_required
+            && browser_smoke_required
+            && long_soak_required
+            && !operator_approval_recorded
+            && !activation_request_id_present
+            && !active_wiring_allowed;
+
+        Self {
+            product: "Hepta".into(),
+            status: if active_wiring_precondition_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            precondition_id: "upstream-codex-active-wiring-precondition".into(),
+            precondition_packet_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVE_WIRING_PRECONDITION.md".into(),
+            upstream_repository: closure.upstream_repository,
+            candidate_diff_range: closure.candidate_diff_range,
+            source_closure_gate: closure.closure_gate,
+            active_wiring_precondition_gate:
+                "scripts/hepta-upstream-codex-active-wiring-precondition.sh".into(),
+            active_dependency_isolation_gate: closure.active_dependency_isolation_gate,
+            promotion_closure_ready: closure.closure_ready,
+            all_surface_promotion_packets_complete: closure.all_surface_promotion_packets_complete,
+            active_promotion_denial_ready: closure.active_promotion_denial_ready,
+            explicit_operator_approval_required,
+            operator_approval_recorded,
+            activation_request_id_required,
+            activation_request_id_present,
+            live_dependency_isolation_required,
+            watchdog_required,
+            browser_smoke_required,
+            long_soak_required,
+            active_wiring_precondition_ready,
+            active_wiring_allowed,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            preconditions: vec![
+                "promotion closure gate is ready".into(),
+                "all four required surface promotion packets are complete".into(),
+                "active promotion denial remains ready".into(),
+                "explicit operator approval record is required and not yet recorded".into(),
+                "activation request id is required and not yet present".into(),
+                "live dependency isolation, watchdog, browser smoke, and long soak must be fresh"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "record an operator approval packet before any active wiring".into(),
+                "bind any activation request to a concrete activation_request_id".into(),
+                "rerun live active-service dependency isolation at activation time".into(),
+                "rerun watchdog, browser smoke, and long soak at activation time".into(),
+                "keep public release and public GA claims false until a separate release gate"
+                    .into(),
+            ],
+        }
+    }
+}
+
 fn sync_contract(
     id: &str,
     risk: HeptaUpstreamCodexSyncRisk,
@@ -2609,6 +2749,11 @@ pub fn hepta_upstream_codex_promotion_readiness_report()
 
 pub fn hepta_upstream_codex_promotion_closure_report() -> HeptaUpstreamCodexPromotionClosureReport {
     HeptaUpstreamCodexPromotionClosureReport::native_default()
+}
+
+pub fn hepta_upstream_codex_active_wiring_precondition_report()
+-> HeptaUpstreamCodexActiveWiringPreconditionReport {
+    HeptaUpstreamCodexActiveWiringPreconditionReport::native_default()
 }
 
 #[cfg(test)]
@@ -4152,6 +4297,84 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("newer upstream Codex ranges as new snapshot intake"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_active_wiring_precondition_is_ready_but_not_allowed() {
+        let report = hepta_upstream_codex_active_wiring_precondition_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.precondition_id,
+            "upstream-codex-active-wiring-precondition"
+        );
+        assert_eq!(
+            report.precondition_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVE_WIRING_PRECONDITION.md"
+        );
+        assert_eq!(
+            report.source_closure_gate,
+            "scripts/hepta-upstream-codex-promotion-closure.sh"
+        );
+        assert_eq!(
+            report.active_wiring_precondition_gate,
+            "scripts/hepta-upstream-codex-active-wiring-precondition.sh"
+        );
+        assert!(report.promotion_closure_ready);
+        assert!(report.all_surface_promotion_packets_complete);
+        assert!(report.active_promotion_denial_ready);
+        assert!(report.explicit_operator_approval_required);
+        assert!(!report.operator_approval_recorded);
+        assert!(report.activation_request_id_required);
+        assert!(!report.activation_request_id_present);
+        assert!(report.live_dependency_isolation_required);
+        assert!(report.watchdog_required);
+        assert!(report.browser_smoke_required);
+        assert!(report.long_soak_required);
+        assert!(report.active_wiring_precondition_ready);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+    }
+
+    #[test]
+    fn upstream_codex_active_wiring_precondition_has_no_side_effects() {
+        let report = hepta_upstream_codex_active_wiring_precondition_report();
+
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report.preconditions.iter().any(|precondition| {
+                precondition.contains("operator approval record is required")
+            })
+        );
+        assert!(
+            report
+                .preconditions
+                .iter()
+                .any(|precondition| { precondition.contains("activation request id is required") })
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("record an operator approval packet"))
         );
     }
 }

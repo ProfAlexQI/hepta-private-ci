@@ -249,6 +249,21 @@ required promotion packets are complete, `0` buckets are promotable, all `4`
 buckets remain blocked from active promotion, `active_promotion_ready=false`,
 and public release/GA claims plus release artifact writes remain false.
 
+The active-wiring precondition gate is:
+
+```bash
+scripts/hepta-upstream-codex-active-wiring-precondition.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVE_WIRING_PRECONDITION.md`. It
+requires the promotion closure gate to be ready and records that active wiring
+still needs an explicit operator approval record, a concrete
+`activation_request_id`, live dependency isolation, watchdog, browser smoke, and
+long soak evidence. It keeps active runtime wiring, Codex engine dependency
+promotion, public release claims, public GA claims, and release artifact writes
+false.
+
 The local sync-lane gate is:
 
 ```bash

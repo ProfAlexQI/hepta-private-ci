@@ -68,3 +68,9 @@ The completed packets are:
 - Rerun live active-service dependency isolation before any activation.
 - Rerun watchdog, browser smoke, and long soak before any public claim.
 - Treat newer upstream Codex ranges as new snapshot intake, not auto-rebase.
+
+The follow-up active-wiring precondition gate is
+`scripts/hepta-upstream-codex-active-wiring-precondition.sh`. It records the
+operator approval, activation request id, live dependency isolation, watchdog,
+browser smoke, and long-soak prerequisites without opening active wiring by
+default.

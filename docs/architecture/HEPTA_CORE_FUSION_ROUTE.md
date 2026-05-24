@@ -96,6 +96,11 @@ Current state:
   packets are complete, zero buckets are promotable, all four buckets remain
   blocked from active promotion, and public release/GA claims plus release
   artifact writes remain false.
+- `scripts/hepta-upstream-codex-active-wiring-precondition.sh` defines the
+  operator-approved active-wiring preconditions for any future activation path:
+  closure must be ready, an explicit operator approval and activation request id
+  must exist, live dependency isolation/watchdog/browser smoke/long soak must be
+  fresh, and active wiring remains false by default.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime
