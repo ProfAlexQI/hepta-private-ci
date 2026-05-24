@@ -166,6 +166,10 @@ Current state:
   defines the no-write receipt sink adapter contract: redacted invocation
   shapes can be accepted for validation, but filesystem persistence and public
   artifact paths remain disabled by default.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-write-enable-fixture.sh`
+  models explicit write-enable requests after the no-write sink adapter. All
+  `3` fixtures remain blocked, filesystem persistence stays `0`, and active
+  wiring/public release decisions remain false.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

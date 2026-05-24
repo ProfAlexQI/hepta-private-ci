@@ -1848,6 +1848,82 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterContract
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixture {
+    pub fixture_id: String,
+    pub fixture_kind: String,
+    pub explicit_write_enable_requested: bool,
+    pub operator_approval_recorded: bool,
+    pub activation_request_bound: bool,
+    pub accepted_trusted_record_count: usize,
+    pub fresh_trusted_record_count: usize,
+    pub active_binary_sha_bound: bool,
+    pub public_claim_requested: bool,
+    pub release_artifact_write_requested: bool,
+    pub public_artifact_policy_satisfied: bool,
+    pub validation_status: String,
+    pub filesystem_persistence_allowed: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+    pub denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixtureReport {
+    pub product: String,
+    pub status: String,
+    pub write_enable_fixture_id: String,
+    pub write_enable_fixture_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_no_write_sink_adapter_gate: String,
+    pub write_enable_fixture_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_no_write_sink_adapter_ready: bool,
+    pub required_write_enable_fixture_count: usize,
+    pub write_enable_fixture_count: usize,
+    pub blocked_write_enable_fixture_count: usize,
+    pub allowed_write_enable_fixture_count: usize,
+    pub explicit_write_enable_requested_fixture_count: usize,
+    pub operator_approved_fixture_count: usize,
+    pub activation_request_bound_fixture_count: usize,
+    pub fresh_trusted_record_fixture_count: usize,
+    pub active_binary_sha_bound_fixture_count: usize,
+    pub public_claim_attempt_fixture_count: usize,
+    pub release_artifact_write_attempt_fixture_count: usize,
+    pub public_artifact_policy_satisfied_fixture_count: usize,
+    pub filesystem_persistence_allowed_count: usize,
+    pub workspace_write_performed_count: usize,
+    pub evidence_receipt_persisted_count: usize,
+    pub write_enable_fixture_contract_ready: bool,
+    pub activation_blocked_by_write_enable_fixture: bool,
+    pub activation_allowed_by_write_enable_fixture: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub command_invocation_performed: bool,
+    pub receipt_persistence_execution: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub write_enable_fixtures: Vec<HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixture>,
+    pub write_enable_fixture_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -6144,6 +6220,229 @@ fn default_activation_evidence_receipt_no_write_sink_adapter_surfaces()
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixtureReport {
+    pub fn native_default() -> Self {
+        let no_write_sink =
+            HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterContractReport::native_default(
+            );
+        let write_enable_fixtures = default_activation_evidence_receipt_write_enable_fixtures();
+        let required_write_enable_fixture_count = 3;
+        let write_enable_fixture_count = write_enable_fixtures.len();
+        let blocked_write_enable_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.validation_status == "blocked")
+            .count();
+        let allowed_write_enable_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.validation_status == "allowed")
+            .count();
+        let explicit_write_enable_requested_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.explicit_write_enable_requested)
+            .count();
+        let operator_approved_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.operator_approval_recorded)
+            .count();
+        let activation_request_bound_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.activation_request_bound)
+            .count();
+        let fresh_trusted_record_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.fresh_trusted_record_count == 8)
+            .count();
+        let active_binary_sha_bound_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.active_binary_sha_bound)
+            .count();
+        let public_claim_attempt_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.public_claim_requested)
+            .count();
+        let release_artifact_write_attempt_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.release_artifact_write_requested)
+            .count();
+        let public_artifact_policy_satisfied_fixture_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.public_artifact_policy_satisfied)
+            .count();
+        let filesystem_persistence_allowed_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.filesystem_persistence_allowed)
+            .count();
+        let workspace_write_performed_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.workspace_write_performed)
+            .count();
+        let evidence_receipt_persisted_count = write_enable_fixtures
+            .iter()
+            .filter(|fixture| fixture.evidence_receipt_persisted)
+            .count();
+        let write_enable_fixture_contract_ready = no_write_sink.no_write_sink_adapter_ready
+            && write_enable_fixture_count == required_write_enable_fixture_count
+            && blocked_write_enable_fixture_count == required_write_enable_fixture_count
+            && allowed_write_enable_fixture_count == 0
+            && explicit_write_enable_requested_fixture_count == 3
+            && operator_approved_fixture_count == 2
+            && activation_request_bound_fixture_count == 3
+            && fresh_trusted_record_fixture_count == 2
+            && active_binary_sha_bound_fixture_count == 3
+            && public_claim_attempt_fixture_count == 1
+            && release_artifact_write_attempt_fixture_count == 1
+            && public_artifact_policy_satisfied_fixture_count == 2
+            && filesystem_persistence_allowed_count == 0
+            && workspace_write_performed_count == 0
+            && evidence_receipt_persisted_count == 0;
+        let activation_blocked_by_write_enable_fixture = true;
+        let activation_allowed_by_write_enable_fixture = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if write_enable_fixture_contract_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            write_enable_fixture_id:
+                "upstream-codex-activation-evidence-receipt-write-enable-fixture".into(),
+            write_enable_fixture_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_WRITE_ENABLE_FIXTURE.md"
+                    .into(),
+            upstream_repository: no_write_sink.upstream_repository,
+            candidate_diff_range: no_write_sink.candidate_diff_range,
+            source_no_write_sink_adapter_gate: no_write_sink.no_write_sink_adapter_contract_gate,
+            write_enable_fixture_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-write-enable-fixture.sh"
+                    .into(),
+            active_dependency_isolation_gate: no_write_sink.active_dependency_isolation_gate,
+            source_no_write_sink_adapter_ready: no_write_sink.no_write_sink_adapter_ready,
+            required_write_enable_fixture_count,
+            write_enable_fixture_count,
+            blocked_write_enable_fixture_count,
+            allowed_write_enable_fixture_count,
+            explicit_write_enable_requested_fixture_count,
+            operator_approved_fixture_count,
+            activation_request_bound_fixture_count,
+            fresh_trusted_record_fixture_count,
+            active_binary_sha_bound_fixture_count,
+            public_claim_attempt_fixture_count,
+            release_artifact_write_attempt_fixture_count,
+            public_artifact_policy_satisfied_fixture_count,
+            filesystem_persistence_allowed_count,
+            workspace_write_performed_count,
+            evidence_receipt_persisted_count,
+            write_enable_fixture_contract_ready,
+            activation_blocked_by_write_enable_fixture,
+            activation_allowed_by_write_enable_fixture,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            command_invocation_performed: false,
+            receipt_persistence_execution: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            write_enable_fixtures,
+            write_enable_fixture_invariants: vec![
+                "explicit write-enable requests are modeled before any real write path exists"
+                    .into(),
+                "operator approval alone is insufficient without fresh trusted records".into(),
+                "fresh trusted records are insufficient without operator approval".into(),
+                "public-claim or release-artifact requests keep filesystem persistence blocked"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "bind write-enable fixtures to fresh live gate evidence and active binary SHA"
+                    .into(),
+                "add a redacted receipt materialization dry run before filesystem writes".into(),
+                "require release-governance approval before public artifact persistence".into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_receipt_write_enable_fixture(
+    fixture_id: &str,
+    fixture_kind: &str,
+    operator_approval_recorded: bool,
+    fresh_trusted_record_count: usize,
+    public_claim_requested: bool,
+    release_artifact_write_requested: bool,
+    public_artifact_policy_satisfied: bool,
+    denial_reason: &str,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixture {
+    HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixture {
+        fixture_id: fixture_id.into(),
+        fixture_kind: fixture_kind.into(),
+        explicit_write_enable_requested: true,
+        operator_approval_recorded,
+        activation_request_bound: true,
+        accepted_trusted_record_count: 8,
+        fresh_trusted_record_count,
+        active_binary_sha_bound: true,
+        public_claim_requested,
+        release_artifact_write_requested,
+        public_artifact_policy_satisfied,
+        validation_status: "blocked".into(),
+        filesystem_persistence_allowed: false,
+        workspace_write_performed: false,
+        evidence_receipt_persisted: false,
+        denial_reason: denial_reason.into(),
+    }
+}
+
+fn default_activation_evidence_receipt_write_enable_fixtures()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixture> {
+    vec![
+        activation_evidence_receipt_write_enable_fixture(
+            "write-enable-without-operator-approval",
+            "missing_operator_approval",
+            false,
+            8,
+            false,
+            false,
+            true,
+            "explicit write-enable request is blocked because operator approval is absent",
+        ),
+        activation_evidence_receipt_write_enable_fixture(
+            "operator-approved-stale-evidence-write-enable",
+            "operator_approved_stale_evidence",
+            true,
+            0,
+            false,
+            false,
+            true,
+            "operator approval is blocked because trusted records are not fresh",
+        ),
+        activation_evidence_receipt_write_enable_fixture(
+            "public-artifact-write-enable-attempt",
+            "public_artifact_write_attempt",
+            true,
+            8,
+            true,
+            true,
+            false,
+            "public claim and release artifact requests require separate release-governance approval",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -6760,6 +7059,11 @@ pub fn hepta_upstream_codex_activation_evidence_receipt_persistence_invocation_d
 pub fn hepta_upstream_codex_activation_evidence_receipt_no_write_sink_adapter_contract_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterContractReport {
     HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterContractReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_write_enable_fixture_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixtureReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptWriteEnableFixtureReport::native_default()
 }
 
 #[cfg(test)]
@@ -9787,6 +10091,95 @@ mod tests {
                 .no_write_sink_adapter_invariants
                 .iter()
                 .any(|invariant| invariant.contains("without persisting them"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_write_enable_fixture_is_ready() {
+        let report = hepta_upstream_codex_activation_evidence_receipt_write_enable_fixture_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.write_enable_fixture_id,
+            "upstream-codex-activation-evidence-receipt-write-enable-fixture"
+        );
+        assert_eq!(
+            report.source_no_write_sink_adapter_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract.sh"
+        );
+        assert_eq!(
+            report.write_enable_fixture_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-write-enable-fixture.sh"
+        );
+        assert!(report.source_no_write_sink_adapter_ready);
+        assert_eq!(report.required_write_enable_fixture_count, 3);
+        assert_eq!(report.write_enable_fixture_count, 3);
+        assert_eq!(report.blocked_write_enable_fixture_count, 3);
+        assert_eq!(report.allowed_write_enable_fixture_count, 0);
+        assert_eq!(report.explicit_write_enable_requested_fixture_count, 3);
+        assert_eq!(report.operator_approved_fixture_count, 2);
+        assert_eq!(report.activation_request_bound_fixture_count, 3);
+        assert_eq!(report.fresh_trusted_record_fixture_count, 2);
+        assert_eq!(report.active_binary_sha_bound_fixture_count, 3);
+        assert_eq!(report.public_claim_attempt_fixture_count, 1);
+        assert_eq!(report.release_artifact_write_attempt_fixture_count, 1);
+        assert_eq!(report.public_artifact_policy_satisfied_fixture_count, 2);
+        assert_eq!(report.filesystem_persistence_allowed_count, 0);
+        assert_eq!(report.workspace_write_performed_count, 0);
+        assert_eq!(report.evidence_receipt_persisted_count, 0);
+        assert!(report.write_enable_fixture_contract_ready);
+        assert!(
+            report
+                .write_enable_fixtures
+                .iter()
+                .all(|fixture| fixture.explicit_write_enable_requested)
+        );
+        assert!(
+            report
+                .write_enable_fixtures
+                .iter()
+                .any(|fixture| fixture.fixture_kind == "public_artifact_write_attempt")
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_write_enable_fixture_blocks_effects() {
+        let report = hepta_upstream_codex_activation_evidence_receipt_write_enable_fixture_report();
+
+        assert!(report.activation_blocked_by_write_enable_fixture);
+        assert!(!report.activation_allowed_by_write_enable_fixture);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.command_invocation_performed);
+        assert!(!report.receipt_persistence_execution);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(report.write_enable_fixtures.iter().all(|fixture| {
+            !fixture.filesystem_persistence_allowed
+                && !fixture.workspace_write_performed
+                && !fixture.evidence_receipt_persisted
+        }));
+        assert!(
+            report
+                .write_enable_fixture_invariants
+                .iter()
+                .any(|invariant| invariant.contains("before any real write path exists"))
         );
     }
 }

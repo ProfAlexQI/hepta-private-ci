@@ -88,7 +88,7 @@ All surfaces are required, ready, and side-effect-free:
 
 ## Required Next Gates
 
-- Add an operator-approved write-enable fixture before any filesystem
+- Run the operator-approved write-enable fixture before any filesystem
   persistence.
 - Bind sink acceptance to fresh live gate evidence and active binary SHA.
 - Require release-governance approval before any public artifact path is opened.

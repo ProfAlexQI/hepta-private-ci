@@ -468,6 +468,20 @@ redacted invocation fixtures for validation but rejects all write/public-claim
 effects: persisted receipt count remains `0`, workspace write count remains
 `0`, and active wiring/public claim decisions remain false.
 
+The activation evidence receipt write-enable fixture gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-write-enable-fixture.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_WRITE_ENABLE_FIXTURE.md`.
+It models `3` explicit write-enable requests after the no-write sink adapter.
+All fixtures remain blocked: operator approval without fresh evidence is
+insufficient, fresh evidence without operator approval is insufficient, public
+artifact attempts require separate release-governance approval, and filesystem
+persistence remains `0`.
+
 The local sync-lane gate is:
 
 ```bash

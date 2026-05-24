@@ -151,6 +151,9 @@ scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-invocation-
 echo "[hepta-codex-preflight] upstream Codex activation evidence receipt no-write sink adapter contract gate"
 scripts/hepta-upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract.sh
 
+echo "[hepta-codex-preflight] upstream Codex activation evidence receipt write-enable fixture gate"
+scripts/hepta-upstream-codex-activation-evidence-receipt-write-enable-fixture.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh
