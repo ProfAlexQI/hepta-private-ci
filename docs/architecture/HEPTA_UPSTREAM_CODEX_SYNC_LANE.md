@@ -99,6 +99,19 @@ contracts, sandbox/exec replay, network-policy replay, active dependency
 isolation, operator approval, and soak evidence before any security or provider
 behavior is promoted into the active Hepta runtime.
 
+The P0 runtime/app-server absorption-contract gate is:
+
+```bash
+scripts/hepta-upstream-codex-runtime-appserver-absorption.sh
+```
+
+This gate selects the `runtime-session-tool-mcp-appserver` bucket. It freezes
+the current 462 upstream paths covering app-server protocol/daemon/transport,
+session and thread-store behavior, tools, MCP, hooks, exec-server, and runtime
+event-loop surfaces as a P0 runtime review contract. It requires Hepta route and
+event contracts plus session/thread, tool/MCP, app-server protocol, exec, and
+hook replay before any active runtime behavior is promoted.
+
 The local sync-lane gate is:
 
 ```bash

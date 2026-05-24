@@ -299,6 +299,47 @@ pub struct HeptaUpstreamCodexProviderSecurityAbsorptionReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexRuntimeAppServerAbsorptionReport {
+    pub product: String,
+    pub status: String,
+    pub absorption_id: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub selected_bucket_id: String,
+    pub selected_bucket_risk: HeptaUpstreamCodexSyncRisk,
+    pub selected_changed_file_count: usize,
+    pub selected_runtime_surface_count: usize,
+    pub required_runtime_surface_count: usize,
+    pub source_ledger_gate: String,
+    pub absorption_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub p0_runtime_review_required: bool,
+    pub requires_adapter_contract: bool,
+    pub requires_session_thread_replay: bool,
+    pub requires_tool_mcp_replay: bool,
+    pub requires_app_server_protocol_replay: bool,
+    pub requires_exec_hook_replay: bool,
+    pub active_runtime_promotion_allowed: bool,
+    pub active_app_server_promotion_allowed: bool,
+    pub active_tool_mcp_promotion_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub contract_ready: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub runtime_surfaces: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -745,6 +786,86 @@ impl HeptaUpstreamCodexProviderSecurityAbsorptionReport {
     }
 }
 
+impl HeptaUpstreamCodexRuntimeAppServerAbsorptionReport {
+    pub fn native_default() -> Self {
+        let runtime_surfaces: Vec<String> = vec![
+            "app-server daemon transport and protocol schema deltas".into(),
+            "session thread-store and thread lifecycle deltas".into(),
+            "tool invocation and tool-policy deltas".into(),
+            "MCP client server and app-server MCP request deltas".into(),
+            "hooks and runtime event-loop deltas".into(),
+            "exec-server and unified exec request deltas".into(),
+            "adapter behavior-equivalence and shadow-replay promotion gates".into(),
+        ];
+        let selected_changed_file_count = 462;
+        let selected_runtime_surface_count = runtime_surfaces.len();
+        let required_runtime_surface_count = 7;
+        let contract_ready = selected_changed_file_count == 462
+            && selected_runtime_surface_count == required_runtime_surface_count
+            && runtime_surfaces
+                .iter()
+                .any(|surface| surface.contains("app-server"))
+            && runtime_surfaces
+                .iter()
+                .any(|surface| surface.contains("session"))
+            && runtime_surfaces
+                .iter()
+                .any(|surface| surface.contains("tool"))
+            && runtime_surfaces
+                .iter()
+                .any(|surface| surface.contains("MCP"));
+
+        Self {
+            product: "Hepta".into(),
+            status: if contract_ready { "ready" } else { "attention" }.into(),
+            absorption_id: "upstream-codex-runtime-appserver-absorption-contract".into(),
+            upstream_repository: "https://github.com/openai/codex".into(),
+            candidate_diff_range:
+                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
+                    .into(),
+            selected_bucket_id: "runtime-session-tool-mcp-appserver".into(),
+            selected_bucket_risk: HeptaUpstreamCodexSyncRisk::P0Runtime,
+            selected_changed_file_count,
+            selected_runtime_surface_count,
+            required_runtime_surface_count,
+            source_ledger_gate: "scripts/hepta-upstream-codex-diff-ledger.sh".into(),
+            absorption_gate: "scripts/hepta-upstream-codex-runtime-appserver-absorption.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            p0_runtime_review_required: true,
+            requires_adapter_contract: true,
+            requires_session_thread_replay: true,
+            requires_tool_mcp_replay: true,
+            requires_app_server_protocol_replay: true,
+            requires_exec_hook_replay: true,
+            active_runtime_promotion_allowed: false,
+            active_app_server_promotion_allowed: false,
+            active_tool_mcp_promotion_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            contract_ready,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            runtime_surfaces,
+            required_next_gates: vec![
+                "map app-server protocol deltas to Hepta route and event contracts".into(),
+                "run session and thread-store replay before lifecycle promotion".into(),
+                "run tool and MCP replay before invocation promotion".into(),
+                "run exec and hook replay before runtime event-loop promotion".into(),
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+            ],
+        }
+    }
+}
+
 fn sync_contract(
     id: &str,
     risk: HeptaUpstreamCodexSyncRisk,
@@ -1132,6 +1253,11 @@ pub fn hepta_upstream_codex_legacy_compatibility_absorption_report()
 pub fn hepta_upstream_codex_provider_security_absorption_report()
 -> HeptaUpstreamCodexProviderSecurityAbsorptionReport {
     HeptaUpstreamCodexProviderSecurityAbsorptionReport::native_default()
+}
+
+pub fn hepta_upstream_codex_runtime_appserver_absorption_report()
+-> HeptaUpstreamCodexRuntimeAppServerAbsorptionReport {
+    HeptaUpstreamCodexRuntimeAppServerAbsorptionReport::native_default()
 }
 
 #[cfg(test)]
@@ -1683,6 +1809,103 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("network-proxy policy replay"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_runtime_appserver_absorption_is_ready_and_bounded() {
+        let report = hepta_upstream_codex_runtime_appserver_absorption_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.absorption_id,
+            "upstream-codex-runtime-appserver-absorption-contract"
+        );
+        assert_eq!(
+            report.selected_bucket_id,
+            "runtime-session-tool-mcp-appserver"
+        );
+        assert!(matches!(
+            report.selected_bucket_risk,
+            HeptaUpstreamCodexSyncRisk::P0Runtime
+        ));
+        assert_eq!(report.selected_changed_file_count, 462);
+        assert_eq!(
+            report.selected_runtime_surface_count,
+            report.required_runtime_surface_count
+        );
+        assert_eq!(
+            report.source_ledger_gate,
+            "scripts/hepta-upstream-codex-diff-ledger.sh"
+        );
+        assert_eq!(
+            report.absorption_gate,
+            "scripts/hepta-upstream-codex-runtime-appserver-absorption.sh"
+        );
+        assert!(report.p0_runtime_review_required);
+        assert!(report.requires_adapter_contract);
+        assert!(report.requires_session_thread_replay);
+        assert!(report.requires_tool_mcp_replay);
+        assert!(report.requires_app_server_protocol_replay);
+        assert!(report.requires_exec_hook_replay);
+        assert!(!report.active_runtime_promotion_allowed);
+        assert!(!report.active_app_server_promotion_allowed);
+        assert!(!report.active_tool_mcp_promotion_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(report.contract_ready);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+    }
+
+    #[test]
+    fn upstream_codex_runtime_appserver_absorption_tracks_required_surfaces() {
+        let report = hepta_upstream_codex_runtime_appserver_absorption_report();
+
+        assert!(
+            report
+                .runtime_surfaces
+                .iter()
+                .any(|surface| surface.contains("app-server"))
+        );
+        assert!(
+            report
+                .runtime_surfaces
+                .iter()
+                .any(|surface| surface.contains("session"))
+        );
+        assert!(
+            report
+                .runtime_surfaces
+                .iter()
+                .any(|surface| surface.contains("tool"))
+        );
+        assert!(
+            report
+                .runtime_surfaces
+                .iter()
+                .any(|surface| surface.contains("MCP"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("thread-store replay"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("tool and MCP replay"))
         );
     }
 }

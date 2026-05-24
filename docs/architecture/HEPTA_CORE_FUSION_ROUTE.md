@@ -47,6 +47,10 @@ Current state:
   while keeping provider and security-policy behavior out of the active runtime
   until Hepta-native replay, redaction, operator, soak, and dependency gates
   pass.
+- `scripts/hepta-upstream-codex-runtime-appserver-absorption.sh` selects the P0
+  app-server/session/thread/tool/MCP/hooks/exec family as an intake contract
+  while keeping runtime behavior out of the active service until route/event,
+  replay, shadow, and dependency gates pass.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime
