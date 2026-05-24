@@ -1786,6 +1786,68 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRu
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterSurface {
+    pub name: String,
+    pub required: bool,
+    pub ready: bool,
+    pub side_effect_free: bool,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterContractReport {
+    pub product: String,
+    pub status: String,
+    pub no_write_sink_adapter_id: String,
+    pub no_write_sink_adapter_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_invocation_dry_run_gate: String,
+    pub no_write_sink_adapter_contract_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_invocation_dry_run_ready: bool,
+    pub required_sink_surface_count: usize,
+    pub ready_sink_surface_count: usize,
+    pub side_effect_free_surface_count: usize,
+    pub accepted_invocation_fixture_count: usize,
+    pub rejected_write_fixture_count: usize,
+    pub rejected_public_claim_fixture_count: usize,
+    pub persisted_receipt_count: usize,
+    pub workspace_write_performed_count: usize,
+    pub sink_write_path_enabled_by_default: bool,
+    pub sink_accepts_redacted_payload_hash: bool,
+    pub sink_accepts_redacted_output_path: bool,
+    pub sink_requires_operator_approval: bool,
+    pub sink_requires_fresh_trusted_records: bool,
+    pub sink_rejects_public_claim_artifact_write: bool,
+    pub no_write_sink_adapter_ready: bool,
+    pub activation_blocked_by_no_write_sink_adapter: bool,
+    pub activation_allowed_by_no_write_sink_adapter: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub sink_surfaces: Vec<HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterSurface>,
+    pub no_write_sink_adapter_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -5849,7 +5911,8 @@ impl HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunRepor
                 "public-claim-shaped invocation fixtures stay blocked by default".into(),
             ],
             required_next_gates: vec![
-                "bind a no-write receipt sink adapter before any persisted receipt path".into(),
+                "run the no-write receipt sink adapter contract before any persisted receipt path"
+                    .into(),
                 "require fresh live gate evidence for every invocation fixture".into(),
                 "require operator approval before enabling any receipt persistence command".into(),
             ],
@@ -5917,6 +5980,166 @@ fn default_activation_evidence_receipt_persistence_invocation_dry_run_fixtures()
             true,
             true,
             "public claim and artifact write requests remain blocked by the no-op dry run",
+        ),
+    ]
+}
+
+impl HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterContractReport {
+    pub fn native_default() -> Self {
+        let invocation_dry_run =
+            HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunReport::native_default(
+            );
+        let sink_surfaces = default_activation_evidence_receipt_no_write_sink_adapter_surfaces();
+        let required_sink_surface_count = sink_surfaces.len();
+        let ready_sink_surface_count = sink_surfaces.iter().filter(|surface| surface.ready).count();
+        let side_effect_free_surface_count = sink_surfaces
+            .iter()
+            .filter(|surface| surface.side_effect_free)
+            .count();
+        let accepted_invocation_fixture_count = invocation_dry_run.command_invocation_attempt_count;
+        let rejected_write_fixture_count = invocation_dry_run.required_invocation_fixture_count;
+        let rejected_public_claim_fixture_count = invocation_dry_run.public_claim_attempt_count;
+        let persisted_receipt_count = invocation_dry_run.evidence_receipt_persisted_count;
+        let workspace_write_performed_count = invocation_dry_run.workspace_write_performed_count;
+        let sink_write_path_enabled_by_default = false;
+        let sink_accepts_redacted_payload_hash = true;
+        let sink_accepts_redacted_output_path = true;
+        let sink_requires_operator_approval = true;
+        let sink_requires_fresh_trusted_records = true;
+        let sink_rejects_public_claim_artifact_write = true;
+        let no_write_sink_adapter_ready = invocation_dry_run.invocation_dry_run_noop_ready
+            && required_sink_surface_count == 6
+            && ready_sink_surface_count == required_sink_surface_count
+            && side_effect_free_surface_count == required_sink_surface_count
+            && accepted_invocation_fixture_count == 3
+            && rejected_write_fixture_count == 3
+            && rejected_public_claim_fixture_count == 1
+            && persisted_receipt_count == 0
+            && workspace_write_performed_count == 0
+            && !sink_write_path_enabled_by_default
+            && sink_accepts_redacted_payload_hash
+            && sink_accepts_redacted_output_path
+            && sink_requires_operator_approval
+            && sink_requires_fresh_trusted_records
+            && sink_rejects_public_claim_artifact_write;
+        let activation_blocked_by_no_write_sink_adapter = true;
+        let activation_allowed_by_no_write_sink_adapter = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if no_write_sink_adapter_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            no_write_sink_adapter_id:
+                "upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract"
+                    .into(),
+            no_write_sink_adapter_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_NO_WRITE_SINK_ADAPTER_CONTRACT.md"
+                    .into(),
+            upstream_repository: invocation_dry_run.upstream_repository,
+            candidate_diff_range: invocation_dry_run.candidate_diff_range,
+            source_invocation_dry_run_gate: invocation_dry_run
+                .receipt_persistence_invocation_dry_run_gate,
+            no_write_sink_adapter_contract_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract.sh"
+                    .into(),
+            active_dependency_isolation_gate: invocation_dry_run.active_dependency_isolation_gate,
+            source_invocation_dry_run_ready: invocation_dry_run.invocation_dry_run_noop_ready,
+            required_sink_surface_count,
+            ready_sink_surface_count,
+            side_effect_free_surface_count,
+            accepted_invocation_fixture_count,
+            rejected_write_fixture_count,
+            rejected_public_claim_fixture_count,
+            persisted_receipt_count,
+            workspace_write_performed_count,
+            sink_write_path_enabled_by_default,
+            sink_accepts_redacted_payload_hash,
+            sink_accepts_redacted_output_path,
+            sink_requires_operator_approval,
+            sink_requires_fresh_trusted_records,
+            sink_rejects_public_claim_artifact_write,
+            no_write_sink_adapter_ready,
+            activation_blocked_by_no_write_sink_adapter,
+            activation_allowed_by_no_write_sink_adapter,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            sink_surfaces,
+            no_write_sink_adapter_invariants: vec![
+                "no-write sink adapter accepts redacted invocation shapes without persisting them"
+                    .into(),
+                "filesystem persistence remains disabled by default".into(),
+                "public-claim and release-artifact requests are rejected by the no-write sink".into(),
+                "sink readiness does not permit active runtime wiring or public claims".into(),
+            ],
+            required_next_gates: vec![
+                "add an operator-approved write-enable fixture before any filesystem persistence".into(),
+                "bind sink acceptance to fresh live gate evidence and active binary SHA".into(),
+                "require release-governance approval before any public artifact path is opened".into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_receipt_no_write_sink_adapter_surface(
+    name: &str,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterSurface {
+    HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterSurface {
+        name: name.into(),
+        required: true,
+        ready: true,
+        side_effect_free: true,
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_evidence_receipt_no_write_sink_adapter_surfaces()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterSurface> {
+    vec![
+        activation_evidence_receipt_no_write_sink_adapter_surface(
+            "redacted_invocation_acceptance",
+            "accepts redacted invocation fixtures as validation input",
+        ),
+        activation_evidence_receipt_no_write_sink_adapter_surface(
+            "payload_hash_binding",
+            "binds acceptance to a receipt payload hash without reading raw evidence",
+        ),
+        activation_evidence_receipt_no_write_sink_adapter_surface(
+            "redacted_output_path_binding",
+            "tracks intended receipt output paths only as redacted values",
+        ),
+        activation_evidence_receipt_no_write_sink_adapter_surface(
+            "operator_approval_requirement",
+            "requires explicit operator approval before any future write path",
+        ),
+        activation_evidence_receipt_no_write_sink_adapter_surface(
+            "fresh_trusted_record_requirement",
+            "requires fresh trusted evidence before persistence can be enabled",
+        ),
+        activation_evidence_receipt_no_write_sink_adapter_surface(
+            "public_claim_artifact_rejection",
+            "rejects public claim and release artifact requests by default",
         ),
     ]
 }
@@ -6532,6 +6755,11 @@ pub fn hepta_upstream_codex_activation_evidence_receipt_persistence_command_cont
 pub fn hepta_upstream_codex_activation_evidence_receipt_persistence_invocation_dry_run_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunReport {
     HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_no_write_sink_adapter_contract_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterContractReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptNoWriteSinkAdapterContractReport::native_default()
 }
 
 #[cfg(test)]
@@ -9478,6 +9706,87 @@ mod tests {
                 .invocation_dry_run_invariants
                 .iter()
                 .any(|invariant| invariant.contains("request persistence without executing it"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_no_write_sink_adapter_contract_is_ready() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_no_write_sink_adapter_contract_report(
+            );
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.no_write_sink_adapter_id,
+            "upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract"
+        );
+        assert_eq!(
+            report.source_invocation_dry_run_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-invocation-dry-run.sh"
+        );
+        assert_eq!(
+            report.no_write_sink_adapter_contract_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract.sh"
+        );
+        assert!(report.source_invocation_dry_run_ready);
+        assert_eq!(report.required_sink_surface_count, 6);
+        assert_eq!(report.ready_sink_surface_count, 6);
+        assert_eq!(report.side_effect_free_surface_count, 6);
+        assert_eq!(report.accepted_invocation_fixture_count, 3);
+        assert_eq!(report.rejected_write_fixture_count, 3);
+        assert_eq!(report.rejected_public_claim_fixture_count, 1);
+        assert_eq!(report.persisted_receipt_count, 0);
+        assert_eq!(report.workspace_write_performed_count, 0);
+        assert!(!report.sink_write_path_enabled_by_default);
+        assert!(report.sink_accepts_redacted_payload_hash);
+        assert!(report.sink_accepts_redacted_output_path);
+        assert!(report.sink_requires_operator_approval);
+        assert!(report.sink_requires_fresh_trusted_records);
+        assert!(report.sink_rejects_public_claim_artifact_write);
+        assert!(report.no_write_sink_adapter_ready);
+        assert!(report.sink_surfaces.iter().all(|surface| surface.required));
+        assert!(report.sink_surfaces.iter().all(|surface| surface.ready));
+        assert!(
+            report
+                .sink_surfaces
+                .iter()
+                .all(|surface| surface.side_effect_free)
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_no_write_sink_adapter_contract_blocks_effects() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_no_write_sink_adapter_contract_report(
+            );
+
+        assert!(report.activation_blocked_by_no_write_sink_adapter);
+        assert!(!report.activation_allowed_by_no_write_sink_adapter);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .no_write_sink_adapter_invariants
+                .iter()
+                .any(|invariant| invariant.contains("without persisting them"))
         );
     }
 }

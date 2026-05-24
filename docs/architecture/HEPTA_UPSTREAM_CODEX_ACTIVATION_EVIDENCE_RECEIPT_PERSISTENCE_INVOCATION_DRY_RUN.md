@@ -92,6 +92,7 @@ All fixtures are redacted, command-shaped, and blocked as `blocked_noop`:
 
 ## Required Next Gates
 
-- Bind a no-write receipt sink adapter before any persisted receipt path.
+- Run the no-write receipt sink adapter contract before any persisted receipt
+  path.
 - Require fresh live gate evidence for every invocation fixture.
 - Require operator approval before enabling any receipt persistence command.

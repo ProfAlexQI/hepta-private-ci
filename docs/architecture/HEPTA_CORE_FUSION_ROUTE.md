@@ -162,6 +162,10 @@ Current state:
   models redacted command invocation attempts and proves they remain no-op by
   default with no command execution, receipt persistence, workspace write, or
   public claim.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract.sh`
+  defines the no-write receipt sink adapter contract: redacted invocation
+  shapes can be accepted for validation, but filesystem persistence and public
+  artifact paths remain disabled by default.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

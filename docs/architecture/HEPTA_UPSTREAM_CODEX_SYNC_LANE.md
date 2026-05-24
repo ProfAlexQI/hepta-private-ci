@@ -455,6 +455,19 @@ All attempts remain `blocked_noop`: no command is invoked, no persistence
 execution runs, no workspace write occurs, no evidence receipt is persisted, and
 active wiring/public claim decisions remain false.
 
+The activation evidence receipt no-write sink adapter contract gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_NO_WRITE_SINK_ADAPTER_CONTRACT.md`.
+It defines `6` required side-effect-free sink surfaces. The sink accepts the `3`
+redacted invocation fixtures for validation but rejects all write/public-claim
+effects: persisted receipt count remains `0`, workspace write count remains
+`0`, and active wiring/public claim decisions remain false.
+
 The local sync-lane gate is:
 
 ```bash
