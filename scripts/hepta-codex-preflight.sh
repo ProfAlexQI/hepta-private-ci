@@ -67,6 +67,9 @@ scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh
 echo "[hepta-codex-preflight] upstream Codex legacy compatibility replay gate"
 scripts/hepta-upstream-codex-legacy-compatibility-replay.sh
 
+echo "[hepta-codex-preflight] upstream Codex legacy compatibility promotion gate"
+scripts/hepta-upstream-codex-legacy-compatibility-promotion.sh
+
 echo "[hepta-codex-preflight] upstream Codex provider/security absorption gate"
 scripts/hepta-upstream-codex-provider-security-absorption.sh
 

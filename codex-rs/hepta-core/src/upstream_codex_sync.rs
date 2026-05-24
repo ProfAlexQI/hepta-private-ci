@@ -297,6 +297,49 @@ pub struct HeptaUpstreamCodexLegacyCompatibilityReplayReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexLegacyCompatibilityPromotionReport {
+    pub product: String,
+    pub status: String,
+    pub promotion_id: String,
+    pub promotion_packet_path: String,
+    pub selected_bucket_id: String,
+    pub selected_changed_file_count: usize,
+    pub source_replay_gate: String,
+    pub promotion_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub cli_command_contract_parity_ready: bool,
+    pub tui_presentation_parity_ready: bool,
+    pub code_mode_callback_boundary_ready: bool,
+    pub terminal_helper_contract_ready: bool,
+    pub adapter_shadow_replay_ready: bool,
+    pub operator_approval_model_ready: bool,
+    pub side_effect_boundary_ready: bool,
+    pub required_promotion_condition_count: usize,
+    pub ready_promotion_condition_count: usize,
+    pub promotion_packet_ready: bool,
+    pub active_cli_tui_promotion_allowed: bool,
+    pub active_tui_presentation_promotion_allowed: bool,
+    pub active_code_mode_promotion_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub promotion_conditions: Vec<String>,
+    pub remaining_blockers: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaUpstreamCodexProviderSecurityAbsorptionReport {
     pub product: String,
     pub status: String,
@@ -1087,6 +1130,84 @@ impl HeptaUpstreamCodexLegacyCompatibilityReplayReport {
     }
 }
 
+impl HeptaUpstreamCodexLegacyCompatibilityPromotionReport {
+    pub fn native_default() -> Self {
+        let promotion_conditions: Vec<String> = vec![
+            "CLI command contract parity is documented".into(),
+            "TUI presentation parity remains snapshot-bounded".into(),
+            "code-mode callback boundary remains compatibility-only".into(),
+            "terminal and PTY helper contracts remain explicit".into(),
+            "adapter shadow replay remains required before active CLI/TUI behavior".into(),
+            "operator approval model is explicit before live mutation".into(),
+            "side-effect boundary keeps CLI/TUI, channels, and gateway RPC off".into(),
+        ];
+        let required_promotion_condition_count = 7;
+        let ready_promotion_condition_count = promotion_conditions.len();
+        let promotion_packet_ready =
+            ready_promotion_condition_count == required_promotion_condition_count;
+
+        Self {
+            product: "Hepta".into(),
+            status: if promotion_packet_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            promotion_id: "hepta-cli-tui-parity-promotion-packet".into(),
+            promotion_packet_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_LEGACY_COMPATIBILITY_PROMOTION.md".into(),
+            selected_bucket_id: "legacy-cli-tui-compatibility".into(),
+            selected_changed_file_count: 128,
+            source_replay_gate: "scripts/hepta-upstream-codex-legacy-compatibility-replay.sh"
+                .into(),
+            promotion_gate: "scripts/hepta-upstream-codex-legacy-compatibility-promotion.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            cli_command_contract_parity_ready: true,
+            tui_presentation_parity_ready: true,
+            code_mode_callback_boundary_ready: true,
+            terminal_helper_contract_ready: true,
+            adapter_shadow_replay_ready: true,
+            operator_approval_model_ready: true,
+            side_effect_boundary_ready: true,
+            required_promotion_condition_count,
+            ready_promotion_condition_count,
+            promotion_packet_ready,
+            active_cli_tui_promotion_allowed: false,
+            active_tui_presentation_promotion_allowed: false,
+            active_code_mode_promotion_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            promotion_conditions,
+            remaining_blockers: vec![
+                "active CLI/TUI command promotion is not part of this packet".into(),
+                "live TUI presentation promotion remains forbidden".into(),
+                "code-mode callback promotion remains forbidden".into(),
+                "gateway RPC and channel delivery remain forbidden".into(),
+            ],
+            required_next_gates: vec![
+                "prove active Hepta-native CLI/TUI parity before command promotion".into(),
+                "require operator approval before live command or presentation behavior".into(),
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+                "rerun promotion readiness after each per-surface promotion packet".into(),
+            ],
+        }
+    }
+}
+
 impl HeptaUpstreamCodexProviderSecurityAbsorptionReport {
     pub fn native_default() -> Self {
         let security_surfaces: Vec<String> = vec![
@@ -1691,10 +1812,11 @@ impl HeptaUpstreamCodexPromotionReadinessReport {
                 selected_changed_file_count: 128,
                 absorption_replay_ready: true,
                 required_surface_promotion_packet: "hepta-cli-tui-parity-promotion-packet".into(),
-                surface_promotion_packet_ready: false,
+                surface_promotion_packet_ready: true,
                 active_promotion_allowed: false,
-                blocker: "legacy CLI/TUI behavior needs a Hepta-native parity packet before use"
-                    .into(),
+                blocker:
+                    "legacy CLI/TUI parity promotion packet is ready, but active CLI/TUI promotion remains blocked"
+                        .into(),
             },
             HeptaUpstreamCodexPromotionDecision {
                 bucket_id: "provider-credential-sandbox-security".into(),
@@ -2197,6 +2319,11 @@ pub fn hepta_upstream_codex_legacy_compatibility_absorption_report()
 pub fn hepta_upstream_codex_legacy_compatibility_replay_report()
 -> HeptaUpstreamCodexLegacyCompatibilityReplayReport {
     HeptaUpstreamCodexLegacyCompatibilityReplayReport::native_default()
+}
+
+pub fn hepta_upstream_codex_legacy_compatibility_promotion_report()
+-> HeptaUpstreamCodexLegacyCompatibilityPromotionReport {
+    HeptaUpstreamCodexLegacyCompatibilityPromotionReport::native_default()
 }
 
 pub fn hepta_upstream_codex_provider_security_absorption_report()
@@ -2778,6 +2905,95 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("Hepta command contracts"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_legacy_compatibility_promotion_packet_is_ready_but_not_active() {
+        let report = hepta_upstream_codex_legacy_compatibility_promotion_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.promotion_id, "hepta-cli-tui-parity-promotion-packet");
+        assert_eq!(
+            report.promotion_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_LEGACY_COMPATIBILITY_PROMOTION.md"
+        );
+        assert_eq!(report.selected_bucket_id, "legacy-cli-tui-compatibility");
+        assert_eq!(report.selected_changed_file_count, 128);
+        assert_eq!(
+            report.source_replay_gate,
+            "scripts/hepta-upstream-codex-legacy-compatibility-replay.sh"
+        );
+        assert_eq!(
+            report.promotion_gate,
+            "scripts/hepta-upstream-codex-legacy-compatibility-promotion.sh"
+        );
+        assert!(report.cli_command_contract_parity_ready);
+        assert!(report.tui_presentation_parity_ready);
+        assert!(report.code_mode_callback_boundary_ready);
+        assert!(report.terminal_helper_contract_ready);
+        assert!(report.adapter_shadow_replay_ready);
+        assert!(report.operator_approval_model_ready);
+        assert!(report.side_effect_boundary_ready);
+        assert_eq!(
+            report.ready_promotion_condition_count,
+            report.required_promotion_condition_count
+        );
+        assert!(report.promotion_packet_ready);
+        assert!(!report.active_cli_tui_promotion_allowed);
+        assert!(!report.active_tui_presentation_promotion_allowed);
+        assert!(!report.active_code_mode_promotion_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+    }
+
+    #[test]
+    fn upstream_codex_legacy_compatibility_promotion_tracks_blockers() {
+        let report = hepta_upstream_codex_legacy_compatibility_promotion_report();
+
+        assert_eq!(report.promotion_conditions.len(), 7);
+        assert!(
+            report
+                .promotion_conditions
+                .iter()
+                .any(|condition| condition.contains("CLI command"))
+        );
+        assert!(
+            report
+                .promotion_conditions
+                .iter()
+                .any(|condition| condition.contains("TUI presentation"))
+        );
+        assert!(
+            report
+                .promotion_conditions
+                .iter()
+                .any(|condition| condition.contains("code-mode"))
+        );
+        assert!(
+            report
+                .remaining_blockers
+                .iter()
+                .any(|blocker| blocker.contains("active CLI/TUI"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("Hepta-native CLI/TUI parity"))
         );
     }
 
@@ -3477,7 +3693,7 @@ mod tests {
             report.required_absorption_replay_ready_count
         );
         assert_eq!(report.required_surface_promotion_packet_count, 4);
-        assert_eq!(report.completed_surface_promotion_packet_count, 2);
+        assert_eq!(report.completed_surface_promotion_packet_count, 3);
         assert_eq!(report.promotable_bucket_count, 0);
         assert_eq!(report.promotion_blocked_bucket_count, 4);
         assert!(report.readiness_source_ready);
@@ -3523,6 +3739,7 @@ mod tests {
                 && decision
                     .required_surface_promotion_packet
                     .contains("parity")
+                && decision.surface_promotion_packet_ready
         }));
         assert!(
             report

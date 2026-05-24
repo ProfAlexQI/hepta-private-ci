@@ -46,6 +46,11 @@ Current state:
   CLI/TUI/code-mode command-contract replay packet while keeping CLI command
   shape, TUI presentation, code-mode callbacks, terminal helpers, and dependency
   boundaries report-only with no active CLI/TUI promotion.
+- `scripts/hepta-upstream-codex-legacy-compatibility-promotion.sh` verifies the
+  P1 Hepta CLI/TUI parity promotion packet: all seven local promotion conditions
+  are ready, but active CLI/TUI, TUI presentation, code-mode, channel, and
+  gateway promotion remain blocked until active Hepta-native parity and operator
+  approval are explicit.
 - `scripts/hepta-upstream-codex-provider-security-absorption.sh` selects the P0
   provider/auth/config/exec/sandbox/network-proxy family as an intake contract
   while keeping provider and security-policy behavior out of the active runtime
@@ -79,7 +84,7 @@ Current state:
   claims false.
 - `scripts/hepta-upstream-codex-promotion-readiness.sh` turns the intake/replay
   map into an explicit promotion decision: four selected buckets are assessed,
-  four absorption/replay sources are ready, two surface promotion packets are
+  four absorption/replay sources are ready, three surface promotion packets are
   complete, and zero buckets are promotable, so active promotion remains closed.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and

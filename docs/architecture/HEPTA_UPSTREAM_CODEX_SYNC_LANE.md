@@ -99,6 +99,19 @@ helpers, and the active dependency boundary. It still performs no active CLI/TUI
 promotion, active runtime wiring, Codex engine dependency promotion, gateway RPC,
 or public release claim.
 
+The P1 compatibility promotion packet gate is:
+
+```bash
+scripts/hepta-upstream-codex-legacy-compatibility-promotion.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_LEGACY_COMPATIBILITY_PROMOTION.md`. It
+marks the Hepta CLI/TUI parity promotion packet ready with `7 / 7` promotion
+conditions while still keeping active CLI/TUI promotion, TUI presentation
+promotion, code-mode promotion, runtime code wiring, channel delivery, gateway
+RPC, and public release claims false.
+
 The P0 provider/security absorption-contract gate is:
 
 ```bash
@@ -205,10 +218,10 @@ scripts/hepta-upstream-codex-promotion-readiness.sh
 This gate verifies
 `docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_READINESS.md`. It consumes the
 absorption/replay readiness result and explicitly decides that `4 / 4` selected
-buckets are assessed, `4 / 4` absorption/replay sources are ready, `2` surface
-promotion packet is complete, and `0` buckets are promotable. The gate therefore
-keeps active promotion closed until the remaining release-governance and CLI/TUI
-parity promotion packets plus active-wiring evidence exist.
+buckets are assessed, `4 / 4` absorption/replay sources are ready, `3` surface
+promotion packets are complete, and `0` buckets are promotable. The gate
+therefore keeps active promotion closed until the remaining release-governance
+claim packet plus active-wiring evidence exists.
 
 The local sync-lane gate is:
 
