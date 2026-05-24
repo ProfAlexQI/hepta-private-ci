@@ -63,6 +63,11 @@ Current state:
   runtime/app-server replay packet for app-server protocol, daemon/transport,
   session/thread-store, tool/MCP, exec/hook, and side-effect boundaries, still
   with no active runtime, app-server, or tool/MCP promotion.
+- `scripts/hepta-upstream-codex-absorption-replay-readiness.sh` summarizes the
+  upstream Codex intake/replay map as four selected buckets, four absorption
+  contracts, and four translation/replay packets while keeping active Codex
+  engine dependencies, runtime wiring, automatic rebase, and public release
+  claims false.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

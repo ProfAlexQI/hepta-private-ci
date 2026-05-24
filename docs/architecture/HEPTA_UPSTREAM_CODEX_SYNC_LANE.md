@@ -155,6 +155,21 @@ behavior, and side-effect boundaries. It still performs no active runtime
 promotion, app-server promotion, tool/MCP promotion, runtime wiring, credential
 read, provider invocation, channel delivery, gateway RPC, or public release.
 
+The absorption/replay readiness gate is:
+
+```bash
+scripts/hepta-upstream-codex-absorption-replay-readiness.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ABSORPTION_REPLAY_READINESS.md`. It
+summarizes the frozen diff ledger as 878 changed upstream paths, 716 selected
+absorption paths, four selected buckets, four absorption contracts, and four
+required translation/replay packets. It does not claim that every upstream file
+has been ported into active Hepta code; it only closes readiness for the
+selected bucket contracts while keeping active Codex engine dependencies,
+runtime wiring, automatic rebase, gateway RPC, and public release claims false.
+
 The local sync-lane gate is:
 
 ```bash

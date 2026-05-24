@@ -452,6 +452,59 @@ pub struct HeptaUpstreamCodexRuntimeAppServerReplayReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexAbsorptionReplayReadinessReport {
+    pub product: String,
+    pub status: String,
+    pub readiness_id: String,
+    pub readiness_packet_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub ledger_changed_file_count: usize,
+    pub selected_absorption_changed_file_count: usize,
+    pub selected_bucket_count: usize,
+    pub required_selected_bucket_count: usize,
+    pub absorption_contract_ready_count: usize,
+    pub required_absorption_contract_ready_count: usize,
+    pub translation_replay_ready_count: usize,
+    pub required_translation_replay_ready_count: usize,
+    pub p0_replay_ready_count: usize,
+    pub required_p0_replay_ready_count: usize,
+    pub p1_replay_ready_count: usize,
+    pub required_p1_replay_ready_count: usize,
+    pub p2_translation_ready_count: usize,
+    pub required_p2_translation_ready_count: usize,
+    pub product_governance_translation_ready: bool,
+    pub legacy_compatibility_replay_ready: bool,
+    pub provider_security_replay_ready: bool,
+    pub runtime_appserver_replay_ready: bool,
+    pub source_ledger_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub readiness_gate: String,
+    pub all_selected_buckets_absorbed: bool,
+    pub all_required_translation_replay_ready: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub readiness_ready: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub covered_buckets: Vec<String>,
+    pub closed_gates: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -1213,6 +1266,115 @@ impl HeptaUpstreamCodexRuntimeAppServerReplayReport {
     }
 }
 
+impl HeptaUpstreamCodexAbsorptionReplayReadinessReport {
+    pub fn native_default() -> Self {
+        let covered_buckets: Vec<String> = vec![
+            "product-doc-release-governance".into(),
+            "legacy-cli-tui-compatibility".into(),
+            "provider-credential-sandbox-security".into(),
+            "runtime-session-tool-mcp-appserver".into(),
+        ];
+        let closed_gates: Vec<String> = vec![
+            "scripts/hepta-upstream-codex-product-governance-absorption.sh".into(),
+            "scripts/hepta-upstream-codex-product-governance-translation.sh".into(),
+            "scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh".into(),
+            "scripts/hepta-upstream-codex-legacy-compatibility-replay.sh".into(),
+            "scripts/hepta-upstream-codex-provider-security-absorption.sh".into(),
+            "scripts/hepta-upstream-codex-provider-security-replay.sh".into(),
+            "scripts/hepta-upstream-codex-runtime-appserver-absorption.sh".into(),
+            "scripts/hepta-upstream-codex-runtime-appserver-replay.sh".into(),
+        ];
+        let selected_bucket_count = covered_buckets.len();
+        let required_selected_bucket_count = 4;
+        let absorption_contract_ready_count = 4;
+        let required_absorption_contract_ready_count = 4;
+        let translation_replay_ready_count = 4;
+        let required_translation_replay_ready_count = 4;
+        let p0_replay_ready_count = 2;
+        let required_p0_replay_ready_count = 2;
+        let p1_replay_ready_count = 1;
+        let required_p1_replay_ready_count = 1;
+        let p2_translation_ready_count = 1;
+        let required_p2_translation_ready_count = 1;
+        let all_selected_buckets_absorbed = selected_bucket_count == required_selected_bucket_count
+            && absorption_contract_ready_count == required_absorption_contract_ready_count;
+        let all_required_translation_replay_ready = translation_replay_ready_count
+            == required_translation_replay_ready_count
+            && p0_replay_ready_count == required_p0_replay_ready_count
+            && p1_replay_ready_count == required_p1_replay_ready_count
+            && p2_translation_ready_count == required_p2_translation_ready_count;
+        let readiness_ready = all_selected_buckets_absorbed
+            && all_required_translation_replay_ready
+            && closed_gates.len() == 8;
+
+        Self {
+            product: "Hepta".into(),
+            status: if readiness_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            readiness_id: "upstream-codex-absorption-replay-readiness".into(),
+            readiness_packet_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ABSORPTION_REPLAY_READINESS.md".into(),
+            upstream_repository: "https://github.com/openai/codex".into(),
+            candidate_diff_range:
+                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
+                    .into(),
+            ledger_changed_file_count: 878,
+            selected_absorption_changed_file_count: 716,
+            selected_bucket_count,
+            required_selected_bucket_count,
+            absorption_contract_ready_count,
+            required_absorption_contract_ready_count,
+            translation_replay_ready_count,
+            required_translation_replay_ready_count,
+            p0_replay_ready_count,
+            required_p0_replay_ready_count,
+            p1_replay_ready_count,
+            required_p1_replay_ready_count,
+            p2_translation_ready_count,
+            required_p2_translation_ready_count,
+            product_governance_translation_ready: true,
+            legacy_compatibility_replay_ready: true,
+            provider_security_replay_ready: true,
+            runtime_appserver_replay_ready: true,
+            source_ledger_gate: "scripts/hepta-upstream-codex-diff-ledger.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            readiness_gate: "scripts/hepta-upstream-codex-absorption-replay-readiness.sh".into(),
+            all_selected_buckets_absorbed,
+            all_required_translation_replay_ready,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            readiness_ready,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            covered_buckets,
+            closed_gates,
+            required_next_gates: vec![
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+                "require per-surface promotion packets before active behavior changes".into(),
+                "require operator approval and long soak before public release claims".into(),
+                "refresh the diff ledger before absorbing a newer upstream Codex range".into(),
+            ],
+        }
+    }
+}
+
 fn sync_contract(
     id: &str,
     risk: HeptaUpstreamCodexSyncRisk,
@@ -1620,6 +1782,11 @@ pub fn hepta_upstream_codex_runtime_appserver_absorption_report()
 pub fn hepta_upstream_codex_runtime_appserver_replay_report()
 -> HeptaUpstreamCodexRuntimeAppServerReplayReport {
     HeptaUpstreamCodexRuntimeAppServerReplayReport::native_default()
+}
+
+pub fn hepta_upstream_codex_absorption_replay_readiness_report()
+-> HeptaUpstreamCodexAbsorptionReplayReadinessReport {
+    HeptaUpstreamCodexAbsorptionReplayReadinessReport::native_default()
 }
 
 #[cfg(test)]
@@ -2545,6 +2712,133 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("event-loop promotion"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_absorption_replay_readiness_is_ready_and_bounded() {
+        let report = hepta_upstream_codex_absorption_replay_readiness_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.readiness_id,
+            "upstream-codex-absorption-replay-readiness"
+        );
+        assert_eq!(
+            report.readiness_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_ABSORPTION_REPLAY_READINESS.md"
+        );
+        assert_eq!(report.ledger_changed_file_count, 878);
+        assert_eq!(report.selected_absorption_changed_file_count, 716);
+        assert_eq!(
+            report.selected_bucket_count,
+            report.required_selected_bucket_count
+        );
+        assert_eq!(
+            report.absorption_contract_ready_count,
+            report.required_absorption_contract_ready_count
+        );
+        assert_eq!(
+            report.translation_replay_ready_count,
+            report.required_translation_replay_ready_count
+        );
+        assert_eq!(
+            report.p0_replay_ready_count,
+            report.required_p0_replay_ready_count
+        );
+        assert_eq!(
+            report.p1_replay_ready_count,
+            report.required_p1_replay_ready_count
+        );
+        assert_eq!(
+            report.p2_translation_ready_count,
+            report.required_p2_translation_ready_count
+        );
+        assert!(report.product_governance_translation_ready);
+        assert!(report.legacy_compatibility_replay_ready);
+        assert!(report.provider_security_replay_ready);
+        assert!(report.runtime_appserver_replay_ready);
+        assert!(report.all_selected_buckets_absorbed);
+        assert!(report.all_required_translation_replay_ready);
+        assert!(report.readiness_ready);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+    }
+
+    #[test]
+    fn upstream_codex_absorption_replay_readiness_tracks_all_closed_gates() {
+        let report = hepta_upstream_codex_absorption_replay_readiness_report();
+
+        assert_eq!(report.covered_buckets.len(), 4);
+        assert!(
+            report
+                .covered_buckets
+                .iter()
+                .any(|bucket| bucket == "product-doc-release-governance")
+        );
+        assert!(
+            report
+                .covered_buckets
+                .iter()
+                .any(|bucket| bucket == "legacy-cli-tui-compatibility")
+        );
+        assert!(
+            report
+                .covered_buckets
+                .iter()
+                .any(|bucket| bucket == "provider-credential-sandbox-security")
+        );
+        assert!(
+            report
+                .covered_buckets
+                .iter()
+                .any(|bucket| bucket == "runtime-session-tool-mcp-appserver")
+        );
+        assert_eq!(report.closed_gates.len(), 8);
+        assert!(
+            report
+                .closed_gates
+                .iter()
+                .any(|gate| gate.contains("product-governance-translation"))
+        );
+        assert!(
+            report
+                .closed_gates
+                .iter()
+                .any(|gate| gate.contains("legacy-compatibility-replay"))
+        );
+        assert!(
+            report
+                .closed_gates
+                .iter()
+                .any(|gate| gate.contains("provider-security-replay"))
+        );
+        assert!(
+            report
+                .closed_gates
+                .iter()
+                .any(|gate| gate.contains("runtime-appserver-replay"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("newer upstream Codex range"))
         );
     }
 }

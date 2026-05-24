@@ -79,6 +79,9 @@ scripts/hepta-upstream-codex-runtime-appserver-absorption.sh
 echo "[hepta-codex-preflight] upstream Codex runtime/app-server replay gate"
 scripts/hepta-upstream-codex-runtime-appserver-replay.sh
 
+echo "[hepta-codex-preflight] upstream Codex absorption/replay readiness gate"
+scripts/hepta-upstream-codex-absorption-replay-readiness.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh
