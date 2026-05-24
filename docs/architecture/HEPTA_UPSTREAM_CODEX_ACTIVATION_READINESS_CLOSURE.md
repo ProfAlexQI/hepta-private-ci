@@ -70,6 +70,8 @@ recording a concrete activation packet or allowing active runtime wiring.
 
 ## Required Next Gates
 
+- Add a full-shaped denied sample packet with
+  `scripts/hepta-upstream-codex-activation-denied-sample.sh`.
 - Record a concrete operator-approved activation packet.
 - Bind all eight evidence slots to fresh live gate evidence.
 - Rerun dry-run validation against the concrete activation packet.

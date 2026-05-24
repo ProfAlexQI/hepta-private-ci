@@ -75,6 +75,8 @@ default and does not allow active runtime wiring.
 
 - Close the readiness summary with
   `scripts/hepta-upstream-codex-activation-readiness-closure.sh`.
+- Add a full-shaped denied sample packet with
+  `scripts/hepta-upstream-codex-activation-denied-sample.sh`.
 - Record a concrete activation request id before any active wiring.
 - Record an operator approval id and hashed operator identity before any active
   wiring.

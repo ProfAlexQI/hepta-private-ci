@@ -115,6 +115,9 @@ scripts/hepta-upstream-codex-activation-evidence-ledger.sh
 echo "[hepta-codex-preflight] upstream Codex activation readiness closure gate"
 scripts/hepta-upstream-codex-activation-readiness-closure.sh
 
+echo "[hepta-codex-preflight] upstream Codex activation denied sample gate"
+scripts/hepta-upstream-codex-activation-denied-sample.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh

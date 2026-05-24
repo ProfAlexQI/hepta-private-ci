@@ -314,6 +314,17 @@ requires the activation request schema, dry-run validator, and evidence ledger
 to be ready while keeping operator-approved activation, active wiring, public
 release claims, and release artifact writes denied by default.
 
+The activation denied sample gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-denied-sample.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_DENIED_SAMPLE.md`. It keeps
+a full-shaped sample packet blocked when operator approval is not recorded and
+activation evidence freshness remains `0`.
+
 The local sync-lane gate is:
 
 ```bash

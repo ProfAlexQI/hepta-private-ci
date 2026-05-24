@@ -118,6 +118,9 @@ Current state:
   activation readiness summary: schema, dry-run, and evidence-ledger inputs are
   ready, but activation remains denied by default until a concrete
   operator-approved packet with fresh evidence exists.
+- `scripts/hepta-upstream-codex-activation-denied-sample.sh` adds a
+  full-shaped sample activation packet that is still blocked because operator
+  approval is not recorded and evidence freshness remains `0`.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

@@ -1037,6 +1037,52 @@ pub struct HeptaUpstreamCodexActivationReadinessClosureReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationDeniedSampleReport {
+    pub product: String,
+    pub status: String,
+    pub sample_id: String,
+    pub sample_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_readiness_closure_gate: String,
+    pub denied_sample_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub activation_readiness_closure_ready: bool,
+    pub sample_packet_shape_complete: bool,
+    pub sample_required_schema_field_count: usize,
+    pub sample_recorded_schema_field_count: usize,
+    pub sample_required_evidence_count: usize,
+    pub sample_fresh_evidence_count: usize,
+    pub sample_operator_approval_field_present: bool,
+    pub sample_operator_approval_recorded: bool,
+    pub sample_public_release_claim_requested: bool,
+    pub sample_release_artifact_write_requested: bool,
+    pub sample_validation_status: String,
+    pub sample_blocked_reason: String,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub sample_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -3048,6 +3094,104 @@ impl HeptaUpstreamCodexActivationReadinessClosureReport {
     }
 }
 
+impl HeptaUpstreamCodexActivationDeniedSampleReport {
+    pub fn native_default() -> Self {
+        let closure = HeptaUpstreamCodexActivationReadinessClosureReport::native_default();
+        let sample_required_schema_field_count = closure.required_schema_field_count;
+        let sample_recorded_schema_field_count = sample_required_schema_field_count;
+        let sample_required_evidence_count = closure.required_evidence_count;
+        let sample_fresh_evidence_count = 0;
+        let sample_operator_approval_field_present = true;
+        let sample_operator_approval_recorded = false;
+        let sample_public_release_claim_requested = true;
+        let sample_release_artifact_write_requested = true;
+        let active_wiring_allowed = false;
+        let sample_packet_shape_complete =
+            sample_recorded_schema_field_count == sample_required_schema_field_count;
+        let sample_validation_status = "blocked".to_string();
+        let sample_blocked_reason =
+            "operator approval is not recorded and activation evidence is not fresh".to_string();
+        let denied_sample_ready = closure.activation_readiness_closure_ready
+            && sample_packet_shape_complete
+            && sample_required_schema_field_count == 14
+            && sample_recorded_schema_field_count == 14
+            && sample_required_evidence_count == 8
+            && sample_fresh_evidence_count == 0
+            && sample_operator_approval_field_present
+            && !sample_operator_approval_recorded
+            && sample_public_release_claim_requested
+            && sample_release_artifact_write_requested
+            && sample_validation_status == "blocked"
+            && !active_wiring_allowed;
+
+        Self {
+            product: "Hepta".into(),
+            status: if denied_sample_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            sample_id: "upstream-codex-activation-denied-sample-packet".into(),
+            sample_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_DENIED_SAMPLE.md".into(),
+            upstream_repository: closure.upstream_repository,
+            candidate_diff_range: closure.candidate_diff_range,
+            source_readiness_closure_gate: closure.activation_readiness_closure_gate,
+            denied_sample_gate: "scripts/hepta-upstream-codex-activation-denied-sample.sh"
+                .into(),
+            active_dependency_isolation_gate: closure.active_dependency_isolation_gate,
+            activation_readiness_closure_ready: closure.activation_readiness_closure_ready,
+            sample_packet_shape_complete,
+            sample_required_schema_field_count,
+            sample_recorded_schema_field_count,
+            sample_required_evidence_count,
+            sample_fresh_evidence_count,
+            sample_operator_approval_field_present,
+            sample_operator_approval_recorded,
+            sample_public_release_claim_requested,
+            sample_release_artifact_write_requested,
+            sample_validation_status,
+            sample_blocked_reason,
+            active_wiring_allowed,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            sample_invariants: vec![
+                "full-shaped activation samples are not approvals".into(),
+                "operator approval must be recorded separately from packet shape".into(),
+                "all eight evidence slots must be fresh before activation can be reconsidered"
+                    .into(),
+                "public release claims and artifact writes remain denied for the denied sample"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "replace the denied sample with a concrete operator-approved activation packet"
+                    .into(),
+                "bind every evidence slot to fresh live dependency, watchdog, browser, soak, and rollback evidence"
+                    .into(),
+                "rerun activation readiness closure after concrete approval and evidence".into(),
+                "run clean preflight and live gates before any active wiring decision".into(),
+            ],
+        }
+    }
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -3604,6 +3748,11 @@ pub fn hepta_upstream_codex_activation_evidence_ledger_report()
 pub fn hepta_upstream_codex_activation_readiness_closure_report()
 -> HeptaUpstreamCodexActivationReadinessClosureReport {
     HeptaUpstreamCodexActivationReadinessClosureReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_denied_sample_report()
+-> HeptaUpstreamCodexActivationDeniedSampleReport {
+    HeptaUpstreamCodexActivationDeniedSampleReport::native_default()
 }
 
 #[cfg(test)]
@@ -5583,6 +5732,79 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("fresh live gate evidence"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_denied_sample_is_full_shaped_but_blocked() {
+        let report = hepta_upstream_codex_activation_denied_sample_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.sample_id,
+            "upstream-codex-activation-denied-sample-packet"
+        );
+        assert_eq!(
+            report.sample_doc_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_DENIED_SAMPLE.md"
+        );
+        assert_eq!(
+            report.source_readiness_closure_gate,
+            "scripts/hepta-upstream-codex-activation-readiness-closure.sh"
+        );
+        assert_eq!(
+            report.denied_sample_gate,
+            "scripts/hepta-upstream-codex-activation-denied-sample.sh"
+        );
+        assert!(report.activation_readiness_closure_ready);
+        assert!(report.sample_packet_shape_complete);
+        assert_eq!(report.sample_required_schema_field_count, 14);
+        assert_eq!(report.sample_recorded_schema_field_count, 14);
+        assert_eq!(report.sample_required_evidence_count, 8);
+        assert_eq!(report.sample_fresh_evidence_count, 0);
+        assert!(report.sample_operator_approval_field_present);
+        assert!(!report.sample_operator_approval_recorded);
+        assert!(report.sample_public_release_claim_requested);
+        assert!(report.sample_release_artifact_write_requested);
+        assert_eq!(report.sample_validation_status, "blocked");
+        assert!(report.sample_blocked_reason.contains("not recorded"));
+        assert!(!report.active_wiring_allowed);
+    }
+
+    #[test]
+    fn upstream_codex_activation_denied_sample_preserves_denials_and_side_effects() {
+        let report = hepta_upstream_codex_activation_denied_sample_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .sample_invariants
+                .iter()
+                .any(|invariant| invariant.contains("not approvals"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("concrete operator-approved activation packet"))
         );
     }
 }
