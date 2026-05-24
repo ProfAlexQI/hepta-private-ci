@@ -42,6 +42,11 @@ Current state:
 - `scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh` selects the
   P1 CLI/TUI/code-mode compatibility family as an intake contract while keeping
   Codex CLI/TUI behavior out of the active Hepta runtime.
+- `scripts/hepta-upstream-codex-provider-security-absorption.sh` selects the P0
+  provider/auth/config/exec/sandbox/network-proxy family as an intake contract
+  while keeping provider and security-policy behavior out of the active runtime
+  until Hepta-native replay, redaction, operator, soak, and dependency gates
+  pass.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

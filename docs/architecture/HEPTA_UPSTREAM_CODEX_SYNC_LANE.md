@@ -85,6 +85,20 @@ snapshot inputs until explicit Hepta command contracts, behavior-equivalence,
 shadow-replay, active dependency isolation, and Hepta-native parity gates are
 green. It does not promote Codex CLI/TUI behavior into the active Hepta service.
 
+The P0 provider/security absorption-contract gate is:
+
+```bash
+scripts/hepta-upstream-codex-provider-security-absorption.sh
+```
+
+This gate selects the `provider-credential-sandbox-security` bucket. It freezes
+the current 104 upstream paths covering `codex-api`, model providers, login,
+config/permissions, exec/approval, Linux and Windows sandboxing, and
+network-proxy policy as a P0 review contract. It requires redacted Hepta provider
+contracts, sandbox/exec replay, network-policy replay, active dependency
+isolation, operator approval, and soak evidence before any security or provider
+behavior is promoted into the active Hepta runtime.
+
 The local sync-lane gate is:
 
 ```bash
