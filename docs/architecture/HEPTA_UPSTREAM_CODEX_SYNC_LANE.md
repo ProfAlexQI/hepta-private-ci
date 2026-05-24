@@ -126,6 +126,21 @@ event-loop surfaces as a P0 runtime review contract. It requires Hepta route and
 event contracts plus session/thread, tool/MCP, app-server protocol, exec, and
 hook replay before any active runtime behavior is promoted.
 
+The P0 runtime/app-server replay gate is:
+
+```bash
+scripts/hepta-upstream-codex-runtime-appserver-replay.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_RUNTIME_APPSERVER_REPLAY.md`. It turns
+the runtime/app-server intake contract into local replay evidence for
+app-server protocol schemas, daemon/transport boundaries, session/thread-store
+lifecycle, tool-policy invocation, MCP request envelopes, exec/hook event-loop
+behavior, and side-effect boundaries. It still performs no active runtime
+promotion, app-server promotion, tool/MCP promotion, runtime wiring, credential
+read, provider invocation, channel delivery, gateway RPC, or public release.
+
 The local sync-lane gate is:
 
 ```bash

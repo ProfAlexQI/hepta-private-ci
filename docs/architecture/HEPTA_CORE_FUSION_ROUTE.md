@@ -55,6 +55,10 @@ Current state:
   app-server/session/thread/tool/MCP/hooks/exec family as an intake contract
   while keeping runtime behavior out of the active service until route/event,
   replay, shadow, and dependency gates pass.
+- `scripts/hepta-upstream-codex-runtime-appserver-replay.sh` verifies the P0
+  runtime/app-server replay packet for app-server protocol, daemon/transport,
+  session/thread-store, tool/MCP, exec/hook, and side-effect boundaries, still
+  with no active runtime, app-server, or tool/MCP promotion.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime
