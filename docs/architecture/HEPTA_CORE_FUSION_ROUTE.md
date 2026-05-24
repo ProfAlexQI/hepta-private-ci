@@ -155,6 +155,9 @@ Current state:
   proves partial, stale, and public-claim-shaped receipt attempts are routed to
   a no-write sink and cannot persist evidence, activate wiring, or write release
   artifacts by default.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-command-contract.sh`
+  defines the operator-approved receipt persistence command shape while keeping
+  the command disabled/no-op by default with no workspace write path.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

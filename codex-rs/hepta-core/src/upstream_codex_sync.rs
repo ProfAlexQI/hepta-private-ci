@@ -1643,6 +1643,67 @@ pub struct HeptaUpstreamCodexActivationEvidenceRecordingDenialMatrixReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandField {
+    pub name: String,
+    pub required: bool,
+    pub recorded: bool,
+    pub redacted_or_hashed: bool,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContractReport {
+    pub product: String,
+    pub status: String,
+    pub command_contract_id: String,
+    pub command_contract_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_denial_matrix_gate: String,
+    pub receipt_persistence_command_contract_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_denial_matrix_ready: bool,
+    pub required_command_field_count: usize,
+    pub recorded_command_field_count: usize,
+    pub redacted_or_hashed_field_count: usize,
+    pub operator_approval_required: bool,
+    pub operator_approval_recorded: bool,
+    pub activation_request_required: bool,
+    pub activation_request_recorded: bool,
+    pub trusted_record_materialized: bool,
+    pub receipt_persistence_command_enabled_by_default: bool,
+    pub receipt_persistence_command_invoked: bool,
+    pub receipt_persistence_execution_performed: bool,
+    pub receipt_persistence_noop_ready: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+    pub activation_blocked_by_persistence_contract: bool,
+    pub activation_allowed_by_persistence_contract: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub command_fields: Vec<HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandField>,
+    pub command_contract_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -5352,6 +5413,192 @@ fn default_activation_evidence_recording_denied_receipt_attempts()
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContractReport {
+    pub fn native_default() -> Self {
+        let denial_matrix =
+            HeptaUpstreamCodexActivationEvidenceRecordingDenialMatrixReport::native_default();
+        let command_fields = default_activation_evidence_receipt_persistence_command_fields();
+        let required_command_field_count = command_fields.len();
+        let recorded_command_field_count =
+            command_fields.iter().filter(|field| field.recorded).count();
+        let redacted_or_hashed_field_count = command_fields
+            .iter()
+            .filter(|field| field.redacted_or_hashed)
+            .count();
+        let operator_approval_required = true;
+        let operator_approval_recorded = false;
+        let activation_request_required = true;
+        let activation_request_recorded = false;
+        let trusted_record_materialized = false;
+        let receipt_persistence_command_enabled_by_default = false;
+        let receipt_persistence_command_invoked = false;
+        let receipt_persistence_execution_performed = false;
+        let workspace_write_performed = false;
+        let evidence_receipt_persisted = false;
+        let receipt_persistence_noop_ready = denial_matrix.no_write_sink_ready
+            && required_command_field_count == 10
+            && recorded_command_field_count == 0
+            && redacted_or_hashed_field_count >= 8
+            && operator_approval_required
+            && activation_request_required
+            && !operator_approval_recorded
+            && !activation_request_recorded
+            && !trusted_record_materialized
+            && !receipt_persistence_command_enabled_by_default
+            && !receipt_persistence_command_invoked
+            && !receipt_persistence_execution_performed
+            && !workspace_write_performed
+            && !evidence_receipt_persisted
+            && command_fields
+                .iter()
+                .all(|field| field.required && !field.recorded);
+        let activation_blocked_by_persistence_contract = true;
+        let activation_allowed_by_persistence_contract = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if receipt_persistence_noop_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            command_contract_id:
+                "upstream-codex-activation-evidence-receipt-persistence-command-contract".into(),
+            command_contract_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_PERSISTENCE_COMMAND_CONTRACT.md"
+                    .into(),
+            upstream_repository: denial_matrix.upstream_repository,
+            candidate_diff_range: denial_matrix.candidate_diff_range,
+            source_denial_matrix_gate: denial_matrix.evidence_recording_denial_matrix_gate,
+            receipt_persistence_command_contract_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-command-contract.sh"
+                    .into(),
+            active_dependency_isolation_gate: denial_matrix.active_dependency_isolation_gate,
+            source_denial_matrix_ready: denial_matrix.no_write_sink_ready,
+            required_command_field_count,
+            recorded_command_field_count,
+            redacted_or_hashed_field_count,
+            operator_approval_required,
+            operator_approval_recorded,
+            activation_request_required,
+            activation_request_recorded,
+            trusted_record_materialized,
+            receipt_persistence_command_enabled_by_default,
+            receipt_persistence_command_invoked,
+            receipt_persistence_execution_performed,
+            receipt_persistence_noop_ready,
+            workspace_write_performed,
+            evidence_receipt_persisted,
+            activation_blocked_by_persistence_contract,
+            activation_allowed_by_persistence_contract,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            command_fields,
+            command_contract_invariants: vec![
+                "receipt persistence command contract is present but disabled by default".into(),
+                "no command invocation can write the workspace without operator approval".into(),
+                "activation request and trusted evidence ids are required before persistence".into(),
+                "persistence command readiness does not permit active wiring or release claims".into(),
+            ],
+            required_next_gates: vec![
+                "add a redacted persistence dry-run fixture before any real write path".into(),
+                "bind command invocation to a fresh activation request and trusted evidence ids"
+                    .into(),
+                "require live SHA, watchdog, browser smoke, and soak evidence before persistence"
+                    .into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_receipt_persistence_command_field(
+    name: &str,
+    redacted_or_hashed: bool,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandField {
+    HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandField {
+        name: name.into(),
+        required: true,
+        recorded: false,
+        redacted_or_hashed,
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_evidence_receipt_persistence_command_fields()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandField> {
+    vec![
+        activation_evidence_receipt_persistence_command_field(
+            "receipt_persistence_command_id",
+            true,
+            "unique id for an operator-approved persistence command",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "activation_request_id",
+            true,
+            "binds the command to one activation request",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "operator_approval_id",
+            true,
+            "binds the command to explicit operator approval",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "operator_identity_hash",
+            true,
+            "records operator identity only as a hash",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "accepted_trusted_record_ids",
+            true,
+            "lists accepted trusted evidence records to persist",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "fresh_trusted_record_ids",
+            true,
+            "lists trusted evidence records still inside freshness windows",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "receipt_payload_hash",
+            true,
+            "binds the persisted receipt to a redacted payload hash",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "receipt_output_path_redacted",
+            true,
+            "records the intended output path only as a redacted path",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "rollback_plan_id",
+            true,
+            "binds persistence to an operator-reviewed rollback plan",
+        ),
+        activation_evidence_receipt_persistence_command_field(
+            "public_claim_and_artifact_decision",
+            false,
+            "records explicit public-claim and artifact-write decisions",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -5953,6 +6200,11 @@ pub fn hepta_upstream_codex_activation_evidence_recording_dry_run_receipt_report
 pub fn hepta_upstream_codex_activation_evidence_recording_denial_matrix_report()
 -> HeptaUpstreamCodexActivationEvidenceRecordingDenialMatrixReport {
     HeptaUpstreamCodexActivationEvidenceRecordingDenialMatrixReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_persistence_command_contract_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContractReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContractReport::native_default()
 }
 
 #[cfg(test)]
@@ -8727,6 +8979,86 @@ mod tests {
                 .no_write_sink_invariants
                 .iter()
                 .any(|invariant| invariant.contains("fully shaped without being persisted"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_persistence_command_contract_is_noop_by_default()
+    {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_persistence_command_contract_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.command_contract_id,
+            "upstream-codex-activation-evidence-receipt-persistence-command-contract"
+        );
+        assert_eq!(
+            report.source_denial_matrix_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-recording-denial-matrix.sh"
+        );
+        assert_eq!(
+            report.receipt_persistence_command_contract_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-command-contract.sh"
+        );
+        assert!(report.source_denial_matrix_ready);
+        assert_eq!(report.required_command_field_count, 10);
+        assert_eq!(report.recorded_command_field_count, 0);
+        assert_eq!(report.redacted_or_hashed_field_count, 9);
+        assert!(report.operator_approval_required);
+        assert!(report.activation_request_required);
+        assert!(!report.operator_approval_recorded);
+        assert!(!report.activation_request_recorded);
+        assert!(!report.receipt_persistence_command_enabled_by_default);
+        assert!(report.receipt_persistence_noop_ready);
+        assert!(report.command_fields.iter().all(|field| field.required));
+        assert!(report.command_fields.iter().all(|field| !field.recorded));
+        assert!(
+            report
+                .command_fields
+                .iter()
+                .any(|field| field.name == "receipt_output_path_redacted"
+                    && field.redacted_or_hashed)
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_persistence_command_contract_preserves_denials() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_persistence_command_contract_report();
+
+        assert!(!report.trusted_record_materialized);
+        assert!(!report.receipt_persistence_command_invoked);
+        assert!(!report.receipt_persistence_execution_performed);
+        assert!(!report.workspace_write_performed);
+        assert!(!report.evidence_receipt_persisted);
+        assert!(report.activation_blocked_by_persistence_contract);
+        assert!(!report.activation_allowed_by_persistence_contract);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .command_contract_invariants
+                .iter()
+                .any(|invariant| invariant.contains("disabled by default"))
         );
     }
 }

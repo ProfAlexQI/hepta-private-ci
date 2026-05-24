@@ -99,7 +99,11 @@ All attempts are blocked and non-persistent:
 
 ## Required Next Gates
 
-- Define an operator-approved receipt persistence command before any workspace
-  write.
-- Bind persisted receipts to fresh trusted record ids and live SHA evidence.
-- Rerun denial matrix before accepting any public-claim-shaped receipt.
+- Run
+  `scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-command-contract.sh`
+  to define the operator-approved receipt persistence command shape while
+  keeping it disabled/no-op by default.
+- Bind persisted receipts to fresh trusted record ids and live SHA evidence only
+  after the command contract has a separate approved dry-run fixture.
+- Rerun denial matrix and persistence command contract gates before accepting
+  any public-claim-shaped receipt.

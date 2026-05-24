@@ -428,6 +428,19 @@ trusted evidence, and a public-claim/release-artifact attempt. All attempts stay
 blocked; no receipt is persisted, no workspace write is allowed, and active
 wiring/public claim decisions remain false.
 
+The activation evidence receipt persistence command contract gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-command-contract.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_PERSISTENCE_COMMAND_CONTRACT.md`.
+It defines the disabled/no-op command shape required before any future receipt
+persistence write path. All `10` command fields remain absent by default, the
+command is not invoked, no receipt is persisted, and active wiring/public claim
+decisions remain false.
+
 The local sync-lane gate is:
 
 ```bash
