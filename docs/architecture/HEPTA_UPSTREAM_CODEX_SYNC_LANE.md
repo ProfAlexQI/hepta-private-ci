@@ -350,6 +350,18 @@ evidence record id, source gate, timestamp, active binary SHA, route/status
 hash, artifact hash or redacted path, and activation request id binding. It
 keeps recorded binding records at `0`, so active wiring remains false.
 
+The activation evidence denied fixture gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-denied-fixture.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_DENIED_FIXTURE.md`.
+It fills all `8` evidence record shapes with placeholder values and requires
+them to stay blocked when operator approval, request binding, live gate hashes,
+artifact hashes, and freshness are not verified.
+
 The local sync-lane gate is:
 
 ```bash

@@ -1217,6 +1217,78 @@ pub struct HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureEntry {
+    pub evidence_id: String,
+    pub evidence_record_id: String,
+    pub source_gate: String,
+    pub recorded_at_unix_ms: String,
+    pub active_binary_sha256: String,
+    pub route_or_status_hash: String,
+    pub artifact_sha256_or_redacted_path: String,
+    pub activation_request_id_binding: String,
+    pub schema_complete: bool,
+    pub operator_approved: bool,
+    pub request_binding_verified: bool,
+    pub live_gate_hash_verified: bool,
+    pub artifact_hash_verified: bool,
+    pub freshness_window_satisfied: bool,
+    pub trusted: bool,
+    pub validation_status: String,
+    pub denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport {
+    pub product: String,
+    pub status: String,
+    pub fixture_id: String,
+    pub fixture_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_binding_manifest_gate: String,
+    pub denied_fixture_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub binding_manifest_ready: bool,
+    pub required_evidence_count: usize,
+    pub fixture_record_count: usize,
+    pub schema_complete_fixture_record_count: usize,
+    pub trusted_fixture_record_count: usize,
+    pub operator_approved_fixture_record_count: usize,
+    pub request_binding_verified_record_count: usize,
+    pub live_gate_hash_verified_record_count: usize,
+    pub artifact_hash_verified_record_count: usize,
+    pub fresh_fixture_record_count: usize,
+    pub blocked_fixture_record_count: usize,
+    pub allowed_fixture_record_count: usize,
+    pub denied_fixture_ready: bool,
+    pub activation_blocked_by_denied_fixture: bool,
+    pub activation_allowed_by_denied_fixture: bool,
+    pub fixture_denial_reason: String,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub fixture_records: Vec<HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureEntry>,
+    pub fixture_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -3735,6 +3807,186 @@ fn default_activation_evidence_binding_record_manifest_entries(
         .collect()
 }
 
+impl HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport {
+    pub fn native_default() -> Self {
+        let binding =
+            HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport::native_default();
+        let fixture_records = default_activation_evidence_record_denied_fixture_entries(&binding);
+        let required_evidence_count = binding.required_evidence_count;
+        let fixture_record_count = fixture_records.len();
+        let schema_complete_fixture_record_count = fixture_records
+            .iter()
+            .filter(|record| record.schema_complete)
+            .count();
+        let trusted_fixture_record_count = fixture_records
+            .iter()
+            .filter(|record| record.trusted)
+            .count();
+        let operator_approved_fixture_record_count = fixture_records
+            .iter()
+            .filter(|record| record.operator_approved)
+            .count();
+        let request_binding_verified_record_count = fixture_records
+            .iter()
+            .filter(|record| record.request_binding_verified)
+            .count();
+        let live_gate_hash_verified_record_count = fixture_records
+            .iter()
+            .filter(|record| record.live_gate_hash_verified)
+            .count();
+        let artifact_hash_verified_record_count = fixture_records
+            .iter()
+            .filter(|record| record.artifact_hash_verified)
+            .count();
+        let fresh_fixture_record_count = fixture_records
+            .iter()
+            .filter(|record| record.freshness_window_satisfied)
+            .count();
+        let blocked_fixture_record_count = fixture_records
+            .iter()
+            .filter(|record| record.validation_status == "blocked")
+            .count();
+        let allowed_fixture_record_count = fixture_records
+            .iter()
+            .filter(|record| record.validation_status == "allowed")
+            .count();
+        let activation_allowed_by_denied_fixture = false;
+        let activation_blocked_by_denied_fixture = true;
+        let fixture_denial_reason =
+            "fixture evidence records are placeholders without operator approval or verified freshness"
+                .to_string();
+        let denied_fixture_ready = binding.binding_manifest_ready
+            && required_evidence_count == 8
+            && fixture_record_count == required_evidence_count
+            && schema_complete_fixture_record_count == required_evidence_count
+            && trusted_fixture_record_count == 0
+            && operator_approved_fixture_record_count == 0
+            && request_binding_verified_record_count == 0
+            && live_gate_hash_verified_record_count == 0
+            && artifact_hash_verified_record_count == 0
+            && fresh_fixture_record_count == 0
+            && blocked_fixture_record_count == required_evidence_count
+            && allowed_fixture_record_count == 0
+            && activation_blocked_by_denied_fixture
+            && !activation_allowed_by_denied_fixture;
+
+        Self {
+            product: "Hepta".into(),
+            status: if denied_fixture_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            fixture_id: "upstream-codex-activation-evidence-record-denied-fixture".into(),
+            fixture_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_DENIED_FIXTURE.md"
+                    .into(),
+            upstream_repository: binding.upstream_repository,
+            candidate_diff_range: binding.candidate_diff_range,
+            source_binding_manifest_gate: binding.binding_manifest_gate,
+            denied_fixture_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-denied-fixture.sh".into(),
+            active_dependency_isolation_gate: binding.active_dependency_isolation_gate,
+            binding_manifest_ready: binding.binding_manifest_ready,
+            required_evidence_count,
+            fixture_record_count,
+            schema_complete_fixture_record_count,
+            trusted_fixture_record_count,
+            operator_approved_fixture_record_count,
+            request_binding_verified_record_count,
+            live_gate_hash_verified_record_count,
+            artifact_hash_verified_record_count,
+            fresh_fixture_record_count,
+            blocked_fixture_record_count,
+            allowed_fixture_record_count,
+            denied_fixture_ready,
+            activation_blocked_by_denied_fixture,
+            activation_allowed_by_denied_fixture,
+            fixture_denial_reason,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            fixture_records,
+            fixture_invariants: vec![
+                "full-shaped placeholder evidence records are not trusted evidence".into(),
+                "operator approval must verify every evidence record before activation review"
+                    .into(),
+                "activation request binding must be verified rather than merely present".into(),
+                "live gate and artifact hashes must be verified before freshness can count".into(),
+                "denied fixtures keep active wiring, public release, and artifact writes false"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "replace placeholder records with operator-approved evidence records".into(),
+                "verify activation request binding and live gate hashes for every record".into(),
+                "verify artifact hashes or redacted paths for browser, soak, and rollback records"
+                    .into(),
+                "rerun freshness policy with trusted recorded evidence before any activation decision"
+                    .into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_record_denied_fixture_entry(
+    evidence_id: &str,
+    source_gate: &str,
+) -> HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureEntry {
+    HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureEntry {
+        evidence_id: evidence_id.into(),
+        evidence_record_id: format!("fixture-{evidence_id}"),
+        source_gate: source_gate.into(),
+        recorded_at_unix_ms: "0".into(),
+        active_binary_sha256: "placeholder-active-binary-sha256".into(),
+        route_or_status_hash: "placeholder-route-or-status-hash".into(),
+        artifact_sha256_or_redacted_path: "placeholder-artifact-hash-or-redacted-path".into(),
+        activation_request_id_binding: "placeholder-activation-request-id".into(),
+        schema_complete: true,
+        operator_approved: false,
+        request_binding_verified: false,
+        live_gate_hash_verified: false,
+        artifact_hash_verified: false,
+        freshness_window_satisfied: false,
+        trusted: false,
+        validation_status: "blocked".into(),
+        denial_reason:
+            "placeholder evidence lacks operator approval, verified binding, trusted hashes, and freshness"
+                .into(),
+    }
+}
+
+fn default_activation_evidence_record_denied_fixture_entries(
+    binding: &HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport,
+) -> Vec<HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureEntry> {
+    binding
+        .binding_records
+        .iter()
+        .map(|record| {
+            activation_evidence_record_denied_fixture_entry(
+                &record.evidence_id,
+                &record.source_gate,
+            )
+        })
+        .collect()
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -4306,6 +4558,11 @@ pub fn hepta_upstream_codex_activation_evidence_freshness_policy_report()
 pub fn hepta_upstream_codex_activation_evidence_binding_record_manifest_report()
 -> HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport {
     HeptaUpstreamCodexActivationEvidenceBindingRecordManifestReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_record_denied_fixture_report()
+-> HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport {
+    HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport::native_default()
 }
 
 #[cfg(test)]
@@ -6540,6 +6797,98 @@ mod tests {
                 .binding_invariants
                 .iter()
                 .any(|invariant| invariant.contains("without recording evidence"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_record_denied_fixture_is_full_shaped_but_blocked() {
+        let report = hepta_upstream_codex_activation_evidence_record_denied_fixture_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.fixture_id,
+            "upstream-codex-activation-evidence-record-denied-fixture"
+        );
+        assert_eq!(
+            report.source_binding_manifest_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-binding-record.sh"
+        );
+        assert_eq!(
+            report.denied_fixture_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-denied-fixture.sh"
+        );
+        assert!(report.binding_manifest_ready);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.fixture_record_count, 8);
+        assert_eq!(report.schema_complete_fixture_record_count, 8);
+        assert_eq!(report.trusted_fixture_record_count, 0);
+        assert_eq!(report.operator_approved_fixture_record_count, 0);
+        assert_eq!(report.request_binding_verified_record_count, 0);
+        assert_eq!(report.live_gate_hash_verified_record_count, 0);
+        assert_eq!(report.artifact_hash_verified_record_count, 0);
+        assert_eq!(report.fresh_fixture_record_count, 0);
+        assert_eq!(report.blocked_fixture_record_count, 8);
+        assert_eq!(report.allowed_fixture_record_count, 0);
+        assert!(report.denied_fixture_ready);
+        assert!(report.activation_blocked_by_denied_fixture);
+        assert!(!report.activation_allowed_by_denied_fixture);
+        assert!(!report.active_wiring_allowed);
+        assert!(report.fixture_records.iter().all(|record| {
+            record.schema_complete
+                && record.validation_status == "blocked"
+                && record.evidence_record_id.starts_with("fixture-")
+                && record.recorded_at_unix_ms == "0"
+                && record.active_binary_sha256.contains("placeholder")
+                && record.route_or_status_hash.contains("placeholder")
+                && record
+                    .artifact_sha256_or_redacted_path
+                    .contains("placeholder")
+                && record.activation_request_id_binding.contains("placeholder")
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_record_denied_fixture_preserves_denials() {
+        let report = hepta_upstream_codex_activation_evidence_record_denied_fixture_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .fixture_denial_reason
+                .contains("placeholders without operator approval")
+        );
+        assert!(report.fixture_records.iter().all(|record| {
+            !record.operator_approved
+                && !record.request_binding_verified
+                && !record.live_gate_hash_verified
+                && !record.artifact_hash_verified
+                && !record.freshness_window_satisfied
+                && !record.trusted
+                && record.denial_reason.contains("placeholder evidence")
+        }));
+        assert!(
+            report
+                .fixture_invariants
+                .iter()
+                .any(|invariant| invariant.contains("not trusted evidence"))
         );
     }
 }

@@ -131,6 +131,10 @@ Current state:
   route/status hash, artifact hash or redacted path, and activation request id
   binding. It records `0` concrete evidence records, so activation stays
   blocked.
+- `scripts/hepta-upstream-codex-activation-evidence-denied-fixture.sh`
+  fills all `8` evidence record shapes with placeholder values and proves they
+  still stay blocked without operator approval, verified request binding, live
+  gate hashes, artifact hashes, and freshness.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

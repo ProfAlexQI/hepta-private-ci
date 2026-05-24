@@ -115,6 +115,8 @@ default and does not approve active wiring.
 
 ## Required Next Gates
 
+- Prove placeholder evidence remains denied with
+  `scripts/hepta-upstream-codex-activation-evidence-denied-fixture.sh`.
 - Materialize concrete evidence records only after operator approval.
 - Populate timestamp, active binary SHA, route/status hash, artifact hash or
   redacted path, and activation request binding for every evidence slot.
