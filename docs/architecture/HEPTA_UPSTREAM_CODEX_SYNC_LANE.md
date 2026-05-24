@@ -496,6 +496,19 @@ materialization plans are present for each fixture, while materialization
 execution, filesystem persistence, workspace writes, evidence persistence, and
 public release/artifact decisions remain blocked.
 
+The activation evidence receipt filesystem persistence approval packet gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-approval-packet.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_PERSISTENCE_APPROVAL_PACKET.md`.
+It defines the `12` required approval fields for future receipt filesystem
+persistence. The packet is schema-only by default: `0` fields are recorded,
+filesystem persistence is false, workspace writes are false, evidence receipt
+persistence is false, and public release/artifact decisions remain blocked.
+
 The local sync-lane gate is:
 
 ```bash

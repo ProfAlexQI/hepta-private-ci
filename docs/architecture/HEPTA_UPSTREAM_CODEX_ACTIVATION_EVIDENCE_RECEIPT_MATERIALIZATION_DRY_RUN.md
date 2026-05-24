@@ -85,6 +85,6 @@ This gate performs no live materialization.
 
 ## Required Next Gates
 
-- Bind materialization dry runs to fresh live evidence records.
 - Add a filesystem persistence approval packet before any workspace write.
+- Bind approved filesystem persistence packets to fresh live evidence records.
 - Require release-governance approval before public artifact persistence.

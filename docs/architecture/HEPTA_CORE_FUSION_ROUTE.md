@@ -174,6 +174,11 @@ Current state:
   plans deterministic redacted receipt payload/hash/output-path materialization
   after write-enable fixtures while keeping materialization execution, workspace
   writes, evidence persistence, and public artifact decisions blocked.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-approval-packet.sh`
+  defines the approval packet required before a receipt can ever cross into
+  filesystem persistence. The packet fields are schema-only and unrecorded by
+  default, so filesystem persistence, workspace writes, evidence persistence,
+  public release claims, and release artifact writes remain blocked.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

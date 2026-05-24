@@ -2009,6 +2009,79 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunRepor
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalField {
+    pub name: String,
+    pub redacted_or_hashed: bool,
+    pub required_for_filesystem_persistence: bool,
+    pub recorded_by_default: bool,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalPacketReport {
+    pub product: String,
+    pub status: String,
+    pub filesystem_persistence_approval_packet_id: String,
+    pub filesystem_persistence_approval_packet_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_materialization_dry_run_gate: String,
+    pub filesystem_persistence_approval_packet_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_materialization_dry_run_ready: bool,
+    pub required_approval_field_count: usize,
+    pub approval_field_count: usize,
+    pub recorded_approval_field_count: usize,
+    pub redacted_or_hashed_field_count: usize,
+    pub required_for_filesystem_persistence_field_count: usize,
+    pub operator_approval_required: bool,
+    pub operator_approval_recorded: bool,
+    pub activation_request_required: bool,
+    pub activation_request_recorded: bool,
+    pub materialization_plan_required: bool,
+    pub materialization_plan_recorded: bool,
+    pub fresh_trusted_records_required: bool,
+    pub fresh_trusted_records_recorded: bool,
+    pub active_binary_sha_required: bool,
+    pub active_binary_sha_recorded: bool,
+    pub public_artifact_policy_required: bool,
+    pub public_artifact_policy_recorded: bool,
+    pub filesystem_persistence_approval_packet_ready: bool,
+    pub filesystem_persistence_allowed: bool,
+    pub filesystem_persistence_execution_performed: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+    pub activation_blocked_by_filesystem_persistence_approval: bool,
+    pub activation_allowed_by_filesystem_persistence_approval: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub command_invocation_performed: bool,
+    pub receipt_persistence_execution: bool,
+    pub materialization_execution: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub approval_fields:
+        Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalField>,
+    pub approval_packet_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -6776,6 +6849,230 @@ fn default_activation_evidence_receipt_materialization_dry_run_fixtures()
     ]
 }
 
+impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalPacketReport {
+    pub fn native_default() -> Self {
+        let materialization =
+            HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunReport::native_default(
+            );
+        let approval_fields =
+            default_activation_evidence_receipt_filesystem_persistence_approval_fields();
+        let required_approval_field_count = 12;
+        let approval_field_count = approval_fields.len();
+        let recorded_approval_field_count = approval_fields
+            .iter()
+            .filter(|field| field.recorded_by_default)
+            .count();
+        let redacted_or_hashed_field_count = approval_fields
+            .iter()
+            .filter(|field| field.redacted_or_hashed)
+            .count();
+        let required_for_filesystem_persistence_field_count = approval_fields
+            .iter()
+            .filter(|field| field.required_for_filesystem_persistence)
+            .count();
+        let operator_approval_required = true;
+        let operator_approval_recorded = false;
+        let activation_request_required = true;
+        let activation_request_recorded = false;
+        let materialization_plan_required = true;
+        let materialization_plan_recorded = false;
+        let fresh_trusted_records_required = true;
+        let fresh_trusted_records_recorded = false;
+        let active_binary_sha_required = true;
+        let active_binary_sha_recorded = false;
+        let public_artifact_policy_required = true;
+        let public_artifact_policy_recorded = false;
+        let filesystem_persistence_approval_packet_ready = materialization
+            .materialization_dry_run_ready
+            && approval_field_count == required_approval_field_count
+            && recorded_approval_field_count == 0
+            && redacted_or_hashed_field_count == 10
+            && required_for_filesystem_persistence_field_count == required_approval_field_count
+            && operator_approval_required
+            && !operator_approval_recorded
+            && activation_request_required
+            && !activation_request_recorded
+            && materialization_plan_required
+            && !materialization_plan_recorded
+            && fresh_trusted_records_required
+            && !fresh_trusted_records_recorded
+            && active_binary_sha_required
+            && !active_binary_sha_recorded
+            && public_artifact_policy_required
+            && !public_artifact_policy_recorded;
+        let filesystem_persistence_allowed = false;
+        let filesystem_persistence_execution_performed = false;
+        let workspace_write_performed = false;
+        let evidence_receipt_persisted = false;
+        let activation_blocked_by_filesystem_persistence_approval = true;
+        let activation_allowed_by_filesystem_persistence_approval = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if filesystem_persistence_approval_packet_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            filesystem_persistence_approval_packet_id:
+                "upstream-codex-activation-evidence-receipt-filesystem-persistence-approval-packet"
+                    .into(),
+            filesystem_persistence_approval_packet_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_PERSISTENCE_APPROVAL_PACKET.md"
+                    .into(),
+            upstream_repository: materialization.upstream_repository,
+            candidate_diff_range: materialization.candidate_diff_range,
+            source_materialization_dry_run_gate: materialization.materialization_dry_run_gate,
+            filesystem_persistence_approval_packet_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-approval-packet.sh"
+                    .into(),
+            active_dependency_isolation_gate: materialization.active_dependency_isolation_gate,
+            source_materialization_dry_run_ready: materialization.materialization_dry_run_ready,
+            required_approval_field_count,
+            approval_field_count,
+            recorded_approval_field_count,
+            redacted_or_hashed_field_count,
+            required_for_filesystem_persistence_field_count,
+            operator_approval_required,
+            operator_approval_recorded,
+            activation_request_required,
+            activation_request_recorded,
+            materialization_plan_required,
+            materialization_plan_recorded,
+            fresh_trusted_records_required,
+            fresh_trusted_records_recorded,
+            active_binary_sha_required,
+            active_binary_sha_recorded,
+            public_artifact_policy_required,
+            public_artifact_policy_recorded,
+            filesystem_persistence_approval_packet_ready,
+            filesystem_persistence_allowed,
+            filesystem_persistence_execution_performed,
+            workspace_write_performed,
+            evidence_receipt_persisted,
+            activation_blocked_by_filesystem_persistence_approval,
+            activation_allowed_by_filesystem_persistence_approval,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            command_invocation_performed: false,
+            receipt_persistence_execution: false,
+            materialization_execution: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            approval_fields,
+            approval_packet_invariants: vec![
+                "filesystem persistence requires a complete approval packet before any workspace write"
+                    .into(),
+                "approval packet fields are schema-only and unrecorded by default".into(),
+                "materialization plans are not execution authority".into(),
+                "public claim and release artifact decisions stay denied without release-governance approval"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "add a filesystem output path allowlist before any receipt write".into(),
+                "bind approval packets to fresh live evidence and active binary SHA".into(),
+                "add a dry-run receipt sink write preview before filesystem persistence".into(),
+            ],
+        }
+    }
+}
+
+fn filesystem_persistence_approval_field(
+    name: &str,
+    redacted_or_hashed: bool,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalField {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalField {
+        name: name.into(),
+        redacted_or_hashed,
+        required_for_filesystem_persistence: true,
+        recorded_by_default: false,
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_evidence_receipt_filesystem_persistence_approval_fields()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalField> {
+    vec![
+        filesystem_persistence_approval_field(
+            "filesystem_persistence_approval_id",
+            false,
+            "unique operator-reviewed approval packet identifier",
+        ),
+        filesystem_persistence_approval_field(
+            "activation_request_id",
+            true,
+            "binds the persistence request to the activation request packet",
+        ),
+        filesystem_persistence_approval_field(
+            "operator_approval_id",
+            true,
+            "binds persistence to explicit operator approval",
+        ),
+        filesystem_persistence_approval_field(
+            "operator_identity_hash",
+            true,
+            "records a redacted operator identity binding",
+        ),
+        filesystem_persistence_approval_field(
+            "materialization_plan_id",
+            true,
+            "binds the write decision to a deterministic dry-run materialization plan",
+        ),
+        filesystem_persistence_approval_field(
+            "receipt_payload_hash",
+            true,
+            "binds the approved write to the redacted receipt payload hash",
+        ),
+        filesystem_persistence_approval_field(
+            "redacted_output_path",
+            true,
+            "records the intended output path without exposing private filesystem details",
+        ),
+        filesystem_persistence_approval_field(
+            "accepted_trusted_record_ids",
+            true,
+            "binds persistence to accepted trusted evidence records",
+        ),
+        filesystem_persistence_approval_field(
+            "fresh_trusted_record_ids",
+            true,
+            "binds persistence to fresh trusted evidence records",
+        ),
+        filesystem_persistence_approval_field(
+            "active_binary_sha256",
+            true,
+            "binds persistence to the active Hepta binary under verification",
+        ),
+        filesystem_persistence_approval_field(
+            "rollback_plan_id",
+            true,
+            "binds persistence to an operator-visible rollback plan",
+        ),
+        filesystem_persistence_approval_field(
+            "public_claim_and_artifact_decision",
+            false,
+            "keeps public release claims and artifact writes separately approved",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -7402,6 +7699,11 @@ pub fn hepta_upstream_codex_activation_evidence_receipt_write_enable_fixture_rep
 pub fn hepta_upstream_codex_activation_evidence_receipt_materialization_dry_run_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunReport {
     HeptaUpstreamCodexActivationEvidenceReceiptMaterializationDryRunReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_persistence_approval_packet_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalPacketReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceApprovalPacketReport::native_default()
 }
 
 #[cfg(test)]
@@ -10613,6 +10915,100 @@ mod tests {
                 .materialization_invariants
                 .iter()
                 .any(|invariant| invariant.contains("without executing persistence"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_persistence_approval_packet_is_ready()
+    {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_persistence_approval_packet_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.filesystem_persistence_approval_packet_id,
+            "upstream-codex-activation-evidence-receipt-filesystem-persistence-approval-packet"
+        );
+        assert_eq!(
+            report.source_materialization_dry_run_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-materialization-dry-run.sh"
+        );
+        assert_eq!(
+            report.filesystem_persistence_approval_packet_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-approval-packet.sh"
+        );
+        assert!(report.source_materialization_dry_run_ready);
+        assert_eq!(report.required_approval_field_count, 12);
+        assert_eq!(report.approval_field_count, 12);
+        assert_eq!(report.recorded_approval_field_count, 0);
+        assert_eq!(report.redacted_or_hashed_field_count, 10);
+        assert_eq!(report.required_for_filesystem_persistence_field_count, 12);
+        assert!(report.operator_approval_required);
+        assert!(!report.operator_approval_recorded);
+        assert!(report.activation_request_required);
+        assert!(!report.activation_request_recorded);
+        assert!(report.materialization_plan_required);
+        assert!(!report.materialization_plan_recorded);
+        assert!(report.fresh_trusted_records_required);
+        assert!(!report.fresh_trusted_records_recorded);
+        assert!(report.active_binary_sha_required);
+        assert!(!report.active_binary_sha_recorded);
+        assert!(report.public_artifact_policy_required);
+        assert!(!report.public_artifact_policy_recorded);
+        assert!(report.filesystem_persistence_approval_packet_ready);
+        assert!(
+            report.approval_fields.iter().all(
+                |field| field.required_for_filesystem_persistence && !field.recorded_by_default
+            )
+        );
+        assert!(
+            report
+                .approval_fields
+                .iter()
+                .any(|field| field.name == "materialization_plan_id")
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_persistence_approval_packet_blocks_effects()
+     {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_persistence_approval_packet_report();
+
+        assert!(report.activation_blocked_by_filesystem_persistence_approval);
+        assert!(!report.activation_allowed_by_filesystem_persistence_approval);
+        assert!(!report.filesystem_persistence_allowed);
+        assert!(!report.filesystem_persistence_execution_performed);
+        assert!(!report.workspace_write_performed);
+        assert!(!report.evidence_receipt_persisted);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.command_invocation_performed);
+        assert!(!report.receipt_persistence_execution);
+        assert!(!report.materialization_execution);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .approval_packet_invariants
+                .iter()
+                .any(|invariant| invariant.contains("before any workspace write"))
         );
     }
 }
