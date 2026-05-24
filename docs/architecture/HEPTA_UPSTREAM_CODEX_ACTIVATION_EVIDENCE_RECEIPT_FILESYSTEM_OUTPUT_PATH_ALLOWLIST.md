@@ -66,3 +66,10 @@ This gate separates path eligibility from write authority. A redacted output
 root may be eligible for receipt persistence only after the approval packet is
 complete, but source-tree paths, home-directory paths, release artifacts, and
 public artifact paths stay blocked from the receipt persistence sink.
+
+Next gate:
+`scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding.sh`
+
+The next gate binds eligible redacted output roots to fresh live evidence and
+the active Hepta binary SHA before any future dry-run sink can select a
+filesystem destination.

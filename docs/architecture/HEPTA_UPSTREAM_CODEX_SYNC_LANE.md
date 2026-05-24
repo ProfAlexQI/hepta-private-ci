@@ -523,6 +523,21 @@ home-directory, release-artifact, and public-artifact paths are false, and
 filesystem persistence, workspace writes, evidence persistence, and public
 release/artifact decisions remain blocked.
 
+The activation evidence receipt filesystem output path evidence binding gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_OUTPUT_PATH_EVIDENCE_BINDING.md`.
+It defines `8` required path-binding records across activation request,
+operator approval, live dependency isolation, watchdog, browser smoke, long
+soak, and rollback evidence. No binding is recorded by default, no output path
+is selected, active binary SHA/fresh evidence/trusted source counts remain `0`,
+and filesystem persistence, workspace writes, evidence persistence, and public
+release/artifact decisions remain blocked.
+
 The local sync-lane gate is:
 
 ```bash

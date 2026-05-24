@@ -2150,6 +2150,79 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowl
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBinding {
+    pub evidence_id: String,
+    pub allowed_output_path_entry_name: String,
+    pub binding_required: bool,
+    pub recorded_by_default: bool,
+    pub redacted_or_hashed: bool,
+    pub requires_fresh_live_evidence: bool,
+    pub requires_active_binary_sha: bool,
+    pub purpose: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBindingReport {
+    pub product: String,
+    pub status: String,
+    pub filesystem_output_path_evidence_binding_id: String,
+    pub filesystem_output_path_evidence_binding_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_filesystem_output_path_allowlist_gate: String,
+    pub filesystem_output_path_evidence_binding_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_filesystem_output_path_allowlist_ready: bool,
+    pub required_path_binding_count: usize,
+    pub path_binding_count: usize,
+    pub allowed_output_path_entry_count: usize,
+    pub selected_output_path_count: usize,
+    pub recorded_path_binding_count: usize,
+    pub fresh_live_evidence_bound_count: usize,
+    pub active_binary_sha_bound_count: usize,
+    pub redacted_or_hashed_binding_count: usize,
+    pub trusted_source_bound_count: usize,
+    pub source_tree_path_binding_allowed: bool,
+    pub home_directory_path_binding_allowed: bool,
+    pub release_artifact_path_binding_allowed: bool,
+    pub public_artifact_path_binding_allowed: bool,
+    pub output_path_evidence_binding_ready: bool,
+    pub filesystem_persistence_allowed: bool,
+    pub filesystem_persistence_execution_performed: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+    pub activation_blocked_by_output_path_evidence_binding: bool,
+    pub activation_allowed_by_output_path_evidence_binding: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub command_invocation_performed: bool,
+    pub receipt_persistence_execution: bool,
+    pub materialization_execution: bool,
+    pub filesystem_persistence_execution: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub path_bindings:
+        Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBinding>,
+    pub binding_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -7184,6 +7257,141 @@ impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistRep
     }
 }
 
+impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBindingReport {
+    pub fn native_default() -> Self {
+        let allowlist =
+            HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistReport::native_default();
+        let path_bindings =
+            default_activation_evidence_receipt_filesystem_output_path_evidence_bindings();
+        let required_path_binding_count = 8;
+        let path_binding_count = path_bindings.len();
+        let allowed_output_path_entry_count = allowlist.allowed_output_path_entry_count;
+        let selected_output_path_count = 0;
+        let recorded_path_binding_count = path_bindings
+            .iter()
+            .filter(|binding| binding.recorded_by_default)
+            .count();
+        let fresh_live_evidence_bound_count = 0;
+        let active_binary_sha_bound_count = 0;
+        let redacted_or_hashed_binding_count = path_bindings
+            .iter()
+            .filter(|binding| binding.redacted_or_hashed)
+            .count();
+        let trusted_source_bound_count = 0;
+        let source_tree_path_binding_allowed = false;
+        let home_directory_path_binding_allowed = false;
+        let release_artifact_path_binding_allowed = false;
+        let public_artifact_path_binding_allowed = false;
+        let output_path_evidence_binding_ready = allowlist.receipt_output_path_allowlist_ready
+            && path_binding_count == required_path_binding_count
+            && allowed_output_path_entry_count == 3
+            && selected_output_path_count == 0
+            && recorded_path_binding_count == 0
+            && fresh_live_evidence_bound_count == 0
+            && active_binary_sha_bound_count == 0
+            && redacted_or_hashed_binding_count == required_path_binding_count
+            && trusted_source_bound_count == 0
+            && path_bindings.iter().all(|binding| {
+                binding.binding_required
+                    && binding.requires_fresh_live_evidence
+                    && binding.requires_active_binary_sha
+            })
+            && !source_tree_path_binding_allowed
+            && !home_directory_path_binding_allowed
+            && !release_artifact_path_binding_allowed
+            && !public_artifact_path_binding_allowed;
+        let filesystem_persistence_allowed = false;
+        let filesystem_persistence_execution_performed = false;
+        let workspace_write_performed = false;
+        let evidence_receipt_persisted = false;
+        let activation_blocked_by_output_path_evidence_binding = true;
+        let activation_allowed_by_output_path_evidence_binding = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if output_path_evidence_binding_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            filesystem_output_path_evidence_binding_id:
+                "upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding"
+                    .into(),
+            filesystem_output_path_evidence_binding_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_OUTPUT_PATH_EVIDENCE_BINDING.md"
+                    .into(),
+            upstream_repository: allowlist.upstream_repository,
+            candidate_diff_range: allowlist.candidate_diff_range,
+            source_filesystem_output_path_allowlist_gate: allowlist
+                .filesystem_output_path_allowlist_gate,
+            filesystem_output_path_evidence_binding_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding.sh"
+                    .into(),
+            active_dependency_isolation_gate: allowlist.active_dependency_isolation_gate,
+            source_filesystem_output_path_allowlist_ready: allowlist
+                .receipt_output_path_allowlist_ready,
+            required_path_binding_count,
+            path_binding_count,
+            allowed_output_path_entry_count,
+            selected_output_path_count,
+            recorded_path_binding_count,
+            fresh_live_evidence_bound_count,
+            active_binary_sha_bound_count,
+            redacted_or_hashed_binding_count,
+            trusted_source_bound_count,
+            source_tree_path_binding_allowed,
+            home_directory_path_binding_allowed,
+            release_artifact_path_binding_allowed,
+            public_artifact_path_binding_allowed,
+            output_path_evidence_binding_ready,
+            filesystem_persistence_allowed,
+            filesystem_persistence_execution_performed,
+            workspace_write_performed,
+            evidence_receipt_persisted,
+            activation_blocked_by_output_path_evidence_binding,
+            activation_allowed_by_output_path_evidence_binding,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            command_invocation_performed: false,
+            receipt_persistence_execution: false,
+            materialization_execution: false,
+            filesystem_persistence_execution: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            path_bindings,
+            binding_invariants: vec![
+                "allowlisted receipt output paths require fresh live evidence binding before destination selection"
+                    .into(),
+                "active binary SHA binding is required before any filesystem persistence".into(),
+                "path evidence binding is schema-only and unrecorded by default".into(),
+                "source tree, home directory, release artifact, and public artifact paths remain blocked"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "add a dry-run receipt sink write preview before filesystem persistence".into(),
+                "bind the sink preview to a deterministic redacted payload hash".into(),
+                "keep public artifact paths behind separate release-governance approval".into(),
+            ],
+        }
+    }
+}
+
 fn filesystem_persistence_approval_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -7325,6 +7533,78 @@ fn default_activation_evidence_receipt_filesystem_output_path_allowlist_entries(
             false,
             true,
             "release artifact paths require separate release-governance approval",
+        ),
+    ]
+}
+
+fn filesystem_output_path_evidence_binding(
+    evidence_id: &str,
+    allowed_output_path_entry_name: &str,
+    redacted_or_hashed: bool,
+    purpose: &str,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBinding {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBinding {
+        evidence_id: evidence_id.into(),
+        allowed_output_path_entry_name: allowed_output_path_entry_name.into(),
+        binding_required: true,
+        recorded_by_default: false,
+        redacted_or_hashed,
+        requires_fresh_live_evidence: true,
+        requires_active_binary_sha: true,
+        purpose: purpose.into(),
+    }
+}
+
+fn default_activation_evidence_receipt_filesystem_output_path_evidence_bindings()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBinding> {
+    vec![
+        filesystem_output_path_evidence_binding(
+            "activation_request_id",
+            "activation_evidence_operator_packet_root",
+            true,
+            "binds the selected output root to the activation request packet",
+        ),
+        filesystem_output_path_evidence_binding(
+            "operator_approval_id",
+            "activation_evidence_operator_packet_root",
+            true,
+            "binds the selected output root to explicit operator approval",
+        ),
+        filesystem_output_path_evidence_binding(
+            "operator_identity_hash",
+            "activation_evidence_operator_packet_root",
+            true,
+            "binds the selected output root to a redacted operator identity",
+        ),
+        filesystem_output_path_evidence_binding(
+            "live_dependency_isolation_evidence_id",
+            "activation_evidence_receipts_root",
+            true,
+            "binds the selected output root to fresh live dependency isolation evidence",
+        ),
+        filesystem_output_path_evidence_binding(
+            "watchdog_evidence_id",
+            "activation_evidence_receipts_root",
+            true,
+            "binds the selected output root to fresh watchdog evidence",
+        ),
+        filesystem_output_path_evidence_binding(
+            "browser_smoke_evidence_id",
+            "activation_evidence_receipts_root",
+            true,
+            "binds the selected output root to fresh browser visual smoke evidence",
+        ),
+        filesystem_output_path_evidence_binding(
+            "long_soak_evidence_id",
+            "activation_evidence_receipts_root",
+            true,
+            "binds the selected output root to fresh long-soak evidence",
+        ),
+        filesystem_output_path_evidence_binding(
+            "rollback_plan_id",
+            "activation_evidence_dry_run_root",
+            true,
+            "binds the selected output root to the rollback plan before any persistence",
         ),
     ]
 }
@@ -7965,6 +8245,11 @@ pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_persistence_a
 pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_allowlist_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistReport {
     HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathAllowlistReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_evidence_binding_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBindingReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemOutputPathEvidenceBindingReport::native_default()
 }
 
 #[cfg(test)]
@@ -11367,6 +11652,101 @@ mod tests {
                 .allowlist_invariants
                 .iter()
                 .any(|invariant| invariant.contains("not filesystem write authority"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_output_path_evidence_binding_is_ready()
+    {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_evidence_binding_report(
+            );
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.filesystem_output_path_evidence_binding_id,
+            "upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding"
+        );
+        assert_eq!(
+            report.source_filesystem_output_path_allowlist_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist.sh"
+        );
+        assert_eq!(
+            report.filesystem_output_path_evidence_binding_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding.sh"
+        );
+        assert!(report.source_filesystem_output_path_allowlist_ready);
+        assert_eq!(report.required_path_binding_count, 8);
+        assert_eq!(report.path_binding_count, 8);
+        assert_eq!(report.allowed_output_path_entry_count, 3);
+        assert_eq!(report.selected_output_path_count, 0);
+        assert_eq!(report.recorded_path_binding_count, 0);
+        assert_eq!(report.fresh_live_evidence_bound_count, 0);
+        assert_eq!(report.active_binary_sha_bound_count, 0);
+        assert_eq!(report.redacted_or_hashed_binding_count, 8);
+        assert_eq!(report.trusted_source_bound_count, 0);
+        assert!(!report.source_tree_path_binding_allowed);
+        assert!(!report.home_directory_path_binding_allowed);
+        assert!(!report.release_artifact_path_binding_allowed);
+        assert!(!report.public_artifact_path_binding_allowed);
+        assert!(report.output_path_evidence_binding_ready);
+        assert!(
+            report
+                .path_bindings
+                .iter()
+                .all(|binding| binding.binding_required
+                    && binding.requires_fresh_live_evidence
+                    && binding.requires_active_binary_sha
+                    && !binding.recorded_by_default)
+        );
+        assert!(report.path_bindings.iter().any(|binding| {
+            binding.evidence_id == "watchdog_evidence_id"
+                && binding.allowed_output_path_entry_name == "activation_evidence_receipts_root"
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_output_path_evidence_binding_blocks_effects()
+     {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_evidence_binding_report(
+            );
+
+        assert!(report.activation_blocked_by_output_path_evidence_binding);
+        assert!(!report.activation_allowed_by_output_path_evidence_binding);
+        assert!(!report.filesystem_persistence_allowed);
+        assert!(!report.filesystem_persistence_execution_performed);
+        assert!(!report.workspace_write_performed);
+        assert!(!report.evidence_receipt_persisted);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.command_invocation_performed);
+        assert!(!report.receipt_persistence_execution);
+        assert!(!report.materialization_execution);
+        assert!(!report.filesystem_persistence_execution);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .binding_invariants
+                .iter()
+                .any(|invariant| invariant.contains("fresh live evidence binding"))
         );
     }
 }

@@ -163,6 +163,9 @@ scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-
 echo "[hepta-codex-preflight] upstream Codex activation evidence receipt filesystem output path allowlist gate"
 scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist.sh
 
+echo "[hepta-codex-preflight] upstream Codex activation evidence receipt filesystem output path evidence binding gate"
+scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh

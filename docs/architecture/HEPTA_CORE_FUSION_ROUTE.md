@@ -184,6 +184,10 @@ Current state:
   filesystem persistence target can be selected. No path is selected by default,
   and source-tree, home-directory, release-artifact, and public-artifact paths
   remain blocked from receipt persistence.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding.sh`
+  binds future receipt output-path selection to fresh live evidence and the
+  active Hepta binary SHA. The binding records are schema-only by default, no
+  path is selected, and filesystem persistence/workspace writes remain blocked.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime
