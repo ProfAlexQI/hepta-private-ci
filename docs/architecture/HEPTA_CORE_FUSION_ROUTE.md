@@ -47,6 +47,10 @@ Current state:
   while keeping provider and security-policy behavior out of the active runtime
   until Hepta-native replay, redaction, operator, soak, and dependency gates
   pass.
+- `scripts/hepta-upstream-codex-provider-security-replay.sh` verifies the P0
+  provider/security replay packet: redacted provider contracts, credential
+  redaction, approval-policy replay, sandbox/exec replay, network-proxy replay,
+  and side-effect boundaries, still with no active provider/security promotion.
 - `scripts/hepta-upstream-codex-runtime-appserver-absorption.sh` selects the P0
   app-server/session/thread/tool/MCP/hooks/exec family as an intake contract
   while keeping runtime behavior out of the active service until route/event,

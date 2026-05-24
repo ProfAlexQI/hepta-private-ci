@@ -99,6 +99,20 @@ contracts, sandbox/exec replay, network-policy replay, active dependency
 isolation, operator approval, and soak evidence before any security or provider
 behavior is promoted into the active Hepta runtime.
 
+The P0 provider/security replay gate is:
+
+```bash
+scripts/hepta-upstream-codex-provider-security-replay.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_PROVIDER_SECURITY_REPLAY.md`. It turns
+the provider/security intake contract into local redaction and replay evidence:
+redacted provider contracts, credential redaction, approval-policy replay,
+sandbox/exec replay, network-proxy replay, and side-effect boundary replay. It
+still performs no credential read, provider invocation, gateway RPC, active
+provider promotion, active security-policy promotion, or active runtime wiring.
+
 The P0 runtime/app-server absorption-contract gate is:
 
 ```bash

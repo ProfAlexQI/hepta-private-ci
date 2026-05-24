@@ -300,6 +300,44 @@ pub struct HeptaUpstreamCodexProviderSecurityAbsorptionReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexProviderSecurityReplayReport {
+    pub product: String,
+    pub status: String,
+    pub replay_id: String,
+    pub replay_packet_path: String,
+    pub selected_bucket_id: String,
+    pub selected_changed_file_count: usize,
+    pub replay_surface_count: usize,
+    pub required_replay_surface_count: usize,
+    pub source_absorption_gate: String,
+    pub replay_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub redacted_provider_contract_ready: bool,
+    pub auth_credential_redaction_ready: bool,
+    pub approval_policy_replay_ready: bool,
+    pub sandbox_exec_replay_ready: bool,
+    pub network_policy_replay_ready: bool,
+    pub side_effect_boundary_ready: bool,
+    pub active_provider_promotion_allowed: bool,
+    pub active_security_policy_promotion_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub replay_ready: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub replay_surfaces: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaUpstreamCodexRuntimeAppServerAbsorptionReport {
     pub product: String,
     pub status: String,
@@ -786,6 +824,87 @@ impl HeptaUpstreamCodexProviderSecurityAbsorptionReport {
     }
 }
 
+impl HeptaUpstreamCodexProviderSecurityReplayReport {
+    pub fn native_default() -> Self {
+        let replay_surfaces: Vec<String> = vec![
+            "redacted provider catalog and endpoint contract replay".into(),
+            "auth login config and credential redaction replay".into(),
+            "approval-policy dry-run allow deny matrix replay".into(),
+            "sandbox and exec request policy replay".into(),
+            "network-proxy policy replay with live-network deny default".into(),
+            "side-effect boundary and operator approval replay".into(),
+        ];
+        let replay_surface_count = replay_surfaces.len();
+        let required_replay_surface_count = 6;
+        let replay_ready = replay_surface_count == required_replay_surface_count
+            && replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("provider"))
+            && replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("credential"))
+            && replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("approval"))
+            && replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("sandbox"))
+            && replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("network"))
+            && replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("side-effect"));
+
+        Self {
+            product: "Hepta".into(),
+            status: if replay_ready { "ready" } else { "attention" }.into(),
+            replay_id: "upstream-codex-provider-security-replay-packet".into(),
+            replay_packet_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_PROVIDER_SECURITY_REPLAY.md".into(),
+            selected_bucket_id: "provider-credential-sandbox-security".into(),
+            selected_changed_file_count: 104,
+            replay_surface_count,
+            required_replay_surface_count,
+            source_absorption_gate: "scripts/hepta-upstream-codex-provider-security-absorption.sh"
+                .into(),
+            replay_gate: "scripts/hepta-upstream-codex-provider-security-replay.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            redacted_provider_contract_ready: true,
+            auth_credential_redaction_ready: true,
+            approval_policy_replay_ready: true,
+            sandbox_exec_replay_ready: true,
+            network_policy_replay_ready: true,
+            side_effect_boundary_ready: true,
+            active_provider_promotion_allowed: false,
+            active_security_policy_promotion_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            replay_ready,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            replay_surfaces,
+            required_next_gates: vec![
+                "bind redacted provider contracts to Hepta provider report fields".into(),
+                "keep credential values out of replay fixtures and JSON reports".into(),
+                "require sandbox exec network replay before security-policy promotion".into(),
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+                "require operator approval packet and long soak before provider/security claims"
+                    .into(),
+            ],
+        }
+    }
+}
+
 impl HeptaUpstreamCodexRuntimeAppServerAbsorptionReport {
     pub fn native_default() -> Self {
         let runtime_surfaces: Vec<String> = vec![
@@ -1253,6 +1372,11 @@ pub fn hepta_upstream_codex_legacy_compatibility_absorption_report()
 pub fn hepta_upstream_codex_provider_security_absorption_report()
 -> HeptaUpstreamCodexProviderSecurityAbsorptionReport {
     HeptaUpstreamCodexProviderSecurityAbsorptionReport::native_default()
+}
+
+pub fn hepta_upstream_codex_provider_security_replay_report()
+-> HeptaUpstreamCodexProviderSecurityReplayReport {
+    HeptaUpstreamCodexProviderSecurityReplayReport::native_default()
 }
 
 pub fn hepta_upstream_codex_runtime_appserver_absorption_report()
@@ -1809,6 +1933,102 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("network-proxy policy replay"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_provider_security_replay_packet_is_ready_and_bounded() {
+        let report = hepta_upstream_codex_provider_security_replay_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.replay_id,
+            "upstream-codex-provider-security-replay-packet"
+        );
+        assert_eq!(
+            report.replay_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_PROVIDER_SECURITY_REPLAY.md"
+        );
+        assert_eq!(
+            report.selected_bucket_id,
+            "provider-credential-sandbox-security"
+        );
+        assert_eq!(report.selected_changed_file_count, 104);
+        assert_eq!(
+            report.replay_surface_count,
+            report.required_replay_surface_count
+        );
+        assert_eq!(
+            report.source_absorption_gate,
+            "scripts/hepta-upstream-codex-provider-security-absorption.sh"
+        );
+        assert_eq!(
+            report.replay_gate,
+            "scripts/hepta-upstream-codex-provider-security-replay.sh"
+        );
+        assert!(report.redacted_provider_contract_ready);
+        assert!(report.auth_credential_redaction_ready);
+        assert!(report.approval_policy_replay_ready);
+        assert!(report.sandbox_exec_replay_ready);
+        assert!(report.network_policy_replay_ready);
+        assert!(report.side_effect_boundary_ready);
+        assert!(!report.active_provider_promotion_allowed);
+        assert!(!report.active_security_policy_promotion_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(report.replay_ready);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+    }
+
+    #[test]
+    fn upstream_codex_provider_security_replay_tracks_replay_surfaces() {
+        let report = hepta_upstream_codex_provider_security_replay_report();
+
+        assert!(
+            report
+                .replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("provider"))
+        );
+        assert!(
+            report
+                .replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("credential"))
+        );
+        assert!(
+            report
+                .replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("approval"))
+        );
+        assert!(
+            report
+                .replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("sandbox"))
+        );
+        assert!(
+            report
+                .replay_surfaces
+                .iter()
+                .any(|surface| surface.contains("network"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("credential values"))
         );
     }
 
