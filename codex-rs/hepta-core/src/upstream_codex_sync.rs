@@ -1083,6 +1083,64 @@ pub struct HeptaUpstreamCodexActivationDeniedSampleReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceFreshnessPolicyEntry {
+    pub evidence_id: String,
+    pub source_gate: String,
+    pub freshness_anchor: String,
+    pub max_age_policy: String,
+    pub required_for_activation: bool,
+    pub recorded: bool,
+    pub fresh: bool,
+    pub denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport {
+    pub product: String,
+    pub status: String,
+    pub policy_id: String,
+    pub policy_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_denied_sample_gate: String,
+    pub freshness_policy_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub denied_sample_ready: bool,
+    pub required_evidence_count: usize,
+    pub policy_entry_count: usize,
+    pub missing_evidence_count: usize,
+    pub fresh_evidence_count: usize,
+    pub expired_evidence_count: usize,
+    pub stale_evidence_count: usize,
+    pub freshness_policy_ready: bool,
+    pub activation_blocked_by_freshness_policy: bool,
+    pub activation_allowed_by_freshness_policy: bool,
+    pub freshness_denial_reason: String,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub freshness_entries: Vec<HeptaUpstreamCodexActivationEvidenceFreshnessPolicyEntry>,
+    pub policy_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -3192,6 +3250,183 @@ impl HeptaUpstreamCodexActivationDeniedSampleReport {
     }
 }
 
+impl HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport {
+    pub fn native_default() -> Self {
+        let denied_sample = HeptaUpstreamCodexActivationDeniedSampleReport::native_default();
+        let freshness_entries = default_activation_evidence_freshness_policy_entries();
+        let required_evidence_count = denied_sample.sample_required_evidence_count;
+        let policy_entry_count = freshness_entries.len();
+        let missing_evidence_count = freshness_entries
+            .iter()
+            .filter(|entry| entry.required_for_activation && !entry.recorded)
+            .count();
+        let fresh_evidence_count = freshness_entries
+            .iter()
+            .filter(|entry| entry.required_for_activation && entry.fresh)
+            .count();
+        let expired_evidence_count = 0;
+        let stale_evidence_count = 0;
+        let activation_allowed_by_freshness_policy = false;
+        let activation_blocked_by_freshness_policy = true;
+        let freshness_denial_reason =
+            "all required activation evidence slots are absent from the denied sample".to_string();
+        let freshness_policy_ready = denied_sample.status == "ready"
+            && denied_sample.sample_validation_status == "blocked"
+            && policy_entry_count == required_evidence_count
+            && missing_evidence_count == required_evidence_count
+            && fresh_evidence_count == 0
+            && activation_blocked_by_freshness_policy
+            && !activation_allowed_by_freshness_policy;
+
+        Self {
+            product: "Hepta".into(),
+            status: if freshness_policy_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            policy_id: "upstream-codex-activation-evidence-freshness-policy".into(),
+            policy_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_FRESHNESS_POLICY.md"
+                    .into(),
+            upstream_repository: denied_sample.upstream_repository,
+            candidate_diff_range: denied_sample.candidate_diff_range,
+            source_denied_sample_gate: denied_sample.denied_sample_gate,
+            freshness_policy_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-freshness-policy.sh".into(),
+            active_dependency_isolation_gate: denied_sample.active_dependency_isolation_gate,
+            denied_sample_ready: denied_sample.status == "ready",
+            required_evidence_count,
+            policy_entry_count,
+            missing_evidence_count,
+            fresh_evidence_count,
+            expired_evidence_count,
+            stale_evidence_count,
+            freshness_policy_ready,
+            activation_blocked_by_freshness_policy,
+            activation_allowed_by_freshness_policy,
+            freshness_denial_reason,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            freshness_entries,
+            policy_invariants: vec![
+                "freshness policy defines evidence requirements but records no evidence".into(),
+                "missing evidence is a denial reason even when packet shape is complete".into(),
+                "freshness is evaluated per evidence slot before active wiring can be reconsidered"
+                    .into(),
+                "operator approval, public release claims, and artifact writes remain denied"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "bind each required evidence slot to a concrete evidence id".into(),
+                "timestamp and hash every live dependency, watchdog, browser, soak, and rollback evidence record"
+                    .into(),
+                "rerun the denied-sample gate after replacing absence with concrete evidence".into(),
+                "rerun clean preflight and live gates before any active wiring decision".into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_freshness_policy_entry(
+    evidence_id: &str,
+    source_gate: &str,
+    freshness_anchor: &str,
+    max_age_policy: &str,
+    denial_reason: &str,
+) -> HeptaUpstreamCodexActivationEvidenceFreshnessPolicyEntry {
+    HeptaUpstreamCodexActivationEvidenceFreshnessPolicyEntry {
+        evidence_id: evidence_id.into(),
+        source_gate: source_gate.into(),
+        freshness_anchor: freshness_anchor.into(),
+        max_age_policy: max_age_policy.into(),
+        required_for_activation: true,
+        recorded: false,
+        fresh: false,
+        denial_reason: denial_reason.into(),
+    }
+}
+
+fn default_activation_evidence_freshness_policy_entries()
+-> Vec<HeptaUpstreamCodexActivationEvidenceFreshnessPolicyEntry> {
+    vec![
+        activation_evidence_freshness_policy_entry(
+            "activation_request_id",
+            "scripts/hepta-upstream-codex-activation-request-packet.sh",
+            "candidate diff range and requested activation scope",
+            "same activation request",
+            "activation request id is absent",
+        ),
+        activation_evidence_freshness_policy_entry(
+            "operator_approval_id",
+            "scripts/hepta-codex-public-ga-operator-approval-packet.sh",
+            "explicit operator approval record",
+            "same activation request",
+            "operator approval id is absent",
+        ),
+        activation_evidence_freshness_policy_entry(
+            "operator_identity_hash",
+            "scripts/hepta-codex-public-ga-operator-approval-packet.sh",
+            "redacted operator identity bound to approval id",
+            "same activation request",
+            "operator identity hash is absent",
+        ),
+        activation_evidence_freshness_policy_entry(
+            "live_dependency_isolation_evidence_id",
+            "scripts/hepta-active-service-dependency-isolation.sh",
+            "active binary sha and live dependency-closure route",
+            "30 minutes",
+            "live dependency isolation evidence is absent",
+        ),
+        activation_evidence_freshness_policy_entry(
+            "watchdog_evidence_id",
+            "scripts/hepta-codex-watchdog.sh",
+            "active binary sha and live watchdog route matrix",
+            "30 minutes",
+            "watchdog evidence is absent",
+        ),
+        activation_evidence_freshness_policy_entry(
+            "browser_smoke_evidence_id",
+            "scripts/hepta-codex-browser-visual-smoke.sh",
+            "desktop and mobile screenshot hashes",
+            "30 minutes",
+            "browser smoke evidence is absent",
+        ),
+        activation_evidence_freshness_policy_entry(
+            "long_soak_evidence_id",
+            "scripts/hepta-codex-live-soak.sh",
+            "24/24 live soak sample report",
+            "120 minutes",
+            "long soak evidence is absent",
+        ),
+        activation_evidence_freshness_policy_entry(
+            "rollback_plan_id",
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_DENIED_SAMPLE.md",
+            "candidate diff range and active binary rollback anchor",
+            "same activation request",
+            "rollback plan id is absent",
+        ),
+    ]
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -3753,6 +3988,11 @@ pub fn hepta_upstream_codex_activation_readiness_closure_report()
 pub fn hepta_upstream_codex_activation_denied_sample_report()
 -> HeptaUpstreamCodexActivationDeniedSampleReport {
     HeptaUpstreamCodexActivationDeniedSampleReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_freshness_policy_report()
+-> HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport {
+    HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport::native_default()
 }
 
 #[cfg(test)]
@@ -5805,6 +6045,93 @@ mod tests {
                 .required_next_gates
                 .iter()
                 .any(|gate| gate.contains("concrete operator-approved activation packet"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_freshness_policy_defines_all_slots() {
+        let report = hepta_upstream_codex_activation_evidence_freshness_policy_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.policy_id,
+            "upstream-codex-activation-evidence-freshness-policy"
+        );
+        assert_eq!(
+            report.source_denied_sample_gate,
+            "scripts/hepta-upstream-codex-activation-denied-sample.sh"
+        );
+        assert_eq!(
+            report.freshness_policy_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-freshness-policy.sh"
+        );
+        assert!(report.denied_sample_ready);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.policy_entry_count, 8);
+        assert_eq!(report.missing_evidence_count, 8);
+        assert_eq!(report.fresh_evidence_count, 0);
+        assert_eq!(report.expired_evidence_count, 0);
+        assert_eq!(report.stale_evidence_count, 0);
+        assert!(report.freshness_policy_ready);
+        assert!(report.activation_blocked_by_freshness_policy);
+        assert!(!report.activation_allowed_by_freshness_policy);
+        assert!(!report.active_wiring_allowed);
+        assert_eq!(report.freshness_entries.len(), 8);
+
+        let ids: Vec<_> = report
+            .freshness_entries
+            .iter()
+            .map(|entry| entry.evidence_id.as_str())
+            .collect();
+        assert!(ids.contains(&"activation_request_id"));
+        assert!(ids.contains(&"operator_approval_id"));
+        assert!(ids.contains(&"operator_identity_hash"));
+        assert!(ids.contains(&"live_dependency_isolation_evidence_id"));
+        assert!(ids.contains(&"watchdog_evidence_id"));
+        assert!(ids.contains(&"browser_smoke_evidence_id"));
+        assert!(ids.contains(&"long_soak_evidence_id"));
+        assert!(ids.contains(&"rollback_plan_id"));
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_freshness_policy_preserves_denials() {
+        let report = hepta_upstream_codex_activation_evidence_freshness_policy_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .freshness_denial_reason
+                .contains("evidence slots are absent")
+        );
+        assert!(report.freshness_entries.iter().all(|entry| {
+            entry.required_for_activation
+                && !entry.recorded
+                && !entry.fresh
+                && entry.denial_reason.contains("absent")
+        }));
+        assert!(
+            report
+                .policy_invariants
+                .iter()
+                .any(|invariant| invariant.contains("records no evidence"))
         );
     }
 }

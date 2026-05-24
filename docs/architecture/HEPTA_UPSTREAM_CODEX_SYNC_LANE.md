@@ -325,6 +325,18 @@ This gate verifies
 a full-shaped sample packet blocked when operator approval is not recorded and
 activation evidence freshness remains `0`.
 
+The activation evidence freshness policy gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-freshness-policy.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_FRESHNESS_POLICY.md`.
+It defines freshness anchors and max-age policies for all `8` evidence slots.
+The current policy records no evidence, so missing evidence remains an explicit
+denial reason and active wiring stays false.
+
 The local sync-lane gate is:
 
 ```bash

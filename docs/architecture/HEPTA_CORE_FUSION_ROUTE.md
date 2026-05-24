@@ -121,6 +121,10 @@ Current state:
 - `scripts/hepta-upstream-codex-activation-denied-sample.sh` adds a
   full-shaped sample activation packet that is still blocked because operator
   approval is not recorded and evidence freshness remains `0`.
+- `scripts/hepta-upstream-codex-activation-evidence-freshness-policy.sh`
+  defines per-slot freshness requirements for the `8` evidence ids. All
+  evidence remains absent by default, so activation stays blocked even when the
+  sample packet shape is complete.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

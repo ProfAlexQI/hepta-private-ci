@@ -67,5 +67,7 @@ evidence. Packet shape alone is not an activation grant.
 - Replace the denied sample with a concrete operator-approved activation packet.
 - Bind every evidence slot to fresh live dependency, watchdog, browser, soak,
   and rollback evidence.
+- Define evidence freshness and absence denial policy with
+  `scripts/hepta-upstream-codex-activation-evidence-freshness-policy.sh`.
 - Rerun activation readiness closure after concrete approval and evidence.
 - Run clean preflight and live gates before any active wiring decision.
