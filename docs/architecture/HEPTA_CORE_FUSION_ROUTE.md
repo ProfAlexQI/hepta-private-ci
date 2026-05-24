@@ -158,6 +158,10 @@ Current state:
 - `scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-command-contract.sh`
   defines the operator-approved receipt persistence command shape while keeping
   the command disabled/no-op by default with no workspace write path.
+- `scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-invocation-dry-run.sh`
+  models redacted command invocation attempts and proves they remain no-op by
+  default with no command execution, receipt persistence, workspace write, or
+  public claim.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime

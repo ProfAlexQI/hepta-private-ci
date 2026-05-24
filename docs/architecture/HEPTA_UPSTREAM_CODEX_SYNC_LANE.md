@@ -441,6 +441,20 @@ persistence write path. All `10` command fields remain absent by default, the
 command is not invoked, no receipt is persisted, and active wiring/public claim
 decisions remain false.
 
+The activation evidence receipt persistence invocation dry-run gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-invocation-dry-run.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_PERSISTENCE_INVOCATION_DRY_RUN.md`.
+It models `3` redacted command invocation attempts, including a fully shaped
+redacted command, a stale-evidence attempt, and a public-claim/artifact attempt.
+All attempts remain `blocked_noop`: no command is invoked, no persistence
+execution runs, no workspace write occurs, no evidence receipt is persisted, and
+active wiring/public claim decisions remain false.
+
 The local sync-lane gate is:
 
 ```bash

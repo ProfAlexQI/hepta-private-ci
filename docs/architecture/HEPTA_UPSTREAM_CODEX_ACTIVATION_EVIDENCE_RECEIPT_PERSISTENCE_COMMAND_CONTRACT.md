@@ -93,8 +93,8 @@ ids, receipt payload hash, output path, and rollback plan id.
 
 ## Required Next Gates
 
-- Add a redacted persistence dry-run fixture before any real write path.
-- Bind command invocation to a fresh activation request and trusted evidence
-  ids.
-- Require live SHA, watchdog, browser smoke, and soak evidence before
+- Run the redacted receipt persistence invocation dry-run fixture before any
+  real write path.
+- Bind a no-write receipt sink adapter before any persisted receipt path.
+- Require live SHA, watchdog, browser smoke, and soak evidence before enabling
   persistence.

@@ -1704,6 +1704,88 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContract
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunFixture {
+    pub fixture_id: String,
+    pub fixture_kind: String,
+    pub recorded_command_field_count: usize,
+    pub redacted_or_hashed_field_count: usize,
+    pub operator_approval_recorded: bool,
+    pub activation_request_recorded: bool,
+    pub accepted_trusted_record_count: usize,
+    pub fresh_trusted_record_count: usize,
+    pub receipt_payload_hash_recorded: bool,
+    pub receipt_output_path_redacted_recorded: bool,
+    pub public_claim_requested: bool,
+    pub release_artifact_write_requested: bool,
+    pub command_invocation_requested: bool,
+    pub command_invocation_performed: bool,
+    pub receipt_persistence_execution_performed: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+    pub active_wiring_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub dry_run_status: String,
+    pub denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunReport {
+    pub product: String,
+    pub status: String,
+    pub invocation_dry_run_id: String,
+    pub invocation_dry_run_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_command_contract_gate: String,
+    pub receipt_persistence_invocation_dry_run_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_command_contract_ready: bool,
+    pub required_invocation_fixture_count: usize,
+    pub command_invocation_attempt_count: usize,
+    pub command_invocation_performed_count: usize,
+    pub receipt_persistence_execution_performed_count: usize,
+    pub workspace_write_performed_count: usize,
+    pub evidence_receipt_persisted_count: usize,
+    pub redacted_output_path_fixture_count: usize,
+    pub payload_hash_bound_fixture_count: usize,
+    pub operator_approved_fixture_count: usize,
+    pub activation_request_bound_fixture_count: usize,
+    pub max_recorded_command_field_count: usize,
+    pub max_accepted_trusted_record_count: usize,
+    pub max_fresh_trusted_record_count: usize,
+    pub public_claim_attempt_count: usize,
+    pub release_artifact_write_attempt_count: usize,
+    pub receipt_persistence_command_enabled_by_default: bool,
+    pub invocation_dry_run_noop_ready: bool,
+    pub activation_blocked_by_invocation_dry_run: bool,
+    pub activation_allowed_by_invocation_dry_run: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub invocation_fixtures:
+        Vec<HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunFixture>,
+    pub invocation_dry_run_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -5519,11 +5601,10 @@ impl HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContractReport
                 "persistence command readiness does not permit active wiring or release claims".into(),
             ],
             required_next_gates: vec![
-                "add a redacted persistence dry-run fixture before any real write path".into(),
-                "bind command invocation to a fresh activation request and trusted evidence ids"
+                "run the redacted receipt persistence invocation dry-run before any real write path"
                     .into(),
-                "require live SHA, watchdog, browser smoke, and soak evidence before persistence"
-                    .into(),
+                "bind a no-write receipt sink adapter before any persisted receipt path".into(),
+                "require live SHA, watchdog, browser smoke, and soak evidence before enabling persistence".into(),
             ],
         }
     }
@@ -5595,6 +5676,247 @@ fn default_activation_evidence_receipt_persistence_command_fields()
             "public_claim_and_artifact_decision",
             false,
             "records explicit public-claim and artifact-write decisions",
+        ),
+    ]
+}
+
+impl HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunReport {
+    pub fn native_default() -> Self {
+        let command_contract =
+            HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContractReport::native_default(
+            );
+        let invocation_fixtures =
+            default_activation_evidence_receipt_persistence_invocation_dry_run_fixtures();
+        let required_invocation_fixture_count = invocation_fixtures.len();
+        let command_invocation_attempt_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.command_invocation_requested)
+            .count();
+        let command_invocation_performed_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.command_invocation_performed)
+            .count();
+        let receipt_persistence_execution_performed_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.receipt_persistence_execution_performed)
+            .count();
+        let workspace_write_performed_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.workspace_write_performed)
+            .count();
+        let evidence_receipt_persisted_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.evidence_receipt_persisted)
+            .count();
+        let redacted_output_path_fixture_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.receipt_output_path_redacted_recorded)
+            .count();
+        let payload_hash_bound_fixture_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.receipt_payload_hash_recorded)
+            .count();
+        let operator_approved_fixture_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.operator_approval_recorded)
+            .count();
+        let activation_request_bound_fixture_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.activation_request_recorded)
+            .count();
+        let max_recorded_command_field_count = invocation_fixtures
+            .iter()
+            .map(|fixture| fixture.recorded_command_field_count)
+            .max()
+            .unwrap_or(0);
+        let max_accepted_trusted_record_count = invocation_fixtures
+            .iter()
+            .map(|fixture| fixture.accepted_trusted_record_count)
+            .max()
+            .unwrap_or(0);
+        let max_fresh_trusted_record_count = invocation_fixtures
+            .iter()
+            .map(|fixture| fixture.fresh_trusted_record_count)
+            .max()
+            .unwrap_or(0);
+        let public_claim_attempt_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.public_claim_requested)
+            .count();
+        let release_artifact_write_attempt_count = invocation_fixtures
+            .iter()
+            .filter(|fixture| fixture.release_artifact_write_requested)
+            .count();
+        let receipt_persistence_command_enabled_by_default = false;
+        let invocation_dry_run_noop_ready = command_contract.receipt_persistence_noop_ready
+            && required_invocation_fixture_count == 3
+            && command_invocation_attempt_count == required_invocation_fixture_count
+            && command_invocation_performed_count == 0
+            && receipt_persistence_execution_performed_count == 0
+            && workspace_write_performed_count == 0
+            && evidence_receipt_persisted_count == 0
+            && redacted_output_path_fixture_count == required_invocation_fixture_count
+            && payload_hash_bound_fixture_count == required_invocation_fixture_count
+            && operator_approved_fixture_count == required_invocation_fixture_count
+            && activation_request_bound_fixture_count == required_invocation_fixture_count
+            && max_recorded_command_field_count == command_contract.required_command_field_count
+            && max_accepted_trusted_record_count == 8
+            && max_fresh_trusted_record_count == 8
+            && public_claim_attempt_count == 1
+            && release_artifact_write_attempt_count == 1
+            && !receipt_persistence_command_enabled_by_default
+            && invocation_fixtures.iter().all(|fixture| {
+                fixture.dry_run_status == "blocked_noop"
+                    && !fixture.command_invocation_performed
+                    && !fixture.receipt_persistence_execution_performed
+                    && !fixture.workspace_write_performed
+                    && !fixture.evidence_receipt_persisted
+                    && !fixture.active_wiring_allowed
+                    && !fixture.public_release_claim_allowed
+                    && !fixture.release_artifact_write_allowed
+            });
+        let activation_blocked_by_invocation_dry_run = true;
+        let activation_allowed_by_invocation_dry_run = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if invocation_dry_run_noop_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            invocation_dry_run_id:
+                "upstream-codex-activation-evidence-receipt-persistence-invocation-dry-run"
+                    .into(),
+            invocation_dry_run_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_PERSISTENCE_INVOCATION_DRY_RUN.md"
+                    .into(),
+            upstream_repository: command_contract.upstream_repository,
+            candidate_diff_range: command_contract.candidate_diff_range,
+            source_command_contract_gate: command_contract
+                .receipt_persistence_command_contract_gate,
+            receipt_persistence_invocation_dry_run_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-invocation-dry-run.sh"
+                    .into(),
+            active_dependency_isolation_gate: command_contract.active_dependency_isolation_gate,
+            source_command_contract_ready: command_contract.receipt_persistence_noop_ready,
+            required_invocation_fixture_count,
+            command_invocation_attempt_count,
+            command_invocation_performed_count,
+            receipt_persistence_execution_performed_count,
+            workspace_write_performed_count,
+            evidence_receipt_persisted_count,
+            redacted_output_path_fixture_count,
+            payload_hash_bound_fixture_count,
+            operator_approved_fixture_count,
+            activation_request_bound_fixture_count,
+            max_recorded_command_field_count,
+            max_accepted_trusted_record_count,
+            max_fresh_trusted_record_count,
+            public_claim_attempt_count,
+            release_artifact_write_attempt_count,
+            receipt_persistence_command_enabled_by_default,
+            invocation_dry_run_noop_ready,
+            activation_blocked_by_invocation_dry_run,
+            activation_allowed_by_invocation_dry_run,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            invocation_fixtures,
+            invocation_dry_run_invariants: vec![
+                "redacted invocation fixtures can request persistence without executing it".into(),
+                "command invocation remains unperformed while the command is disabled by default"
+                    .into(),
+                "receipt persistence execution and workspace writes stay false for every fixture"
+                    .into(),
+                "public-claim-shaped invocation fixtures stay blocked by default".into(),
+            ],
+            required_next_gates: vec![
+                "bind a no-write receipt sink adapter before any persisted receipt path".into(),
+                "require fresh live gate evidence for every invocation fixture".into(),
+                "require operator approval before enabling any receipt persistence command".into(),
+            ],
+        }
+    }
+}
+
+fn activation_evidence_receipt_persistence_invocation_dry_run_fixture(
+    fixture_id: &str,
+    fixture_kind: &str,
+    fresh_trusted_record_count: usize,
+    public_claim_requested: bool,
+    release_artifact_write_requested: bool,
+    denial_reason: &str,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunFixture {
+    HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunFixture {
+        fixture_id: fixture_id.into(),
+        fixture_kind: fixture_kind.into(),
+        recorded_command_field_count: 10,
+        redacted_or_hashed_field_count: 9,
+        operator_approval_recorded: true,
+        activation_request_recorded: true,
+        accepted_trusted_record_count: 8,
+        fresh_trusted_record_count,
+        receipt_payload_hash_recorded: true,
+        receipt_output_path_redacted_recorded: true,
+        public_claim_requested,
+        release_artifact_write_requested,
+        command_invocation_requested: true,
+        command_invocation_performed: false,
+        receipt_persistence_execution_performed: false,
+        workspace_write_performed: false,
+        evidence_receipt_persisted: false,
+        active_wiring_allowed: false,
+        public_release_claim_allowed: false,
+        release_artifact_write_allowed: false,
+        dry_run_status: "blocked_noop".into(),
+        denial_reason: denial_reason.into(),
+    }
+}
+
+fn default_activation_evidence_receipt_persistence_invocation_dry_run_fixtures()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunFixture> {
+    vec![
+        activation_evidence_receipt_persistence_invocation_dry_run_fixture(
+            "redacted-command-shape",
+            "redacted_command_shape",
+            8,
+            false,
+            false,
+            "fully shaped redacted command remains a no-op while persistence is disabled by default",
+        ),
+        activation_evidence_receipt_persistence_invocation_dry_run_fixture(
+            "stale-evidence-invocation-attempt",
+            "stale_evidence_invocation_attempt",
+            0,
+            false,
+            false,
+            "stale trusted evidence cannot execute receipt persistence",
+        ),
+        activation_evidence_receipt_persistence_invocation_dry_run_fixture(
+            "public-claim-artifact-invocation-attempt",
+            "public_claim_artifact_invocation_attempt",
+            8,
+            true,
+            true,
+            "public claim and artifact write requests remain blocked by the no-op dry run",
         ),
     ]
 }
@@ -6205,6 +6527,11 @@ pub fn hepta_upstream_codex_activation_evidence_recording_denial_matrix_report()
 pub fn hepta_upstream_codex_activation_evidence_receipt_persistence_command_contract_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContractReport {
     HeptaUpstreamCodexActivationEvidenceReceiptPersistenceCommandContractReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_persistence_invocation_dry_run_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptPersistenceInvocationDryRunReport::native_default()
 }
 
 #[cfg(test)]
@@ -9059,6 +9386,98 @@ mod tests {
                 .command_contract_invariants
                 .iter()
                 .any(|invariant| invariant.contains("disabled by default"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_persistence_invocation_dry_run_is_noop() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_persistence_invocation_dry_run_report(
+            );
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.invocation_dry_run_id,
+            "upstream-codex-activation-evidence-receipt-persistence-invocation-dry-run"
+        );
+        assert_eq!(
+            report.source_command_contract_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-command-contract.sh"
+        );
+        assert_eq!(
+            report.receipt_persistence_invocation_dry_run_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-persistence-invocation-dry-run.sh"
+        );
+        assert!(report.source_command_contract_ready);
+        assert_eq!(report.required_invocation_fixture_count, 3);
+        assert_eq!(report.command_invocation_attempt_count, 3);
+        assert_eq!(report.command_invocation_performed_count, 0);
+        assert_eq!(report.receipt_persistence_execution_performed_count, 0);
+        assert_eq!(report.workspace_write_performed_count, 0);
+        assert_eq!(report.evidence_receipt_persisted_count, 0);
+        assert_eq!(report.redacted_output_path_fixture_count, 3);
+        assert_eq!(report.payload_hash_bound_fixture_count, 3);
+        assert_eq!(report.operator_approved_fixture_count, 3);
+        assert_eq!(report.activation_request_bound_fixture_count, 3);
+        assert_eq!(report.max_recorded_command_field_count, 10);
+        assert_eq!(report.max_accepted_trusted_record_count, 8);
+        assert_eq!(report.max_fresh_trusted_record_count, 8);
+        assert_eq!(report.public_claim_attempt_count, 1);
+        assert_eq!(report.release_artifact_write_attempt_count, 1);
+        assert!(!report.receipt_persistence_command_enabled_by_default);
+        assert!(report.invocation_dry_run_noop_ready);
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_persistence_invocation_dry_run_blocks_effects() {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_persistence_invocation_dry_run_report(
+            );
+
+        assert!(report.activation_blocked_by_invocation_dry_run);
+        assert!(!report.activation_allowed_by_invocation_dry_run);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(report.invocation_fixtures.iter().all(
+            |fixture| fixture.command_invocation_requested
+                && !fixture.command_invocation_performed
+                && !fixture.receipt_persistence_execution_performed
+                && !fixture.workspace_write_performed
+                && !fixture.evidence_receipt_persisted
+                && !fixture.active_wiring_allowed
+                && !fixture.public_release_claim_allowed
+                && !fixture.release_artifact_write_allowed
+                && fixture.dry_run_status == "blocked_noop"
+        ));
+        assert!(
+            report
+                .invocation_fixtures
+                .iter()
+                .any(|fixture| fixture.fixture_kind == "public_claim_artifact_invocation_attempt")
+        );
+        assert!(
+            report
+                .invocation_dry_run_invariants
+                .iter()
+                .any(|invariant| invariant.contains("request persistence without executing it"))
         );
     }
 }
