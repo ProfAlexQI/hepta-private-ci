@@ -76,6 +76,7 @@ Side-effect boundary:
 
 This gate separates sink preview planning from filesystem authority.
 Deterministic payload hashes and redacted output paths are preview evidence, not
-write authority. A later execution-denial matrix must still prove that any
-future persistence execution path remains blocked until explicit approval,
-fresh evidence, and write-path enablement are all present.
+write authority. The follow-on execution-denial matrix is
+`scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-execution-denial-matrix.sh`;
+it proves that future persistence execution paths remain blocked until explicit
+approval, fresh evidence, and write-path enablement are all present.

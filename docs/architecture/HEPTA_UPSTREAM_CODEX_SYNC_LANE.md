@@ -569,6 +569,22 @@ deterministic payload hash. All previews remain `blocked_preview`: filesystem
 persistence count is `0`, workspace write count is `0`, evidence receipt
 persistence count is `0`, and public claim/artifact attempts remain blocked.
 
+The activation evidence receipt filesystem persistence execution denial matrix
+gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-execution-denial-matrix.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_PERSISTENCE_EXECUTION_DENIAL_MATRIX.md`.
+It models `4` filesystem persistence execution attempts after sink write
+preview planning. Each attempted execution binds a preview payload hash to a
+future persistence approval id slot, then denies execution for missing explicit
+approval, stale live evidence, workspace path targeting, or public
+artifact/release-artifact targeting. Filesystem persistence execution,
+workspace writes, and evidence receipt persistence remain `0`.
+
 The local sync-lane gate is:
 
 ```bash

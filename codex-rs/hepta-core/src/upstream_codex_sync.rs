@@ -2302,6 +2302,94 @@ pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreview
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialFixture {
+    pub fixture_id: String,
+    pub source_preview_fixture_id: String,
+    pub deterministic_payload_hash: String,
+    pub future_persistence_approval_id_slot: String,
+    pub execution_requested: bool,
+    pub explicit_persistence_approval_id_present: bool,
+    pub fresh_live_evidence_bound: bool,
+    pub active_binary_sha_bound: bool,
+    pub trusted_source_bound: bool,
+    pub operator_approval_bound: bool,
+    pub workspace_path_requested: bool,
+    pub public_claim_requested: bool,
+    pub release_artifact_write_requested: bool,
+    pub denial_reason: String,
+    pub execution_status: String,
+    pub filesystem_persistence_allowed: bool,
+    pub filesystem_persistence_execution_performed: bool,
+    pub workspace_write_performed: bool,
+    pub evidence_receipt_persisted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialMatrixReport
+{
+    pub product: String,
+    pub status: String,
+    pub filesystem_persistence_execution_denial_matrix_id: String,
+    pub filesystem_persistence_execution_denial_matrix_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_filesystem_sink_write_preview_gate: String,
+    pub filesystem_persistence_execution_denial_matrix_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_filesystem_sink_write_preview_ready: bool,
+    pub required_denial_fixture_count: usize,
+    pub denial_fixture_count: usize,
+    pub source_preview_fixture_count: usize,
+    pub execution_requested_fixture_count: usize,
+    pub future_persistence_approval_slot_count: usize,
+    pub explicit_persistence_approval_id_present_count: usize,
+    pub explicit_persistence_approval_id_missing_count: usize,
+    pub stale_or_missing_fresh_evidence_fixture_count: usize,
+    pub active_binary_sha_bound_fixture_count: usize,
+    pub trusted_source_bound_fixture_count: usize,
+    pub operator_approval_bound_fixture_count: usize,
+    pub workspace_path_attempt_fixture_count: usize,
+    pub public_claim_attempt_fixture_count: usize,
+    pub release_artifact_write_attempt_fixture_count: usize,
+    pub blocked_execution_fixture_count: usize,
+    pub allowed_execution_fixture_count: usize,
+    pub filesystem_persistence_allowed_count: usize,
+    pub filesystem_persistence_execution_performed_count: usize,
+    pub workspace_write_performed_count: usize,
+    pub evidence_receipt_persisted_count: usize,
+    pub execution_denial_matrix_ready: bool,
+    pub activation_blocked_by_execution_denial_matrix: bool,
+    pub activation_allowed_by_execution_denial_matrix: bool,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub command_invocation_performed: bool,
+    pub receipt_persistence_execution: bool,
+    pub materialization_execution: bool,
+    pub filesystem_persistence_execution: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub denial_fixtures:
+        Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialFixture>,
+    pub denial_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -7638,6 +7726,196 @@ impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewReport
     }
 }
 
+impl HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialMatrixReport {
+    pub fn native_default() -> Self {
+        let preview =
+            HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewReport::native_default();
+        let denial_fixtures =
+            default_activation_evidence_receipt_filesystem_persistence_execution_denial_fixtures();
+        let required_denial_fixture_count = 4;
+        let denial_fixture_count = denial_fixtures.len();
+        let source_preview_fixture_count = preview.preview_fixture_count;
+        let execution_requested_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.execution_requested)
+            .count();
+        let future_persistence_approval_slot_count = denial_fixtures
+            .iter()
+            .filter(|fixture| {
+                fixture
+                    .future_persistence_approval_id_slot
+                    .starts_with("<future:")
+            })
+            .count();
+        let explicit_persistence_approval_id_present_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.explicit_persistence_approval_id_present)
+            .count();
+        let explicit_persistence_approval_id_missing_count =
+            denial_fixture_count - explicit_persistence_approval_id_present_count;
+        let stale_or_missing_fresh_evidence_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| !fixture.fresh_live_evidence_bound)
+            .count();
+        let active_binary_sha_bound_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.active_binary_sha_bound)
+            .count();
+        let trusted_source_bound_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.trusted_source_bound)
+            .count();
+        let operator_approval_bound_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.operator_approval_bound)
+            .count();
+        let workspace_path_attempt_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.workspace_path_requested)
+            .count();
+        let public_claim_attempt_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.public_claim_requested)
+            .count();
+        let release_artifact_write_attempt_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.release_artifact_write_requested)
+            .count();
+        let blocked_execution_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.execution_status == "blocked_execution")
+            .count();
+        let allowed_execution_fixture_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.execution_status == "allowed")
+            .count();
+        let filesystem_persistence_allowed_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.filesystem_persistence_allowed)
+            .count();
+        let filesystem_persistence_execution_performed_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.filesystem_persistence_execution_performed)
+            .count();
+        let workspace_write_performed_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.workspace_write_performed)
+            .count();
+        let evidence_receipt_persisted_count = denial_fixtures
+            .iter()
+            .filter(|fixture| fixture.evidence_receipt_persisted)
+            .count();
+        let execution_denial_matrix_ready = preview.sink_write_preview_ready
+            && denial_fixture_count == required_denial_fixture_count
+            && source_preview_fixture_count == 3
+            && execution_requested_fixture_count == required_denial_fixture_count
+            && future_persistence_approval_slot_count == required_denial_fixture_count
+            && explicit_persistence_approval_id_present_count == 3
+            && explicit_persistence_approval_id_missing_count == 1
+            && stale_or_missing_fresh_evidence_fixture_count == 1
+            && active_binary_sha_bound_fixture_count == required_denial_fixture_count
+            && trusted_source_bound_fixture_count == required_denial_fixture_count
+            && operator_approval_bound_fixture_count == 3
+            && workspace_path_attempt_fixture_count == 1
+            && public_claim_attempt_fixture_count == 1
+            && release_artifact_write_attempt_fixture_count == 1
+            && blocked_execution_fixture_count == required_denial_fixture_count
+            && allowed_execution_fixture_count == 0
+            && filesystem_persistence_allowed_count == 0
+            && filesystem_persistence_execution_performed_count == 0
+            && workspace_write_performed_count == 0
+            && evidence_receipt_persisted_count == 0;
+        let activation_blocked_by_execution_denial_matrix = true;
+        let activation_allowed_by_execution_denial_matrix = false;
+
+        Self {
+            product: "Hepta".into(),
+            status: if execution_denial_matrix_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            filesystem_persistence_execution_denial_matrix_id:
+                "upstream-codex-activation-evidence-receipt-filesystem-persistence-execution-denial-matrix"
+                    .into(),
+            filesystem_persistence_execution_denial_matrix_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_EVIDENCE_RECEIPT_FILESYSTEM_PERSISTENCE_EXECUTION_DENIAL_MATRIX.md"
+                    .into(),
+            upstream_repository: preview.upstream_repository,
+            candidate_diff_range: preview.candidate_diff_range,
+            source_filesystem_sink_write_preview_gate: preview.filesystem_sink_write_preview_gate,
+            filesystem_persistence_execution_denial_matrix_gate:
+                "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-execution-denial-matrix.sh"
+                    .into(),
+            active_dependency_isolation_gate: preview.active_dependency_isolation_gate,
+            source_filesystem_sink_write_preview_ready: preview.sink_write_preview_ready,
+            required_denial_fixture_count,
+            denial_fixture_count,
+            source_preview_fixture_count,
+            execution_requested_fixture_count,
+            future_persistence_approval_slot_count,
+            explicit_persistence_approval_id_present_count,
+            explicit_persistence_approval_id_missing_count,
+            stale_or_missing_fresh_evidence_fixture_count,
+            active_binary_sha_bound_fixture_count,
+            trusted_source_bound_fixture_count,
+            operator_approval_bound_fixture_count,
+            workspace_path_attempt_fixture_count,
+            public_claim_attempt_fixture_count,
+            release_artifact_write_attempt_fixture_count,
+            blocked_execution_fixture_count,
+            allowed_execution_fixture_count,
+            filesystem_persistence_allowed_count,
+            filesystem_persistence_execution_performed_count,
+            workspace_write_performed_count,
+            evidence_receipt_persisted_count,
+            execution_denial_matrix_ready,
+            activation_blocked_by_execution_denial_matrix,
+            activation_allowed_by_execution_denial_matrix,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            command_invocation_performed: false,
+            receipt_persistence_execution: false,
+            materialization_execution: false,
+            filesystem_persistence_execution: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            denial_fixtures,
+            denial_invariants: vec![
+                "preview payload hashes are bound to future persistence approval slots, not write authority"
+                    .into(),
+                "missing approval id, stale evidence, workspace path attempts, and public artifact attempts all deny execution"
+                    .into(),
+                "filesystem persistence execution remains disabled by default".into(),
+                "no workspace write or evidence receipt persistence occurs in the denial matrix".into(),
+            ],
+            required_next_gates: vec![
+                "add a receipt persistence executor dry-run that consumes the denial matrix without writing"
+                    .into(),
+                "require explicit persistence approval id materialization before any filesystem write"
+                    .into(),
+                "keep public artifact writes behind release-governance approval".into(),
+            ],
+        }
+    }
+}
+
 fn filesystem_persistence_approval_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -7907,6 +8185,112 @@ fn default_activation_evidence_receipt_filesystem_sink_write_preview_fixtures()
             "sha256:preview-public-artifact-attempt-payload",
             true,
             true,
+        ),
+    ]
+}
+
+struct FilesystemPersistenceExecutionDenialFixtureSpec<'a> {
+    fixture_id: &'a str,
+    source_preview_fixture_id: &'a str,
+    deterministic_payload_hash: &'a str,
+    future_persistence_approval_id_slot: &'a str,
+    explicit_persistence_approval_id_present: bool,
+    fresh_live_evidence_bound: bool,
+    operator_approval_bound: bool,
+    workspace_path_requested: bool,
+    public_claim_requested: bool,
+    release_artifact_write_requested: bool,
+    denial_reason: &'a str,
+}
+
+fn filesystem_persistence_execution_denial_fixture(
+    spec: FilesystemPersistenceExecutionDenialFixtureSpec<'_>,
+) -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialFixture {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialFixture {
+        fixture_id: spec.fixture_id.into(),
+        source_preview_fixture_id: spec.source_preview_fixture_id.into(),
+        deterministic_payload_hash: spec.deterministic_payload_hash.into(),
+        future_persistence_approval_id_slot: spec.future_persistence_approval_id_slot.into(),
+        execution_requested: true,
+        explicit_persistence_approval_id_present: spec.explicit_persistence_approval_id_present,
+        fresh_live_evidence_bound: spec.fresh_live_evidence_bound,
+        active_binary_sha_bound: true,
+        trusted_source_bound: true,
+        operator_approval_bound: spec.operator_approval_bound,
+        workspace_path_requested: spec.workspace_path_requested,
+        public_claim_requested: spec.public_claim_requested,
+        release_artifact_write_requested: spec.release_artifact_write_requested,
+        denial_reason: spec.denial_reason.into(),
+        execution_status: "blocked_execution".into(),
+        filesystem_persistence_allowed: false,
+        filesystem_persistence_execution_performed: false,
+        workspace_write_performed: false,
+        evidence_receipt_persisted: false,
+    }
+}
+
+fn default_activation_evidence_receipt_filesystem_persistence_execution_denial_fixtures()
+-> Vec<HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialFixture> {
+    vec![
+        filesystem_persistence_execution_denial_fixture(
+            FilesystemPersistenceExecutionDenialFixtureSpec {
+                fixture_id: "missing-persistence-approval-id-execution-attempt",
+                source_preview_fixture_id: "receipt-root-sink-write-preview",
+                deterministic_payload_hash: "sha256:preview-receipt-root-payload",
+                future_persistence_approval_id_slot: "<future:persistence-approval-id:receipt-root>",
+                explicit_persistence_approval_id_present: false,
+                fresh_live_evidence_bound: true,
+                operator_approval_bound: false,
+                workspace_path_requested: false,
+                public_claim_requested: false,
+                release_artifact_write_requested: false,
+                denial_reason: "explicit persistence approval id is absent",
+            },
+        ),
+        filesystem_persistence_execution_denial_fixture(
+            FilesystemPersistenceExecutionDenialFixtureSpec {
+                fixture_id: "stale-live-evidence-execution-attempt",
+                source_preview_fixture_id: "dry-run-root-sink-write-preview",
+                deterministic_payload_hash: "sha256:preview-dry-run-root-payload",
+                future_persistence_approval_id_slot: "<future:persistence-approval-id:dry-run-root>",
+                explicit_persistence_approval_id_present: true,
+                fresh_live_evidence_bound: false,
+                operator_approval_bound: true,
+                workspace_path_requested: false,
+                public_claim_requested: false,
+                release_artifact_write_requested: false,
+                denial_reason: "fresh live evidence binding is stale or missing",
+            },
+        ),
+        filesystem_persistence_execution_denial_fixture(
+            FilesystemPersistenceExecutionDenialFixtureSpec {
+                fixture_id: "workspace-path-execution-attempt",
+                source_preview_fixture_id: "receipt-root-sink-write-preview",
+                deterministic_payload_hash: "sha256:preview-receipt-root-payload",
+                future_persistence_approval_id_slot: "<future:persistence-approval-id:workspace-path>",
+                explicit_persistence_approval_id_present: true,
+                fresh_live_evidence_bound: true,
+                operator_approval_bound: true,
+                workspace_path_requested: true,
+                public_claim_requested: false,
+                release_artifact_write_requested: false,
+                denial_reason: "workspace path write is outside the receipt sink authority",
+            },
+        ),
+        filesystem_persistence_execution_denial_fixture(
+            FilesystemPersistenceExecutionDenialFixtureSpec {
+                fixture_id: "public-artifact-execution-attempt",
+                source_preview_fixture_id: "public-artifact-sink-write-preview-attempt",
+                deterministic_payload_hash: "sha256:preview-public-artifact-attempt-payload",
+                future_persistence_approval_id_slot: "<future:persistence-approval-id:public-artifact>",
+                explicit_persistence_approval_id_present: true,
+                fresh_live_evidence_bound: true,
+                operator_approval_bound: true,
+                workspace_path_requested: false,
+                public_claim_requested: true,
+                release_artifact_write_requested: true,
+                denial_reason: "public release and artifact writes require separate release governance",
+            },
         ),
     ]
 }
@@ -8557,6 +8941,11 @@ pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_output_path_e
 pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_sink_write_preview_report()
 -> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewReport {
     HeptaUpstreamCodexActivationEvidenceReceiptFilesystemSinkWritePreviewReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_evidence_receipt_filesystem_persistence_execution_denial_matrix_report()
+-> HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialMatrixReport {
+    HeptaUpstreamCodexActivationEvidenceReceiptFilesystemPersistenceExecutionDenialMatrixReport::native_default()
 }
 
 #[cfg(test)]
@@ -12141,6 +12530,101 @@ mod tests {
         assert!(
             report
                 .preview_invariants
+                .iter()
+                .any(|invariant| invariant.contains("not write authority"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_persistence_execution_denial_matrix_is_ready()
+     {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_persistence_execution_denial_matrix_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.filesystem_persistence_execution_denial_matrix_id,
+            "upstream-codex-activation-evidence-receipt-filesystem-persistence-execution-denial-matrix"
+        );
+        assert_eq!(
+            report.source_filesystem_sink_write_preview_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview.sh"
+        );
+        assert_eq!(
+            report.filesystem_persistence_execution_denial_matrix_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-execution-denial-matrix.sh"
+        );
+        assert!(report.source_filesystem_sink_write_preview_ready);
+        assert_eq!(report.required_denial_fixture_count, 4);
+        assert_eq!(report.denial_fixture_count, 4);
+        assert_eq!(report.source_preview_fixture_count, 3);
+        assert_eq!(report.execution_requested_fixture_count, 4);
+        assert_eq!(report.future_persistence_approval_slot_count, 4);
+        assert_eq!(report.explicit_persistence_approval_id_present_count, 3);
+        assert_eq!(report.explicit_persistence_approval_id_missing_count, 1);
+        assert_eq!(report.stale_or_missing_fresh_evidence_fixture_count, 1);
+        assert_eq!(report.active_binary_sha_bound_fixture_count, 4);
+        assert_eq!(report.trusted_source_bound_fixture_count, 4);
+        assert_eq!(report.operator_approval_bound_fixture_count, 3);
+        assert_eq!(report.workspace_path_attempt_fixture_count, 1);
+        assert_eq!(report.public_claim_attempt_fixture_count, 1);
+        assert_eq!(report.release_artifact_write_attempt_fixture_count, 1);
+        assert_eq!(report.blocked_execution_fixture_count, 4);
+        assert_eq!(report.allowed_execution_fixture_count, 0);
+        assert!(report.execution_denial_matrix_ready);
+        assert!(report.denial_fixtures.iter().all(|fixture| {
+            fixture.deterministic_payload_hash.starts_with("sha256:")
+                && fixture
+                    .future_persistence_approval_id_slot
+                    .starts_with("<future:")
+                && fixture.execution_status == "blocked_execution"
+        }));
+        assert!(report.denial_fixtures.iter().any(|fixture| {
+            fixture.fixture_id == "public-artifact-execution-attempt"
+                && fixture.public_claim_requested
+                && fixture.release_artifact_write_requested
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_activation_evidence_receipt_filesystem_persistence_execution_denial_matrix_blocks_effects()
+     {
+        let report =
+            hepta_upstream_codex_activation_evidence_receipt_filesystem_persistence_execution_denial_matrix_report();
+
+        assert!(report.activation_blocked_by_execution_denial_matrix);
+        assert!(!report.activation_allowed_by_execution_denial_matrix);
+        assert_eq!(report.filesystem_persistence_allowed_count, 0);
+        assert_eq!(report.filesystem_persistence_execution_performed_count, 0);
+        assert_eq!(report.workspace_write_performed_count, 0);
+        assert_eq!(report.evidence_receipt_persisted_count, 0);
+        assert!(!report.active_wiring_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.command_invocation_performed);
+        assert!(!report.receipt_persistence_execution);
+        assert!(!report.materialization_execution);
+        assert!(!report.filesystem_persistence_execution);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .denial_invariants
                 .iter()
                 .any(|invariant| invariant.contains("not write authority"))
         );

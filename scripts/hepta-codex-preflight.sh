@@ -172,6 +172,9 @@ scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-output-path-
 echo "[hepta-codex-preflight] upstream Codex activation evidence receipt filesystem sink write preview gate"
 scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-sink-write-preview.sh
 
+echo "[hepta-codex-preflight] upstream Codex activation evidence receipt filesystem persistence execution denial matrix gate"
+scripts/hepta-upstream-codex-activation-evidence-receipt-filesystem-persistence-execution-denial-matrix.sh
+
 echo "[hepta-codex-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh
