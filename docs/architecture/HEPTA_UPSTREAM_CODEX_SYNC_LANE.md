@@ -362,6 +362,20 @@ It fills all `8` evidence record shapes with placeholder values and requires
 them to stay blocked when operator approval, request binding, live gate hashes,
 artifact hashes, and freshness are not verified.
 
+The trusted evidence acceptance matrix gate is:
+
+```bash
+scripts/hepta-upstream-codex-activation-trusted-evidence-acceptance-matrix.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_TRUSTED_EVIDENCE_ACCEPTANCE_MATRIX.md`.
+It enumerates the seven verification checks required for all `8` evidence
+records before trusted evidence can be accepted: operator approval, activation
+request binding, active binary SHA, route/status hash, artifact hash or
+redacted path, freshness window, and trusted source verification. All accepted
+record counts remain `0`, so active wiring remains false.
+
 The local sync-lane gate is:
 
 ```bash

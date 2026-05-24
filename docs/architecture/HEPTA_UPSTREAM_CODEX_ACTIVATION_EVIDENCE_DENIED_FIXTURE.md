@@ -94,6 +94,8 @@ freshness window, and trusted-source checks are not verified.
 
 ## Required Next Gates
 
+- Run `scripts/hepta-upstream-codex-activation-trusted-evidence-acceptance-matrix.sh`
+  to enumerate the exact trusted-evidence verification checks.
 - Replace placeholder records with operator-approved evidence records.
 - Verify activation request binding and live gate hashes for every record.
 - Verify artifact hashes or redacted paths for browser, soak, and rollback

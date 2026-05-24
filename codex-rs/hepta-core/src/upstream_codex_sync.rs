@@ -1289,6 +1289,88 @@ pub struct HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport {
     pub required_next_gates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixEntry {
+    pub evidence_id: String,
+    pub evidence_record_id: String,
+    pub source_gate: String,
+    pub schema_complete: bool,
+    pub required_verification_count: usize,
+    pub satisfied_verification_count: usize,
+    pub operator_approval_required: bool,
+    pub operator_approval_verified: bool,
+    pub activation_request_binding_required: bool,
+    pub activation_request_binding_verified: bool,
+    pub active_binary_sha_required: bool,
+    pub active_binary_sha_verified: bool,
+    pub route_or_status_hash_required: bool,
+    pub route_or_status_hash_verified: bool,
+    pub artifact_hash_or_redacted_path_required: bool,
+    pub artifact_hash_or_redacted_path_verified: bool,
+    pub freshness_window_required: bool,
+    pub freshness_window_satisfied: bool,
+    pub trusted_source_required: bool,
+    pub trusted_source_verified: bool,
+    pub accepted: bool,
+    pub acceptance_status: String,
+    pub denial_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport {
+    pub product: String,
+    pub status: String,
+    pub matrix_id: String,
+    pub matrix_doc_path: String,
+    pub upstream_repository: String,
+    pub candidate_diff_range: String,
+    pub source_denied_fixture_gate: String,
+    pub trusted_acceptance_matrix_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub source_denied_fixture_ready: bool,
+    pub required_evidence_count: usize,
+    pub verification_entry_count: usize,
+    pub schema_complete_verification_entry_count: usize,
+    pub required_verification_count_per_record: usize,
+    pub total_required_verification_count: usize,
+    pub total_satisfied_verification_count: usize,
+    pub operator_approval_verified_record_count: usize,
+    pub request_binding_verified_record_count: usize,
+    pub active_binary_sha_verified_record_count: usize,
+    pub route_or_status_hash_verified_record_count: usize,
+    pub artifact_hash_verified_record_count: usize,
+    pub freshness_window_satisfied_record_count: usize,
+    pub trusted_source_verified_record_count: usize,
+    pub accepted_record_count: usize,
+    pub blocked_record_count: usize,
+    pub trusted_evidence_acceptance_matrix_ready: bool,
+    pub activation_blocked_by_trusted_acceptance_matrix: bool,
+    pub activation_allowed_by_trusted_acceptance_matrix: bool,
+    pub acceptance_denial_reason: String,
+    pub active_wiring_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub active_runtime_auto_rebase_allowed: bool,
+    pub active_codex_engine_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub verification_entries: Vec<HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixEntry>,
+    pub acceptance_invariants: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
 impl HeptaUpstreamCodexSyncLaneReport {
     pub fn native_default() -> Self {
         Self::from_contracts(default_upstream_codex_sync_contracts())
@@ -3987,6 +4069,210 @@ fn default_activation_evidence_record_denied_fixture_entries(
         .collect()
 }
 
+impl HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport {
+    pub fn native_default() -> Self {
+        let denied_fixture =
+            HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport::native_default();
+        let verification_entries =
+            default_activation_trusted_evidence_acceptance_matrix_entries(&denied_fixture);
+        let required_evidence_count = denied_fixture.required_evidence_count;
+        let verification_entry_count = verification_entries.len();
+        let schema_complete_verification_entry_count = verification_entries
+            .iter()
+            .filter(|entry| entry.schema_complete)
+            .count();
+        let required_verification_count_per_record = 7;
+        let total_required_verification_count = verification_entries
+            .iter()
+            .map(|entry| entry.required_verification_count)
+            .sum();
+        let total_satisfied_verification_count = verification_entries
+            .iter()
+            .map(|entry| entry.satisfied_verification_count)
+            .sum();
+        let operator_approval_verified_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.operator_approval_verified)
+            .count();
+        let request_binding_verified_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.activation_request_binding_verified)
+            .count();
+        let active_binary_sha_verified_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.active_binary_sha_verified)
+            .count();
+        let route_or_status_hash_verified_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.route_or_status_hash_verified)
+            .count();
+        let artifact_hash_verified_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.artifact_hash_or_redacted_path_verified)
+            .count();
+        let freshness_window_satisfied_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.freshness_window_satisfied)
+            .count();
+        let trusted_source_verified_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.trusted_source_verified)
+            .count();
+        let accepted_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.accepted)
+            .count();
+        let blocked_record_count = verification_entries
+            .iter()
+            .filter(|entry| entry.acceptance_status == "blocked")
+            .count();
+        let activation_allowed_by_trusted_acceptance_matrix = false;
+        let activation_blocked_by_trusted_acceptance_matrix = true;
+        let acceptance_denial_reason =
+            "trusted evidence acceptance requires operator approval, request binding, hashes, freshness, and trusted source verification"
+                .to_string();
+        let trusted_evidence_acceptance_matrix_ready = denied_fixture.denied_fixture_ready
+            && required_evidence_count == 8
+            && verification_entry_count == required_evidence_count
+            && schema_complete_verification_entry_count == required_evidence_count
+            && required_verification_count_per_record == 7
+            && total_required_verification_count == required_evidence_count * 7
+            && total_satisfied_verification_count == 0
+            && operator_approval_verified_record_count == 0
+            && request_binding_verified_record_count == 0
+            && active_binary_sha_verified_record_count == 0
+            && route_or_status_hash_verified_record_count == 0
+            && artifact_hash_verified_record_count == 0
+            && freshness_window_satisfied_record_count == 0
+            && trusted_source_verified_record_count == 0
+            && accepted_record_count == 0
+            && blocked_record_count == required_evidence_count
+            && activation_blocked_by_trusted_acceptance_matrix
+            && !activation_allowed_by_trusted_acceptance_matrix;
+
+        Self {
+            product: "Hepta".into(),
+            status: if trusted_evidence_acceptance_matrix_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            matrix_id: "upstream-codex-activation-trusted-evidence-acceptance-matrix".into(),
+            matrix_doc_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_TRUSTED_EVIDENCE_ACCEPTANCE_MATRIX.md"
+                    .into(),
+            upstream_repository: denied_fixture.upstream_repository,
+            candidate_diff_range: denied_fixture.candidate_diff_range,
+            source_denied_fixture_gate: denied_fixture.denied_fixture_gate,
+            trusted_acceptance_matrix_gate:
+                "scripts/hepta-upstream-codex-activation-trusted-evidence-acceptance-matrix.sh"
+                    .into(),
+            active_dependency_isolation_gate: denied_fixture.active_dependency_isolation_gate,
+            source_denied_fixture_ready: denied_fixture.denied_fixture_ready,
+            required_evidence_count,
+            verification_entry_count,
+            schema_complete_verification_entry_count,
+            required_verification_count_per_record,
+            total_required_verification_count,
+            total_satisfied_verification_count,
+            operator_approval_verified_record_count,
+            request_binding_verified_record_count,
+            active_binary_sha_verified_record_count,
+            route_or_status_hash_verified_record_count,
+            artifact_hash_verified_record_count,
+            freshness_window_satisfied_record_count,
+            trusted_source_verified_record_count,
+            accepted_record_count,
+            blocked_record_count,
+            trusted_evidence_acceptance_matrix_ready,
+            activation_blocked_by_trusted_acceptance_matrix,
+            activation_allowed_by_trusted_acceptance_matrix,
+            acceptance_denial_reason,
+            active_wiring_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            active_runtime_auto_rebase_allowed: false,
+            active_codex_engine_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            verification_entries,
+            acceptance_invariants: vec![
+                "schema-complete fixture records are not trusted evidence".into(),
+                "operator approval must be verified for every evidence record".into(),
+                "activation request binding, active binary sha, and route/status hash must all verify"
+                    .into(),
+                "artifact hash or redacted path and freshness window must verify before acceptance"
+                    .into(),
+                "trusted source verification is required before active wiring can be reconsidered"
+                    .into(),
+            ],
+            required_next_gates: vec![
+                "replace placeholders with operator-approved evidence records".into(),
+                "bind every evidence record to the activation request id and active binary sha"
+                    .into(),
+                "verify route/status and artifact hashes for live dependency, watchdog, browser, soak, and rollback evidence"
+                    .into(),
+                "rerun freshness policy and clean preflight after trusted evidence is recorded"
+                    .into(),
+            ],
+        }
+    }
+}
+
+fn activation_trusted_evidence_acceptance_matrix_entry(
+    record: &HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureEntry,
+) -> HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixEntry {
+    HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixEntry {
+        evidence_id: record.evidence_id.clone(),
+        evidence_record_id: record.evidence_record_id.clone(),
+        source_gate: record.source_gate.clone(),
+        schema_complete: record.schema_complete,
+        required_verification_count: 7,
+        satisfied_verification_count: 0,
+        operator_approval_required: true,
+        operator_approval_verified: false,
+        activation_request_binding_required: true,
+        activation_request_binding_verified: false,
+        active_binary_sha_required: true,
+        active_binary_sha_verified: false,
+        route_or_status_hash_required: true,
+        route_or_status_hash_verified: false,
+        artifact_hash_or_redacted_path_required: true,
+        artifact_hash_or_redacted_path_verified: false,
+        freshness_window_required: true,
+        freshness_window_satisfied: false,
+        trusted_source_required: true,
+        trusted_source_verified: false,
+        accepted: false,
+        acceptance_status: "blocked".into(),
+        denial_reason: "trusted evidence acceptance requires all seven verification checks to pass"
+            .into(),
+    }
+}
+
+fn default_activation_trusted_evidence_acceptance_matrix_entries(
+    denied_fixture: &HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport,
+) -> Vec<HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixEntry> {
+    denied_fixture
+        .fixture_records
+        .iter()
+        .map(activation_trusted_evidence_acceptance_matrix_entry)
+        .collect()
+}
+
 fn activation_request_field(
     name: &str,
     redacted_or_hashed: bool,
@@ -4563,6 +4849,11 @@ pub fn hepta_upstream_codex_activation_evidence_binding_record_manifest_report()
 pub fn hepta_upstream_codex_activation_evidence_record_denied_fixture_report()
 -> HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport {
     HeptaUpstreamCodexActivationEvidenceRecordDeniedFixtureReport::native_default()
+}
+
+pub fn hepta_upstream_codex_activation_trusted_evidence_acceptance_matrix_report()
+-> HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport {
+    HeptaUpstreamCodexActivationTrustedEvidenceAcceptanceMatrixReport::native_default()
 }
 
 #[cfg(test)]
@@ -6887,6 +7178,102 @@ mod tests {
         assert!(
             report
                 .fixture_invariants
+                .iter()
+                .any(|invariant| invariant.contains("not trusted evidence"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_activation_trusted_evidence_acceptance_matrix_enumerates_checks() {
+        let report = hepta_upstream_codex_activation_trusted_evidence_acceptance_matrix_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.matrix_id,
+            "upstream-codex-activation-trusted-evidence-acceptance-matrix"
+        );
+        assert_eq!(
+            report.source_denied_fixture_gate,
+            "scripts/hepta-upstream-codex-activation-evidence-denied-fixture.sh"
+        );
+        assert_eq!(
+            report.trusted_acceptance_matrix_gate,
+            "scripts/hepta-upstream-codex-activation-trusted-evidence-acceptance-matrix.sh"
+        );
+        assert!(report.source_denied_fixture_ready);
+        assert_eq!(report.required_evidence_count, 8);
+        assert_eq!(report.verification_entry_count, 8);
+        assert_eq!(report.schema_complete_verification_entry_count, 8);
+        assert_eq!(report.required_verification_count_per_record, 7);
+        assert_eq!(report.total_required_verification_count, 56);
+        assert_eq!(report.total_satisfied_verification_count, 0);
+        assert_eq!(report.operator_approval_verified_record_count, 0);
+        assert_eq!(report.request_binding_verified_record_count, 0);
+        assert_eq!(report.active_binary_sha_verified_record_count, 0);
+        assert_eq!(report.route_or_status_hash_verified_record_count, 0);
+        assert_eq!(report.artifact_hash_verified_record_count, 0);
+        assert_eq!(report.freshness_window_satisfied_record_count, 0);
+        assert_eq!(report.trusted_source_verified_record_count, 0);
+        assert_eq!(report.accepted_record_count, 0);
+        assert_eq!(report.blocked_record_count, 8);
+        assert!(report.trusted_evidence_acceptance_matrix_ready);
+        assert!(report.activation_blocked_by_trusted_acceptance_matrix);
+        assert!(!report.activation_allowed_by_trusted_acceptance_matrix);
+        assert!(!report.active_wiring_allowed);
+    }
+
+    #[test]
+    fn upstream_codex_activation_trusted_evidence_acceptance_matrix_preserves_denials() {
+        let report = hepta_upstream_codex_activation_trusted_evidence_acceptance_matrix_report();
+
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.active_runtime_auto_rebase_allowed);
+        assert!(!report.active_codex_engine_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+        assert!(
+            report
+                .acceptance_denial_reason
+                .contains("operator approval")
+        );
+        assert!(report.verification_entries.iter().all(|entry| {
+            entry.schema_complete
+                && entry.required_verification_count == 7
+                && entry.satisfied_verification_count == 0
+                && entry.operator_approval_required
+                && !entry.operator_approval_verified
+                && entry.activation_request_binding_required
+                && !entry.activation_request_binding_verified
+                && entry.active_binary_sha_required
+                && !entry.active_binary_sha_verified
+                && entry.route_or_status_hash_required
+                && !entry.route_or_status_hash_verified
+                && entry.artifact_hash_or_redacted_path_required
+                && !entry.artifact_hash_or_redacted_path_verified
+                && entry.freshness_window_required
+                && !entry.freshness_window_satisfied
+                && entry.trusted_source_required
+                && !entry.trusted_source_verified
+                && !entry.accepted
+                && entry.acceptance_status == "blocked"
+        }));
+        assert!(
+            report
+                .acceptance_invariants
                 .iter()
                 .any(|invariant| invariant.contains("not trusted evidence"))
         );

@@ -135,6 +135,11 @@ Current state:
   fills all `8` evidence record shapes with placeholder values and proves they
   still stay blocked without operator approval, verified request binding, live
   gate hashes, artifact hashes, and freshness.
+- `scripts/hepta-upstream-codex-activation-trusted-evidence-acceptance-matrix.sh`
+  defines the seven verification checks required before any placeholder
+  evidence record can become trusted evidence: operator approval, activation
+  request binding, active binary SHA, route/status hash, artifact hash or
+  redacted path, freshness window, and trusted source verification.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and
   gated by active-service dependency isolation before any active runtime
