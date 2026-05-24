@@ -13,7 +13,7 @@ bucket is allowed to move from report-only intake into active Hepta behavior.
 - Assessed buckets: `4 / 4`
 - Absorption/replay source readiness: `4 / 4`
 - Required surface promotion packets: `4`
-- Completed surface promotion packets: `3`
+- Completed surface promotion packets: `4`
 - Promotable buckets: `0`
 - Promotion-blocked buckets: `4`
 - Active promotion ready: `false`
@@ -22,8 +22,8 @@ The decision packet is ready, but active promotion is not open.
 
 ## Blocked Buckets
 
-- `product-doc-release-governance`: release claims still require a dedicated
-  operator-approved claim packet.
+- `product-doc-release-governance`: release-governance claim promotion packet
+  is ready, but public claims remain blocked.
 - `legacy-cli-tui-compatibility`: legacy CLI/TUI parity promotion packet is
   ready, but active CLI/TUI promotion remains blocked.
 - `provider-credential-sandbox-security`: provider/security promotion packet is

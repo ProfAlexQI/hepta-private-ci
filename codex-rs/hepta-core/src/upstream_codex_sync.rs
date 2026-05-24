@@ -228,6 +228,49 @@ pub struct HeptaUpstreamCodexProductGovernanceTranslationReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexReleaseGovernancePromotionReport {
+    pub product: String,
+    pub status: String,
+    pub promotion_id: String,
+    pub promotion_packet_path: String,
+    pub selected_bucket_id: String,
+    pub selected_changed_file_count: usize,
+    pub source_translation_gate: String,
+    pub promotion_gate: String,
+    pub active_dependency_isolation_gate: String,
+    pub release_claim_taxonomy_ready: bool,
+    pub package_install_context_ready: bool,
+    pub plugin_marketplace_policy_ready: bool,
+    pub operator_approval_model_ready: bool,
+    pub watchdog_soak_evidence_ready: bool,
+    pub public_claim_boundary_ready: bool,
+    pub side_effect_boundary_ready: bool,
+    pub required_promotion_condition_count: usize,
+    pub ready_promotion_condition_count: usize,
+    pub promotion_packet_ready: bool,
+    pub public_release_claim_allowed: bool,
+    pub public_ga_claim_allowed: bool,
+    pub release_artifact_write_allowed: bool,
+    pub active_runtime_code_wiring_allowed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub upstream_auto_rebase_allowed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_checkout_performed: bool,
+    pub workspace_mutation_default: bool,
+    pub active_service_restart: bool,
+    pub credential_value_read: bool,
+    pub secret_file_read: bool,
+    pub provider_invoked: bool,
+    pub channel_delivery_performed: bool,
+    pub gateway_rpc_performed: bool,
+    pub public_release_published: bool,
+    pub promotion_conditions: Vec<String>,
+    pub remaining_blockers: Vec<String>,
+    pub required_next_gates: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaUpstreamCodexLegacyCompatibilityAbsorptionReport {
     pub product: String,
     pub status: String,
@@ -990,6 +1033,84 @@ impl HeptaUpstreamCodexProductGovernanceTranslationReport {
             channel_delivery_performed: false,
             gateway_rpc_performed: false,
             hepta_actions,
+        }
+    }
+}
+
+impl HeptaUpstreamCodexReleaseGovernancePromotionReport {
+    pub fn native_default() -> Self {
+        let promotion_conditions: Vec<String> = vec![
+            "release claim taxonomy is documented as local readiness language".into(),
+            "package and install-context governance remains Hepta-owned".into(),
+            "plugin marketplace policy remains operator-approved before live mutation".into(),
+            "operator approval model is explicit before any public claim".into(),
+            "watchdog, browser smoke, and soak evidence are required before claims".into(),
+            "public claim boundary keeps GA/release publication disabled".into(),
+            "side-effect boundary keeps artifacts, channels, and gateway RPC off".into(),
+        ];
+        let required_promotion_condition_count = 7;
+        let ready_promotion_condition_count = promotion_conditions.len();
+        let promotion_packet_ready =
+            ready_promotion_condition_count == required_promotion_condition_count;
+
+        Self {
+            product: "Hepta".into(),
+            status: if promotion_packet_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            promotion_id: "release-governance-claim-promotion-packet".into(),
+            promotion_packet_path:
+                "docs/architecture/HEPTA_UPSTREAM_CODEX_RELEASE_GOVERNANCE_PROMOTION.md".into(),
+            selected_bucket_id: "product-doc-release-governance".into(),
+            selected_changed_file_count: 22,
+            source_translation_gate:
+                "scripts/hepta-upstream-codex-product-governance-translation.sh".into(),
+            promotion_gate: "scripts/hepta-upstream-codex-release-governance-promotion.sh".into(),
+            active_dependency_isolation_gate:
+                "scripts/hepta-active-service-dependency-isolation.sh".into(),
+            release_claim_taxonomy_ready: true,
+            package_install_context_ready: true,
+            plugin_marketplace_policy_ready: true,
+            operator_approval_model_ready: true,
+            watchdog_soak_evidence_ready: true,
+            public_claim_boundary_ready: true,
+            side_effect_boundary_ready: true,
+            required_promotion_condition_count,
+            ready_promotion_condition_count,
+            promotion_packet_ready,
+            public_release_claim_allowed: false,
+            public_ga_claim_allowed: false,
+            release_artifact_write_allowed: false,
+            active_runtime_code_wiring_allowed: false,
+            active_runtime_dependency_allowed: false,
+            upstream_auto_rebase_allowed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_checkout_performed: false,
+            workspace_mutation_default: false,
+            active_service_restart: false,
+            credential_value_read: false,
+            secret_file_read: false,
+            provider_invoked: false,
+            channel_delivery_performed: false,
+            gateway_rpc_performed: false,
+            public_release_published: false,
+            promotion_conditions,
+            remaining_blockers: vec![
+                "public GA claim remains disabled by this packet".into(),
+                "public release publication remains disabled by this packet".into(),
+                "release artifact writes remain forbidden by this packet".into(),
+                "channel delivery and gateway RPC remain forbidden".into(),
+            ],
+            required_next_gates: vec![
+                "require explicit operator approval before any public release claim".into(),
+                "require live watchdog, browser smoke, and long soak evidence before claims".into(),
+                "keep active hepta-cli cargo tree free of tracked Codex engine crates".into(),
+                "rerun promotion readiness after all per-surface promotion packets close".into(),
+            ],
         }
     }
 }
@@ -1800,10 +1921,10 @@ impl HeptaUpstreamCodexPromotionReadinessReport {
                 absorption_replay_ready: true,
                 required_surface_promotion_packet:
                     "release-governance-claim-promotion-packet".into(),
-                surface_promotion_packet_ready: false,
+                surface_promotion_packet_ready: true,
                 active_promotion_allowed: false,
                 blocker:
-                    "release claims still require a dedicated operator-approved claim packet"
+                    "release-governance claim promotion packet is ready, but public claims remain blocked"
                         .into(),
             },
             HeptaUpstreamCodexPromotionDecision {
@@ -2311,6 +2432,11 @@ pub fn hepta_upstream_codex_product_governance_translation_report()
     HeptaUpstreamCodexProductGovernanceTranslationReport::native_default()
 }
 
+pub fn hepta_upstream_codex_release_governance_promotion_report()
+-> HeptaUpstreamCodexReleaseGovernancePromotionReport {
+    HeptaUpstreamCodexReleaseGovernancePromotionReport::native_default()
+}
+
 pub fn hepta_upstream_codex_legacy_compatibility_absorption_report()
 -> HeptaUpstreamCodexLegacyCompatibilityAbsorptionReport {
     HeptaUpstreamCodexLegacyCompatibilityAbsorptionReport::native_default()
@@ -2742,6 +2868,92 @@ mod tests {
                 .hepta_actions
                 .iter()
                 .any(|action| action.contains("long soak"))
+        );
+    }
+
+    #[test]
+    fn upstream_codex_release_governance_promotion_packet_is_ready_but_not_public() {
+        let report = hepta_upstream_codex_release_governance_promotion_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(
+            report.promotion_id,
+            "release-governance-claim-promotion-packet"
+        );
+        assert_eq!(
+            report.promotion_packet_path,
+            "docs/architecture/HEPTA_UPSTREAM_CODEX_RELEASE_GOVERNANCE_PROMOTION.md"
+        );
+        assert_eq!(report.selected_bucket_id, "product-doc-release-governance");
+        assert_eq!(report.selected_changed_file_count, 22);
+        assert_eq!(
+            report.source_translation_gate,
+            "scripts/hepta-upstream-codex-product-governance-translation.sh"
+        );
+        assert_eq!(
+            report.promotion_gate,
+            "scripts/hepta-upstream-codex-release-governance-promotion.sh"
+        );
+        assert!(report.release_claim_taxonomy_ready);
+        assert!(report.package_install_context_ready);
+        assert!(report.plugin_marketplace_policy_ready);
+        assert!(report.operator_approval_model_ready);
+        assert!(report.watchdog_soak_evidence_ready);
+        assert!(report.public_claim_boundary_ready);
+        assert!(report.side_effect_boundary_ready);
+        assert_eq!(
+            report.ready_promotion_condition_count,
+            report.required_promotion_condition_count
+        );
+        assert!(report.promotion_packet_ready);
+        assert!(!report.public_release_claim_allowed);
+        assert!(!report.public_ga_claim_allowed);
+        assert!(!report.release_artifact_write_allowed);
+        assert!(!report.active_runtime_code_wiring_allowed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.upstream_auto_rebase_allowed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_checkout_performed);
+        assert!(!report.workspace_mutation_default);
+        assert!(!report.active_service_restart);
+        assert!(!report.credential_value_read);
+        assert!(!report.secret_file_read);
+        assert!(!report.provider_invoked);
+        assert!(!report.channel_delivery_performed);
+        assert!(!report.gateway_rpc_performed);
+        assert!(!report.public_release_published);
+    }
+
+    #[test]
+    fn upstream_codex_release_governance_promotion_tracks_claim_blockers() {
+        let report = hepta_upstream_codex_release_governance_promotion_report();
+
+        assert_eq!(report.promotion_conditions.len(), 7);
+        assert!(
+            report
+                .promotion_conditions
+                .iter()
+                .any(|condition| condition.contains("release claim taxonomy"))
+        );
+        assert!(
+            report
+                .promotion_conditions
+                .iter()
+                .any(|condition| condition.contains("watchdog"))
+        );
+        assert!(
+            report
+                .remaining_blockers
+                .iter()
+                .any(|blocker| blocker.contains("public GA claim"))
+        );
+        assert!(
+            report
+                .required_next_gates
+                .iter()
+                .any(|gate| gate.contains("operator approval"))
         );
     }
 
@@ -3693,7 +3905,7 @@ mod tests {
             report.required_absorption_replay_ready_count
         );
         assert_eq!(report.required_surface_promotion_packet_count, 4);
-        assert_eq!(report.completed_surface_promotion_packet_count, 3);
+        assert_eq!(report.completed_surface_promotion_packet_count, 4);
         assert_eq!(report.promotable_bucket_count, 0);
         assert_eq!(report.promotion_blocked_bucket_count, 4);
         assert!(report.readiness_source_ready);
@@ -3729,6 +3941,10 @@ mod tests {
         assert!(report.decisions.iter().any(|decision| decision.bucket_id
             == "provider-credential-sandbox-security"
             && decision.risk == HeptaUpstreamCodexSyncRisk::P0Security
+            && decision.surface_promotion_packet_ready));
+        assert!(report.decisions.iter().any(|decision| decision.bucket_id
+            == "product-doc-release-governance"
+            && decision.risk == HeptaUpstreamCodexSyncRisk::P2Product
             && decision.surface_promotion_packet_ready));
         assert!(report.decisions.iter().any(|decision| decision.bucket_id
             == "runtime-session-tool-mcp-appserver"

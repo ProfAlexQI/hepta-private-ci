@@ -39,6 +39,11 @@ Current state:
 - `scripts/hepta-upstream-codex-product-governance-translation.sh` verifies the
   Hepta-owned translation packet for that selected product/release-governance
   family, keeping upstream docs/package wording out of active runtime claims.
+- `scripts/hepta-upstream-codex-release-governance-promotion.sh` verifies the
+  release-governance claim promotion packet: all seven local promotion
+  conditions are ready, but public GA claims, public release claims, release
+  artifact writes, channel delivery, and gateway promotion remain blocked until
+  explicit operator approval and fresh live evidence exist.
 - `scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh` selects the
   P1 CLI/TUI/code-mode compatibility family as an intake contract while keeping
   Codex CLI/TUI behavior out of the active Hepta runtime.
@@ -84,7 +89,7 @@ Current state:
   claims false.
 - `scripts/hepta-upstream-codex-promotion-readiness.sh` turns the intake/replay
   map into an explicit promotion decision: four selected buckets are assessed,
-  four absorption/replay sources are ready, three surface promotion packets are
+  four absorption/replay sources are ready, four surface promotion packets are
   complete, and zero buckets are promotable, so active promotion remains closed.
 - `scripts/hepta-upstream-codex-sync-lane.sh` defines the upstream Codex intake
   lane: upstream changes are classified, absorbed through Hepta contracts, and

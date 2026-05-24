@@ -73,6 +73,19 @@ exec, network, and release-governance deltas into Hepta-owned policy language.
 It keeps public release claims, active runtime wiring, and live plugin mutation
 behind Hepta gates and operator approval.
 
+The release-governance promotion packet gate is:
+
+```bash
+scripts/hepta-upstream-codex-release-governance-promotion.sh
+```
+
+This gate verifies
+`docs/architecture/HEPTA_UPSTREAM_CODEX_RELEASE_GOVERNANCE_PROMOTION.md`. It
+marks the release-governance claim promotion packet ready with `7 / 7`
+promotion conditions while still keeping public GA claims, public release
+claims, release artifact writes, channel delivery, gateway RPC, and release
+publication false.
+
 The P1 compatibility absorption-contract gate is:
 
 ```bash
@@ -218,10 +231,10 @@ scripts/hepta-upstream-codex-promotion-readiness.sh
 This gate verifies
 `docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_READINESS.md`. It consumes the
 absorption/replay readiness result and explicitly decides that `4 / 4` selected
-buckets are assessed, `4 / 4` absorption/replay sources are ready, `3` surface
+buckets are assessed, `4 / 4` absorption/replay sources are ready, `4` surface
 promotion packets are complete, and `0` buckets are promotable. The gate
-therefore keeps active promotion closed until the remaining release-governance
-claim packet plus active-wiring evidence exists.
+therefore keeps active promotion closed until explicit active-wiring/public-claim
+approval evidence exists.
 
 The local sync-lane gate is:
 

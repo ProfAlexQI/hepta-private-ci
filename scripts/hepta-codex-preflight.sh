@@ -61,6 +61,9 @@ scripts/hepta-upstream-codex-product-governance-absorption.sh
 echo "[hepta-codex-preflight] upstream Codex product-governance translation gate"
 scripts/hepta-upstream-codex-product-governance-translation.sh
 
+echo "[hepta-codex-preflight] upstream Codex release-governance promotion gate"
+scripts/hepta-upstream-codex-release-governance-promotion.sh
+
 echo "[hepta-codex-preflight] upstream Codex legacy compatibility absorption gate"
 scripts/hepta-upstream-codex-legacy-compatibility-absorption.sh
 
