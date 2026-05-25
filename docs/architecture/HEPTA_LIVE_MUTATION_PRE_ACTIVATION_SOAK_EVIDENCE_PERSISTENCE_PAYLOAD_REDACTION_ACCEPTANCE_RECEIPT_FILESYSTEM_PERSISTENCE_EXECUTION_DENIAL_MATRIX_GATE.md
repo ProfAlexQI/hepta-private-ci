@@ -186,7 +186,10 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction acceptance receipt filesystem persistence
-receipt dry-run ledger, still without command execution, materialization
-execution, filesystem persistence execution, output-path selection, receipt
-persistence, filesystem writes, or live mutation.
+The follow-up dry-run ledger gate is:
+
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-dry-run-ledger-gate.sh`
+
+It remains without command execution, materialization execution, filesystem
+persistence execution, output-path selection, receipt persistence, filesystem
+writes, or live mutation.
