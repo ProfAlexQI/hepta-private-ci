@@ -104,5 +104,9 @@ The gate must not:
 - execute rollback
 - read credentials
 
-The next safe step is a no-secret payload review dry-run gate, still without
-persistence or live mutation.
+The next safe step is:
+
+- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-no-secret-payload-review-gate.sh`
+
+That gate reviews the dry-run shape for future single-surface payloads while
+still avoiding persistence and live mutation.
