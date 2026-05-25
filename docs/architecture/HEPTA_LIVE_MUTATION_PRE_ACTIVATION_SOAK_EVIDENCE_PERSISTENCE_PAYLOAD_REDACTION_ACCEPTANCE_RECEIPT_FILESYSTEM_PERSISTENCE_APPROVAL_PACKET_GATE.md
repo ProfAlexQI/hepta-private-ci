@@ -215,7 +215,10 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction acceptance receipt filesystem output-path
-allowlist gate, still without command execution, materialization execution,
-filesystem persistence execution, receipt persistence, filesystem writes, or
-live mutation.
+The next safe step is:
+
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-output-path-allowlist-gate.sh`
+
+It defines the redacted report-only output-path allowlist, still without
+command execution, materialization execution, filesystem persistence execution,
+output-path selection, receipt persistence, filesystem writes, or live mutation.
