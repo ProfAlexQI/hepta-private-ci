@@ -1,24 +1,25 @@
-# Hepta Live Mutation Pre-Activation Soak Evidence Persistence Payload Redaction Acceptance Receipt Filesystem Persistence Ledger Persistence Rehearsal Denial Gate
+# Hepta Live Mutation Pre-Activation Soak Evidence Persistence Payload Redaction Acceptance Receipt Filesystem Persistence Ledger Persistence Rehearsal Receipt Contract Gate
 
 Date: 2026-05-25
 
 This gate sits after the payload redaction acceptance receipt filesystem
-persistence ledger shape approval gate. It rehearses the denial policy for
-future ledger persistence attempts while keeping the current gate report-only
-and side-effect free.
+persistence ledger persistence rehearsal denial gate. It defines the future
+receipt contract for ledger-persistence rehearsal outcomes while keeping the
+current system report-only and side-effect free.
 
-The gate does not record a ledger shape approval, persist a ledger, select a
-write path, invoke or execute a command, execute materialization, execute
-filesystem persistence, persist a receipt, write a file, inspect payload
-plaintext, run a live secret scan, send a channel message, invoke a provider or
-model, mutate Gateway/runtime stores, restart launchd, execute rollback, or
-enable live mutation.
+The gate does not record a receipt contract, materialize a rehearsal receipt,
+persist a ledger or receipt, select a write path, invoke or execute a command,
+execute materialization, execute filesystem persistence, write a file, inspect
+payload plaintext, run a live secret scan, send a channel message, invoke a
+provider or model, mutate Gateway/runtime stores, restart launchd, execute
+rollback, or enable live mutation.
 
 ## Contract
 
 The gate consumes:
 
-- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-shape-approval-gate.sh`
+- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-persistence-rehearsal-denial-gate.sh`
+- the source rehearsal-denial report hash
 - the source ledger-shape approval report hash
 - the source dry-run ledger report hash
 - the source execution-denial matrix report hash
@@ -41,12 +42,20 @@ The gate consumes:
 - the source persistence-denial report hash
 - the minimum 24-sample pre-activation soak requirement
 
-It requires the source ledger-shape approval gate to be `ready`, but keeps these
+It requires the source rehearsal-denial gate to be `ready`, but keeps these
 values false or zero:
 
+- `recorded_rehearsal_receipt_contract_field_count`
+- `rehearsal_receipt_contract_recorded_count`
+- `rehearsal_receipt_contract_persisted_count`
+- `rehearsal_receipt_contract_materialized_count`
+- `rehearsal_receipt_contract_filesystem_written_count`
+- `rehearsal_receipt_materialized_count`
+- `rehearsal_receipt_persisted_count`
 - `ledger_persistence_rehearsal_performed_count`
 - `ledger_persistence_allowed`
 - `ledger_persistence_allowed_count`
+- `ledger_persistence_execution_requested_count`
 - `ledger_persistence_execution_performed`
 - `ledger_persistence_execution_performed_count`
 - `ledger_recorded`
@@ -55,20 +64,16 @@ values false or zero:
 - `ledger_filesystem_written`
 - `ledger_write_path_selected`
 - `ledger_write_path_recorded`
-- `ledger_shape_approval_recorded`
-- `ledger_shape_approval_persisted`
-- `dry_run_ledger_recorded`
-- `dry_run_ledger_persisted`
-- `dry_run_ledger_materialized`
-- `dry_run_ledger_filesystem_written`
 - `receipt_persistence_allowed_count`
 - `receipt_persistence_execution_performed_count`
 - `receipt_materialized_count`
 - `receipt_persisted_count`
 - `filesystem_persistence_allowed`
 - `filesystem_persistence_allowed_count`
+- `filesystem_persistence_execution_requested_count`
 - `filesystem_persistence_execution_performed`
 - `filesystem_persistence_execution_performed_count`
+- `filesystem_write_requested_count`
 - `filesystem_write_performed`
 - `filesystem_write_performed_count`
 - `workspace_write_performed`
@@ -97,67 +102,75 @@ values false or zero:
 - `activation_allowed`
 - `live_mutation_execution_ready`
 
-## Rehearsal Status
+## Receipt Contract Status
 
-- Required ledger persistence rehearsal fixture count: `4`
-- Ledger persistence rehearsal fixture count: `4`
-- Blocked ledger persistence rehearsal fixture count: `4`
-- Allowed ledger persistence rehearsal fixture count: `0`
-- Ledger persistence rehearsal requested count: `4`
-- Ledger persistence rehearsal performed count: `0`
-- Ledger persistence execution requested count: `4`
-- Ledger persistence execution performed count: `0`
-- Filesystem persistence execution requested count: `4`
-- Filesystem persistence execution performed count: `0`
-- Filesystem write requested count: `4`
-- Filesystem write performed count: `0`
-- Future rollback rehearsal evidence slot count: `4`
-- Rollback rehearsal evidence recorded count: `0`
-- Activation blocked by ledger persistence rehearsal denial: `true`
-- Activation allowed by ledger persistence rehearsal denial: `false`
+- Required rehearsal receipt contract field count: `22`
+- Rehearsal receipt contract field count: `22`
+- Recorded rehearsal receipt contract field count: `0`
+- Redacted or hashed rehearsal receipt contract field count: `20`
+- Required rehearsal receipt contract fixture count: `4`
+- Rehearsal receipt contract fixture count: `4`
+- Blocked rehearsal receipt contract fixture count: `4`
+- Allowed rehearsal receipt contract fixture count: `0`
+- Rehearsal receipt contract hash count: `4`
+- Rehearsal receipt contract requested count: `4`
+- Rehearsal receipt contract recorded count: `0`
+- Rehearsal receipt contract persisted count: `0`
+- Rehearsal receipt contract materialized count: `0`
+- Rehearsal receipt contract filesystem written count: `0`
+- Rehearsal receipt requested count: `4`
+- Rehearsal receipt materialized count: `0`
+- Rehearsal receipt persisted count: `0`
+- Activation blocked by rehearsal receipt contract: `true`
+- Activation allowed by rehearsal receipt contract: `false`
 - Live mutation execution ready: `false`
 
-## Required Before Any Ledger Persistence Rehearsal
+## Required Rehearsal Receipt Contract Fields
 
-The future rehearsal shape is explicit and stable:
+The future rehearsal receipt contract shape is explicit and stable:
 
-- `explicit_operator_enablement_for_ledger_persistence`
-- `ledger_shape_approval_id`
-- `ledger_shape_approval_report_sha256`
-- `filesystem_persistence_approval_id`
+- `ledger_persistence_rehearsal_receipt_id`
+- `receipt_schema_version`
+- `source_rehearsal_denial_report_sha256`
+- `source_ledger_shape_approval_report_sha256`
+- `source_dry_run_ledger_report_sha256`
+- `rehearsal_fixture_id`
+- `deterministic_rehearsal_sha256`
+- `denial_reason_codes`
 - `operator_approval_id`
 - `operator_identity_hash`
 - `single_surface_activation_scope`
-- `accepted_redaction_proof_ids`
-- `fresh_pre_activation_soak_evidence`
+- `filesystem_persistence_approval_id`
+- `fresh_pre_activation_soak_evidence_id`
 - `active_binary_sha256`
 - `trusted_source_binding`
+- `accepted_redaction_proof_ids`
 - `receipt_payload_hash`
 - `redacted_payload_summary_sha256`
 - `receipt_output_path_redacted`
 - `rollback_plan_id`
 - `rollback_rehearsal_evidence_id`
 - `public_claim_and_artifact_decision`
-- `ledger_persistence_rehearsal_denial_report_sha256`
 
-## Rehearsal Fixtures
+## Receipt Contract Fixtures
 
-The four ledger-persistence rehearsal fixtures are deterministic, redacted, and
+The four rehearsal receipt contract fixtures are deterministic, redacted, and
 blocked:
 
-- `missing-ledger-shape-approval-ledger-persistence-rehearsal`
-- `stale-pre-activation-soak-ledger-persistence-rehearsal`
-- `workspace-path-ledger-persistence-rehearsal`
-- `public-artifact-ledger-persistence-rehearsal`
+- `missing-ledger-shape-approval-rehearsal-receipt-contract`
+- `stale-pre-activation-soak-rehearsal-receipt-contract`
+- `workspace-path-rehearsal-receipt-contract`
+- `public-artifact-rehearsal-receipt-contract`
 
-Each fixture references one source ledger-shape approval fixture and a
-deterministic rehearsal hash. Each fixture requests a hypothetical future ledger
-persistence rehearsal, but keeps command invocation, command execution,
-materialization execution, ledger persistence execution, receipt persistence,
-filesystem persistence execution, filesystem write, workspace write, activation,
-and live mutation all false.
+Each fixture references one source rehearsal-denial fixture and a deterministic
+receipt-contract hash. Each fixture requests a hypothetical future rehearsal
+receipt, but keeps contract recording, contract persistence, contract
+materialization, receipt materialization, receipt persistence, ledger
+persistence rehearsal, ledger persistence execution, filesystem persistence
+execution, filesystem write, workspace write, activation, and live mutation all
+false.
 
-The rehearsal-denial gate explicitly denies:
+The receipt-contract gate explicitly denies:
 
 - missing ledger shape approval
 - missing filesystem persistence approval id
@@ -165,8 +178,10 @@ The rehearsal-denial gate explicitly denies:
 - missing rollback rehearsal evidence
 - source-tree and workspace output-path attempts
 - public claim and release-artifact write attempts
+- rehearsal receipt contract recording
+- rehearsal receipt materialization
+- rehearsal receipt persistence
 - ledger persistence execution
-- receipt persistence
 - filesystem persistence execution
 - filesystem writes
 - workspace writes
@@ -188,6 +203,8 @@ The gate must not:
 - record, materialize, persist, or write ledger shape approvals
 - record, materialize, persist, or write dry-run ledger entries
 - record, materialize, persist, or write ledger persistence rehearsals
+- record, materialize, persist, or write rehearsal receipt contracts
+- record, materialize, persist, or write rehearsal receipts
 - select a filesystem output path
 - write sink previews, execution-denial matrices, output-path bindings,
   output-path allowlists, approval packets, operator-scope records, payload
@@ -202,9 +219,8 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next gate is
-`HEPTA_LIVE_MUTATION_PRE_ACTIVATION_SOAK_EVIDENCE_PERSISTENCE_PAYLOAD_REDACTION_ACCEPTANCE_RECEIPT_FILESYSTEM_PERSISTENCE_LEDGER_PERSISTENCE_REHEARSAL_RECEIPT_CONTRACT_GATE.md`,
-which defines the future rehearsal receipt contract while still keeping command
+The next safe step is a redaction acceptance receipt filesystem persistence
+ledger persistence rehearsal receipt review gate, still without command
 execution, materialization execution, filesystem persistence execution,
 output-path selection, ledger materialization, receipt persistence, filesystem
-writes, and live mutation disabled.
+writes, or live mutation.
