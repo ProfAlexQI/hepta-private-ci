@@ -4275,7 +4275,7 @@ fn default_activation_evidence_requirements() -> Vec<HeptaUpstreamCodexActivatio
         ),
         activation_evidence_requirement(
             "watchdog_evidence_id",
-            "scripts/hepta-codex-watchdog.sh",
+            "scripts/hepta-watchdog.sh",
             "fresh watchdog evidence for the active service",
         ),
         activation_evidence_requirement(
@@ -4647,7 +4647,7 @@ fn default_activation_evidence_freshness_policy_entries()
         ),
         activation_evidence_freshness_policy_entry(
             "watchdog_evidence_id",
-            "scripts/hepta-codex-watchdog.sh",
+            "scripts/hepta-watchdog.sh",
             "active binary sha and live watchdog route matrix",
             "30 minutes",
             "watchdog evidence is absent",

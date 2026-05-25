@@ -51,6 +51,9 @@ HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE=0 \
 echo "[hepta-preflight] legacy preflight entrypoint migration gate"
 scripts/hepta-preflight-entrypoint-migration.sh
 
+echo "[hepta-preflight] legacy watchdog entrypoint migration gate"
+scripts/hepta-watchdog-entrypoint-migration.sh
+
 echo "[hepta-preflight] upstream Codex snapshot gate"
 HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=0 \
   scripts/hepta-upstream-codex-snapshot.sh

@@ -68,7 +68,7 @@ default and does not approve active wiring.
   - Source gate: `scripts/hepta-active-service-dependency-isolation.sh`
   - Evidence recorded: `false`
 - `watchdog_evidence_id`
-  - Source gate: `scripts/hepta-codex-watchdog.sh`
+  - Source gate: `scripts/hepta-watchdog.sh`
   - Evidence recorded: `false`
 - `browser_smoke_evidence_id`
   - Source gate: `scripts/hepta-codex-browser-visual-smoke.sh`

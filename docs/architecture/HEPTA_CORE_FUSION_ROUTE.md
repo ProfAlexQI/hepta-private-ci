@@ -18,6 +18,9 @@ Current state:
   `scripts/hepta-codex-preflight.sh` is retained only as a thin compatibility
   wrapper that forwards legacy `HEPTA_CODEX_*` environment variables into the
   Hepta-named entrypoint.
+- The canonical live watchdog entrypoint is now `scripts/hepta-watchdog.sh`.
+  `scripts/hepta-codex-watchdog.sh` is retained only as a thin compatibility
+  wrapper for legacy binary-path environment variables.
 - Runtime reports now expose `runtime="hepta"` while retaining compatibility
   names only where they identify old paths, old scripts, or old route aliases.
 - The active workspace directory is `/Users/qianqi/.openclaw/workspace/Hepta`.
@@ -35,6 +38,9 @@ Current state:
   Hepta-named preflight script owns the implementation while the old
   `hepta-codex` preflight remains a wrapper, preserving upstream intake gates
   without keeping the legacy name as the active preflight implementation.
+- `scripts/hepta-watchdog-entrypoint-migration.sh` applies the same retirement
+  rule to the live watchdog: Hepta owns the probe implementation, and the old
+  `hepta-codex` watchdog is only a compatibility wrapper.
 - `scripts/hepta-upstream-codex-snapshot.sh` records the local Hepta head,
   `codex-rs` compatibility tree, optional read-only upstream Codex HEAD, and
   the risk classification buckets that must exist before absorption work.

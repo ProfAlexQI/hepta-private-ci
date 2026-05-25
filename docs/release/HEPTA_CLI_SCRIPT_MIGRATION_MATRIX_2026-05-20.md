@@ -67,7 +67,7 @@ Existing carried script:
 | `hepta-v0.1-preflight.sh` | replaced by canonical `hepta-preflight.sh`; `hepta-codex-preflight.sh` remains as a wrapper | migrate as Hepta package preflight |
 | `hepta-v0.1-soak.sh` | replaced by `hepta-codex-live-soak.sh` for active-service coexistence | migrate scoped soak |
 | Control UI browser/visual smoke | replaced by `hepta-codex-browser-visual-smoke.sh` for Chrome headless gateway-index screenshots | migrate scoped visual smoke |
-| `hepta-installed-live-watchdog*.sh` | replaced by `hepta-codex-watchdog.sh` for one-shot live status | migrate recurring service later |
+| `hepta-installed-live-watchdog*.sh` | replaced by canonical `hepta-watchdog.sh`; `hepta-codex-watchdog.sh` remains as a wrapper | migrate recurring service later |
 | `hepta-gateway-service*.sh` | covered by controlled install docs and launchd evidence | do not auto-install; keep manual/explicit |
 | `hepta-watchdog-service*.sh` | not ported as LaunchAgent manager | defer until recurring watchdog is requested |
 | `hepta-release-artifact-pack.sh` | not ported | defer until release packaging track |

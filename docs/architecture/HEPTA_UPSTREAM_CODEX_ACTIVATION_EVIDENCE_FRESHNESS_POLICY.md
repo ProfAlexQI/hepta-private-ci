@@ -53,7 +53,7 @@ does not convert the denied activation sample into an approval.
   - Max age policy: `30 minutes`
   - Denial reason: `live dependency isolation evidence is absent`
 - `watchdog_evidence_id`
-  - Source gate: `scripts/hepta-codex-watchdog.sh`
+  - Source gate: `scripts/hepta-watchdog.sh`
   - Freshness anchor: `active binary sha and live watchdog route matrix`
   - Max age policy: `30 minutes`
   - Denial reason: `watchdog evidence is absent`

@@ -32,7 +32,7 @@ default and does not allow active runtime wiring.
   credential detail.
 - `live_dependency_isolation_evidence_id`: fresh output from
   `scripts/hepta-active-service-dependency-isolation.sh`.
-- `watchdog_evidence_id`: fresh output from `scripts/hepta-codex-watchdog.sh`.
+- `watchdog_evidence_id`: fresh output from `scripts/hepta-watchdog.sh`.
 - `browser_smoke_evidence_id`: fresh output from
   `scripts/hepta-codex-browser-visual-smoke.sh`.
 - `long_soak_evidence_id`: fresh output from `scripts/hepta-codex-live-soak.sh`.
