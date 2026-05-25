@@ -320,6 +320,9 @@ scripts/hepta-terminal-denial-index-gate.sh
 echo "[hepta-preflight] terminal non-activation release-claim index gate"
 scripts/hepta-terminal-non-activation-release-claim-index-gate.sh
 
+echo "[hepta-preflight] terminal operator-readiness non-approval index gate"
+scripts/hepta-terminal-operator-readiness-non-approval-index-gate.sh
+
 echo "[hepta-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 
