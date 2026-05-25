@@ -50,3 +50,8 @@ Rollback execution still requires a separate approval id, a fresh backup of the
 currently installed binary after approval, a single-surface activation scope,
 post-restore watchdog evidence, post-restore 24-sample soak evidence, and a
 side-effect receipt with no secret values.
+
+`scripts/hepta-live-mutation-approval-evidence-receipt-gate.sh` consumes this
+dry-run report together with the live mutation governance report. It emits a
+candidate receipt only; it does not persist evidence, restore a binary, or
+restart the service.

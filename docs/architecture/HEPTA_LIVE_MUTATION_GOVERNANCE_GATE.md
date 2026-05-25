@@ -55,3 +55,8 @@ The gate must not:
 
 It may read live status reports and local binary/backup metadata only to prove
 the approval, rollback, and soak prerequisites are enforceable.
+
+The next gate is
+`scripts/hepta-live-mutation-approval-evidence-receipt-gate.sh`, which binds
+this governance report to the rollback drill report as a no-write candidate
+receipt. That receipt still records `activation_allowed_by_receipt = false`.
