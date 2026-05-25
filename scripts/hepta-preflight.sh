@@ -111,6 +111,9 @@ scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-red
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance matrix gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-matrix-gate.sh
 
+echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance receipt command contract gate"
+scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-command-contract-gate.sh
+
 echo "[hepta-preflight] upstream Codex snapshot gate"
 HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=0 \
   scripts/hepta-upstream-codex-snapshot.sh
