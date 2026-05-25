@@ -115,6 +115,10 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction acceptance receipt no-write sink contract,
-still without command execution, receipt persistence, filesystem writes, or live
-mutation.
+The next safe step is:
+
+- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-no-write-sink-contract-gate.sh`
+
+That gate keeps the receipt sink in no-write mode while classifying redacted
+receipt shapes, plaintext payload attempts, public artifact attempts, and
+filesystem write attempts.
