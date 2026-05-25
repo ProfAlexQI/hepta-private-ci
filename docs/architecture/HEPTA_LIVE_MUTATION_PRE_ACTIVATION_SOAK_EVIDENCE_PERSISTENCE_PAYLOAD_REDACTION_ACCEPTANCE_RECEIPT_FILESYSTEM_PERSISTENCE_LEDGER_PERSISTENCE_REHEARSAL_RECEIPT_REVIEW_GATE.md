@@ -189,8 +189,11 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-Next safe slice: payload-redaction-acceptance receipt filesystem persistence
-ledger persistence rehearsal receipt review acceptance gate, still without
-command execution, materialization execution, receipt/ledger/review
-persistence, filesystem/workspace writes, public claim/artifact writes,
+Next safe slice:
+
+- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-persistence-rehearsal-receipt-review-acceptance-gate.sh`
+
+That gate must remain a review-acceptance dry-run with no command execution,
+materialization execution, receipt/ledger/review persistence,
+filesystem/workspace writes, public claim/artifact writes,
 provider/model/channel/gateway side effects, or live mutation.
