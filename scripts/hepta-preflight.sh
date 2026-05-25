@@ -314,6 +314,9 @@ echo "[hepta-preflight] upstream Codex sync lane gate"
 HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE=0 \
   scripts/hepta-upstream-codex-sync-lane.sh
 
+echo "[hepta-preflight] terminal denial index gate"
+scripts/hepta-terminal-denial-index-gate.sh
+
 echo "[hepta-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 
