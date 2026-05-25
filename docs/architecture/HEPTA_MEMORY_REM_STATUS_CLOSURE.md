@@ -36,4 +36,6 @@ The closure keeps these operations disabled:
 - gateway mutation
 - external send
 
-The next safe slice is `memory-tools` catalog closure without tool invocation.
+`memory-tools` is now covered by
+`docs/architecture/HEPTA_MEMORY_TOOLS_CATALOG_CLOSURE.md`. The next safe slice is
+`native-residual-runtime` status closure without process or gateway mutation.

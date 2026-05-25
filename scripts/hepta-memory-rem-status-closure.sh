@@ -8,7 +8,7 @@ jq -e '
   .runtime == "hepta"
   and (.status == "attention" or .status == "ready")
   and .surface_count == 14
-  and .absorbed_or_represented_count == 10
+  and .absorbed_or_represented_count >= 10
   and .gap_report_ready_count == 14
   and .live_mutation_enabled_count == 0
   and .memory_store_mutation_enabled == false
@@ -41,7 +41,6 @@ report="$(jq -n \
     live_mutation_enabled_count:$memory.live_mutation_enabled_count,
     memory_store_mutation_enabled:$memory.memory_store_mutation_enabled,
     next_slices:[
-      "add memory-tools catalog closure without tool invocation",
       "add native-residual-runtime status closure without process or gateway mutation",
       "add plugin-migration plan closure without registry or filesystem write",
       "add skill-workshop plan closure without skill write"

@@ -55,12 +55,17 @@ jq -e '
   and (.status == "attention" or .status == "ready")
   and .memory_capability_inventory_ready == true
   and .surface_count == 14
-  and .absorbed_or_represented_count == 10
+  and .absorbed_or_represented_count == 11
   and .gap_report_ready_count == 14
   and .live_mutation_enabled_count == 0
   and (.memory_capability_surfaces[]
       | select(.name == "memory-rem")
       | .migration_status == "represented_by_memory_rem_status_closure"
+        and .absorbed_or_represented == true
+        and .live_mutation_enabled == false)
+  and (.memory_capability_surfaces[]
+      | select(.name == "memory-tools")
+      | .migration_status == "represented_by_memory_tools_catalog_closure"
         and .absorbed_or_represented == true
         and .live_mutation_enabled == false)
   and .memory_store_mutation_enabled == false
@@ -84,7 +89,6 @@ jq -e '
   and ([.memory_capability_surfaces[]
       | select(.absorbed_or_represented == false)
       | .name] | sort) == [
-        "memory-tools",
         "native-residual-runtime",
         "plugin-migration",
         "skill-workshop"
@@ -134,7 +138,6 @@ report="$(jq -n \
       "skill_workshop_write"
     ],
     next_slices:[
-      "add memory-tools catalog closure without tool invocation",
       "add native-residual-runtime status closure without process or gateway mutation",
       "add plugin-migration plan closure without registry or filesystem write",
       "add skill-workshop plan closure without skill write"
