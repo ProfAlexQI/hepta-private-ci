@@ -96,5 +96,9 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction proof acceptance-matrix dry-run gate, still
-without persistence or live mutation.
+The next safe step is:
+
+- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-matrix-gate.sh`
+
+That gate keeps the acceptance decision dry-run only, still without persistence
+or live mutation.
