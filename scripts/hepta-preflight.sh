@@ -99,6 +99,9 @@ scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-denial-gate
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence approval packet gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-approval-packet-gate.sh
 
+echo "[hepta-preflight] live mutation pre-activation soak evidence persistence operator scope binding gate"
+scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-operator-scope-binding-gate.sh
+
 echo "[hepta-preflight] upstream Codex snapshot gate"
 HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=0 \
   scripts/hepta-upstream-codex-snapshot.sh

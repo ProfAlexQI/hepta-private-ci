@@ -76,5 +76,7 @@ The gate must not:
 - execute rollback
 - read credentials
 
-The next safe step is an operator-approval identity and scope dry-run binding
-gate, still without persistence or live mutation.
+The next safe step is
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-operator-scope-binding-gate.sh`,
+an operator-approval identity and scope dry-run binding gate, still without
+persistence or live mutation.
