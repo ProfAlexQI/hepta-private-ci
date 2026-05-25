@@ -4280,12 +4280,12 @@ fn default_activation_evidence_requirements() -> Vec<HeptaUpstreamCodexActivatio
         ),
         activation_evidence_requirement(
             "browser_smoke_evidence_id",
-            "scripts/hepta-codex-browser-visual-smoke.sh",
+            "scripts/hepta-browser-visual-smoke.sh",
             "fresh browser visual smoke evidence",
         ),
         activation_evidence_requirement(
             "long_soak_evidence_id",
-            "scripts/hepta-codex-live-soak.sh",
+            "scripts/hepta-live-soak.sh",
             "fresh long-soak evidence for the active service",
         ),
         activation_evidence_requirement(
@@ -4654,14 +4654,14 @@ fn default_activation_evidence_freshness_policy_entries()
         ),
         activation_evidence_freshness_policy_entry(
             "browser_smoke_evidence_id",
-            "scripts/hepta-codex-browser-visual-smoke.sh",
+            "scripts/hepta-browser-visual-smoke.sh",
             "desktop and mobile screenshot hashes",
             "30 minutes",
             "browser smoke evidence is absent",
         ),
         activation_evidence_freshness_policy_entry(
             "long_soak_evidence_id",
-            "scripts/hepta-codex-live-soak.sh",
+            "scripts/hepta-live-soak.sh",
             "24/24 live soak sample report",
             "120 minutes",
             "long soak evidence is absent",

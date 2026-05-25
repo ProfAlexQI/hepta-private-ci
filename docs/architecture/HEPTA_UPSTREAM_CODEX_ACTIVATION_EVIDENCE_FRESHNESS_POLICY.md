@@ -58,12 +58,12 @@ does not convert the denied activation sample into an approval.
   - Max age policy: `30 minutes`
   - Denial reason: `watchdog evidence is absent`
 - `browser_smoke_evidence_id`
-  - Source gate: `scripts/hepta-codex-browser-visual-smoke.sh`
+  - Source gate: `scripts/hepta-browser-visual-smoke.sh`
   - Freshness anchor: `desktop and mobile screenshot hashes`
   - Max age policy: `30 minutes`
   - Denial reason: `browser smoke evidence is absent`
 - `long_soak_evidence_id`
-  - Source gate: `scripts/hepta-codex-live-soak.sh`
+  - Source gate: `scripts/hepta-live-soak.sh`
   - Freshness anchor: `24/24 live soak sample report`
   - Max age policy: `120 minutes`
   - Denial reason: `long soak evidence is absent`

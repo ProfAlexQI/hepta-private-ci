@@ -106,8 +106,8 @@ report="$(
         {evidence_id:"operator_identity_hash", source_gate:"scripts/hepta-codex-public-ga-operator-approval-packet.sh", evidence_recorded:false},
         {evidence_id:"live_dependency_isolation_evidence_id", source_gate:"scripts/hepta-active-service-dependency-isolation.sh", evidence_recorded:false},
         {evidence_id:"watchdog_evidence_id", source_gate:"scripts/hepta-watchdog.sh", evidence_recorded:false},
-        {evidence_id:"browser_smoke_evidence_id", source_gate:"scripts/hepta-codex-browser-visual-smoke.sh", evidence_recorded:false},
-        {evidence_id:"long_soak_evidence_id", source_gate:"scripts/hepta-codex-live-soak.sh", evidence_recorded:false},
+        {evidence_id:"browser_smoke_evidence_id", source_gate:"scripts/hepta-browser-visual-smoke.sh", evidence_recorded:false},
+        {evidence_id:"long_soak_evidence_id", source_gate:"scripts/hepta-live-soak.sh", evidence_recorded:false},
         {evidence_id:"rollback_plan_id", source_gate:"docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_DENIED_SAMPLE.md", evidence_recorded:false}
       ],
       denied_active_decisions:{

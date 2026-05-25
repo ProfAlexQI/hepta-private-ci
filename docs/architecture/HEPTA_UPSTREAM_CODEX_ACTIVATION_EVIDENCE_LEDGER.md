@@ -34,8 +34,8 @@ default and does not allow active runtime wiring.
   `scripts/hepta-active-service-dependency-isolation.sh`.
 - `watchdog_evidence_id`: fresh output from `scripts/hepta-watchdog.sh`.
 - `browser_smoke_evidence_id`: fresh output from
-  `scripts/hepta-codex-browser-visual-smoke.sh`.
-- `long_soak_evidence_id`: fresh output from `scripts/hepta-codex-live-soak.sh`.
+  `scripts/hepta-browser-visual-smoke.sh`.
+- `long_soak_evidence_id`: fresh output from `scripts/hepta-live-soak.sh`.
 - `rollback_plan_id`: explicit rollback anchor for the requested activation.
 
 ## Denied Active Decisions

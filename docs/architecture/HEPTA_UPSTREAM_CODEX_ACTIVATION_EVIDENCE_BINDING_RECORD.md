@@ -71,10 +71,10 @@ default and does not approve active wiring.
   - Source gate: `scripts/hepta-watchdog.sh`
   - Evidence recorded: `false`
 - `browser_smoke_evidence_id`
-  - Source gate: `scripts/hepta-codex-browser-visual-smoke.sh`
+  - Source gate: `scripts/hepta-browser-visual-smoke.sh`
   - Evidence recorded: `false`
 - `long_soak_evidence_id`
-  - Source gate: `scripts/hepta-codex-live-soak.sh`
+  - Source gate: `scripts/hepta-live-soak.sh`
   - Evidence recorded: `false`
 - `rollback_plan_id`
   - Source gate: `docs/architecture/HEPTA_UPSTREAM_CODEX_ACTIVATION_DENIED_SAMPLE.md`

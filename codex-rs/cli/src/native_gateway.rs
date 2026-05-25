@@ -6373,7 +6373,7 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         merge_completion_control_ui_surfaced: true,
         merge_completion_gateway_index_surfaced: true,
         browser_visual_smoke_ready: true,
-        browser_visual_smoke_command: "scripts/hepta-codex-browser-visual-smoke.sh",
+        browser_visual_smoke_command: "scripts/hepta-browser-visual-smoke.sh",
         production_owner_handoff_required: !telegram_owner_or_parallel_ready,
         telegram_live_send_enabled: telegram_live_poll_model_send_ready,
         native_post_real_activation_enabled: native_post_real_activation_ready,
@@ -8658,7 +8658,7 @@ mod tests {
         assert_eq!(value["browser_visual_smoke_ready"], true);
         assert_eq!(
             value["browser_visual_smoke_command"],
-            "scripts/hepta-codex-browser-visual-smoke.sh"
+            "scripts/hepta-browser-visual-smoke.sh"
         );
         assert!(
             value["route_count"].as_u64().expect("route count") >= 59,
