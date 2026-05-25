@@ -105,6 +105,9 @@ scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-operator-sc
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence no-secret payload review gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-no-secret-payload-review-gate.sh
 
+echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction proof gate"
+scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-proof-gate.sh
+
 echo "[hepta-preflight] upstream Codex snapshot gate"
 HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=0 \
   scripts/hepta-upstream-codex-snapshot.sh

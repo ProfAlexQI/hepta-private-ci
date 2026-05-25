@@ -112,5 +112,9 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a payload redaction proof dry-run gate, still without
-persistence or live mutation.
+The next safe step is:
+
+- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-proof-gate.sh`
+
+That gate proves the dry-run shape for future redacted payload summaries and
+hash bindings while still avoiding persistence and live mutation.
