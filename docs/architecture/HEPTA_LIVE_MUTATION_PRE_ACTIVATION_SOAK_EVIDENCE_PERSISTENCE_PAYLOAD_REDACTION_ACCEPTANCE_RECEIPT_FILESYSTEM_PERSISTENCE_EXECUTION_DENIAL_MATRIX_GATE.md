@@ -1,12 +1,13 @@
-# Hepta Live Mutation Pre-Activation Soak Evidence Persistence Payload Redaction Acceptance Receipt Filesystem Sink Write Preview Gate
+# Hepta Live Mutation Pre-Activation Soak Evidence Persistence Payload Redaction Acceptance Receipt Filesystem Persistence Execution Denial Matrix Gate
 
 Date: 2026-05-25
 
-This gate sits after the payload redaction acceptance receipt filesystem
-output-path evidence binding gate. It models deterministic sink-write previews
-for the three report-only receipt roots, while keeping every write,
-persistence, command, materialization, Gateway, provider, channel, and live
-mutation path disabled.
+This gate sits after the payload redaction acceptance receipt filesystem sink
+write preview gate. It models four explicit filesystem persistence execution
+attempts and keeps all of them blocked. The purpose is to make the next
+boundary precise: a sink write preview is not a receipt persistence action, and
+future filesystem persistence still requires an explicit persistence approval
+id, fresh evidence, safe output roots, and no public artifact write request.
 
 The gate is still report-only. It does not select an output path, invoke or
 execute a command, execute materialization, execute filesystem persistence,
@@ -18,9 +19,10 @@ Gateway/runtime stores, or enable live mutation.
 
 The gate consumes:
 
-- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-output-path-evidence-binding-gate.sh`
-- the source payload redaction acceptance receipt filesystem output-path
-  evidence binding report hash
+- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-sink-write-preview-gate.sh`
+- the source payload redaction acceptance receipt filesystem sink write preview
+  report hash
+- the source output-path evidence binding report hash
 - the source output-path allowlist report hash
 - the source filesystem persistence approval-packet report hash
 - the source materialization dry-run report hash
@@ -38,8 +40,8 @@ The gate consumes:
 - the source persistence-denial report hash
 - the minimum 24-sample pre-activation soak requirement
 
-It requires the source output-path evidence binding gate to be `ready`, but keeps
-these values false or zero:
+It requires the source sink write preview gate to be `ready`, but keeps these
+values false or zero:
 
 - `payload_redaction_acceptance_receipt_command_recorded`
 - `payload_redaction_acceptance_receipt_command_enabled_by_default`
@@ -56,16 +58,17 @@ these values false or zero:
 - `output_path_evidence_binding_persisted`
 - `filesystem_sink_write_preview_recorded`
 - `filesystem_sink_write_preview_persisted`
+- `execution_denial_matrix_recorded`
+- `execution_denial_matrix_persisted`
 - `payload_redaction_acceptance_matrix_recorded`
 - `payload_redaction_acceptance_matrix_persisted`
 - `payload_redaction_proof_recorded`
 - `payload_redaction_proof_accepted`
 - `accepted_redaction_proof_count`
-- `fresh_pre_activation_soak_evidence_bound_fixture_count`
 - `active_binary_sha_bound_fixture_count`
+- `trusted_source_bound_fixture_count`
 - `operator_scope_bound_fixture_count`
 - `accepted_redaction_proof_bound_fixture_count`
-- `trusted_source_bound_fixture_count`
 - `selected_output_path_count`
 - `recorded_output_path_count`
 - `recorded_path_binding_count`
@@ -93,64 +96,70 @@ these values false or zero:
 - `activation_allowed`
 - `live_mutation_execution_ready`
 
-## Preview Status
+## Denial Matrix Status
 
-- Required preview fixture count: `3`
-- Preview fixture count: `3`
-- Allowed output path entry count: `3`
-- Blocked output path entry count: `3`
-- Previewed output path count: `3`
-- Report-only root preview count: `3`
-- Mutating root preview count: `0`
-- Deterministic payload hash count: `3`
-- Redacted output path preview count: `3`
-- Fresh pre-activation soak evidence bound fixture count: `0`
+- Source preview fixture count: `3`
+- Required denial fixture count: `4`
+- Denial fixture count: `4`
+- Execution requested fixture count: `4`
+- Future persistence approval slot count: `4`
+- Explicit persistence approval id present count: `3`
+- Explicit persistence approval id missing count: `1`
+- Stale or missing fresh pre-activation soak evidence fixture count: `1`
+- Stale or missing fresh evidence fixture count: `1`
+- Future active binary SHA bound fixture count: `4`
+- Future trusted source bound fixture count: `4`
+- Future operator scope bound fixture count: `3`
+- Future accepted redaction proof bound fixture count: `3`
 - Active binary SHA bound fixture count: `0`
+- Trusted source bound fixture count: `0`
 - Operator scope bound fixture count: `0`
 - Accepted redaction proof bound fixture count: `0`
-- Trusted source bound fixture count: `0`
-- Blocked preview fixture count: `3`
-- Allowed preview fixture count: `0`
-- Source tree path preview allowed: `false`
-- Home directory path preview allowed: `false`
-- Release artifact path preview allowed: `false`
-- Public artifact path preview allowed: `false`
-- Default selected output path count: `0`
-- Selected output path count: `0`
-- Recorded output path count: `0`
-- Recorded path binding count: `0`
+- Source tree path attempt fixture count: `1`
+- Workspace path attempt fixture count: `1`
+- Public claim attempt fixture count: `1`
+- Release artifact write attempt fixture count: `1`
+- Blocked execution fixture count: `4`
+- Allowed execution fixture count: `0`
 - Filesystem persistence allowed count: `0`
-- Filesystem write requested count: `3`
+- Filesystem persistence execution requested count: `4`
+- Filesystem persistence execution performed count: `0`
+- Filesystem write requested count: `4`
 - Filesystem write performed count: `0`
 - Workspace write performed count: `0`
 - Receipt materialized count: `0`
 - Receipt persisted count: `0`
-- Activation blocked by sink write preview: `true`
-- Activation allowed by sink write preview: `false`
+- Activation blocked by execution denial matrix: `true`
+- Activation allowed by execution denial matrix: `false`
 - Live mutation execution ready: `false`
 
-## Preview Fixtures
+## Denial Fixtures
 
-The three preview fixtures are deterministic, redacted, and blocked:
+The four execution attempts are deterministic, redacted, and blocked:
 
-- `payload-redaction-acceptance-receipts-root-sink-write-preview`
-- `payload-redaction-acceptance-receipt-dry-run-root-sink-write-preview`
-- `payload-redaction-acceptance-receipt-operator-packet-root-sink-write-preview`
+- `missing-persistence-approval-id-execution-attempt`
+- `stale-pre-activation-soak-evidence-execution-attempt`
+- `workspace-path-execution-attempt`
+- `public-artifact-execution-attempt`
 
-Each fixture binds the source output-path evidence binding report hash and a
-deterministic preview payload hash. Each fixture requests a hypothetical
-filesystem write shape, but keeps command invocation, command execution,
-materialization execution, filesystem persistence execution, filesystem write,
-receipt persistence, and activation all false.
+Each fixture requests a hypothetical filesystem persistence execution shape, but
+keeps command invocation, command execution, materialization execution,
+filesystem persistence execution, filesystem write, workspace write, receipt
+persistence, and activation all false.
 
-Blocked roots remain denied for sink write preview:
+The matrix explicitly denies:
 
-- `source_tree_root`
-- `home_directory_root`
-- `release_artifact_root`
-
-The release artifact root also covers public artifact attempts; public release
-or public GA claims remain denied.
+- missing persistence approval id
+- stale or missing fresh pre-activation soak evidence
+- source-tree and workspace output-path attempts
+- public claim and release-artifact write attempts
+- command invocation and execution
+- materialization execution
+- filesystem persistence execution
+- filesystem writes
+- workspace writes
+- receipt persistence
+- live mutation execution
 
 ## Safety Boundary
 
@@ -164,10 +173,11 @@ The gate must not:
 - execute materialization
 - execute filesystem persistence
 - select a filesystem output path
-- write sink previews, output-path bindings, output-path allowlists, approval
-  packets, operator-scope records, payload reviews, redaction proofs,
-  acceptance matrices, no-write sink records, write-enable fixture records,
-  materialization plans, receipt files, evidence files, or release artifacts
+- write sink previews, execution-denial matrices, output-path bindings,
+  output-path allowlists, approval packets, operator-scope records, payload
+  reviews, redaction proofs, acceptance matrices, no-write sink records,
+  write-enable fixture records, materialization plans, receipt files, evidence
+  files, or release artifacts
 - persist plaintext payloads
 - inspect raw payload plaintext
 - run live secret scans
@@ -176,9 +186,7 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is
-`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-execution-denial-matrix-gate.sh`,
-a redaction acceptance receipt filesystem persistence execution-denial matrix,
-still without command execution, materialization execution, filesystem
-persistence execution, output-path selection, receipt persistence, filesystem
-writes, or live mutation.
+The next safe step is a redaction acceptance receipt filesystem persistence
+receipt dry-run ledger, still without command execution, materialization
+execution, filesystem persistence execution, output-path selection, receipt
+persistence, filesystem writes, or live mutation.
