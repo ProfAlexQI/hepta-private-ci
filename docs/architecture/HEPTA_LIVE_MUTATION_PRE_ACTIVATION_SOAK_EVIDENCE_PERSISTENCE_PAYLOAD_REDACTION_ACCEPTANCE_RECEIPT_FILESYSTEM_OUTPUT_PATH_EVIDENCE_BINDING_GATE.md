@@ -210,7 +210,9 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction acceptance receipt filesystem sink write
-preview gate, still without command execution, materialization execution,
-filesystem persistence execution, output-path selection, receipt persistence,
-filesystem writes, or live mutation.
+The follow-on gate is
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-sink-write-preview-gate.sh`.
+It previews deterministic redacted sink-write shapes for the three report-only
+roots, still without command execution, materialization execution, filesystem
+persistence execution, output-path selection, receipt persistence, filesystem
+writes, or live mutation.
