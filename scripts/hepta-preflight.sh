@@ -120,6 +120,9 @@ scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-red
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance receipt no-write sink contract gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-no-write-sink-contract-gate.sh
 
+echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance receipt write-enable fixture gate"
+scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-write-enable-fixture-gate.sh
+
 echo "[hepta-preflight] upstream Codex snapshot gate"
 HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=0 \
   scripts/hepta-upstream-codex-snapshot.sh

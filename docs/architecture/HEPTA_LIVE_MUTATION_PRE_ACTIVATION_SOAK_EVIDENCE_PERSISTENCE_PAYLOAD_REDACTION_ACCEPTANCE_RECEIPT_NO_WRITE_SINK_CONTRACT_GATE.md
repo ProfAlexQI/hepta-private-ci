@@ -144,6 +144,9 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction acceptance receipt write-enable fixture gate,
-still without command execution, receipt persistence, filesystem writes, or live
-mutation.
+The next safe step is
+`docs/architecture/HEPTA_LIVE_MUTATION_PRE_ACTIVATION_SOAK_EVIDENCE_PERSISTENCE_PAYLOAD_REDACTION_ACCEPTANCE_RECEIPT_WRITE_ENABLE_FIXTURE_GATE.md`
+and
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-write-enable-fixture-gate.sh`.
+It remains a fixture-only gate without command execution, receipt persistence,
+filesystem writes, or live mutation.
