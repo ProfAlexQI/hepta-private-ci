@@ -169,7 +169,10 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction acceptance receipt filesystem persistence
-ledger shape approval gate, still without command execution, materialization
+The follow-up ledger shape approval gate is:
+
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-shape-approval-gate.sh`
+
+It remains report-only and still forbids command execution, materialization
 execution, filesystem persistence execution, output-path selection, ledger
 materialization, receipt persistence, filesystem writes, or live mutation.
