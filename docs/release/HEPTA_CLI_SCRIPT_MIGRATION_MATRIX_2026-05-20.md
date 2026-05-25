@@ -37,7 +37,8 @@ Current `hepta-codex`:
 
 New executable scripts added in this slice:
 
-- `scripts/hepta-codex-preflight.sh`
+- `scripts/hepta-preflight.sh` (canonical; `hepta-codex-preflight.sh`
+  remains a wrapper)
 - `scripts/hepta-codex-live-soak.sh`
 - `scripts/hepta-codex-watchdog.sh`
 - `scripts/hepta-codex-browser-visual-smoke.sh`
@@ -63,7 +64,7 @@ Existing carried script:
 | Old standalone script family | Current status in `hepta-codex` | Decision |
 | --- | --- | --- |
 | `hepta-control-ui-smoke.sh` | carried and adapted | keep |
-| `hepta-v0.1-preflight.sh` | replaced by `hepta-codex-preflight.sh` | migrate as Codex package preflight |
+| `hepta-v0.1-preflight.sh` | replaced by canonical `hepta-preflight.sh`; `hepta-codex-preflight.sh` remains as a wrapper | migrate as Hepta package preflight |
 | `hepta-v0.1-soak.sh` | replaced by `hepta-codex-live-soak.sh` for active-service coexistence | migrate scoped soak |
 | Control UI browser/visual smoke | replaced by `hepta-codex-browser-visual-smoke.sh` for Chrome headless gateway-index screenshots | migrate scoped visual smoke |
 | `hepta-installed-live-watchdog*.sh` | replaced by `hepta-codex-watchdog.sh` for one-shot live status | migrate recurring service later |
@@ -148,9 +149,12 @@ external, or old-workspace-specific. They should be migrated as explicit slices:
 
 ## New Script Contracts
 
-### `hepta-codex-preflight.sh`
+### `hepta-preflight.sh`
 
-Purpose: repeat the local deterministic package gate for current Codex fork.
+Purpose: repeat the local deterministic package gate for the active Hepta
+workspace. `hepta-codex-preflight.sh` remains as a compatibility wrapper and
+forwards old `HEPTA_CODEX_*` environment variables to the canonical
+Hepta-named entrypoint.
 
 Default gates:
 
@@ -165,7 +169,8 @@ Default gates:
 
 Optional:
 
-- set `HEPTA_CODEX_PREFLIGHT_RELEASE=1` to include release build.
+- set `HEPTA_PREFLIGHT_RELEASE=1` to include release build. The legacy
+  `HEPTA_CODEX_PREFLIGHT_RELEASE=1` alias is still accepted by the wrapper.
 
 ### `hepta-codex-live-soak.sh`
 

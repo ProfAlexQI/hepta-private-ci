@@ -15,8 +15,10 @@ bounded path:
 4. Keep `scripts/hepta-active-service-dependency-isolation.sh` green so the
    active `hepta-cli --bin hepta` service does not regain direct Codex engine
    dependencies.
-5. Run preflight, watchdog, soak, and release-governance gates before any public
-   release claim.
+5. Run `scripts/hepta-preflight.sh`, watchdog, soak, and release-governance
+   gates before any public release claim. The old
+   `scripts/hepta-codex-preflight.sh` entrypoint remains only as a compatibility
+   wrapper.
 
 The head/diff intake gate is:
 

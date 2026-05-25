@@ -14,6 +14,10 @@ Current state:
 - The canonical release gate script family is `scripts/hepta-*.sh`.
 - The transition script family `scripts/hepta-codex-*.sh` remains callable as a
   compatibility target.
+- The canonical preflight entrypoint is now `scripts/hepta-preflight.sh`.
+  `scripts/hepta-codex-preflight.sh` is retained only as a thin compatibility
+  wrapper that forwards legacy `HEPTA_CODEX_*` environment variables into the
+  Hepta-named entrypoint.
 - Runtime reports now expose `runtime="hepta"` while retaining compatibility
   names only where they identify old paths, old scripts, or old route aliases.
 - The active workspace directory is `/Users/qianqi/.openclaw/workspace/Hepta`.
@@ -27,6 +31,10 @@ Current state:
 - `scripts/hepta-active-service-dependency-isolation.sh` makes the active
   service isolation check repeatable with an offline `hepta-cli` cargo-tree
   gate and an optional live route contract check.
+- `scripts/hepta-preflight-entrypoint-migration.sh` verifies that the
+  Hepta-named preflight script owns the implementation while the old
+  `hepta-codex` preflight remains a wrapper, preserving upstream intake gates
+  without keeping the legacy name as the active preflight implementation.
 - `scripts/hepta-upstream-codex-snapshot.sh` records the local Hepta head,
   `codex-rs` compatibility tree, optional read-only upstream Codex HEAD, and
   the risk classification buckets that must exist before absorption work.
