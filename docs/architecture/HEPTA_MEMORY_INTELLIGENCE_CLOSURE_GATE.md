@@ -31,13 +31,12 @@ of truth for the current memory/capability closure status.
 Current required shape:
 
 - `surface_count = 14`
-- `absorbed_or_represented_count = 9`
+- `absorbed_or_represented_count = 10`
 - `gap_report_ready_count = 14`
 - `live_mutation_enabled_count = 0`
 
-The five remaining gap-only surfaces are:
+The four remaining gap-only surfaces are:
 
-- `memory-rem`
 - `memory-tools`
 - `native-residual-runtime`
 - `plugin-migration`

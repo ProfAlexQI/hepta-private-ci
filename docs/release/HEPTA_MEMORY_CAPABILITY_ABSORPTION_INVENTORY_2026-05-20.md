@@ -24,7 +24,7 @@ channels, read or write files, or perform external sends.
 
 - old memory/capability/absorption ops files covered: `14`
 - surfaces inventoried: `14`
-- absorbed or represented surfaces: `9`
+- absorbed or represented surfaces: `10`
 - gap-report-ready surfaces: `14`
 - live mutation surfaces enabled: `0`
 - current `hepta-codex` scripts: `11`
@@ -68,5 +68,8 @@ skill-workshop writes disabled.
 ## Safe Next Slice
 
 Port remaining external release and hardening scripts as local-only status gates
+and continue closing the remaining memory/capability gap-only surfaces one at a
+time. `memory-rem` is now represented by the read-only
+`hepta-memory-rem-status-closure` gate without memory store mutation.
 before any live handoff, external push, channel delivery, process execution,
 filesystem mutation, credentialed provider call, or native POST real mutation.

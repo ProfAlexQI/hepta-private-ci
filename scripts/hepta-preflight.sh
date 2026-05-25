@@ -63,6 +63,9 @@ scripts/hepta-release-readiness-entrypoint-migration.sh
 echo "[hepta-preflight] legacy inventory entrypoint migration gate"
 scripts/hepta-inventory-entrypoint-migration.sh
 
+echo "[hepta-preflight] memory-rem status closure gate"
+scripts/hepta-memory-rem-status-closure.sh
+
 echo "[hepta-preflight] memory/intelligence closure gate"
 scripts/hepta-memory-intelligence-closure.sh
 

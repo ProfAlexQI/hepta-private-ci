@@ -5341,10 +5341,10 @@ const HEPTA_MEMORY_CAPABILITY_ABSORPTION_SURFACES: &[HeptaMemoryCapabilityAbsorp
     HeptaMemoryCapabilityAbsorptionSurface {
         name: "memory-rem",
         old_ops_file: "memory_rem_ops.rs",
-        migration_status: "gap_inventory_only",
-        safe_next_mode: "memory_rem_status_without_memory_store_mutation",
+        migration_status: "represented_by_memory_rem_status_closure",
+        safe_next_mode: "memory_rem_status_closed_without_memory_store_mutation",
         gap_report_ready: true,
-        absorbed_or_represented: false,
+        absorbed_or_represented: true,
         live_mutation_enabled: false,
     },
     HeptaMemoryCapabilityAbsorptionSurface {
@@ -9922,7 +9922,7 @@ mod tests {
         );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["surface_count"], 14);
-        assert_eq!(value["absorbed_or_represented_count"], 9);
+        assert_eq!(value["absorbed_or_represented_count"], 10);
         assert_eq!(value["gap_report_ready_count"], 14);
         assert_eq!(value["live_mutation_enabled_count"], 0);
         assert_eq!(value["memory_capability_inventory_ready"], true);
@@ -9943,6 +9943,12 @@ mod tests {
         assert_eq!(surfaces.len(), 14);
         assert_eq!(surfaces[0]["name"], "capability-surface");
         assert_eq!(surfaces[4]["name"], "memory-rem");
+        assert_eq!(
+            surfaces[4]["migration_status"],
+            "represented_by_memory_rem_status_closure"
+        );
+        assert_eq!(surfaces[4]["absorbed_or_represented"], true);
+        assert_eq!(surfaces[4]["live_mutation_enabled"], false);
         assert_eq!(surfaces[7]["name"], "native-coding-agent");
         assert_eq!(surfaces[13]["name"], "skill-workshop");
         assert_eq!(value["side_effects"]["memory_store_mutated"], false);
