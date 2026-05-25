@@ -84,6 +84,9 @@ scripts/hepta-memory-intelligence-closure.sh
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 
+echo "[hepta-preflight] live mutation rollback drill gate"
+scripts/hepta-live-mutation-rollback-drill-gate.sh
+
 echo "[hepta-preflight] upstream Codex snapshot gate"
 HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=0 \
   scripts/hepta-upstream-codex-snapshot.sh
