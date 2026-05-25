@@ -9,7 +9,7 @@ jq -e '
   .runtime == "hepta"
   and (.status == "attention" or .status == "ready")
   and .surface_count == 14
-  and .absorbed_or_represented_count == 12
+  and .absorbed_or_represented_count >= 12
   and .gap_report_ready_count == 14
   and .live_mutation_enabled_count == 0
   and .memory_store_mutation_enabled == false
@@ -68,7 +68,6 @@ report="$(jq -n \
     runtime_dry_run_surface_count:$runtime.dry_run_surface_count,
     runtime_live_mutation_surface_count:$runtime.live_mutation_surface_count,
     next_slices:[
-      "add plugin-migration plan closure without registry or filesystem write",
       "add skill-workshop plan closure without skill write"
     ],
     side_effects:{

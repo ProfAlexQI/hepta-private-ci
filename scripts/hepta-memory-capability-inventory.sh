@@ -20,7 +20,7 @@ jq -e '
   and .native_gateway_source_command_count == 69
   and .missing_route_count == 0
   and .surface_count == 14
-  and .absorbed_or_represented_count == 12
+  and .absorbed_or_represented_count == 13
   and .gap_report_ready_count == 14
   and .live_mutation_enabled_count == 0
   and (.memory_capability_surfaces[]
@@ -36,6 +36,11 @@ jq -e '
   and (.memory_capability_surfaces[]
       | select(.name == "native-residual-runtime")
       | .migration_status == "represented_by_native_residual_runtime_status_closure"
+        and .absorbed_or_represented == true
+        and .live_mutation_enabled == false)
+  and (.memory_capability_surfaces[]
+      | select(.name == "plugin-migration")
+      | .migration_status == "represented_by_plugin_migration_plan_closure"
         and .absorbed_or_represented == true
         and .live_mutation_enabled == false)
   and .memory_capability_inventory_ready == true

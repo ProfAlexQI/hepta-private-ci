@@ -72,6 +72,9 @@ scripts/hepta-memory-tools-catalog-closure.sh
 echo "[hepta-preflight] native residual runtime status closure gate"
 scripts/hepta-native-residual-runtime-status-closure.sh
 
+echo "[hepta-preflight] plugin migration plan closure gate"
+scripts/hepta-plugin-migration-plan-closure.sh
+
 echo "[hepta-preflight] memory/intelligence closure gate"
 scripts/hepta-memory-intelligence-closure.sh
 

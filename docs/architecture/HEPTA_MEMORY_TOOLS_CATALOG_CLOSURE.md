@@ -40,6 +40,6 @@ these operations disabled:
 - external send
 
 `native-residual-runtime` is now covered by
-`docs/architecture/HEPTA_NATIVE_RESIDUAL_RUNTIME_STATUS_CLOSURE.md`. The next
-safe slice is `plugin-migration` plan closure without registry or filesystem
-write.
+`docs/architecture/HEPTA_NATIVE_RESIDUAL_RUNTIME_STATUS_CLOSURE.md`, and
+`plugin-migration` is now covered by
+`docs/architecture/HEPTA_PLUGIN_MIGRATION_PLAN_CLOSURE.md`.

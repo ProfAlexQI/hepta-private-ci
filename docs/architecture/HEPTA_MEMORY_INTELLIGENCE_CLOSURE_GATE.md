@@ -31,13 +31,12 @@ of truth for the current memory/capability closure status.
 Current required shape:
 
 - `surface_count = 14`
-- `absorbed_or_represented_count = 12`
+- `absorbed_or_represented_count = 13`
 - `gap_report_ready_count = 14`
 - `live_mutation_enabled_count = 0`
 
-The two remaining gap-only surfaces are:
+The remaining gap-only surface is:
 
-- `plugin-migration`
 - `skill-workshop`
 
 ## Safety Boundary
@@ -56,6 +55,6 @@ The closure gate is read-only. It must not:
 
 ## Next Slices
 
-The next work should close the remaining two gap-only surfaces one at a time.
+The next work should close the remaining gap-only surface.
 Each slice should introduce a bounded, operator-approved status or plan contract
 before enabling any live mutation.

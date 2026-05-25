@@ -24,7 +24,7 @@ channels, read or write files, or perform external sends.
 
 - old memory/capability/absorption ops files covered: `14`
 - surfaces inventoried: `14`
-- absorbed or represented surfaces: `12`
+- absorbed or represented surfaces: `13`
 - gap-report-ready surfaces: `14`
 - live mutation surfaces enabled: `0`
 - current `hepta-codex` scripts: `11`
@@ -75,6 +75,7 @@ time. `memory-rem` is now represented by the read-only
 `hepta-memory-tools-catalog-closure` gate without tool invocation.
 `native-residual-runtime` is now represented by the read-only
 `hepta-native-residual-runtime-status-closure` gate without process or Gateway
-mutation.
+mutation, and `plugin-migration` is now represented by the read-only
+`hepta-plugin-migration-plan-closure` gate without registry or filesystem write.
 before any live handoff, external push, channel delivery, process execution,
 filesystem mutation, credentialed provider call, or native POST real mutation.
