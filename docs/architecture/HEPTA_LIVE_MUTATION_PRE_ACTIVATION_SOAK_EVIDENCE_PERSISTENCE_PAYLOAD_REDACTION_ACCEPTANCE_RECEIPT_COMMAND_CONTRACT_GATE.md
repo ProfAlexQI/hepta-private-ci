@@ -102,5 +102,9 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction acceptance receipt invocation dry-run gate,
-still without command execution, receipt persistence, or live mutation.
+The next safe step is:
+
+- `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-invocation-dry-run-gate.sh`
+
+It remains a dry-run gate without command execution, receipt persistence,
+filesystem writes, or live mutation.
