@@ -52,6 +52,11 @@ can be considered, a separate approval path must provide:
 - post-activation minimum 24-sample soak
 - side-effect receipt with no secret values
 
+The follow-on gate
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-gate.sh` binds this
+receipt shape to the required pre-activation 24-sample soak evidence while still
+leaving receipt persistence and mutation execution disabled by default.
+
 ## Safety Boundary
 
 The gate must not:
