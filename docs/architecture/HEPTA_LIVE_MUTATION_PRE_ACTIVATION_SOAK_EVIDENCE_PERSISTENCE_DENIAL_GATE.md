@@ -70,5 +70,7 @@ The gate must not:
 - execute rollback
 - read credentials
 
-The next safe step is a bounded approval packet shape for a future persistence
-record, still without executing filesystem writes or enabling live mutation.
+The follow-on gate
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-approval-packet-gate.sh`
+defines the bounded approval packet shape for a future persistence record, still
+without executing filesystem writes or enabling live mutation.
