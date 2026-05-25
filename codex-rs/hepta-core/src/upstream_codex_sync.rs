@@ -4626,14 +4626,14 @@ fn default_activation_evidence_freshness_policy_entries()
         ),
         activation_evidence_freshness_policy_entry(
             "operator_approval_id",
-            "scripts/hepta-codex-public-ga-operator-approval-packet.sh",
+            "scripts/hepta-public-ga-operator-approval-packet.sh",
             "explicit operator approval record",
             "same activation request",
             "operator approval id is absent",
         ),
         activation_evidence_freshness_policy_entry(
             "operator_identity_hash",
-            "scripts/hepta-codex-public-ga-operator-approval-packet.sh",
+            "scripts/hepta-public-ga-operator-approval-packet.sh",
             "redacted operator identity bound to approval id",
             "same activation request",
             "operator identity hash is absent",

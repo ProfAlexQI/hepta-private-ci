@@ -59,10 +59,10 @@ default and does not approve active wiring.
   - Source gate: `scripts/hepta-upstream-codex-activation-request-packet.sh`
   - Evidence recorded: `false`
 - `operator_approval_id`
-  - Source gate: `scripts/hepta-codex-public-ga-operator-approval-packet.sh`
+  - Source gate: `scripts/hepta-public-ga-operator-approval-packet.sh`
   - Evidence recorded: `false`
 - `operator_identity_hash`
-  - Source gate: `scripts/hepta-codex-public-ga-operator-approval-packet.sh`
+  - Source gate: `scripts/hepta-public-ga-operator-approval-packet.sh`
   - Evidence recorded: `false`
 - `live_dependency_isolation_evidence_id`
   - Source gate: `scripts/hepta-active-service-dependency-isolation.sh`

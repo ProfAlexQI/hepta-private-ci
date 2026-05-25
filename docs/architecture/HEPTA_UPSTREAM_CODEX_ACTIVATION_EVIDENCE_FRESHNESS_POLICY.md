@@ -38,12 +38,12 @@ does not convert the denied activation sample into an approval.
   - Max age policy: `same activation request`
   - Denial reason: `activation request id is absent`
 - `operator_approval_id`
-  - Source gate: `scripts/hepta-codex-public-ga-operator-approval-packet.sh`
+  - Source gate: `scripts/hepta-public-ga-operator-approval-packet.sh`
   - Freshness anchor: `explicit operator approval record`
   - Max age policy: `same activation request`
   - Denial reason: `operator approval id is absent`
 - `operator_identity_hash`
-  - Source gate: `scripts/hepta-codex-public-ga-operator-approval-packet.sh`
+  - Source gate: `scripts/hepta-public-ga-operator-approval-packet.sh`
   - Freshness anchor: `redacted operator identity bound to approval id`
   - Max age policy: `same activation request`
   - Denial reason: `operator identity hash is absent`

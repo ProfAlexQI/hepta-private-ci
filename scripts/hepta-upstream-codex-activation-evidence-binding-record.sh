@@ -102,8 +102,8 @@ report="$(
       ],
       binding_records:[
         {evidence_id:"activation_request_id", source_gate:"scripts/hepta-upstream-codex-activation-request-packet.sh", evidence_recorded:false},
-        {evidence_id:"operator_approval_id", source_gate:"scripts/hepta-codex-public-ga-operator-approval-packet.sh", evidence_recorded:false},
-        {evidence_id:"operator_identity_hash", source_gate:"scripts/hepta-codex-public-ga-operator-approval-packet.sh", evidence_recorded:false},
+        {evidence_id:"operator_approval_id", source_gate:"scripts/hepta-public-ga-operator-approval-packet.sh", evidence_recorded:false},
+        {evidence_id:"operator_identity_hash", source_gate:"scripts/hepta-public-ga-operator-approval-packet.sh", evidence_recorded:false},
         {evidence_id:"live_dependency_isolation_evidence_id", source_gate:"scripts/hepta-active-service-dependency-isolation.sh", evidence_recorded:false},
         {evidence_id:"watchdog_evidence_id", source_gate:"scripts/hepta-watchdog.sh", evidence_recorded:false},
         {evidence_id:"browser_smoke_evidence_id", source_gate:"scripts/hepta-browser-visual-smoke.sh", evidence_recorded:false},

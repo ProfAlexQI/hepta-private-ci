@@ -6064,7 +6064,7 @@ fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGa
         local_import_execution_enabled: local_import_compatibility_verified,
         autonomous_subagent_spawn_enabled: false,
         autonomous_subagent_gate_compatibility_verified,
-        script_inventory_script: "scripts/hepta-codex-release-hardening-status-gate.sh",
+        script_inventory_script: "scripts/hepta-release-hardening-status-gate.sh",
         release_hardening_gates: HEPTA_RELEASE_HARDENING_STATUS_GATES,
         next_slices: &[
             "keep release/hardening script families backed by status gates and explicit production evidence",
@@ -6444,7 +6444,7 @@ fn hepta_native_packaging_gate_report() -> HeptaNativePackagingGateResponse {
         signing_notarization_deferred: true,
         public_distribution_artifact_written: false,
         local_packaging_gate_ready: true,
-        script_inventory_script: "scripts/hepta-codex-native-packaging-gate.sh",
+        script_inventory_script: "scripts/hepta-native-packaging-gate.sh",
         next_slices: &[
             "keep the source-only native app outside the codex-rs workspace unless a root app workspace is intentionally created",
             "run cargo metadata and hepta_* native smoke tests with CARGO_TARGET_DIR outside hepta-codex",
@@ -10026,7 +10026,7 @@ mod tests {
         assert_eq!(value["autonomous_subagent_spawn_enabled"], false);
         assert_eq!(
             value["script_inventory_script"],
-            "scripts/hepta-codex-release-hardening-status-gate.sh"
+            "scripts/hepta-release-hardening-status-gate.sh"
         );
         let gates = value["release_hardening_gates"]
             .as_array()
