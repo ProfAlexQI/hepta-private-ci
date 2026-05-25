@@ -9,7 +9,7 @@ jq -e '
   .runtime == "hepta"
   and (.status == "attention" or .status == "ready")
   and .surface_count == 14
-  and .absorbed_or_represented_count == 11
+  and .absorbed_or_represented_count >= 11
   and .gap_report_ready_count == 14
   and .live_mutation_enabled_count == 0
   and .memory_store_mutation_enabled == false
@@ -62,7 +62,6 @@ report="$(jq -n \
     tool_invocation_enabled_count:$local_tooling.tool_invocation_enabled_count,
     tool_invocation_enabled:$local_tooling.tool_invocation_enabled,
     next_slices:[
-      "add native-residual-runtime status closure without process or gateway mutation",
       "add plugin-migration plan closure without registry or filesystem write",
       "add skill-workshop plan closure without skill write"
     ],

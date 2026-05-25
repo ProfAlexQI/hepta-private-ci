@@ -5386,10 +5386,10 @@ const HEPTA_MEMORY_CAPABILITY_ABSORPTION_SURFACES: &[HeptaMemoryCapabilityAbsorp
     HeptaMemoryCapabilityAbsorptionSurface {
         name: "native-residual-runtime",
         old_ops_file: "native_residual_runtime_ops.rs",
-        migration_status: "gap_inventory_only",
-        safe_next_mode: "residual_runtime_report_without_process_or_gateway_mutation",
+        migration_status: "represented_by_native_residual_runtime_status_closure",
+        safe_next_mode: "residual_runtime_status_closed_without_process_or_gateway_mutation",
         gap_report_ready: true,
-        absorbed_or_represented: false,
+        absorbed_or_represented: true,
         live_mutation_enabled: false,
     },
     HeptaMemoryCapabilityAbsorptionSurface {
@@ -9922,7 +9922,7 @@ mod tests {
         );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["surface_count"], 14);
-        assert_eq!(value["absorbed_or_represented_count"], 11);
+        assert_eq!(value["absorbed_or_represented_count"], 12);
         assert_eq!(value["gap_report_ready_count"], 14);
         assert_eq!(value["live_mutation_enabled_count"], 0);
         assert_eq!(value["memory_capability_inventory_ready"], true);
@@ -9957,6 +9957,13 @@ mod tests {
         assert_eq!(surfaces[6]["absorbed_or_represented"], true);
         assert_eq!(surfaces[6]["live_mutation_enabled"], false);
         assert_eq!(surfaces[7]["name"], "native-coding-agent");
+        assert_eq!(surfaces[9]["name"], "native-residual-runtime");
+        assert_eq!(
+            surfaces[9]["migration_status"],
+            "represented_by_native_residual_runtime_status_closure"
+        );
+        assert_eq!(surfaces[9]["absorbed_or_represented"], true);
+        assert_eq!(surfaces[9]["live_mutation_enabled"], false);
         assert_eq!(surfaces[13]["name"], "skill-workshop");
         assert_eq!(value["side_effects"]["memory_store_mutated"], false);
         assert_eq!(value["side_effects"]["capability_registry_mutated"], false);

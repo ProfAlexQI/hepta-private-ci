@@ -39,5 +39,7 @@ these operations disabled:
 - gateway mutation
 - external send
 
-The next safe slice is `native-residual-runtime` status closure without process
-or gateway mutation.
+`native-residual-runtime` is now covered by
+`docs/architecture/HEPTA_NATIVE_RESIDUAL_RUNTIME_STATUS_CLOSURE.md`. The next
+safe slice is `plugin-migration` plan closure without registry or filesystem
+write.

@@ -329,7 +329,7 @@ The memory/capability absorption gap inventory continuation adds
 
 - `old_memory_capability_ops_file_count=14`
 - `surface_count=14`
-- `absorbed_or_represented_count=11`
+- `absorbed_or_represented_count=12`
 - `gap_report_ready_count=14`
 - `live_mutation_enabled_count=0`
 - `current_hepta_codex_script_total=12`
