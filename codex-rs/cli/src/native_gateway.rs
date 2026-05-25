@@ -5708,7 +5708,7 @@ fn hepta_provider_channel_dry_run_plan_report() -> HeptaProviderChannelDryRunPla
         runtime_store_mutation_enabled: false,
         isolated_fixture_materialized: false,
         dry_run_plan_ready: true,
-        script_inventory_script: "scripts/hepta-codex-provider-channel-dry-run-plan.sh",
+        script_inventory_script: "scripts/hepta-provider-channel-dry-run-plan.sh",
         dry_run_families: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES,
         next_slices: &[
             "expand individual old CLI shims only as no-side-effect dry-run contracts",
@@ -5793,7 +5793,7 @@ fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusI
         live_channel_read_enabled: channel_read_verified,
         live_channel_send_enabled: channel_send_verified,
         owner_handoff_performed: channel_delivery_verified,
-        script_inventory_script: "scripts/hepta-codex-channel-adapter-status-inventory.sh",
+        script_inventory_script: "scripts/hepta-channel-adapter-status-inventory.sh",
         channel_adapters: HEPTA_CHANNEL_ADAPTER_STATUS_ENTRIES,
         next_slices: &[
             "use local tooling/content inventory as the next no-side-effect planning slice",
@@ -5872,7 +5872,7 @@ fn hepta_local_tooling_content_inventory_report() -> HeptaLocalToolingContentInv
         filesystem_write_enabled: false,
         network_read_enabled: false,
         tool_invocation_enabled: false,
-        script_inventory_script: "scripts/hepta-codex-local-tooling-content-inventory.sh",
+        script_inventory_script: "scripts/hepta-local-tooling-content-inventory.sh",
         local_tooling_surfaces: HEPTA_LOCAL_TOOLING_CONTENT_SURFACES,
         next_slices: &[
             "use memory/capability absorption inventory for gap reporting only",
@@ -5944,7 +5944,7 @@ fn hepta_memory_capability_absorption_inventory_report()
         coding_agent_spawn_enabled: false,
         search_provider_live_query_enabled: false,
         skill_workshop_write_enabled: false,
-        script_inventory_script: "scripts/hepta-codex-memory-capability-inventory.sh",
+        script_inventory_script: "scripts/hepta-memory-capability-inventory.sh",
         memory_capability_surfaces: HEPTA_MEMORY_CAPABILITY_ABSORPTION_SURFACES,
         next_slices: &[
             "port remaining external release and hardening scripts as local-only status gates",
@@ -6129,7 +6129,7 @@ fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRun
         session_store_mutation_enabled: false,
         gateway_event_enqueue_enabled: false,
         external_telemetry_push_enabled: false,
-        script_inventory_script: "scripts/hepta-codex-runtime-session-dry-run-inventory.sh",
+        script_inventory_script: "scripts/hepta-runtime-session-dry-run-inventory.sh",
         dry_run_surfaces: HEPTA_RUNTIME_SESSION_DRY_RUN_SURFACES,
         next_slices: &[
             "promote channel adapters only as disabled live-gated status reports",
@@ -6190,7 +6190,7 @@ fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryR
         metadata_inventory_ready: true,
         provider_live_invocation_enabled: credentialed_smoke_verified,
         credentialed_smoke_performed: credentialed_smoke_verified,
-        script_inventory_script: "scripts/hepta-codex-provider-metadata-inventory.sh",
+        script_inventory_script: "scripts/hepta-provider-metadata-inventory.sh",
         provider_adapters: HEPTA_PROVIDER_METADATA_ADAPTERS,
         adjacent_search_adapters: HEPTA_ADJACENT_SEARCH_METADATA_ADAPTERS,
         next_slices: &[
@@ -6271,7 +6271,7 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
         absorbed_core_crate_count: 6,
         old_cli_command_breadth_fully_migrated: true,
         safe_read_only_inventory_ready: true,
-        script_inventory_script: "scripts/hepta-codex-cli-command-inventory.sh",
+        script_inventory_script: "scripts/hepta-cli-command-inventory.sh",
         ops_families: HEPTA_CLI_OPS_FAMILIES,
         next_slices: &[
             "keep old hepta-cli breadth represented by native routes and compatibility scripts",
@@ -6510,7 +6510,7 @@ fn hepta_legacy_compatibility_closure_report() -> HeptaLegacyCompatibilityClosur
         dangerous_live_execution_reenabled: false,
         credentialed_live_smoke_deferred: true,
         external_release_deferred: true,
-        script_inventory_script: "scripts/hepta-codex-legacy-compatibility-closure.sh",
+        script_inventory_script: "scripts/hepta-legacy-compatibility-closure.sh",
         supporting_endpoints: &[
             HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT,
             HEPTA_PROVIDER_METADATA_INVENTORY_ENDPOINT,
@@ -9535,7 +9535,7 @@ mod tests {
         assert_eq!(value["safe_read_only_inventory_ready"], true);
         assert_eq!(
             value["script_inventory_script"],
-            "scripts/hepta-codex-cli-command-inventory.sh"
+            "scripts/hepta-cli-command-inventory.sh"
         );
         let families = value["ops_families"].as_array().expect("ops families");
         assert_eq!(families.len(), 5);
@@ -9606,7 +9606,7 @@ mod tests {
         assert_eq!(value["credentialed_smoke_performed"], false);
         assert_eq!(
             value["script_inventory_script"],
-            "scripts/hepta-codex-provider-metadata-inventory.sh"
+            "scripts/hepta-provider-metadata-inventory.sh"
         );
         let providers = value["provider_adapters"]
             .as_array()
@@ -9680,7 +9680,7 @@ mod tests {
         assert_eq!(value["external_telemetry_push_enabled"], false);
         assert_eq!(
             value["script_inventory_script"],
-            "scripts/hepta-codex-runtime-session-dry-run-inventory.sh"
+            "scripts/hepta-runtime-session-dry-run-inventory.sh"
         );
         let surfaces = value["dry_run_surfaces"]
             .as_array()
@@ -9760,7 +9760,7 @@ mod tests {
         assert_eq!(value["owner_handoff_performed"], false);
         assert_eq!(
             value["script_inventory_script"],
-            "scripts/hepta-codex-channel-adapter-status-inventory.sh"
+            "scripts/hepta-channel-adapter-status-inventory.sh"
         );
         let adapters = value["channel_adapters"]
             .as_array()
@@ -9850,7 +9850,7 @@ mod tests {
         assert_eq!(value["tool_invocation_enabled"], false);
         assert_eq!(
             value["script_inventory_script"],
-            "scripts/hepta-codex-local-tooling-content-inventory.sh"
+            "scripts/hepta-local-tooling-content-inventory.sh"
         );
         let surfaces = value["local_tooling_surfaces"]
             .as_array()
@@ -9935,7 +9935,7 @@ mod tests {
         assert_eq!(value["skill_workshop_write_enabled"], false);
         assert_eq!(
             value["script_inventory_script"],
-            "scripts/hepta-codex-memory-capability-inventory.sh"
+            "scripts/hepta-memory-capability-inventory.sh"
         );
         let surfaces = value["memory_capability_surfaces"]
             .as_array()
@@ -10128,7 +10128,7 @@ mod tests {
         assert_eq!(value["dry_run_plan_ready"], true);
         assert_eq!(
             value["script_inventory_script"],
-            "scripts/hepta-codex-provider-channel-dry-run-plan.sh"
+            "scripts/hepta-provider-channel-dry-run-plan.sh"
         );
         let families = value["dry_run_families"]
             .as_array()
