@@ -170,6 +170,10 @@ The gate must not:
 - execute rollback
 - read credentials or secret files
 
-The next safe step is a redaction acceptance receipt filesystem persistence
+The next safe step is implemented by
+`docs/architecture/HEPTA_LIVE_MUTATION_PRE_ACTIVATION_SOAK_EVIDENCE_PERSISTENCE_PAYLOAD_REDACTION_ACCEPTANCE_RECEIPT_FILESYSTEM_PERSISTENCE_APPROVAL_PACKET_GATE.md`
+and
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-approval-packet-gate.sh`.
+It adds a schema-only redaction acceptance receipt filesystem persistence
 approval-packet gate, still without command execution, materialization
 execution, receipt persistence, filesystem writes, or live mutation.
