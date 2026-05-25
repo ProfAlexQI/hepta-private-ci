@@ -73,3 +73,12 @@ The gate must not:
 
 The optional soak execution reads live readiness status only; it still does not
 enable or perform live mutation.
+
+## Follow-On Denial Gate
+
+`scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-denial-gate.sh`
+binds this stdout-only evidence candidate to a persistence denial matrix. It
+requires an explicit operator approval id, single-surface scope, source receipt
+hash binding, fresh 24-sample soak record, installed binary SHA after approval,
+and rollback plan id before any future receipt persistence path can be
+considered.
