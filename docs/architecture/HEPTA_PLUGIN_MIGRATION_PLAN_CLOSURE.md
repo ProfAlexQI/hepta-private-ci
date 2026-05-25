@@ -37,4 +37,6 @@ these operations disabled:
 - native POST mutation
 - external send
 
-The next safe slice is `skill-workshop` plan closure without skill write.
+`skill-workshop` is now covered by
+`docs/architecture/HEPTA_SKILL_WORKSHOP_PLAN_CLOSURE.md`. Live mutation remains
+disabled until explicit operator approval.

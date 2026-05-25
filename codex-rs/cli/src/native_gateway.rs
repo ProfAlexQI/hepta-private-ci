@@ -5422,10 +5422,10 @@ const HEPTA_MEMORY_CAPABILITY_ABSORPTION_SURFACES: &[HeptaMemoryCapabilityAbsorp
     HeptaMemoryCapabilityAbsorptionSurface {
         name: "skill-workshop",
         old_ops_file: "skill_workshop_ops.rs",
-        migration_status: "gap_inventory_only",
-        safe_next_mode: "skill_workshop_plan_without_skill_write",
+        migration_status: "represented_by_skill_workshop_plan_closure",
+        safe_next_mode: "skill_workshop_plan_closed_without_skill_write",
         gap_report_ready: true,
-        absorbed_or_represented: false,
+        absorbed_or_represented: true,
         live_mutation_enabled: false,
     },
 ];
@@ -9922,7 +9922,7 @@ mod tests {
         );
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["surface_count"], 14);
-        assert_eq!(value["absorbed_or_represented_count"], 13);
+        assert_eq!(value["absorbed_or_represented_count"], 14);
         assert_eq!(value["gap_report_ready_count"], 14);
         assert_eq!(value["live_mutation_enabled_count"], 0);
         assert_eq!(value["memory_capability_inventory_ready"], true);
@@ -9972,6 +9972,12 @@ mod tests {
         assert_eq!(surfaces[11]["absorbed_or_represented"], true);
         assert_eq!(surfaces[11]["live_mutation_enabled"], false);
         assert_eq!(surfaces[13]["name"], "skill-workshop");
+        assert_eq!(
+            surfaces[13]["migration_status"],
+            "represented_by_skill_workshop_plan_closure"
+        );
+        assert_eq!(surfaces[13]["absorbed_or_represented"], true);
+        assert_eq!(surfaces[13]["live_mutation_enabled"], false);
         assert_eq!(value["side_effects"]["memory_store_mutated"], false);
         assert_eq!(value["side_effects"]["capability_registry_mutated"], false);
         assert_eq!(value["side_effects"]["plugin_registry_mutated"], false);

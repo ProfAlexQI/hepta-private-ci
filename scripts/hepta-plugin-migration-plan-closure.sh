@@ -9,7 +9,7 @@ jq -e '
   .runtime == "hepta"
   and (.status == "attention" or .status == "ready")
   and .surface_count == 14
-  and .absorbed_or_represented_count == 13
+  and .absorbed_or_represented_count >= 13
   and .gap_report_ready_count == 14
   and .live_mutation_enabled_count == 0
   and .plugin_registry_mutation_enabled == false
@@ -66,9 +66,7 @@ report="$(jq -n \
     live_mutation_enabled_count:$memory.live_mutation_enabled_count,
     plugin_registry_mutation_enabled:$memory.plugin_registry_mutation_enabled,
     provider_adapter_count:$provider.provider_adapter_count,
-    next_slices:[
-      "add skill-workshop plan closure without skill write"
-    ],
+    next_slices:[],
     side_effects:{
       memory:$memory.side_effects,
       provider:$provider.side_effects

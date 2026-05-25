@@ -75,6 +75,9 @@ scripts/hepta-native-residual-runtime-status-closure.sh
 echo "[hepta-preflight] plugin migration plan closure gate"
 scripts/hepta-plugin-migration-plan-closure.sh
 
+echo "[hepta-preflight] skill workshop plan closure gate"
+scripts/hepta-skill-workshop-plan-closure.sh
+
 echo "[hepta-preflight] memory/intelligence closure gate"
 scripts/hepta-memory-intelligence-closure.sh
 

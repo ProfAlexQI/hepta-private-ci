@@ -41,5 +41,6 @@ keeps these operations disabled:
 - external send
 
 `plugin-migration` is now covered by
-`docs/architecture/HEPTA_PLUGIN_MIGRATION_PLAN_CLOSURE.md`. The next safe slice
-is `skill-workshop` plan closure without skill write.
+`docs/architecture/HEPTA_PLUGIN_MIGRATION_PLAN_CLOSURE.md`, and
+`skill-workshop` is now covered by
+`docs/architecture/HEPTA_SKILL_WORKSHOP_PLAN_CLOSURE.md`.
