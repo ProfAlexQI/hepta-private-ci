@@ -111,6 +111,9 @@ scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-red
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance matrix gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-matrix-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write contract gate"
+scripts/hepta-memory-live-mutation-operator-write-contract-gate.sh
+
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance receipt command contract gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-command-contract-gate.sh
 
