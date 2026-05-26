@@ -22,11 +22,11 @@ helper definition budget so new duplicated `capture_json_report()` or
 
 ## Defaults
 
-- `HEPTA_JSON_CAPTURE_MAX_LOCAL_CAPTURE_DEFINITION_COUNT=42`
+- `HEPTA_JSON_CAPTURE_MAX_LOCAL_CAPTURE_DEFINITION_COUNT=41`
 - `HEPTA_JSON_CAPTURE_MAX_LOCAL_EXTRACT_DEFINITION_COUNT=10`
 
-These values intentionally match the inventory at introduction time. Future
-migration slices should lower the budgets when they remove local definitions.
+These values track the current checked-in inventory. Future migration slices
+should lower the budgets when they remove local definitions.
 
 ## Side-Effect Boundary
 
