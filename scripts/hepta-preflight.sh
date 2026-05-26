@@ -353,6 +353,9 @@ scripts/hepta-terminal-watchdog-soak-regression-gate.sh
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
+echo "[hepta-preflight] JSON report capture migration inventory gate"
+scripts/hepta-json-report-capture-migration-inventory-gate.sh
+
 echo "[hepta-preflight] upstream Codex latest active-safety regression gate"
 scripts/hepta-upstream-codex-latest-active-safety-regression.sh
 
