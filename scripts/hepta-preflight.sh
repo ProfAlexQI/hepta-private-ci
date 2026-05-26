@@ -347,6 +347,9 @@ scripts/hepta-terminal-release-governance-final-audit-index-gate.sh
 echo "[hepta-preflight] terminal watchdog/soak regression gate"
 scripts/hepta-terminal-watchdog-soak-regression-gate.sh
 
+echo "[hepta-preflight] upstream Codex latest active-safety regression gate"
+scripts/hepta-upstream-codex-latest-active-safety-regression.sh
+
 echo "[hepta-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 
