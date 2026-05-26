@@ -7,22 +7,7 @@ MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 
 cd "$REPO_ROOT"
 
-capture_json_report() {
-  local command_name="$1"
-  shift
-
-  local output
-  output="$("$@")"
-  local report
-  report="$(printf '%s\n' "$output" | sed '$d')"
-
-  if ! jq -e . >/dev/null <<<"$report"; then
-    echo "$command_name did not emit a parseable JSON report" >&2
-    exit 1
-  fi
-
-  printf '%s\n' "$report"
-}
+source scripts/lib/hepta-json-report-capture.sh
 
 if [[ "$MIN_LONG_SOAK_SAMPLES" -lt 24 ]]; then
   echo "minimum long-soak samples must be at least 24" >&2
