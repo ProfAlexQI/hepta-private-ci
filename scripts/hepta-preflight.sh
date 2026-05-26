@@ -120,6 +120,9 @@ scripts/hepta-memory-live-mutation-operator-write-approval-packet-gate.sh
 echo "[hepta-preflight] memory live mutation operator write execution preflight gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-preflight-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution denial matrix gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-denial-matrix-gate.sh
+
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance receipt command contract gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-command-contract-gate.sh
 
