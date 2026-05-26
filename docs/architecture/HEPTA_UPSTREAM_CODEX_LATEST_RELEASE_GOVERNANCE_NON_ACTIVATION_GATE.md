@@ -46,3 +46,9 @@ the same as activating it or making a public release claim.
 regression gate and before the gateway test block. This keeps upstream Codex
 freshness, active-runtime non-mutation, and terminal release governance in one
 auditable chain.
+
+The follow-up gate
+`scripts/hepta-upstream-codex-latest-operator-briefing-non-persistence-gate.sh`
+turns this non-activation state into an operator-readable briefing shape while
+still denying approval recording, persistence, channel delivery, and runtime
+activation.
