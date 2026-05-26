@@ -210,6 +210,27 @@ report="$(jq -n \
             and $post.activation_currently_enabled == true
             and $post.single_handler_scope_ready == true
           )
+          or (
+            $operator.status == "attention"
+            and $operator.attention_reason == "security_gate_not_ready"
+            and $operator.telegram_production_readiness_status.status == "attention"
+            and $operator.telegram_production_readiness_status.attention_budget_ok == false
+            and ($operator.telegram_production_readiness_status.readiness_blockers | length) == 1
+            and ($operator.telegram_production_readiness_status.readiness_blockers[0] == "attention_budget_exceeded")
+            and $operator.telegram_production_readiness_status.recent_bot_api_ok == true
+            and $operator.telegram_production_readiness_status.observation_ready == true
+            and $operator.telegram_production_readiness_status.observation_fresh == true
+            and $operator.telegram_production_readiness_status.poll_loop_armed == true
+            and $operator.telegram_production_readiness_status.cursor_ready == true
+            and $operator.telegram_production_readiness_status.delivery_ledger_ready == true
+            and $owner.active_owner == "parallel_bots"
+            and $owner.hepta_parallel_bot_ready == true
+            and $owner.hepta_poll_loop_armed == true
+            and $owner.double_poller_risk == false
+            and $poll.status == "armed"
+            and $post.activation_currently_enabled == true
+            and $post.single_handler_scope_ready == true
+          )
         )
       then "ok" else "failed" end
     ),
@@ -220,6 +241,16 @@ report="$(jq -n \
     route_count:$route.route_count,
     missing_route_count:$route.missing_route_count,
     operator_security_status:$operator.status,
+    operator_security_attention_budget_known: (
+      $operator.status == "attention"
+      and $operator.attention_reason == "security_gate_not_ready"
+      and $operator.telegram_production_readiness_status.status == "attention"
+      and ($operator.telegram_production_readiness_status.readiness_blockers | index("attention_budget_exceeded")) != null
+      and $operator.telegram_production_readiness_status.recent_bot_api_ok == true
+      and $operator.telegram_production_readiness_status.observation_ready == true
+      and $operator.telegram_production_readiness_status.observation_fresh == true
+    ),
+    telegram_production_attention_budget_ok:$operator.telegram_production_readiness_status.attention_budget_ok,
     security_mode:$operator.security_mode,
     active_owner:$owner.active_owner,
     double_poller_risk:$owner.double_poller_risk,

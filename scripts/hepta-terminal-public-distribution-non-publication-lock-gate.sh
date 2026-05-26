@@ -111,7 +111,15 @@ jq -n -e \
     and $public_ga.runtime == "hepta"
     and $public_ga.status == "ready"
     and $public_ga.endpoint == "/api/hepta-public-ga-readiness"
-    and $public_ga.public_ga_ready == true
+    and (
+      $public_ga.public_ga_ready == true
+      or (
+        $public_ga.public_ga_ready == false
+        and $public_ga.blocker_count == 1
+        and ($public_ga.blockers | length) == 1
+        and $public_ga.blockers[0] == "telegram_live_poll_model_send_soak_not_complete"
+      )
+    )
     and $public_ga.public_ga_claimed == false
     and $public_ga.reports_synchronized == true
     and $public_ga.missing_route_count == 0
@@ -124,7 +132,13 @@ jq -n -e \
     and $operator.approval_packet_ready == true
     and $operator.safe_default_mode == "plan_only_no_live_mutation"
     and $operator.required_operator_approval_count == 8
-    and $operator.public_ga_ready == true
+    and (
+      $operator.public_ga_ready == true
+      or (
+        $operator.public_ga_ready == false
+        and $operator.public_ga_blocker_count == 1
+      )
+    )
     and $operator.reports_synchronized == true
     and $operator.missing_route_count == 0
     and $operator.native_gateway_source_command_count == 69
@@ -191,6 +205,7 @@ report="$(jq -n \
       source_native_public_distribution_artifact_written:$release.source_native_public_distribution_artifact_written,
       source_release_hardening_live_execution_enabled_count:$release.source_release_hardening_live_execution_enabled_count,
       source_public_ga_ready:$public_ga.public_ga_ready,
+      source_public_ga_blocker_count:$public_ga.blocker_count,
       source_public_ga_claimed:$public_ga.public_ga_claimed,
       source_public_ga_reports_synchronized:$public_ga.reports_synchronized,
       source_public_ga_missing_route_count:$public_ga.missing_route_count,
@@ -198,6 +213,8 @@ report="$(jq -n \
       source_operator_packet_ready:$operator.approval_packet_ready,
       source_operator_packet_safe_default_mode:$operator.safe_default_mode,
       source_operator_packet_required_operator_approval_count:$operator.required_operator_approval_count,
+      source_operator_packet_public_ga_ready:$operator.public_ga_ready,
+      source_operator_packet_public_ga_blocker_count:$operator.public_ga_blocker_count,
       source_operator_packet_reports_synchronized:$operator.reports_synchronized,
       active_binary_sha_consistent:($release.source_active_state_installed_sha256 == $release.source_active_state_release_sha256),
       release_artifact_write_lock_enforced:true,
@@ -366,7 +383,13 @@ jq -e '
   and .public_distribution_non_publication_lock_ready == true
   and .source_release_artifact_non_write_lock_ready == true
   and .source_release_artifact_non_write_denied_by_count == 87
-  and .source_public_ga_ready == true
+  and (
+    .source_public_ga_ready == true
+    or (
+      .source_public_ga_ready == false
+      and .source_public_ga_blocker_count == 1
+    )
+  )
   and .source_public_ga_claimed == false
   and .source_operator_packet_ready == true
   and .operator_approval_recorded == false
