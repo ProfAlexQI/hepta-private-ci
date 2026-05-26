@@ -344,6 +344,9 @@ scripts/hepta-terminal-publication-evidence-non-persistence-summary-gate.sh
 echo "[hepta-preflight] terminal release-governance final audit index gate"
 scripts/hepta-terminal-release-governance-final-audit-index-gate.sh
 
+echo "[hepta-preflight] operator-security attention-budget diagnostic gate"
+scripts/hepta-operator-security-attention-budget-diagnostic-gate.sh
+
 echo "[hepta-preflight] terminal watchdog/soak regression gate"
 scripts/hepta-terminal-watchdog-soak-regression-gate.sh
 
