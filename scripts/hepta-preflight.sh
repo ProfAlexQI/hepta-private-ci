@@ -193,6 +193,9 @@ scripts/hepta-upstream-codex-diff-ledger.sh
 echo "[hepta-preflight] upstream Codex doctor environment diagnostics absorption gate"
 scripts/hepta-upstream-codex-doctor-environment-diagnostics-absorption.sh
 
+echo "[hepta-preflight] upstream Codex latest multi-surface absorption gate"
+scripts/hepta-upstream-codex-latest-multisurface-absorption.sh
+
 echo "[hepta-preflight] upstream Codex product-governance absorption gate"
 scripts/hepta-upstream-codex-product-governance-absorption.sh
 
