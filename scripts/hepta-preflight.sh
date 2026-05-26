@@ -332,6 +332,9 @@ scripts/hepta-terminal-governance-active-state-lock-gate.sh
 echo "[hepta-preflight] terminal release artifact non-write lock gate"
 scripts/hepta-terminal-release-artifact-non-write-lock-gate.sh
 
+echo "[hepta-preflight] terminal public distribution non-publication lock gate"
+scripts/hepta-terminal-public-distribution-non-publication-lock-gate.sh
+
 echo "[hepta-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 
