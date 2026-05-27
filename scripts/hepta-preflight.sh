@@ -425,6 +425,9 @@ scripts/hepta-core-activation-fresh-long-soak-evidence-ledger-receipt-gate.sh
 echo "[hepta-preflight] core activation evidence receipt materialization dry-run gate"
 scripts/hepta-core-activation-evidence-receipt-materialization-dry-run-gate.sh
 
+echo "[hepta-preflight] core activation evidence receipt filesystem persistence denial gate"
+scripts/hepta-core-activation-evidence-receipt-filesystem-persistence-denial-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
