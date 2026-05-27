@@ -416,6 +416,9 @@ scripts/hepta-terminal-watchdog-soak-regression-gate.sh
 echo "[hepta-preflight] core activation readiness summary gate"
 scripts/hepta-core-activation-readiness-summary-gate.sh
 
+echo "[hepta-preflight] core activation long-soak operator approval packet gate"
+scripts/hepta-core-activation-long-soak-operator-approval-packet-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
