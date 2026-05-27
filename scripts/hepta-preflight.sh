@@ -416,6 +416,9 @@ scripts/hepta-terminal-watchdog-soak-regression-gate.sh
 echo "[hepta-preflight] core activation long-soak observation non-acceptance gate"
 scripts/hepta-core-activation-long-soak-observation-non-acceptance-gate.sh
 
+echo "[hepta-preflight] core activation long-soak observation freshness denial gate"
+scripts/hepta-core-activation-long-soak-observation-freshness-denial-gate.sh
+
 echo "[hepta-preflight] core activation readiness summary gate"
 scripts/hepta-core-activation-readiness-summary-gate.sh
 
