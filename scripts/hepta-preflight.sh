@@ -419,6 +419,9 @@ scripts/hepta-core-activation-readiness-summary-gate.sh
 echo "[hepta-preflight] core activation long-soak operator approval packet gate"
 scripts/hepta-core-activation-long-soak-operator-approval-packet-gate.sh
 
+echo "[hepta-preflight] core activation fresh long-soak evidence ledger receipt gate"
+scripts/hepta-core-activation-fresh-long-soak-evidence-ledger-receipt-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
