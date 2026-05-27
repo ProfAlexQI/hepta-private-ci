@@ -413,6 +413,9 @@ scripts/hepta-operator-security-attention-budget-diagnostic-gate.sh
 echo "[hepta-preflight] terminal watchdog/soak regression gate"
 scripts/hepta-terminal-watchdog-soak-regression-gate.sh
 
+echo "[hepta-preflight] core activation long-soak observation non-acceptance gate"
+scripts/hepta-core-activation-long-soak-observation-non-acceptance-gate.sh
+
 echo "[hepta-preflight] core activation readiness summary gate"
 scripts/hepta-core-activation-readiness-summary-gate.sh
 
