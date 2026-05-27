@@ -115,7 +115,10 @@ report="$(jq -n \
       "terminal_regression_index_persistence_denied",
       "terminal_regression_index_materialization_denied",
       "terminal_regression_index_filesystem_write_denied",
-      "terminal_regression_short_soak_not_long_soak_evidence",
+      (if $terminal_soak_samples >= $min_long_soak_samples
+        then "terminal_regression_release_long_soak_observed_but_not_persisted_or_accepted"
+        else "terminal_regression_short_soak_not_long_soak_evidence"
+      end),
       "terminal_regression_live_mutation_denied",
       "terminal_regression_public_release_claim_denied",
       "terminal_regression_public_distribution_denied",
@@ -186,6 +189,13 @@ report="$(jq -n \
       minimum_long_soak_required_samples:$min_long_soak_samples,
       long_soak_required_before_live_mutation:true,
       terminal_soak_is_release_long_soak:($terminal_soak_samples >= $min_long_soak_samples),
+      terminal_soak_regression_class:(if $terminal_soak_samples >= $min_long_soak_samples then "release_long_soak_observation" else "short_soak_regression" end),
+      release_long_soak_observed:($terminal_soak_samples >= $min_long_soak_samples and $soak.ok == $soak.samples and $soak.fail == 0),
+      release_long_soak_sample_count:(if $terminal_soak_samples >= $min_long_soak_samples then $soak.samples else 0 end),
+      release_long_soak_evidence_recorded:false,
+      release_long_soak_evidence_persisted:false,
+      release_long_soak_evidence_accepted:false,
+      release_long_soak_authorizes_activation:false,
       terminal_soak_authorizes_live_mutation:false,
       terminal_soak_authorizes_public_claim:false,
       terminal_soak_authorizes_public_distribution:false,
@@ -259,7 +269,11 @@ report="$(jq -n \
           samples:$soak.samples,
           ok:$soak.ok,
           fail:$soak.fail,
-          reason:"short soak is a regression sample, not release-long-soak evidence"
+          release_long_soak_observed:($terminal_soak_samples >= $min_long_soak_samples and $soak.ok == $soak.samples and $soak.fail == 0),
+          reason:(if $terminal_soak_samples >= $min_long_soak_samples
+            then "release-long-soak was observed for regression only and was not persisted or accepted as activation evidence"
+            else "short soak is a regression sample, not release-long-soak evidence"
+          end)
         },
         {
           id:"long-soak-and-live-mutation-boundary",
@@ -267,8 +281,10 @@ report="$(jq -n \
           blocked:true,
           minimum_long_soak_required_samples:$min_long_soak_samples,
           terminal_soak_samples:$terminal_soak_samples,
+          release_long_soak_evidence_recorded:false,
+          release_long_soak_evidence_accepted:false,
           terminal_soak_authorizes_live_mutation:false,
-          reason:"short terminal soak cannot authorize live mutation or release activation"
+          reason:"terminal soak observation cannot authorize live mutation or release activation without operator approval and accepted persisted evidence"
         },
         {
           id:"regression-evidence-persistence-boundary",
@@ -363,6 +379,12 @@ jq -e '
   and (.soak_legacy_owner_preserved == true or .soak_telegram_live_send_enabled == true)
   and .minimum_long_soak_required_samples >= 24
   and .long_soak_required_before_live_mutation == true
+  and ((.terminal_soak_samples >= .minimum_long_soak_required_samples and .terminal_soak_regression_class == "release_long_soak_observation" and .release_long_soak_observed == true and .release_long_soak_sample_count == .soak_samples)
+    or (.terminal_soak_samples < .minimum_long_soak_required_samples and .terminal_soak_regression_class == "short_soak_regression" and .release_long_soak_observed == false and .release_long_soak_sample_count == 0))
+  and .release_long_soak_evidence_recorded == false
+  and .release_long_soak_evidence_persisted == false
+  and .release_long_soak_evidence_accepted == false
+  and .release_long_soak_authorizes_activation == false
   and .terminal_soak_authorizes_live_mutation == false
   and .terminal_soak_authorizes_public_claim == false
   and .terminal_soak_authorizes_public_distribution == false

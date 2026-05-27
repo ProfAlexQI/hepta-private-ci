@@ -9,6 +9,15 @@ The gate runs two existing observational checks:
 
 The default terminal soak is intentionally short: 3 samples at 1 second intervals. It is a regression check for preflight speed, not release-long-soak evidence and not an activation approval. Long-soak evidence remains a separate requirement before any live mutation path can be considered.
 
+The same gate can also be run in explicit release-long-soak observation mode:
+
+```sh
+HEPTA_TERMINAL_SOAK_SAMPLES=24 HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS=1 \
+  scripts/hepta-terminal-watchdog-soak-regression-gate.sh
+```
+
+In that mode the gate reports `terminal_soak_regression_class=release_long_soak_observation` and `release_long_soak_observed=true` when all samples pass. This is still report-only: it does not record, persist, accept, or materialize activation evidence, and it cannot authorize live mutation or public release claims.
+
 ## Contract
 
 The gate requires:
@@ -59,6 +68,13 @@ Important fields:
 - `terminal_soak_samples`
 - `minimum_long_soak_required_samples`
 - `terminal_soak_is_release_long_soak`
+- `terminal_soak_regression_class`
+- `release_long_soak_observed`
+- `release_long_soak_sample_count`
+- `release_long_soak_evidence_recorded`
+- `release_long_soak_evidence_persisted`
+- `release_long_soak_evidence_accepted`
+- `release_long_soak_authorizes_activation`
 - `terminal_soak_authorizes_live_mutation`
 - `watchdog_soak_denied_by_count`
 - `regression_families`
