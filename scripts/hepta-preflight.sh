@@ -81,6 +81,9 @@ scripts/hepta-skill-workshop-plan-closure.sh
 echo "[hepta-preflight] memory/intelligence closure gate"
 scripts/hepta-memory-intelligence-closure.sh
 
+echo "[hepta-preflight] KG prompt-preview preflight gate"
+scripts/hepta-kg-prompt-preview-preflight-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 
