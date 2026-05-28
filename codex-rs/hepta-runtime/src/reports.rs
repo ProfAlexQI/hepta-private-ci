@@ -1444,6 +1444,109 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_shadow_rank_comparison_summary(
+        &self,
+    ) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_shadow_rank_comparison_overview();
+        let mut lines = vec![
+            format!("Hepta KG shadow-rank comparison: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- kg shadow rank contract: {}",
+                report.kg_shadow_rank_contract
+            ),
+            format!(
+                "- kg context injection readiness contract: {}",
+                report.kg_context_injection_readiness_contract
+            ),
+            format!("- sample run: {}", report.sample_run),
+            format!("- kg ranked items: {}", report.kg_ranked_item_count),
+            format!(
+                "- transcript baseline items: {}",
+                report.transcript_baseline_count
+            ),
+            format!(
+                "- durable memory baseline items: {}",
+                report.durable_memory_baseline_count
+            ),
+            format!("- comparison cases: {}", report.comparison_case_count),
+            format!(
+                "- kg top score basis points: {}",
+                report.kg_top_score_basis_points
+            ),
+            format!(
+                "- transcript top score basis points: {}",
+                report.transcript_top_score_basis_points
+            ),
+            format!(
+                "- durable memory top score basis points: {}",
+                report.durable_memory_top_score_basis_points
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!("- shadow rank ready: {}", report.checks.shadow_rank_ready),
+            format!(
+                "- baseline items nonzero: {}",
+                report.checks.baseline_items_nonzero
+            ),
+            format!(
+                "- comparison cases nonzero: {}",
+                report.checks.comparison_cases_nonzero
+            ),
+            format!(
+                "- no kg items enter prompt context: {}",
+                report.checks.no_kg_items_enter_prompt_context
+            ),
+            format!(
+                "- no baseline items enter prompt context: {}",
+                report.checks.no_baseline_items_enter_prompt_context
+            ),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Comparison cases:".to_string(),
+        ];
+
+        if report.cases.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.cases.iter().take(8).map(|case| {
+                format!(
+                    "  - kg_rank={} baseline={:?} baseline_rank={} candidate={} kg_score={} baseline_score={} delta={} enters_prompt={} baseline_enters_prompt={}",
+                    case.kg_rank,
+                    case.baseline_kind,
+                    case.baseline_rank,
+                    case.kg_candidate_id,
+                    case.kg_score_basis_points,
+                    case.baseline_score_basis_points,
+                    case.kg_score_delta_basis_points,
+                    case.kg_would_enter_prompt_context,
+                    case.baseline_would_enter_prompt_context
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -3226,6 +3329,45 @@ mod tests {
         assert!(rendered.contains("Shadow-rank items:"));
         assert!(rendered.contains("observed_only=true"));
         assert!(rendered.contains("enters_prompt=false"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_shadow_rank_comparison_summary_renders_local_baselines() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_shadow_rank_comparison_summary()
+            .expect("kg shadow-rank comparison summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG shadow-rank comparison: ready"));
+        assert!(
+            rendered.contains("- contract: hepta-intelligence-memory-kg-shadow-rank-comparison-v0")
+        );
+        assert!(
+            rendered
+                .contains("- kg shadow rank contract: hepta-intelligence-memory-kg-shadow-rank-v0")
+        );
+        assert!(rendered.contains("- transcript baseline items:"));
+        assert!(rendered.contains("- durable memory baseline items:"));
+        assert!(rendered.contains("- comparison cases:"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- shadow rank ready: true"));
+        assert!(rendered.contains("- baseline items nonzero: true"));
+        assert!(rendered.contains("- comparison cases nonzero: true"));
+        assert!(rendered.contains("- no kg items enter prompt context: true"));
+        assert!(rendered.contains("- no baseline items enter prompt context: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("Comparison cases:"));
+        assert!(rendered.contains("baseline=Transcript"));
+        assert!(rendered.contains("baseline=DurableMemory"));
+        assert!(rendered.contains("enters_prompt=false"));
+        assert!(rendered.contains("baseline_enters_prompt=false"));
     }
 
     #[tokio::test]
