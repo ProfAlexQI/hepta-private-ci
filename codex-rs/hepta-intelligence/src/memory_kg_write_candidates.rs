@@ -30,6 +30,8 @@ pub const MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT: &str =
 pub const MEMORY_KG_SHADOW_RANK_V0_CONTRACT: &str = "hepta-intelligence-memory-kg-shadow-rank-v0";
 pub const MEMORY_KG_SHADOW_RANK_COMPARISON_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-shadow-rank-comparison-v0";
+pub const MEMORY_KG_SHADOW_RANK_DRIFT_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-shadow-rank-drift-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -684,6 +686,90 @@ pub struct MemoryKgShadowRankComparisonReport {
     pub live_write_enabled_count: usize,
     pub cases: Vec<MemoryKgShadowRankComparisonCase>,
     pub checks: MemoryKgShadowRankComparisonChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgShadowRankDriftCase {
+    pub case_index: usize,
+    pub baseline_kind: MemoryKgShadowRankBaselineKind,
+    pub kg_rank: usize,
+    pub baseline_rank: usize,
+    pub rank_delta: isize,
+    pub kg_candidate_id: String,
+    pub kg_score_delta_basis_points: i16,
+    pub max_allowed_delta_basis_points: i16,
+    pub rank_stable: bool,
+    pub score_delta_within_threshold: bool,
+    pub prompt_flags_stable: bool,
+    pub stable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgShadowRankDriftChecks {
+    pub comparison_ready: bool,
+    pub top_n_cases_nonzero: bool,
+    pub top_n_coverage_complete: bool,
+    pub baseline_kind_coverage_stable: bool,
+    pub rank_order_stable: bool,
+    pub score_delta_within_thresholds: bool,
+    pub prompt_flags_stable: bool,
+    pub no_prompt_preview_rendered: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgShadowRankDriftChecks {
+    pub fn ready(&self) -> bool {
+        self.comparison_ready
+            && self.top_n_cases_nonzero
+            && self.top_n_coverage_complete
+            && self.baseline_kind_coverage_stable
+            && self.rank_order_stable
+            && self.score_delta_within_thresholds
+            && self.prompt_flags_stable
+            && self.no_prompt_preview_rendered
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgShadowRankDriftReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub verdict: &'static str,
+    pub sample_run: bool,
+    pub kg_shadow_rank_comparison_contract: &'static str,
+    pub kg_shadow_rank_contract: &'static str,
+    pub top_n_limit: usize,
+    pub kg_ranked_item_count: usize,
+    pub top_n_kg_rank_count: usize,
+    pub expected_drift_case_count: usize,
+    pub drift_case_count: usize,
+    pub stable_case_count: usize,
+    pub drifted_case_count: usize,
+    pub transcript_case_count: usize,
+    pub durable_memory_case_count: usize,
+    pub max_observed_score_delta_basis_points: i16,
+    pub transcript_delta_threshold_basis_points: i16,
+    pub durable_memory_delta_threshold_basis_points: i16,
+    pub prompt_preview_rendered: bool,
+    pub model_invoked: bool,
+    pub context_injection_performed: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub cases: Vec<MemoryKgShadowRankDriftCase>,
+    pub checks: MemoryKgShadowRankDriftChecks,
     pub next_phase: &'static str,
 }
 
@@ -1545,6 +1631,100 @@ pub fn memory_kg_shadow_rank_comparison_report(
     }
 }
 
+pub fn memory_kg_shadow_rank_drift_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgShadowRankDriftReport {
+    const TOP_N_LIMIT: usize = 6;
+    const TRANSCRIPT_DELTA_THRESHOLD_BASIS_POINTS: i16 = 250;
+    const DURABLE_MEMORY_DELTA_THRESHOLD_BASIS_POINTS: i16 = 500;
+
+    let comparison_report = memory_kg_shadow_rank_comparison_report(memory_units, sample_run);
+    let top_n_kg_rank_count = comparison_report.kg_ranked_item_count.min(TOP_N_LIMIT);
+    let cases = memory_kg_shadow_rank_drift_cases(
+        &comparison_report.cases,
+        TOP_N_LIMIT,
+        TRANSCRIPT_DELTA_THRESHOLD_BASIS_POINTS,
+        DURABLE_MEMORY_DELTA_THRESHOLD_BASIS_POINTS,
+    );
+    let expected_drift_case_count = top_n_kg_rank_count * 2;
+    let drift_case_count = cases.len();
+    let stable_case_count = cases.iter().filter(|case| case.stable).count();
+    let drifted_case_count = drift_case_count.saturating_sub(stable_case_count);
+    let transcript_case_count = cases
+        .iter()
+        .filter(|case| case.baseline_kind == MemoryKgShadowRankBaselineKind::Transcript)
+        .count();
+    let durable_memory_case_count = cases
+        .iter()
+        .filter(|case| case.baseline_kind == MemoryKgShadowRankBaselineKind::DurableMemory)
+        .count();
+    let max_observed_score_delta_basis_points = cases
+        .iter()
+        .map(|case| case.kg_score_delta_basis_points)
+        .max()
+        .unwrap_or_default();
+    let prompt_preview_rendered = false;
+    let model_invoked = false;
+    let context_injection_performed = false;
+
+    let checks = MemoryKgShadowRankDriftChecks {
+        comparison_ready: comparison_report.checks.ready(),
+        top_n_cases_nonzero: drift_case_count > 0,
+        top_n_coverage_complete: expected_drift_case_count > 0
+            && drift_case_count == expected_drift_case_count,
+        baseline_kind_coverage_stable: transcript_case_count == top_n_kg_rank_count
+            && durable_memory_case_count == top_n_kg_rank_count,
+        rank_order_stable: drift_case_count > 0 && cases.iter().all(|case| case.rank_stable),
+        score_delta_within_thresholds: drift_case_count > 0
+            && cases.iter().all(|case| case.score_delta_within_threshold),
+        prompt_flags_stable: drift_case_count > 0
+            && cases.iter().all(|case| case.prompt_flags_stable),
+        no_prompt_preview_rendered: !prompt_preview_rendered,
+        no_model_invoked: !model_invoked,
+        no_context_injection_performed: !context_injection_performed,
+        no_external_reads_enabled: comparison_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: comparison_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: comparison_report.live_write_enabled_count == 0,
+    };
+
+    MemoryKgShadowRankDriftReport {
+        product: "Hepta",
+        command: "memory-kg-shadow-rank-drift",
+        contract: MEMORY_KG_SHADOW_RANK_DRIFT_V0_CONTRACT,
+        status: if checks.ready() { "ready" } else { "attention" },
+        verdict: if checks.ready() {
+            "stable"
+        } else {
+            "drift_detected"
+        },
+        sample_run,
+        kg_shadow_rank_comparison_contract: MEMORY_KG_SHADOW_RANK_COMPARISON_V0_CONTRACT,
+        kg_shadow_rank_contract: MEMORY_KG_SHADOW_RANK_V0_CONTRACT,
+        top_n_limit: TOP_N_LIMIT,
+        kg_ranked_item_count: comparison_report.kg_ranked_item_count,
+        top_n_kg_rank_count,
+        expected_drift_case_count,
+        drift_case_count,
+        stable_case_count,
+        drifted_case_count,
+        transcript_case_count,
+        durable_memory_case_count,
+        max_observed_score_delta_basis_points,
+        transcript_delta_threshold_basis_points: TRANSCRIPT_DELTA_THRESHOLD_BASIS_POINTS,
+        durable_memory_delta_threshold_basis_points: DURABLE_MEMORY_DELTA_THRESHOLD_BASIS_POINTS,
+        prompt_preview_rendered,
+        model_invoked,
+        context_injection_performed,
+        external_read_enabled_count: comparison_report.external_read_enabled_count,
+        network_call_enabled_count: comparison_report.network_call_enabled_count,
+        live_write_enabled_count: comparison_report.live_write_enabled_count,
+        cases,
+        checks,
+        next_phase: "bind stable shadow-rank drift evidence to operator-reviewed prompt-preview fixtures before any context injection",
+    }
+}
+
 fn memory_kg_shadow_rank_items(items: &[ContextRecallItem]) -> Vec<MemoryKgShadowRankItem> {
     items
         .iter()
@@ -1622,6 +1802,51 @@ fn memory_kg_shadow_rank_comparison_case(
         kg_would_enter_prompt_context: item.would_enter_prompt_context,
         baseline_would_enter_prompt_context: false,
     }
+}
+
+fn memory_kg_shadow_rank_drift_cases(
+    cases: &[MemoryKgShadowRankComparisonCase],
+    top_n_limit: usize,
+    transcript_delta_threshold_basis_points: i16,
+    durable_memory_delta_threshold_basis_points: i16,
+) -> Vec<MemoryKgShadowRankDriftCase> {
+    cases
+        .iter()
+        .filter(|case| case.kg_rank <= top_n_limit)
+        .enumerate()
+        .map(|(idx, case)| {
+            let max_allowed_delta_basis_points = match case.baseline_kind {
+                MemoryKgShadowRankBaselineKind::Transcript => {
+                    transcript_delta_threshold_basis_points
+                }
+                MemoryKgShadowRankBaselineKind::DurableMemory => {
+                    durable_memory_delta_threshold_basis_points
+                }
+            };
+            let rank_delta = case.baseline_rank as isize - case.kg_rank as isize;
+            let rank_stable = rank_delta == 0;
+            let score_delta_within_threshold = case.kg_score_delta_basis_points >= 0
+                && case.kg_score_delta_basis_points <= max_allowed_delta_basis_points;
+            let prompt_flags_stable =
+                !case.kg_would_enter_prompt_context && !case.baseline_would_enter_prompt_context;
+            let stable = rank_stable && score_delta_within_threshold && prompt_flags_stable;
+
+            MemoryKgShadowRankDriftCase {
+                case_index: idx + 1,
+                baseline_kind: case.baseline_kind,
+                kg_rank: case.kg_rank,
+                baseline_rank: case.baseline_rank,
+                rank_delta,
+                kg_candidate_id: case.kg_candidate_id.clone(),
+                kg_score_delta_basis_points: case.kg_score_delta_basis_points,
+                max_allowed_delta_basis_points,
+                rank_stable,
+                score_delta_within_threshold,
+                prompt_flags_stable,
+                stable,
+            }
+        })
+        .collect()
 }
 
 fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> Vec<KgReadQuery> {
@@ -2742,6 +2967,65 @@ mod tests {
                 .cases
                 .iter()
                 .all(|case| case.baseline_source_id.contains("-baseline:"))
+        );
+    }
+
+    #[test]
+    fn memory_kg_shadow_rank_drift_report_gates_rank_and_delta_stability() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_shadow_rank_drift_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.verdict, "stable");
+        assert_eq!(report.contract, MEMORY_KG_SHADOW_RANK_DRIFT_V0_CONTRACT);
+        assert_eq!(
+            report.kg_shadow_rank_comparison_contract,
+            MEMORY_KG_SHADOW_RANK_COMPARISON_V0_CONTRACT
+        );
+        assert_eq!(
+            report.kg_shadow_rank_contract,
+            MEMORY_KG_SHADOW_RANK_V0_CONTRACT
+        );
+        assert_eq!(report.top_n_limit, 6);
+        assert!(report.kg_ranked_item_count > 0);
+        assert!(report.top_n_kg_rank_count > 0);
+        assert_eq!(
+            report.expected_drift_case_count,
+            report.top_n_kg_rank_count * 2
+        );
+        assert_eq!(report.drift_case_count, report.expected_drift_case_count);
+        assert_eq!(report.stable_case_count, report.drift_case_count);
+        assert_eq!(report.drifted_case_count, 0);
+        assert_eq!(report.transcript_case_count, report.top_n_kg_rank_count);
+        assert_eq!(report.durable_memory_case_count, report.top_n_kg_rank_count);
+        assert!(
+            report.max_observed_score_delta_basis_points
+                <= report.durable_memory_delta_threshold_basis_points
+        );
+        assert_eq!(report.transcript_delta_threshold_basis_points, 250);
+        assert_eq!(report.durable_memory_delta_threshold_basis_points, 500);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.model_invoked);
+        assert!(!report.context_injection_performed);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.comparison_ready);
+        assert!(report.checks.top_n_cases_nonzero);
+        assert!(report.checks.top_n_coverage_complete);
+        assert!(report.checks.baseline_kind_coverage_stable);
+        assert!(report.checks.rank_order_stable);
+        assert!(report.checks.score_delta_within_thresholds);
+        assert!(report.checks.prompt_flags_stable);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(report.cases.iter().all(|case| case.stable));
+        assert!(report.cases.iter().all(|case| case.rank_delta == 0));
+        assert!(
+            report
+                .cases
+                .iter()
+                .all(|case| case.score_delta_within_threshold && case.prompt_flags_stable)
         );
     }
 }

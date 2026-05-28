@@ -1547,6 +1547,118 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_shadow_rank_drift_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_shadow_rank_drift_overview();
+        let mut lines = vec![
+            format!("Hepta KG shadow-rank drift: {}", report.status),
+            format!("- verdict: {}", report.verdict),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- kg shadow-rank comparison contract: {}",
+                report.kg_shadow_rank_comparison_contract
+            ),
+            format!(
+                "- kg shadow rank contract: {}",
+                report.kg_shadow_rank_contract
+            ),
+            format!("- sample run: {}", report.sample_run),
+            format!("- top-n limit: {}", report.top_n_limit),
+            format!("- kg ranked items: {}", report.kg_ranked_item_count),
+            format!("- top-n kg ranks: {}", report.top_n_kg_rank_count),
+            format!(
+                "- expected drift cases: {}",
+                report.expected_drift_case_count
+            ),
+            format!("- drift cases: {}", report.drift_case_count),
+            format!("- stable cases: {}", report.stable_case_count),
+            format!("- drifted cases: {}", report.drifted_case_count),
+            format!("- transcript cases: {}", report.transcript_case_count),
+            format!(
+                "- durable memory cases: {}",
+                report.durable_memory_case_count
+            ),
+            format!(
+                "- max observed score delta basis points: {}",
+                report.max_observed_score_delta_basis_points
+            ),
+            format!(
+                "- transcript delta threshold basis points: {}",
+                report.transcript_delta_threshold_basis_points
+            ),
+            format!(
+                "- durable memory delta threshold basis points: {}",
+                report.durable_memory_delta_threshold_basis_points
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!("- comparison ready: {}", report.checks.comparison_ready),
+            format!(
+                "- top-n cases nonzero: {}",
+                report.checks.top_n_cases_nonzero
+            ),
+            format!(
+                "- top-n coverage complete: {}",
+                report.checks.top_n_coverage_complete
+            ),
+            format!(
+                "- baseline kind coverage stable: {}",
+                report.checks.baseline_kind_coverage_stable
+            ),
+            format!("- rank order stable: {}", report.checks.rank_order_stable),
+            format!(
+                "- score delta within thresholds: {}",
+                report.checks.score_delta_within_thresholds
+            ),
+            format!(
+                "- prompt flags stable: {}",
+                report.checks.prompt_flags_stable
+            ),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Drift cases:".to_string(),
+        ];
+
+        if report.cases.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.cases.iter().take(8).map(|case| {
+                format!(
+                    "  - case={} kg_rank={} baseline={:?} baseline_rank={} rank_delta={} candidate={} delta={} max_delta={} stable={}",
+                    case.case_index,
+                    case.kg_rank,
+                    case.baseline_kind,
+                    case.baseline_rank,
+                    case.rank_delta,
+                    case.kg_candidate_id,
+                    case.kg_score_delta_basis_points,
+                    case.max_allowed_delta_basis_points,
+                    case.stable
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -3368,6 +3480,47 @@ mod tests {
         assert!(rendered.contains("baseline=DurableMemory"));
         assert!(rendered.contains("enters_prompt=false"));
         assert!(rendered.contains("baseline_enters_prompt=false"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_shadow_rank_drift_summary_renders_stable_regression_gate() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_shadow_rank_drift_summary()
+            .expect("kg shadow-rank drift summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG shadow-rank drift: ready"));
+        assert!(rendered.contains("- verdict: stable"));
+        assert!(rendered.contains("- contract: hepta-intelligence-memory-kg-shadow-rank-drift-v0"));
+        assert!(rendered.contains(
+            "- kg shadow-rank comparison contract: hepta-intelligence-memory-kg-shadow-rank-comparison-v0"
+        ));
+        assert!(
+            rendered
+                .contains("- kg shadow rank contract: hepta-intelligence-memory-kg-shadow-rank-v0")
+        );
+        assert!(rendered.contains("- expected drift cases:"));
+        assert!(rendered.contains("- stable cases:"));
+        assert!(rendered.contains("- drifted cases: 0"));
+        assert!(rendered.contains("- transcript cases:"));
+        assert!(rendered.contains("- durable memory cases:"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- comparison ready: true"));
+        assert!(rendered.contains("- top-n coverage complete: true"));
+        assert!(rendered.contains("- baseline kind coverage stable: true"));
+        assert!(rendered.contains("- rank order stable: true"));
+        assert!(rendered.contains("- score delta within thresholds: true"));
+        assert!(rendered.contains("- prompt flags stable: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("Drift cases:"));
+        assert!(rendered.contains("stable=true"));
     }
 
     #[tokio::test]

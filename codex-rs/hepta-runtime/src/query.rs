@@ -17,20 +17,21 @@ use hepta_intelligence::{
     MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
     MemoryKgContextInjectionReadinessReport, MemoryKgContextRecallBridgeReport,
     MemoryKgRecallEvaluationReport, MemoryKgRecallPlanReport, MemoryKgShadowRankComparisonReport,
-    MemoryKgShadowRankReport, MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY,
-    SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome,
-    TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary, TopicRouteShellPatch,
-    compute_intuition_feedback_delta, evaluate_intelligence_semantic_expectations,
-    format_intuition_feedback_outcome, intuition_calibration_feedback_summary,
-    intuition_calibration_skill_targets, intuition_calibration_workflow_targets,
-    intuition_feedback_confidence_shift, is_learned_feedback_contrast_case,
-    learned_feedback_contrast_expected_signal_direction, learned_feedback_contrast_focus,
-    learned_semantic_terms_for_feedback, memory_atom_pipeline_sample_report,
-    memory_kg_adapter_client_report, memory_kg_adapter_config_env_report,
-    memory_kg_adapter_dry_run_report, memory_kg_adapter_staging_gate_report,
-    memory_kg_context_injection_readiness_report, memory_kg_context_recall_bridge_report,
-    memory_kg_recall_evaluation_report, memory_kg_recall_plan_report,
-    memory_kg_shadow_rank_comparison_report, memory_kg_shadow_rank_report,
+    MemoryKgShadowRankDriftReport, MemoryKgShadowRankReport, MemoryKgWriteCandidateReport,
+    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
+    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
+    TopicRouteShellPatch, compute_intuition_feedback_delta,
+    evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
+    intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
+    intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
+    is_learned_feedback_contrast_case, learned_feedback_contrast_expected_signal_direction,
+    learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
+    memory_atom_pipeline_sample_report, memory_kg_adapter_client_report,
+    memory_kg_adapter_config_env_report, memory_kg_adapter_dry_run_report,
+    memory_kg_adapter_staging_gate_report, memory_kg_context_injection_readiness_report,
+    memory_kg_context_recall_bridge_report, memory_kg_recall_evaluation_report,
+    memory_kg_recall_plan_report, memory_kg_shadow_rank_comparison_report,
+    memory_kg_shadow_rank_drift_report, memory_kg_shadow_rank_report,
     memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
     summarize_topic_aware_model_feedback,
 };
@@ -2688,6 +2689,11 @@ impl RuntimeKernel {
     ) -> MemoryKgShadowRankComparisonReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_shadow_rank_comparison_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_shadow_rank_drift_overview(&self) -> MemoryKgShadowRankDriftReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_shadow_rank_drift_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -9205,6 +9211,42 @@ mod tests {
         assert!(report.checks.shadow_rank_ready);
         assert!(report.checks.no_kg_items_enter_prompt_context);
         assert!(report.checks.no_baseline_items_enter_prompt_context);
+        assert!(report.checks.no_context_injection_performed);
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_shadow_rank_drift_overview_gates_regression_without_injection() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_shadow_rank_drift_overview();
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.verdict, "stable");
+        assert_eq!(
+            report.kg_shadow_rank_comparison_contract,
+            hepta_intelligence::MEMORY_KG_SHADOW_RANK_COMPARISON_V0_CONTRACT
+        );
+        assert_eq!(
+            report.kg_shadow_rank_contract,
+            hepta_intelligence::MEMORY_KG_SHADOW_RANK_V0_CONTRACT
+        );
+        assert!(report.top_n_kg_rank_count > 0);
+        assert_eq!(report.expected_drift_case_count, report.drift_case_count);
+        assert_eq!(report.stable_case_count, report.drift_case_count);
+        assert_eq!(report.drifted_case_count, 0);
+        assert_eq!(report.transcript_case_count, report.top_n_kg_rank_count);
+        assert_eq!(report.durable_memory_case_count, report.top_n_kg_rank_count);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.model_invoked);
+        assert!(!report.context_injection_performed);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.comparison_ready);
+        assert!(report.checks.rank_order_stable);
+        assert!(report.checks.score_delta_within_thresholds);
+        assert!(report.checks.prompt_flags_stable);
         assert!(report.checks.no_context_injection_performed);
     }
 
