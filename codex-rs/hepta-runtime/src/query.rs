@@ -13,18 +13,19 @@ use hepta_core::{
 };
 use hepta_intelligence::{
     IntuitionCalibrationFeedbackSummary, IntuitionCalibrationTargetSummary,
-    LearnedSemanticRouterEvidence, MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
-    MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY,
-    SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord,
-    TopicAwareModelFeedbackSummary, TopicRouteShellPatch, compute_intuition_feedback_delta,
+    LearnedSemanticRouterEvidence, MemoryKgAdapterClientReport, MemoryKgAdapterDryRunReport,
+    MemoryKgAdapterStagingGateReport, MemoryKgWriteCandidateReport,
+    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
+    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
+    TopicRouteShellPatch, compute_intuition_feedback_delta,
     evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
     intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
     intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
     is_learned_feedback_contrast_case, learned_feedback_contrast_expected_signal_direction,
     learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
-    memory_atom_pipeline_sample_report, memory_kg_adapter_dry_run_report,
-    memory_kg_adapter_staging_gate_report, memory_kg_write_candidate_report,
-    neuron_lifecycle_health_summary, semantic_score_from_counts,
+    memory_atom_pipeline_sample_report, memory_kg_adapter_client_report,
+    memory_kg_adapter_dry_run_report, memory_kg_adapter_staging_gate_report,
+    memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
     summarize_topic_aware_model_feedback,
 };
 use serde::{Deserialize, Serialize};
@@ -2636,6 +2637,11 @@ impl RuntimeKernel {
     ) -> MemoryKgAdapterStagingGateReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_adapter_staging_gate_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_adapter_client_overview(&self) -> MemoryKgAdapterClientReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_adapter_client_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -8938,6 +8944,29 @@ mod tests {
         assert!(report.checks.operator_review_required);
         assert!(report.checks.rollback_plan_required);
         assert!(report.checks.post_write_validation_required);
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_adapter_client_overview_denies_disabled_clients() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_adapter_client_overview();
+
+        assert_eq!(report.status, "ready");
+        assert!(report.candidate_count > 0);
+        assert_eq!(report.adapter_count, 3);
+        assert_eq!(
+            report.client_audit_count,
+            report.candidate_count * report.adapter_count
+        );
+        assert_eq!(report.denied_client_count, report.client_audit_count);
+        assert_eq!(report.network_call_attempted_count, 0);
+        assert_eq!(report.external_write_attempted_count, 0);
+        assert_eq!(report.live_write_attempted_count, 0);
+        assert_eq!(report.persisted_record_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.all_supported_clients_present);
+        assert!(report.checks.all_client_calls_denied_by_default);
     }
 
     #[tokio::test]

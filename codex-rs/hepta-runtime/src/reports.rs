@@ -795,6 +795,77 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_adapter_client_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_adapter_client_overview();
+        let mut lines = vec![
+            format!("Hepta KG adapter clients: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!("- sample run: {}", report.sample_run),
+            format!("- write candidates: {}", report.candidate_count),
+            format!("- supported adapters: {}", report.adapter_count),
+            format!("- client audits: {}", report.client_audit_count),
+            format!("- denied clients: {}", report.denied_client_count),
+            format!(
+                "- network calls attempted: {}",
+                report.network_call_attempted_count
+            ),
+            format!(
+                "- external writes attempted: {}",
+                report.external_write_attempted_count
+            ),
+            format!(
+                "- live writes attempted: {}",
+                report.live_write_attempted_count
+            ),
+            format!("- persisted records: {}", report.persisted_record_count),
+            format!(
+                "- all supported clients present: {}",
+                report.checks.all_supported_clients_present
+            ),
+            format!(
+                "- denied by default: {}",
+                report.checks.all_client_calls_denied_by_default
+            ),
+            format!(
+                "- no network calls attempted: {}",
+                report.checks.no_network_calls_attempted
+            ),
+            format!(
+                "- no external writes attempted: {}",
+                report.checks.no_external_writes_attempted
+            ),
+            format!(
+                "- no live writes attempted: {}",
+                report.checks.no_live_writes_attempted
+            ),
+            format!(
+                "- no records persisted: {}",
+                report.checks.no_records_persisted
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Adapter client audits:".to_string(),
+        ];
+
+        if report.audits.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.audits.iter().take(6).map(|audit| {
+                format!(
+                    "  - adapter={} candidate={} client={} network_attempted={} write_attempted={} live_attempted={} persisted={}",
+                    audit.adapter_id,
+                    audit.candidate_id,
+                    audit.client_name,
+                    audit.network_call_attempted,
+                    audit.external_write_attempted,
+                    audit.live_write_attempted,
+                    audit.persisted_records
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2365,6 +2436,30 @@ mod tests {
         assert!(rendered.contains("gate=HEPTA_KG_GRAPHITI_STAGING"));
         assert!(rendered.contains("gate=HEPTA_KG_NEO4J_STAGING"));
         assert!(rendered.contains("gate=HEPTA_KG_COCOINDEX_STAGING"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_adapter_client_summary_renders_disabled_client_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_adapter_client_summary()
+            .expect("kg adapter client summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG adapter clients: ready"));
+        assert!(rendered.contains("- contract: hepta-kg-external-adapter-client-v0"));
+        assert!(rendered.contains("- supported adapters: 3"));
+        assert!(rendered.contains("- client audits: "));
+        assert!(rendered.contains("- denied clients: "));
+        assert!(rendered.contains("- network calls attempted: 0"));
+        assert!(rendered.contains("- external writes attempted: 0"));
+        assert!(rendered.contains("- live writes attempted: 0"));
+        assert!(rendered.contains("- persisted records: 0"));
+        assert!(rendered.contains("- denied by default: true"));
+        assert!(rendered.contains("disabled-graphiti-adapter-client"));
+        assert!(rendered.contains("disabled-neo4j-adapter-client"));
+        assert!(rendered.contains("disabled-cocoindex-adapter-client"));
     }
 
     #[tokio::test]

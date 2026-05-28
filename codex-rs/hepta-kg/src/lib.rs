@@ -411,6 +411,88 @@ pub enum KgExternalAdapterStagingBlocker {
     LiveWriteForbidden,
 }
 
+pub const KG_EXTERNAL_ADAPTER_CLIENT_CONTRACT: &str = "hepta-kg-external-adapter-client-v0";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgExternalAdapterClientRequest {
+    pub adapter: KgExternalAdapterKind,
+    pub adapter_id: String,
+    pub contract: String,
+    pub candidate_id: String,
+    pub dry_run_plan: KgExternalAdapterDryRunPlan,
+    pub staging_plan: KgExternalAdapterStagingPlan,
+}
+
+impl KgExternalAdapterClientRequest {
+    pub fn from_plans(
+        dry_run_plan: KgExternalAdapterDryRunPlan,
+        staging_plan: KgExternalAdapterStagingPlan,
+    ) -> Self {
+        Self {
+            adapter: dry_run_plan.adapter,
+            adapter_id: dry_run_plan.adapter_id.clone(),
+            contract: KG_EXTERNAL_ADAPTER_CLIENT_CONTRACT.to_string(),
+            candidate_id: dry_run_plan.candidate_id.clone(),
+            dry_run_plan,
+            staging_plan,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgExternalAdapterClientAudit {
+    pub adapter: KgExternalAdapterKind,
+    pub adapter_id: String,
+    pub contract: String,
+    pub candidate_id: String,
+    pub client_name: String,
+    pub staging_ready: bool,
+    pub network_call_attempted: bool,
+    pub external_write_attempted: bool,
+    pub live_write_attempted: bool,
+    pub persisted_records: usize,
+    #[serde(default)]
+    pub blockers: Vec<KgExternalAdapterClientBlocker>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KgExternalAdapterClientBlocker {
+    DisabledClient,
+    StagingGateDenied,
+    AdapterMismatch,
+    NetworkDisabled,
+    ExternalWriteDisabled,
+    LiveWriteDisabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KgExternalAdapterClientError {
+    Disabled(KgExternalAdapterClientAudit),
+}
+
+pub trait KnowledgeGraphAdapterClient {
+    type Error;
+
+    fn adapter(&self) -> KgExternalAdapterKind;
+
+    fn client_name(&self) -> &'static str;
+
+    fn stage_write(
+        &self,
+        request: &KgExternalAdapterClientRequest,
+    ) -> Result<KgExternalAdapterClientAudit, Self::Error>;
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DisabledGraphitiAdapterClient;
+
+#[derive(Debug, Clone, Default)]
+pub struct DisabledNeo4jAdapterClient;
+
+#[derive(Debug, Clone, Default)]
+pub struct DisabledCocoIndexAdapterClient;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KgWriteAudit {
     pub candidate_id: String,
@@ -456,6 +538,63 @@ impl KnowledgeGraphStore for DryRunKnowledgeGraphStore {
             persisted_records: 0,
             blockers: plan.blockers,
         }))
+    }
+}
+
+impl KnowledgeGraphAdapterClient for DisabledGraphitiAdapterClient {
+    type Error = KgExternalAdapterClientError;
+
+    fn adapter(&self) -> KgExternalAdapterKind {
+        KgExternalAdapterKind::Graphiti
+    }
+
+    fn client_name(&self) -> &'static str {
+        "disabled-graphiti-adapter-client"
+    }
+
+    fn stage_write(
+        &self,
+        request: &KgExternalAdapterClientRequest,
+    ) -> Result<KgExternalAdapterClientAudit, Self::Error> {
+        disabled_adapter_client_error(self.adapter(), self.client_name(), request)
+    }
+}
+
+impl KnowledgeGraphAdapterClient for DisabledNeo4jAdapterClient {
+    type Error = KgExternalAdapterClientError;
+
+    fn adapter(&self) -> KgExternalAdapterKind {
+        KgExternalAdapterKind::Neo4j
+    }
+
+    fn client_name(&self) -> &'static str {
+        "disabled-neo4j-adapter-client"
+    }
+
+    fn stage_write(
+        &self,
+        request: &KgExternalAdapterClientRequest,
+    ) -> Result<KgExternalAdapterClientAudit, Self::Error> {
+        disabled_adapter_client_error(self.adapter(), self.client_name(), request)
+    }
+}
+
+impl KnowledgeGraphAdapterClient for DisabledCocoIndexAdapterClient {
+    type Error = KgExternalAdapterClientError;
+
+    fn adapter(&self) -> KgExternalAdapterKind {
+        KgExternalAdapterKind::CocoIndex
+    }
+
+    fn client_name(&self) -> &'static str {
+        "disabled-cocoindex-adapter-client"
+    }
+
+    fn stage_write(
+        &self,
+        request: &KgExternalAdapterClientRequest,
+    ) -> Result<KgExternalAdapterClientAudit, Self::Error> {
+        disabled_adapter_client_error(self.adapter(), self.client_name(), request)
     }
 }
 
@@ -614,6 +753,68 @@ pub fn plan_external_adapter_staging_gate(
         network_call_allowed: false,
         external_write_allowed: false,
         live_write_allowed: false,
+        blockers,
+    }
+}
+
+pub fn preview_disabled_external_adapter_write(
+    request: &KgExternalAdapterClientRequest,
+) -> KgExternalAdapterClientAudit {
+    match request.adapter {
+        KgExternalAdapterKind::Graphiti => {
+            let client = DisabledGraphitiAdapterClient;
+            disabled_adapter_client_audit(client.adapter(), client.client_name(), request)
+        }
+        KgExternalAdapterKind::Neo4j => {
+            let client = DisabledNeo4jAdapterClient;
+            disabled_adapter_client_audit(client.adapter(), client.client_name(), request)
+        }
+        KgExternalAdapterKind::CocoIndex => {
+            let client = DisabledCocoIndexAdapterClient;
+            disabled_adapter_client_audit(client.adapter(), client.client_name(), request)
+        }
+    }
+}
+
+fn disabled_adapter_client_error(
+    adapter: KgExternalAdapterKind,
+    client_name: &str,
+    request: &KgExternalAdapterClientRequest,
+) -> Result<KgExternalAdapterClientAudit, KgExternalAdapterClientError> {
+    Err(KgExternalAdapterClientError::Disabled(
+        disabled_adapter_client_audit(adapter, client_name, request),
+    ))
+}
+
+fn disabled_adapter_client_audit(
+    adapter: KgExternalAdapterKind,
+    client_name: &str,
+    request: &KgExternalAdapterClientRequest,
+) -> KgExternalAdapterClientAudit {
+    let mut blockers = vec![
+        KgExternalAdapterClientBlocker::DisabledClient,
+        KgExternalAdapterClientBlocker::NetworkDisabled,
+        KgExternalAdapterClientBlocker::ExternalWriteDisabled,
+        KgExternalAdapterClientBlocker::LiveWriteDisabled,
+    ];
+    if !request.staging_plan.staging_ready {
+        blockers.push(KgExternalAdapterClientBlocker::StagingGateDenied);
+    }
+    if request.adapter != adapter || request.staging_plan.adapter != adapter {
+        blockers.push(KgExternalAdapterClientBlocker::AdapterMismatch);
+    }
+
+    KgExternalAdapterClientAudit {
+        adapter,
+        adapter_id: adapter.id().to_string(),
+        contract: KG_EXTERNAL_ADAPTER_CLIENT_CONTRACT.to_string(),
+        candidate_id: request.candidate_id.clone(),
+        client_name: client_name.to_string(),
+        staging_ready: request.staging_plan.staging_ready,
+        network_call_attempted: false,
+        external_write_attempted: false,
+        live_write_attempted: false,
+        persisted_records: 0,
         blockers,
     }
 }
@@ -863,6 +1064,90 @@ mod tests {
         assert!(!staging_plan.network_call_allowed);
         assert!(!staging_plan.external_write_allowed);
         assert!(!staging_plan.live_write_allowed);
+    }
+
+    #[test]
+    fn disabled_adapter_clients_cover_supported_adapters() {
+        let clients: Vec<
+            Box<dyn KnowledgeGraphAdapterClient<Error = KgExternalAdapterClientError>>,
+        > = vec![
+            Box::new(DisabledGraphitiAdapterClient),
+            Box::new(DisabledNeo4jAdapterClient),
+            Box::new(DisabledCocoIndexAdapterClient),
+        ];
+
+        assert_eq!(clients.len(), 3);
+        assert!(
+            clients
+                .iter()
+                .any(|client| client.adapter() == KgExternalAdapterKind::Graphiti)
+        );
+        assert!(
+            clients
+                .iter()
+                .any(|client| client.adapter() == KgExternalAdapterKind::Neo4j)
+        );
+        assert!(
+            clients
+                .iter()
+                .any(|client| client.adapter() == KgExternalAdapterKind::CocoIndex)
+        );
+    }
+
+    #[test]
+    fn disabled_adapter_client_denies_without_side_effects() {
+        let candidate = sample_candidate();
+        let write_plan = plan_kg_write(&candidate, &KgWritePolicy::default());
+        let dry_run_plan =
+            plan_external_adapter_dry_run(&candidate, &write_plan, KgExternalAdapterKind::Graphiti);
+        let staging_config =
+            KgExternalAdapterStagingConfig::disabled(KgExternalAdapterKind::Graphiti);
+        let staging_plan = plan_external_adapter_staging_gate(&dry_run_plan, &staging_config);
+        let request =
+            KgExternalAdapterClientRequest::from_plans(dry_run_plan.clone(), staging_plan.clone());
+        let client = DisabledGraphitiAdapterClient;
+
+        let err = client
+            .stage_write(&request)
+            .expect_err("disabled client must deny writes");
+        let KgExternalAdapterClientError::Disabled(audit) = err;
+
+        assert_eq!(audit.adapter, KgExternalAdapterKind::Graphiti);
+        assert_eq!(audit.candidate_id, dry_run_plan.candidate_id);
+        assert!(!audit.network_call_attempted);
+        assert!(!audit.external_write_attempted);
+        assert!(!audit.live_write_attempted);
+        assert_eq!(audit.persisted_records, 0);
+        assert!(
+            audit
+                .blockers
+                .contains(&KgExternalAdapterClientBlocker::DisabledClient)
+        );
+        assert!(
+            audit
+                .blockers
+                .contains(&KgExternalAdapterClientBlocker::StagingGateDenied)
+        );
+    }
+
+    #[test]
+    fn disabled_adapter_preview_returns_audit_without_invocation_side_effects() {
+        let candidate = sample_candidate();
+        let write_plan = plan_kg_write(&candidate, &KgWritePolicy::default());
+        let dry_run_plan =
+            plan_external_adapter_dry_run(&candidate, &write_plan, KgExternalAdapterKind::Neo4j);
+        let staging_config = KgExternalAdapterStagingConfig::disabled(KgExternalAdapterKind::Neo4j);
+        let staging_plan = plan_external_adapter_staging_gate(&dry_run_plan, &staging_config);
+        let request = KgExternalAdapterClientRequest::from_plans(dry_run_plan, staging_plan);
+
+        let audit = preview_disabled_external_adapter_write(&request);
+
+        assert_eq!(audit.adapter, KgExternalAdapterKind::Neo4j);
+        assert_eq!(audit.client_name, "disabled-neo4j-adapter-client");
+        assert!(!audit.network_call_attempted);
+        assert!(!audit.external_write_attempted);
+        assert!(!audit.live_write_attempted);
+        assert_eq!(audit.persisted_records, 0);
     }
 
     fn sample_candidate() -> KgWriteCandidate {

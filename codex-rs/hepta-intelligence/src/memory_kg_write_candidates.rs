@@ -3,12 +3,13 @@ use hepta_core::{
     MemoryUnitKind,
 };
 use hepta_kg::{
-    KgConfidence, KgEntity, KgEntityKind, KgEpisode, KgEpisodeKind, KgExternalAdapterDryRunPlan,
+    KgConfidence, KgEntity, KgEntityKind, KgEpisode, KgEpisodeKind, KgExternalAdapterClientAudit,
+    KgExternalAdapterClientBlocker, KgExternalAdapterClientRequest, KgExternalAdapterDryRunPlan,
     KgExternalAdapterKind, KgExternalAdapterStagingBlocker, KgExternalAdapterStagingPlan,
     KgOperatorReviewState, KgProvenance, KgRedactionState, KgRelation, KgRelationKind,
     KgSourceKind, KgSourceSpan, KgTemporalValidity, KgWriteCandidate, KgWriteMode, KgWritePlan,
     KgWritePolicy, default_external_adapter_staging_configs, plan_external_adapter_dry_run,
-    plan_external_adapter_staging_gate, plan_kg_write,
+    plan_external_adapter_staging_gate, plan_kg_write, preview_disabled_external_adapter_write,
 };
 use serde::{Deserialize, Serialize};
 
@@ -135,6 +136,49 @@ pub struct MemoryKgAdapterStagingGateReport {
     pub live_write_enabled_count: usize,
     pub plans: Vec<KgExternalAdapterStagingPlan>,
     pub checks: MemoryKgAdapterStagingGateChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgAdapterClientChecks {
+    pub candidate_count_nonzero: bool,
+    pub all_supported_clients_present: bool,
+    pub all_client_calls_denied_by_default: bool,
+    pub no_network_calls_attempted: bool,
+    pub no_external_writes_attempted: bool,
+    pub no_live_writes_attempted: bool,
+    pub no_records_persisted: bool,
+}
+
+impl MemoryKgAdapterClientChecks {
+    pub fn ready(&self) -> bool {
+        self.candidate_count_nonzero
+            && self.all_supported_clients_present
+            && self.all_client_calls_denied_by_default
+            && self.no_network_calls_attempted
+            && self.no_external_writes_attempted
+            && self.no_live_writes_attempted
+            && self.no_records_persisted
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgAdapterClientReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub sample_run: bool,
+    pub candidate_count: usize,
+    pub adapter_count: usize,
+    pub client_audit_count: usize,
+    pub denied_client_count: usize,
+    pub network_call_attempted_count: usize,
+    pub external_write_attempted_count: usize,
+    pub live_write_attempted_count: usize,
+    pub persisted_record_count: usize,
+    pub audits: Vec<KgExternalAdapterClientAudit>,
+    pub checks: MemoryKgAdapterClientChecks,
     pub next_phase: &'static str,
 }
 
@@ -314,6 +358,78 @@ pub fn memory_kg_adapter_staging_gate_report(
         plans,
         checks,
         next_phase: "add disabled-by-default adapter clients behind the staging gate",
+    }
+}
+
+pub fn memory_kg_adapter_client_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgAdapterClientReport {
+    let dry_run_report = memory_kg_adapter_dry_run_report(memory_units, sample_run);
+    let staging_report = memory_kg_adapter_staging_gate_report(memory_units, sample_run);
+    let audits = dry_run_report
+        .projections
+        .into_iter()
+        .zip(staging_report.plans)
+        .map(|(projection, staging_plan)| {
+            let request = KgExternalAdapterClientRequest::from_plans(projection, staging_plan);
+            preview_disabled_external_adapter_write(&request)
+        })
+        .collect::<Vec<_>>();
+
+    let denied_client_count = audits
+        .iter()
+        .filter(|audit| {
+            audit
+                .blockers
+                .contains(&KgExternalAdapterClientBlocker::DisabledClient)
+        })
+        .count();
+    let network_call_attempted_count = audits
+        .iter()
+        .filter(|audit| audit.network_call_attempted)
+        .count();
+    let external_write_attempted_count = audits
+        .iter()
+        .filter(|audit| audit.external_write_attempted)
+        .count();
+    let live_write_attempted_count = audits
+        .iter()
+        .filter(|audit| audit.live_write_attempted)
+        .count();
+    let persisted_record_count = audits.iter().map(|audit| audit.persisted_records).sum();
+    let adapter_count = KgExternalAdapterKind::ALL.len();
+    let checks = MemoryKgAdapterClientChecks {
+        candidate_count_nonzero: staging_report.candidate_count > 0,
+        all_supported_clients_present: KgExternalAdapterKind::ALL.into_iter().all(|adapter| {
+            audits
+                .iter()
+                .any(|audit| audit.adapter == adapter && audit.adapter_id == adapter.id())
+        }),
+        all_client_calls_denied_by_default: denied_client_count == audits.len(),
+        no_network_calls_attempted: network_call_attempted_count == 0,
+        no_external_writes_attempted: external_write_attempted_count == 0,
+        no_live_writes_attempted: live_write_attempted_count == 0,
+        no_records_persisted: persisted_record_count == 0,
+    };
+
+    MemoryKgAdapterClientReport {
+        product: "Hepta",
+        command: "memory-kg-adapter-client-denial",
+        contract: hepta_kg::KG_EXTERNAL_ADAPTER_CLIENT_CONTRACT,
+        status: if checks.ready() { "ready" } else { "attention" },
+        sample_run,
+        candidate_count: staging_report.candidate_count,
+        adapter_count,
+        client_audit_count: audits.len(),
+        denied_client_count,
+        network_call_attempted_count,
+        external_write_attempted_count,
+        live_write_attempted_count,
+        persisted_record_count,
+        audits,
+        checks,
+        next_phase: "replace disabled adapter clients with feature-gated real clients after staging approval",
     }
 }
 
@@ -645,5 +761,40 @@ mod tests {
         assert!(report.checks.rollback_plan_required);
         assert!(report.checks.post_write_validation_required);
         assert!(report.plans.iter().all(|plan| !plan.staging_ready));
+    }
+
+    #[test]
+    fn memory_atoms_emit_disabled_adapter_client_denials_without_side_effects() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_adapter_client_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.candidate_count, atom_report.atoms.len());
+        assert_eq!(report.adapter_count, 3);
+        assert_eq!(report.client_audit_count, report.candidate_count * 3);
+        assert_eq!(report.denied_client_count, report.client_audit_count);
+        assert_eq!(report.network_call_attempted_count, 0);
+        assert_eq!(report.external_write_attempted_count, 0);
+        assert_eq!(report.live_write_attempted_count, 0);
+        assert_eq!(report.persisted_record_count, 0);
+        assert!(report.checks.ready());
+        assert!(
+            report
+                .audits
+                .iter()
+                .any(|audit| audit.client_name == "disabled-graphiti-adapter-client")
+        );
+        assert!(
+            report
+                .audits
+                .iter()
+                .any(|audit| audit.client_name == "disabled-neo4j-adapter-client")
+        );
+        assert!(
+            report
+                .audits
+                .iter()
+                .any(|audit| audit.client_name == "disabled-cocoindex-adapter-client")
+        );
     }
 }
