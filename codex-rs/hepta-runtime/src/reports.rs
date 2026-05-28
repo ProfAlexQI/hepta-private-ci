@@ -2009,6 +2009,166 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_prompt_preview_redaction_diff_summary(
+        &self,
+    ) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_prompt_preview_redaction_diff_overview();
+        let mut lines = vec![
+            format!("Hepta KG prompt-preview redaction diff: {}", report.status),
+            format!("- verdict: {}", report.verdict),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- operator evidence contract: {}",
+                report.operator_evidence_contract
+            ),
+            format!(
+                "- operator evidence status: {}",
+                report.operator_evidence_status
+            ),
+            format!("- redaction diff mode: {}", report.redaction_diff_mode),
+            format!("- sample run: {}", report.sample_run),
+            format!("- required evidence: {}", report.required_evidence_count),
+            format!("- missing evidence: {}", report.missing_evidence_count),
+            format!("- diff items: {}", report.diff_item_count),
+            format!("- redacted refs: {}", report.redacted_ref_count),
+            format!("- raw prompt diffs: {}", report.raw_prompt_diff_count),
+            format!(
+                "- prompt text included: {}",
+                report.prompt_text_included_count
+            ),
+            format!(
+                "- payload text included: {}",
+                report.payload_text_included_count
+            ),
+            format!(
+                "- redacted diff reported: {}",
+                report.redacted_diff_reported
+            ),
+            format!(
+                "- prompt preview allowed: {}",
+                report.prompt_preview_allowed
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!(
+                "- prompt payload materialized: {}",
+                report.prompt_payload_materialized
+            ),
+            format!(
+                "- context injection allowed: {}",
+                report.context_injection_allowed
+            ),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- operator evidence contract linked: {}",
+                report.checks.operator_evidence_contract_linked
+            ),
+            format!(
+                "- operator evidence checks ready: {}",
+                report.checks.operator_evidence_checks_ready
+            ),
+            format!(
+                "- operator evidence missing requirements: {}",
+                report.checks.operator_evidence_missing_requirements
+            ),
+            format!(
+                "- redacted diff items cover requirements: {}",
+                report.checks.redacted_diff_items_cover_requirements
+            ),
+            format!(
+                "- raw prompt diff suppressed: {}",
+                report.checks.raw_prompt_diff_suppressed
+            ),
+            format!(
+                "- prompt text excluded: {}",
+                report.checks.prompt_text_excluded
+            ),
+            format!(
+                "- payload text excluded: {}",
+                report.checks.payload_text_excluded
+            ),
+            format!(
+                "- prompt preview disabled: {}",
+                report.checks.prompt_preview_disabled
+            ),
+            format!(
+                "- prompt payload not materialized: {}",
+                report.checks.prompt_payload_not_materialized
+            ),
+            format!(
+                "- context injection disabled: {}",
+                report.checks.context_injection_disabled
+            ),
+            format!("- no model invoked: {}", report.checks.no_model_invoked),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!(
+                "- no external reads enabled: {}",
+                report.checks.no_external_reads_enabled
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Redaction diff blockers:".to_string(),
+        ];
+
+        if report.blockers.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(
+                report
+                    .blockers
+                    .iter()
+                    .map(|blocker| format!("  - {:?}", blocker)),
+            );
+        }
+
+        lines.push("Redaction diff items:".to_string());
+        if report.items.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.items.iter().map(|item| {
+                format!(
+                    "  - item={} requirement={} before={} after={} raw_before={} raw_after={} prompt_text={} payload_text={} blocks_prompt_preview={}",
+                    item.diff_item_index,
+                    item.requirement,
+                    item.redacted_before_ref,
+                    item.redacted_after_ref,
+                    item.raw_before_included,
+                    item.raw_after_included,
+                    item.prompt_text_included,
+                    item.payload_text_included,
+                    item.blocks_prompt_preview
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -3986,6 +4146,70 @@ mod tests {
         assert!(rendered.contains("Operator evidence requirements:"));
         assert!(rendered.contains("name=operator_approval_record present=false"));
         assert!(rendered.contains("blocks_prompt_preview=true"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_prompt_preview_redaction_diff_summary_renders_redacted_only_gate() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_prompt_preview_redaction_diff_summary()
+            .expect("kg prompt-preview redaction diff summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG prompt-preview redaction diff: blocked"));
+        assert!(
+            rendered.contains(
+                "- contract: hepta-intelligence-memory-kg-prompt-preview-redaction-diff-v0"
+            )
+        );
+        assert!(rendered.contains(
+            "- operator evidence contract: hepta-intelligence-memory-kg-prompt-preview-operator-evidence-v0"
+        ));
+        assert!(rendered.contains("- operator evidence status: blocked"));
+        assert!(rendered.contains(
+            "- redaction diff mode: redacted_requirement_refs_only_no_prompt_or_payload"
+        ));
+        assert!(rendered.contains("- required evidence: 7"));
+        assert!(rendered.contains("- missing evidence: 7"));
+        assert!(rendered.contains("- diff items: 7"));
+        assert!(rendered.contains("- redacted refs: 7"));
+        assert!(rendered.contains("- raw prompt diffs: 0"));
+        assert!(rendered.contains("- prompt text included: 0"));
+        assert!(rendered.contains("- payload text included: 0"));
+        assert!(rendered.contains("- redacted diff reported: true"));
+        assert!(rendered.contains("- prompt preview allowed: false"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- prompt payload materialized: false"));
+        assert!(rendered.contains("- context injection allowed: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- operator evidence checks ready: true"));
+        assert!(rendered.contains("- operator evidence missing requirements: true"));
+        assert!(rendered.contains("- redacted diff items cover requirements: true"));
+        assert!(rendered.contains("- raw prompt diff suppressed: true"));
+        assert!(rendered.contains("- prompt text excluded: true"));
+        assert!(rendered.contains("- payload text excluded: true"));
+        assert!(rendered.contains("- prompt preview disabled: true"));
+        assert!(rendered.contains("- prompt payload not materialized: true"));
+        assert!(rendered.contains("- context injection disabled: true"));
+        assert!(rendered.contains("- no model invoked: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("- no external reads enabled: true"));
+        assert!(rendered.contains("- no network calls enabled: true"));
+        assert!(rendered.contains("- no live writes enabled: true"));
+        assert!(rendered.contains("Redaction diff blockers:"));
+        assert!(rendered.contains("OperatorEvidenceIncomplete"));
+        assert!(rendered.contains("RawPromptDiffSuppressed"));
+        assert!(rendered.contains("Redaction diff items:"));
+        assert!(rendered.contains("requirement=operator_approval_record"));
+        assert!(rendered.contains("raw_before=false"));
+        assert!(rendered.contains("raw_after=false"));
+        assert!(rendered.contains("prompt_text=false"));
+        assert!(rendered.contains("payload_text=false"));
     }
 
     #[tokio::test]

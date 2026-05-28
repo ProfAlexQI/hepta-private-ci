@@ -36,6 +36,8 @@ pub const MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-approval-packet-v0";
 pub const MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-operator-evidence-v0";
+pub const MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-prompt-preview-redaction-diff-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -985,6 +987,106 @@ pub struct MemoryKgPromptPreviewOperatorEvidenceReport {
     pub blockers: Vec<MemoryKgPromptPreviewOperatorEvidenceBlocker>,
     pub requirements: Vec<MemoryKgPromptPreviewOperatorEvidenceRequirement>,
     pub checks: MemoryKgPromptPreviewOperatorEvidenceChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MemoryKgPromptPreviewRedactionDiffBlocker {
+    OperatorEvidenceIncomplete,
+    PromptPreviewDisabled,
+    RawPromptDiffSuppressed,
+    PromptPayloadMaterializationDisabled,
+    ContextInjectionDisabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewRedactionDiffItem {
+    pub diff_item_index: usize,
+    pub requirement: &'static str,
+    pub redacted_before_ref: String,
+    pub redacted_after_ref: String,
+    pub raw_before_included: bool,
+    pub raw_after_included: bool,
+    pub prompt_text_included: bool,
+    pub payload_text_included: bool,
+    pub operator_evidence_present: bool,
+    pub blocks_prompt_preview: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewRedactionDiffChecks {
+    pub operator_evidence_contract_linked: bool,
+    pub operator_evidence_checks_ready: bool,
+    pub operator_evidence_missing_requirements: bool,
+    pub redacted_diff_items_nonzero: bool,
+    pub redacted_refs_present: bool,
+    pub redacted_diff_items_cover_requirements: bool,
+    pub raw_prompt_diff_suppressed: bool,
+    pub prompt_text_excluded: bool,
+    pub payload_text_excluded: bool,
+    pub prompt_preview_disabled: bool,
+    pub prompt_payload_not_materialized: bool,
+    pub context_injection_disabled: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgPromptPreviewRedactionDiffChecks {
+    pub fn ready(&self) -> bool {
+        self.operator_evidence_contract_linked
+            && self.operator_evidence_checks_ready
+            && self.operator_evidence_missing_requirements
+            && self.redacted_diff_items_nonzero
+            && self.redacted_refs_present
+            && self.redacted_diff_items_cover_requirements
+            && self.raw_prompt_diff_suppressed
+            && self.prompt_text_excluded
+            && self.payload_text_excluded
+            && self.prompt_preview_disabled
+            && self.prompt_payload_not_materialized
+            && self.context_injection_disabled
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewRedactionDiffReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub verdict: &'static str,
+    pub sample_run: bool,
+    pub operator_evidence_contract: &'static str,
+    pub operator_evidence_status: &'static str,
+    pub redaction_diff_mode: &'static str,
+    pub required_evidence_count: usize,
+    pub missing_evidence_count: usize,
+    pub diff_item_count: usize,
+    pub redacted_ref_count: usize,
+    pub raw_prompt_diff_count: usize,
+    pub prompt_text_included_count: usize,
+    pub payload_text_included_count: usize,
+    pub redacted_diff_reported: bool,
+    pub prompt_preview_allowed: bool,
+    pub prompt_preview_rendered: bool,
+    pub prompt_payload_materialized: bool,
+    pub context_injection_allowed: bool,
+    pub context_injection_performed: bool,
+    pub model_invoked: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub blockers: Vec<MemoryKgPromptPreviewRedactionDiffBlocker>,
+    pub items: Vec<MemoryKgPromptPreviewRedactionDiffItem>,
+    pub checks: MemoryKgPromptPreviewRedactionDiffChecks,
     pub next_phase: &'static str,
 }
 
@@ -2186,6 +2288,119 @@ pub fn memory_kg_prompt_preview_operator_evidence_report(
     }
 }
 
+pub fn memory_kg_prompt_preview_redaction_diff_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgPromptPreviewRedactionDiffReport {
+    let evidence_report =
+        memory_kg_prompt_preview_operator_evidence_report(memory_units, sample_run);
+    let items = memory_kg_prompt_preview_redaction_diff_items(&evidence_report.requirements);
+    let diff_item_count = items.len();
+    let redacted_ref_count = items
+        .iter()
+        .filter(|item| {
+            !item.redacted_before_ref.trim().is_empty()
+                && !item.redacted_after_ref.trim().is_empty()
+        })
+        .count();
+    let raw_prompt_diff_count = items
+        .iter()
+        .filter(|item| item.raw_before_included || item.raw_after_included)
+        .count();
+    let prompt_text_included_count = items
+        .iter()
+        .filter(|item| item.prompt_text_included)
+        .count();
+    let payload_text_included_count = items
+        .iter()
+        .filter(|item| item.payload_text_included)
+        .count();
+    let redacted_diff_reported = true;
+    let prompt_preview_allowed = false;
+    let prompt_preview_rendered = false;
+    let prompt_payload_materialized = false;
+    let context_injection_allowed = false;
+    let context_injection_performed = false;
+    let model_invoked = false;
+
+    let mut blockers = Vec::new();
+    if evidence_report.missing_evidence_count > 0 {
+        blockers.push(MemoryKgPromptPreviewRedactionDiffBlocker::OperatorEvidenceIncomplete);
+    }
+    if !prompt_preview_allowed {
+        blockers.push(MemoryKgPromptPreviewRedactionDiffBlocker::PromptPreviewDisabled);
+    }
+    if raw_prompt_diff_count == 0 {
+        blockers.push(MemoryKgPromptPreviewRedactionDiffBlocker::RawPromptDiffSuppressed);
+    }
+    if !prompt_payload_materialized {
+        blockers
+            .push(MemoryKgPromptPreviewRedactionDiffBlocker::PromptPayloadMaterializationDisabled);
+    }
+    if !context_injection_allowed {
+        blockers.push(MemoryKgPromptPreviewRedactionDiffBlocker::ContextInjectionDisabled);
+    }
+
+    let checks = MemoryKgPromptPreviewRedactionDiffChecks {
+        operator_evidence_contract_linked: evidence_report.contract
+            == MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT,
+        operator_evidence_checks_ready: evidence_report.checks.ready(),
+        operator_evidence_missing_requirements: evidence_report.missing_evidence_count > 0,
+        redacted_diff_items_nonzero: diff_item_count > 0,
+        redacted_refs_present: diff_item_count > 0 && redacted_ref_count == diff_item_count,
+        redacted_diff_items_cover_requirements: diff_item_count
+            == evidence_report.required_evidence_count,
+        raw_prompt_diff_suppressed: raw_prompt_diff_count == 0,
+        prompt_text_excluded: prompt_text_included_count == 0,
+        payload_text_excluded: payload_text_included_count == 0,
+        prompt_preview_disabled: !prompt_preview_allowed && !prompt_preview_rendered,
+        prompt_payload_not_materialized: !prompt_payload_materialized,
+        context_injection_disabled: !context_injection_allowed,
+        no_model_invoked: !model_invoked,
+        no_context_injection_performed: !context_injection_performed,
+        no_external_reads_enabled: evidence_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: evidence_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: evidence_report.live_write_enabled_count == 0,
+    };
+
+    MemoryKgPromptPreviewRedactionDiffReport {
+        product: "Hepta",
+        command: "memory-kg-prompt-preview-redaction-diff",
+        contract: MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT,
+        status: if checks.ready() {
+            "blocked"
+        } else {
+            "attention"
+        },
+        verdict: "blocked_until_redacted_diff_review_and_operator_evidence_are_complete",
+        sample_run,
+        operator_evidence_contract: MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT,
+        operator_evidence_status: evidence_report.status,
+        redaction_diff_mode: "redacted_requirement_refs_only_no_prompt_or_payload",
+        required_evidence_count: evidence_report.required_evidence_count,
+        missing_evidence_count: evidence_report.missing_evidence_count,
+        diff_item_count,
+        redacted_ref_count,
+        raw_prompt_diff_count,
+        prompt_text_included_count,
+        payload_text_included_count,
+        redacted_diff_reported,
+        prompt_preview_allowed,
+        prompt_preview_rendered,
+        prompt_payload_materialized,
+        context_injection_allowed,
+        context_injection_performed,
+        model_invoked,
+        external_read_enabled_count: evidence_report.external_read_enabled_count,
+        network_call_enabled_count: evidence_report.network_call_enabled_count,
+        live_write_enabled_count: evidence_report.live_write_enabled_count,
+        blockers,
+        items,
+        checks,
+        next_phase: "review redacted diff refs and complete operator evidence before any KG prompt preview payload can be materialized",
+    }
+}
+
 fn memory_kg_shadow_rank_items(items: &[ContextRecallItem]) -> Vec<MemoryKgShadowRankItem> {
     items
         .iter()
@@ -2357,6 +2572,32 @@ fn memory_kg_prompt_preview_operator_evidence_requirements()
         },
     )
     .collect()
+}
+
+fn memory_kg_prompt_preview_redaction_diff_items(
+    requirements: &[MemoryKgPromptPreviewOperatorEvidenceRequirement],
+) -> Vec<MemoryKgPromptPreviewRedactionDiffItem> {
+    requirements
+        .iter()
+        .map(|requirement| MemoryKgPromptPreviewRedactionDiffItem {
+            diff_item_index: requirement.requirement_index,
+            requirement: requirement.requirement,
+            redacted_before_ref: format!(
+                "redacted-diff:before:{}:{}",
+                requirement.requirement_index, requirement.requirement
+            ),
+            redacted_after_ref: format!(
+                "redacted-diff:after:{}:{}",
+                requirement.requirement_index, requirement.requirement
+            ),
+            raw_before_included: false,
+            raw_after_included: false,
+            prompt_text_included: false,
+            payload_text_included: false,
+            operator_evidence_present: requirement.present,
+            blocks_prompt_preview: requirement.blocks_prompt_preview,
+        })
+        .collect()
 }
 
 fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> Vec<KgReadQuery> {
@@ -3704,6 +3945,91 @@ mod tests {
                 && requirement
                     .redacted_evidence_ref
                     .starts_with("missing:kg-prompt-preview-evidence:")
+        }));
+    }
+
+    #[test]
+    fn memory_kg_prompt_preview_redaction_diff_suppresses_raw_prompt_and_payload() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_prompt_preview_redaction_diff_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.verdict,
+            "blocked_until_redacted_diff_review_and_operator_evidence_are_complete"
+        );
+        assert_eq!(
+            report.contract,
+            MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT
+        );
+        assert_eq!(
+            report.operator_evidence_contract,
+            MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT
+        );
+        assert_eq!(report.operator_evidence_status, "blocked");
+        assert_eq!(
+            report.redaction_diff_mode,
+            "redacted_requirement_refs_only_no_prompt_or_payload"
+        );
+        assert_eq!(report.required_evidence_count, 7);
+        assert_eq!(
+            report.missing_evidence_count,
+            report.required_evidence_count
+        );
+        assert_eq!(report.diff_item_count, report.required_evidence_count);
+        assert_eq!(report.redacted_ref_count, report.diff_item_count);
+        assert_eq!(report.raw_prompt_diff_count, 0);
+        assert_eq!(report.prompt_text_included_count, 0);
+        assert_eq!(report.payload_text_included_count, 0);
+        assert!(report.redacted_diff_reported);
+        assert!(!report.prompt_preview_allowed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.prompt_payload_materialized);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.model_invoked);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.operator_evidence_contract_linked);
+        assert!(report.checks.operator_evidence_checks_ready);
+        assert!(report.checks.operator_evidence_missing_requirements);
+        assert!(report.checks.redacted_diff_items_nonzero);
+        assert!(report.checks.redacted_refs_present);
+        assert!(report.checks.redacted_diff_items_cover_requirements);
+        assert!(report.checks.raw_prompt_diff_suppressed);
+        assert!(report.checks.prompt_text_excluded);
+        assert!(report.checks.payload_text_excluded);
+        assert!(report.checks.prompt_preview_disabled);
+        assert!(report.checks.prompt_payload_not_materialized);
+        assert!(report.checks.context_injection_disabled);
+        assert!(report.checks.no_model_invoked);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(report.checks.no_external_reads_enabled);
+        assert!(report.checks.no_network_calls_enabled);
+        assert!(report.checks.no_live_writes_enabled);
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewRedactionDiffBlocker::OperatorEvidenceIncomplete)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewRedactionDiffBlocker::RawPromptDiffSuppressed)
+        );
+        assert!(report.items.iter().all(|item| {
+            !item.raw_before_included
+                && !item.raw_after_included
+                && !item.prompt_text_included
+                && !item.payload_text_included
+                && !item.operator_evidence_present
+                && item.blocks_prompt_preview
+                && item
+                    .redacted_before_ref
+                    .starts_with("redacted-diff:before:")
+                && item.redacted_after_ref.starts_with("redacted-diff:after:")
         }));
     }
 }
