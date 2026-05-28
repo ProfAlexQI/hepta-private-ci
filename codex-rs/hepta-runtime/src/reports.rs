@@ -2529,6 +2529,248 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_prompt_preview_preflight_summary(
+        &self,
+    ) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_prompt_preview_preflight_overview();
+        let mut lines = vec![
+            format!("Hepta KG prompt-preview preflight: {}", report.status),
+            format!("- verdict: {}", report.verdict),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- context handoff contract: {}",
+                report.context_handoff_contract
+            ),
+            format!(
+                "- context handoff status: {}",
+                report.context_handoff_status
+            ),
+            format!("- sample run: {}", report.sample_run),
+            format!("- source gates: {}", report.source_gate_count),
+            format!("- ready source gates: {}", report.ready_source_gate_count),
+            format!(
+                "- blocked source gates: {}",
+                report.blocked_source_gate_count
+            ),
+            format!(
+                "- report-only source gates: {}",
+                report.report_only_source_gate_count
+            ),
+            format!(
+                "- required operator evidence: {}",
+                report.required_operator_evidence_count
+            ),
+            format!(
+                "- missing operator evidence: {}",
+                report.missing_operator_evidence_count
+            ),
+            format!(
+                "- required safety controls: {}",
+                report.required_safety_control_count
+            ),
+            format!(
+                "- missing safety controls: {}",
+                report.missing_safety_control_count
+            ),
+            format!(
+                "- required handoff requirements: {}",
+                report.required_handoff_requirement_count
+            ),
+            format!(
+                "- missing handoff requirements: {}",
+                report.missing_handoff_requirement_count
+            ),
+            format!(
+                "- missing final review approval: {}",
+                report.missing_final_review_approval_count
+            ),
+            format!(
+                "- required total preflight requirements: {}",
+                report.required_total_preflight_requirement_count
+            ),
+            format!(
+                "- missing total preflight requirements: {}",
+                report.missing_total_preflight_requirement_count
+            ),
+            format!("- redacted refs: {}", report.redacted_ref_count),
+            format!("- raw prompt diffs: {}", report.raw_prompt_diff_count),
+            format!(
+                "- prompt text included: {}",
+                report.prompt_text_included_count
+            ),
+            format!(
+                "- payload text included: {}",
+                report.payload_text_included_count
+            ),
+            format!(
+                "- redacted diff review present: {}",
+                report.redacted_diff_review_present
+            ),
+            format!(
+                "- context handoff approval present: {}",
+                report.context_handoff_approval_present
+            ),
+            format!(
+                "- prompt preview allowed: {}",
+                report.prompt_preview_allowed
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!(
+                "- prompt payload materialized: {}",
+                report.prompt_payload_materialized
+            ),
+            format!(
+                "- context injection allowed: {}",
+                report.context_injection_allowed
+            ),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!("- CI promotion allowed: {}", report.ci_promotion_allowed),
+            format!(
+                "- preflight execution performed: {}",
+                report.preflight_execution_performed
+            ),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- source gates nonzero: {}",
+                report.checks.source_gates_nonzero
+            ),
+            format!(
+                "- source gates all linked: {}",
+                report.checks.source_gates_all_linked
+            ),
+            format!(
+                "- source gates all checks ready: {}",
+                report.checks.source_gates_all_checks_ready
+            ),
+            format!(
+                "- source gates all blocked: {}",
+                report.checks.source_gates_all_blocked
+            ),
+            format!(
+                "- source gates all report-only: {}",
+                report.checks.source_gates_all_report_only
+            ),
+            format!(
+                "- context handoff contract linked: {}",
+                report.checks.context_handoff_contract_linked
+            ),
+            format!(
+                "- context handoff checks ready: {}",
+                report.checks.context_handoff_checks_ready
+            ),
+            format!(
+                "- context handoff blocked: {}",
+                report.checks.context_handoff_blocked
+            ),
+            format!(
+                "- operator evidence incomplete: {}",
+                report.checks.operator_evidence_incomplete
+            ),
+            format!(
+                "- safety controls incomplete: {}",
+                report.checks.safety_controls_incomplete
+            ),
+            format!(
+                "- handoff requirements incomplete: {}",
+                report.checks.handoff_requirements_incomplete
+            ),
+            format!(
+                "- redacted diff review required: {}",
+                report.checks.redacted_diff_review_required
+            ),
+            format!(
+                "- context handoff approval required: {}",
+                report.checks.context_handoff_approval_required
+            ),
+            format!("- redacted refs only: {}", report.checks.redacted_refs_only),
+            format!(
+                "- prompt preview disabled: {}",
+                report.checks.prompt_preview_disabled
+            ),
+            format!(
+                "- prompt payload not materialized: {}",
+                report.checks.prompt_payload_not_materialized
+            ),
+            format!(
+                "- context injection disabled: {}",
+                report.checks.context_injection_disabled
+            ),
+            format!("- no model invoked: {}", report.checks.no_model_invoked),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!(
+                "- no external reads enabled: {}",
+                report.checks.no_external_reads_enabled
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!(
+                "- CI promotion disabled: {}",
+                report.checks.ci_promotion_disabled
+            ),
+            format!(
+                "- no preflight execution performed: {}",
+                report.checks.no_preflight_execution_performed
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Prompt-preview preflight blockers:".to_string(),
+        ];
+
+        if report.blockers.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(
+                report
+                    .blockers
+                    .iter()
+                    .map(|blocker| format!("  - {:?}", blocker)),
+            );
+        }
+
+        lines.push("Prompt-preview preflight source gates:".to_string());
+        if report.source_gates.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.source_gates.iter().map(|source_gate| {
+                format!(
+                    "  - gate={} contract={} status={} checks_ready={} blocks_prompt_preview={} blocks_context_injection={} report_only={}",
+                    source_gate.gate,
+                    source_gate.contract,
+                    source_gate.status,
+                    source_gate.checks_ready,
+                    source_gate.blocks_prompt_preview,
+                    source_gate.blocks_context_injection,
+                    source_gate.report_only
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -4714,6 +4956,88 @@ mod tests {
         assert!(rendered.contains("kind=operator_evidence"));
         assert!(rendered.contains("present=false"));
         assert!(rendered.contains("blocks_context_injection=true"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_prompt_preview_preflight_summary_renders_blocked_ci_gate() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_prompt_preview_preflight_summary()
+            .expect("kg prompt-preview preflight summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG prompt-preview preflight: blocked"));
+        assert!(
+            rendered
+                .contains("- contract: hepta-intelligence-memory-kg-prompt-preview-preflight-v0")
+        );
+        assert!(rendered.contains(
+            "- context handoff contract: hepta-intelligence-memory-kg-prompt-preview-context-handoff-v0"
+        ));
+        assert!(rendered.contains("- context handoff status: blocked"));
+        assert!(rendered.contains("- source gates: 5"));
+        assert!(rendered.contains("- ready source gates: 5"));
+        assert!(rendered.contains("- blocked source gates: 5"));
+        assert!(rendered.contains("- report-only source gates: 5"));
+        assert!(rendered.contains("- required operator evidence: 7"));
+        assert!(rendered.contains("- missing operator evidence: 7"));
+        assert!(rendered.contains("- required safety controls: 4"));
+        assert!(rendered.contains("- missing safety controls: 4"));
+        assert!(rendered.contains("- required handoff requirements: 6"));
+        assert!(rendered.contains("- missing handoff requirements: 6"));
+        assert!(rendered.contains("- missing final review approval: 2"));
+        assert!(rendered.contains("- required total preflight requirements: 19"));
+        assert!(rendered.contains("- missing total preflight requirements: 19"));
+        assert!(rendered.contains("- raw prompt diffs: 0"));
+        assert!(rendered.contains("- prompt text included: 0"));
+        assert!(rendered.contains("- payload text included: 0"));
+        assert!(rendered.contains("- redacted diff review present: false"));
+        assert!(rendered.contains("- context handoff approval present: false"));
+        assert!(rendered.contains("- prompt preview allowed: false"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- prompt payload materialized: false"));
+        assert!(rendered.contains("- context injection allowed: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- CI promotion allowed: false"));
+        assert!(rendered.contains("- preflight execution performed: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- source gates all linked: true"));
+        assert!(rendered.contains("- source gates all checks ready: true"));
+        assert!(rendered.contains("- source gates all blocked: true"));
+        assert!(rendered.contains("- source gates all report-only: true"));
+        assert!(rendered.contains("- context handoff contract linked: true"));
+        assert!(rendered.contains("- context handoff checks ready: true"));
+        assert!(rendered.contains("- context handoff blocked: true"));
+        assert!(rendered.contains("- operator evidence incomplete: true"));
+        assert!(rendered.contains("- safety controls incomplete: true"));
+        assert!(rendered.contains("- handoff requirements incomplete: true"));
+        assert!(rendered.contains("- redacted diff review required: true"));
+        assert!(rendered.contains("- context handoff approval required: true"));
+        assert!(rendered.contains("- prompt preview disabled: true"));
+        assert!(rendered.contains("- prompt payload not materialized: true"));
+        assert!(rendered.contains("- context injection disabled: true"));
+        assert!(rendered.contains("- no model invoked: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("- no external reads enabled: true"));
+        assert!(rendered.contains("- no network calls enabled: true"));
+        assert!(rendered.contains("- no live writes enabled: true"));
+        assert!(rendered.contains("- CI promotion disabled: true"));
+        assert!(rendered.contains("- no preflight execution performed: true"));
+        assert!(rendered.contains("Prompt-preview preflight blockers:"));
+        assert!(rendered.contains("PromptPreviewGateChainBlocked"));
+        assert!(rendered.contains("CiPromotionDisabled"));
+        assert!(rendered.contains("Prompt-preview preflight source gates:"));
+        assert!(rendered.contains("gate=approval_packet"));
+        assert!(rendered.contains("gate=context_handoff"));
+        assert!(rendered.contains("status=blocked"));
+        assert!(rendered.contains("checks_ready=true"));
+        assert!(rendered.contains("blocks_prompt_preview=true"));
+        assert!(rendered.contains("blocks_context_injection=true"));
+        assert!(rendered.contains("report_only=true"));
     }
 
     #[tokio::test]

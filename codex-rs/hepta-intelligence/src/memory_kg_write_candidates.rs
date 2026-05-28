@@ -42,6 +42,8 @@ pub const MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-rollback-kill-switch-v0";
 pub const MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-context-handoff-v0";
+pub const MEMORY_KG_PROMPT_PREVIEW_PREFLIGHT_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-prompt-preview-preflight-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -1305,6 +1307,135 @@ pub struct MemoryKgPromptPreviewContextHandoffReport {
     pub blockers: Vec<MemoryKgPromptPreviewContextHandoffBlocker>,
     pub requirements: Vec<MemoryKgPromptPreviewContextHandoffRequirement>,
     pub checks: MemoryKgPromptPreviewContextHandoffChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MemoryKgPromptPreviewPreflightBlocker {
+    PromptPreviewGateChainBlocked,
+    OperatorEvidenceIncomplete,
+    SafetyControlsIncomplete,
+    HandoffRequirementsIncomplete,
+    RedactedDiffReviewMissing,
+    ContextHandoffApprovalMissing,
+    PromptPreviewDisabled,
+    ContextInjectionDisabled,
+    ModelInvocationDisabled,
+    CiPromotionDisabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewPreflightSourceGate {
+    pub gate_index: usize,
+    pub gate: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub checks_ready: bool,
+    pub blocks_prompt_preview: bool,
+    pub blocks_context_injection: bool,
+    pub report_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewPreflightChecks {
+    pub source_gates_nonzero: bool,
+    pub source_gates_all_linked: bool,
+    pub source_gates_all_checks_ready: bool,
+    pub source_gates_all_blocked: bool,
+    pub source_gates_all_report_only: bool,
+    pub context_handoff_contract_linked: bool,
+    pub context_handoff_checks_ready: bool,
+    pub context_handoff_blocked: bool,
+    pub operator_evidence_incomplete: bool,
+    pub safety_controls_incomplete: bool,
+    pub handoff_requirements_incomplete: bool,
+    pub redacted_diff_review_required: bool,
+    pub context_handoff_approval_required: bool,
+    pub redacted_refs_only: bool,
+    pub prompt_preview_disabled: bool,
+    pub prompt_payload_not_materialized: bool,
+    pub context_injection_disabled: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+    pub ci_promotion_disabled: bool,
+    pub no_preflight_execution_performed: bool,
+}
+
+impl MemoryKgPromptPreviewPreflightChecks {
+    pub fn ready(&self) -> bool {
+        self.source_gates_nonzero
+            && self.source_gates_all_linked
+            && self.source_gates_all_checks_ready
+            && self.source_gates_all_blocked
+            && self.source_gates_all_report_only
+            && self.context_handoff_contract_linked
+            && self.context_handoff_checks_ready
+            && self.context_handoff_blocked
+            && self.operator_evidence_incomplete
+            && self.safety_controls_incomplete
+            && self.handoff_requirements_incomplete
+            && self.redacted_diff_review_required
+            && self.context_handoff_approval_required
+            && self.redacted_refs_only
+            && self.prompt_preview_disabled
+            && self.prompt_payload_not_materialized
+            && self.context_injection_disabled
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+            && self.ci_promotion_disabled
+            && self.no_preflight_execution_performed
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewPreflightReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub verdict: &'static str,
+    pub sample_run: bool,
+    pub context_handoff_contract: &'static str,
+    pub context_handoff_status: &'static str,
+    pub source_gate_count: usize,
+    pub ready_source_gate_count: usize,
+    pub blocked_source_gate_count: usize,
+    pub report_only_source_gate_count: usize,
+    pub required_operator_evidence_count: usize,
+    pub missing_operator_evidence_count: usize,
+    pub required_safety_control_count: usize,
+    pub missing_safety_control_count: usize,
+    pub required_handoff_requirement_count: usize,
+    pub missing_handoff_requirement_count: usize,
+    pub missing_final_review_approval_count: usize,
+    pub required_total_preflight_requirement_count: usize,
+    pub missing_total_preflight_requirement_count: usize,
+    pub redacted_ref_count: usize,
+    pub raw_prompt_diff_count: usize,
+    pub prompt_text_included_count: usize,
+    pub payload_text_included_count: usize,
+    pub redacted_diff_review_present: bool,
+    pub context_handoff_approval_present: bool,
+    pub prompt_preview_allowed: bool,
+    pub prompt_preview_rendered: bool,
+    pub prompt_payload_materialized: bool,
+    pub context_injection_allowed: bool,
+    pub context_injection_performed: bool,
+    pub model_invoked: bool,
+    pub ci_promotion_allowed: bool,
+    pub preflight_execution_performed: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub blockers: Vec<MemoryKgPromptPreviewPreflightBlocker>,
+    pub source_gates: Vec<MemoryKgPromptPreviewPreflightSourceGate>,
+    pub checks: MemoryKgPromptPreviewPreflightChecks,
     pub next_phase: &'static str,
 }
 
@@ -2870,6 +3001,170 @@ pub fn memory_kg_prompt_preview_context_handoff_report(
     }
 }
 
+pub fn memory_kg_prompt_preview_preflight_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgPromptPreviewPreflightReport {
+    let approval_report = memory_kg_prompt_preview_approval_packet_report(memory_units, sample_run);
+    let operator_evidence_report =
+        memory_kg_prompt_preview_operator_evidence_report(memory_units, sample_run);
+    let redaction_report = memory_kg_prompt_preview_redaction_diff_report(memory_units, sample_run);
+    let safety_report =
+        memory_kg_prompt_preview_rollback_kill_switch_report(memory_units, sample_run);
+    let handoff_report = memory_kg_prompt_preview_context_handoff_report(memory_units, sample_run);
+    let source_gates = memory_kg_prompt_preview_preflight_source_gates(
+        &approval_report,
+        &operator_evidence_report,
+        &redaction_report,
+        &safety_report,
+        &handoff_report,
+    );
+    let source_gate_count = source_gates.len();
+    let ready_source_gate_count = source_gates
+        .iter()
+        .filter(|source_gate| source_gate.checks_ready)
+        .count();
+    let blocked_source_gate_count = source_gates
+        .iter()
+        .filter(|source_gate| source_gate.status == "blocked")
+        .count();
+    let report_only_source_gate_count = source_gates
+        .iter()
+        .filter(|source_gate| source_gate.report_only)
+        .count();
+    let missing_final_review_approval_count =
+        usize::from(!handoff_report.redacted_diff_review_present)
+            + usize::from(!handoff_report.context_handoff_approval_present);
+    let required_total_preflight_requirement_count = handoff_report.required_evidence_count
+        + handoff_report.required_control_count
+        + handoff_report.handoff_requirement_count
+        + 2;
+    let missing_total_preflight_requirement_count = handoff_report.missing_evidence_count
+        + handoff_report.missing_control_count
+        + handoff_report.missing_handoff_requirement_count
+        + missing_final_review_approval_count;
+    let ci_promotion_allowed = false;
+    let preflight_execution_performed = false;
+
+    let mut blockers = Vec::new();
+    if blocked_source_gate_count > 0 {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::PromptPreviewGateChainBlocked);
+    }
+    if handoff_report.missing_evidence_count > 0 {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::OperatorEvidenceIncomplete);
+    }
+    if handoff_report.missing_control_count > 0 {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::SafetyControlsIncomplete);
+    }
+    if handoff_report.missing_handoff_requirement_count > 0 {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::HandoffRequirementsIncomplete);
+    }
+    if !handoff_report.redacted_diff_review_present {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::RedactedDiffReviewMissing);
+    }
+    if !handoff_report.context_handoff_approval_present {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::ContextHandoffApprovalMissing);
+    }
+    if !handoff_report.prompt_preview_allowed {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::PromptPreviewDisabled);
+    }
+    if !handoff_report.context_injection_allowed {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::ContextInjectionDisabled);
+    }
+    if !handoff_report.model_invoked {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::ModelInvocationDisabled);
+    }
+    if !ci_promotion_allowed {
+        blockers.push(MemoryKgPromptPreviewPreflightBlocker::CiPromotionDisabled);
+    }
+
+    let checks = MemoryKgPromptPreviewPreflightChecks {
+        source_gates_nonzero: source_gate_count > 0,
+        source_gates_all_linked: memory_kg_prompt_preview_preflight_source_gates_linked(
+            &source_gates,
+        ),
+        source_gates_all_checks_ready: source_gate_count > 0
+            && ready_source_gate_count == source_gate_count,
+        source_gates_all_blocked: source_gate_count > 0
+            && blocked_source_gate_count == source_gate_count,
+        source_gates_all_report_only: source_gate_count > 0
+            && report_only_source_gate_count == source_gate_count,
+        context_handoff_contract_linked: handoff_report.contract
+            == MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT,
+        context_handoff_checks_ready: handoff_report.checks.ready(),
+        context_handoff_blocked: handoff_report.status == "blocked",
+        operator_evidence_incomplete: handoff_report.missing_evidence_count > 0,
+        safety_controls_incomplete: handoff_report.missing_control_count > 0,
+        handoff_requirements_incomplete: handoff_report.missing_handoff_requirement_count > 0,
+        redacted_diff_review_required: !handoff_report.redacted_diff_review_present,
+        context_handoff_approval_required: !handoff_report.context_handoff_approval_present,
+        redacted_refs_only: handoff_report.redacted_ref_count > 0
+            && handoff_report.raw_prompt_diff_count == 0
+            && handoff_report.prompt_text_included_count == 0
+            && handoff_report.payload_text_included_count == 0,
+        prompt_preview_disabled: !handoff_report.prompt_preview_allowed
+            && !handoff_report.prompt_preview_rendered,
+        prompt_payload_not_materialized: !handoff_report.prompt_payload_materialized,
+        context_injection_disabled: !handoff_report.context_injection_allowed,
+        no_model_invoked: !handoff_report.model_invoked,
+        no_context_injection_performed: !handoff_report.context_injection_performed,
+        no_external_reads_enabled: handoff_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: handoff_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: handoff_report.live_write_enabled_count == 0,
+        ci_promotion_disabled: !ci_promotion_allowed,
+        no_preflight_execution_performed: !preflight_execution_performed,
+    };
+
+    MemoryKgPromptPreviewPreflightReport {
+        product: "Hepta",
+        command: "memory-kg-prompt-preview-preflight",
+        contract: MEMORY_KG_PROMPT_PREVIEW_PREFLIGHT_V0_CONTRACT,
+        status: if checks.ready() {
+            "blocked"
+        } else {
+            "attention"
+        },
+        verdict: "blocked_until_prompt_preview_gate_chain_evidence_review_approval_and_ci_promotion_exist",
+        sample_run,
+        context_handoff_contract: MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT,
+        context_handoff_status: handoff_report.status,
+        source_gate_count,
+        ready_source_gate_count,
+        blocked_source_gate_count,
+        report_only_source_gate_count,
+        required_operator_evidence_count: handoff_report.required_evidence_count,
+        missing_operator_evidence_count: handoff_report.missing_evidence_count,
+        required_safety_control_count: handoff_report.required_control_count,
+        missing_safety_control_count: handoff_report.missing_control_count,
+        required_handoff_requirement_count: handoff_report.handoff_requirement_count,
+        missing_handoff_requirement_count: handoff_report.missing_handoff_requirement_count,
+        missing_final_review_approval_count,
+        required_total_preflight_requirement_count,
+        missing_total_preflight_requirement_count,
+        redacted_ref_count: handoff_report.redacted_ref_count,
+        raw_prompt_diff_count: handoff_report.raw_prompt_diff_count,
+        prompt_text_included_count: handoff_report.prompt_text_included_count,
+        payload_text_included_count: handoff_report.payload_text_included_count,
+        redacted_diff_review_present: handoff_report.redacted_diff_review_present,
+        context_handoff_approval_present: handoff_report.context_handoff_approval_present,
+        prompt_preview_allowed: handoff_report.prompt_preview_allowed,
+        prompt_preview_rendered: handoff_report.prompt_preview_rendered,
+        prompt_payload_materialized: handoff_report.prompt_payload_materialized,
+        context_injection_allowed: handoff_report.context_injection_allowed,
+        context_injection_performed: handoff_report.context_injection_performed,
+        model_invoked: handoff_report.model_invoked,
+        ci_promotion_allowed,
+        preflight_execution_performed,
+        external_read_enabled_count: handoff_report.external_read_enabled_count,
+        network_call_enabled_count: handoff_report.network_call_enabled_count,
+        live_write_enabled_count: handoff_report.live_write_enabled_count,
+        blockers,
+        source_gates,
+        checks,
+        next_phase: "record final evidence, review, approval, and explicit CI promotion before wiring prompt-preview into any executable preflight path",
+    }
+}
+
 fn memory_kg_shadow_rank_items(items: &[ContextRecallItem]) -> Vec<MemoryKgShadowRankItem> {
     items
         .iter()
@@ -3118,6 +3413,83 @@ fn memory_kg_prompt_preview_context_handoff_requirements()
         },
     )
     .collect()
+}
+
+fn memory_kg_prompt_preview_preflight_source_gates(
+    approval_report: &MemoryKgPromptPreviewApprovalPacketReport,
+    operator_evidence_report: &MemoryKgPromptPreviewOperatorEvidenceReport,
+    redaction_report: &MemoryKgPromptPreviewRedactionDiffReport,
+    safety_report: &MemoryKgPromptPreviewRollbackKillSwitchReport,
+    handoff_report: &MemoryKgPromptPreviewContextHandoffReport,
+) -> Vec<MemoryKgPromptPreviewPreflightSourceGate> {
+    [
+        (
+            "approval_packet",
+            MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT,
+            approval_report.status,
+            approval_report.checks.ready(),
+        ),
+        (
+            "operator_evidence",
+            MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT,
+            operator_evidence_report.status,
+            operator_evidence_report.checks.ready(),
+        ),
+        (
+            "redaction_diff",
+            MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT,
+            redaction_report.status,
+            redaction_report.checks.ready(),
+        ),
+        (
+            "rollback_kill_switch",
+            MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT,
+            safety_report.status,
+            safety_report.checks.ready(),
+        ),
+        (
+            "context_handoff",
+            MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT,
+            handoff_report.status,
+            handoff_report.checks.ready(),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(
+        |(idx, (gate, contract, status, checks_ready))| MemoryKgPromptPreviewPreflightSourceGate {
+            gate_index: idx + 1,
+            gate,
+            contract,
+            status,
+            checks_ready,
+            blocks_prompt_preview: true,
+            blocks_context_injection: true,
+            report_only: true,
+        },
+    )
+    .collect()
+}
+
+fn memory_kg_prompt_preview_preflight_source_gates_linked(
+    source_gates: &[MemoryKgPromptPreviewPreflightSourceGate],
+) -> bool {
+    source_gates.len() == 5
+        && source_gates.iter().any(|source_gate| {
+            source_gate.contract == MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT
+        })
+        && source_gates.iter().any(|source_gate| {
+            source_gate.contract == MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT
+        })
+        && source_gates.iter().any(|source_gate| {
+            source_gate.contract == MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT
+        })
+        && source_gates.iter().any(|source_gate| {
+            source_gate.contract == MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT
+        })
+        && source_gates.iter().any(|source_gate| {
+            source_gate.contract == MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT
+        })
 }
 
 fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> Vec<KgReadQuery> {
@@ -4735,6 +5107,117 @@ mod tests {
                 && requirement
                     .redacted_evidence_ref
                     .starts_with("missing:kg-prompt-preview-context-handoff:")
+        }));
+    }
+
+    #[test]
+    fn memory_kg_prompt_preview_preflight_blocks_ci_promotion_until_gate_chain_closes() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_prompt_preview_preflight_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.verdict,
+            "blocked_until_prompt_preview_gate_chain_evidence_review_approval_and_ci_promotion_exist"
+        );
+        assert_eq!(
+            report.contract,
+            MEMORY_KG_PROMPT_PREVIEW_PREFLIGHT_V0_CONTRACT
+        );
+        assert_eq!(
+            report.context_handoff_contract,
+            MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT
+        );
+        assert_eq!(report.context_handoff_status, "blocked");
+        assert_eq!(report.source_gate_count, 5);
+        assert_eq!(report.ready_source_gate_count, report.source_gate_count);
+        assert_eq!(report.blocked_source_gate_count, report.source_gate_count);
+        assert_eq!(
+            report.report_only_source_gate_count,
+            report.source_gate_count
+        );
+        assert_eq!(report.required_operator_evidence_count, 7);
+        assert_eq!(
+            report.missing_operator_evidence_count,
+            report.required_operator_evidence_count
+        );
+        assert_eq!(report.required_safety_control_count, 4);
+        assert_eq!(
+            report.missing_safety_control_count,
+            report.required_safety_control_count
+        );
+        assert_eq!(report.required_handoff_requirement_count, 6);
+        assert_eq!(
+            report.missing_handoff_requirement_count,
+            report.required_handoff_requirement_count
+        );
+        assert_eq!(report.missing_final_review_approval_count, 2);
+        assert_eq!(report.required_total_preflight_requirement_count, 19);
+        assert_eq!(
+            report.missing_total_preflight_requirement_count,
+            report.required_total_preflight_requirement_count
+        );
+        assert_eq!(
+            report.redacted_ref_count,
+            report.required_operator_evidence_count
+        );
+        assert_eq!(report.raw_prompt_diff_count, 0);
+        assert_eq!(report.prompt_text_included_count, 0);
+        assert_eq!(report.payload_text_included_count, 0);
+        assert!(!report.redacted_diff_review_present);
+        assert!(!report.context_handoff_approval_present);
+        assert!(!report.prompt_preview_allowed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.prompt_payload_materialized);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.model_invoked);
+        assert!(!report.ci_promotion_allowed);
+        assert!(!report.preflight_execution_performed);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.source_gates_nonzero);
+        assert!(report.checks.source_gates_all_linked);
+        assert!(report.checks.source_gates_all_checks_ready);
+        assert!(report.checks.source_gates_all_blocked);
+        assert!(report.checks.source_gates_all_report_only);
+        assert!(report.checks.context_handoff_contract_linked);
+        assert!(report.checks.context_handoff_checks_ready);
+        assert!(report.checks.context_handoff_blocked);
+        assert!(report.checks.operator_evidence_incomplete);
+        assert!(report.checks.safety_controls_incomplete);
+        assert!(report.checks.handoff_requirements_incomplete);
+        assert!(report.checks.redacted_diff_review_required);
+        assert!(report.checks.context_handoff_approval_required);
+        assert!(report.checks.redacted_refs_only);
+        assert!(report.checks.prompt_preview_disabled);
+        assert!(report.checks.prompt_payload_not_materialized);
+        assert!(report.checks.context_injection_disabled);
+        assert!(report.checks.no_model_invoked);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(report.checks.no_external_reads_enabled);
+        assert!(report.checks.no_network_calls_enabled);
+        assert!(report.checks.no_live_writes_enabled);
+        assert!(report.checks.ci_promotion_disabled);
+        assert!(report.checks.no_preflight_execution_performed);
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewPreflightBlocker::PromptPreviewGateChainBlocked)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewPreflightBlocker::CiPromotionDisabled)
+        );
+        assert!(report.source_gates.iter().all(|source_gate| {
+            source_gate.checks_ready
+                && source_gate.status == "blocked"
+                && source_gate.blocks_prompt_preview
+                && source_gate.blocks_context_injection
+                && source_gate.report_only
         }));
     }
 }

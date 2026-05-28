@@ -17,24 +17,24 @@ use hepta_intelligence::{
     MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
     MemoryKgContextInjectionReadinessReport, MemoryKgContextRecallBridgeReport,
     MemoryKgPromptPreviewApprovalPacketReport, MemoryKgPromptPreviewContextHandoffReport,
-    MemoryKgPromptPreviewOperatorEvidenceReport, MemoryKgPromptPreviewRedactionDiffReport,
-    MemoryKgPromptPreviewRollbackKillSwitchReport, MemoryKgRecallEvaluationReport,
-    MemoryKgRecallPlanReport, MemoryKgShadowRankComparisonReport, MemoryKgShadowRankDriftReport,
-    MemoryKgShadowRankReport, MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY,
-    SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome,
-    TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary, TopicRouteShellPatch,
-    compute_intuition_feedback_delta, evaluate_intelligence_semantic_expectations,
-    format_intuition_feedback_outcome, intuition_calibration_feedback_summary,
-    intuition_calibration_skill_targets, intuition_calibration_workflow_targets,
-    intuition_feedback_confidence_shift, is_learned_feedback_contrast_case,
-    learned_feedback_contrast_expected_signal_direction, learned_feedback_contrast_focus,
-    learned_semantic_terms_for_feedback, memory_atom_pipeline_sample_report,
-    memory_kg_adapter_client_report, memory_kg_adapter_config_env_report,
-    memory_kg_adapter_dry_run_report, memory_kg_adapter_staging_gate_report,
-    memory_kg_context_injection_readiness_report, memory_kg_context_recall_bridge_report,
-    memory_kg_prompt_preview_approval_packet_report,
+    MemoryKgPromptPreviewOperatorEvidenceReport, MemoryKgPromptPreviewPreflightReport,
+    MemoryKgPromptPreviewRedactionDiffReport, MemoryKgPromptPreviewRollbackKillSwitchReport,
+    MemoryKgRecallEvaluationReport, MemoryKgRecallPlanReport, MemoryKgShadowRankComparisonReport,
+    MemoryKgShadowRankDriftReport, MemoryKgShadowRankReport, MemoryKgWriteCandidateReport,
+    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
+    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
+    TopicRouteShellPatch, compute_intuition_feedback_delta,
+    evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
+    intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
+    intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
+    is_learned_feedback_contrast_case, learned_feedback_contrast_expected_signal_direction,
+    learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
+    memory_atom_pipeline_sample_report, memory_kg_adapter_client_report,
+    memory_kg_adapter_config_env_report, memory_kg_adapter_dry_run_report,
+    memory_kg_adapter_staging_gate_report, memory_kg_context_injection_readiness_report,
+    memory_kg_context_recall_bridge_report, memory_kg_prompt_preview_approval_packet_report,
     memory_kg_prompt_preview_context_handoff_report,
-    memory_kg_prompt_preview_operator_evidence_report,
+    memory_kg_prompt_preview_operator_evidence_report, memory_kg_prompt_preview_preflight_report,
     memory_kg_prompt_preview_redaction_diff_report,
     memory_kg_prompt_preview_rollback_kill_switch_report, memory_kg_recall_evaluation_report,
     memory_kg_recall_plan_report, memory_kg_shadow_rank_comparison_report,
@@ -2736,6 +2736,13 @@ impl RuntimeKernel {
     ) -> MemoryKgPromptPreviewContextHandoffReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_prompt_preview_context_handoff_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_prompt_preview_preflight_overview(
+        &self,
+    ) -> MemoryKgPromptPreviewPreflightReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_prompt_preview_preflight_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -9570,6 +9577,77 @@ mod tests {
         assert!(report.checks.no_external_reads_enabled);
         assert!(report.checks.no_network_calls_enabled);
         assert!(report.checks.no_live_writes_enabled);
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_prompt_preview_preflight_overview_blocks_ci_promotion() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_prompt_preview_preflight_overview();
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.contract,
+            hepta_intelligence::MEMORY_KG_PROMPT_PREVIEW_PREFLIGHT_V0_CONTRACT
+        );
+        assert_eq!(
+            report.context_handoff_contract,
+            hepta_intelligence::MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT
+        );
+        assert_eq!(report.context_handoff_status, "blocked");
+        assert_eq!(report.source_gate_count, 5);
+        assert_eq!(report.ready_source_gate_count, report.source_gate_count);
+        assert_eq!(report.blocked_source_gate_count, report.source_gate_count);
+        assert_eq!(
+            report.report_only_source_gate_count,
+            report.source_gate_count
+        );
+        assert_eq!(report.required_total_preflight_requirement_count, 19);
+        assert_eq!(
+            report.missing_total_preflight_requirement_count,
+            report.required_total_preflight_requirement_count
+        );
+        assert_eq!(report.raw_prompt_diff_count, 0);
+        assert_eq!(report.prompt_text_included_count, 0);
+        assert_eq!(report.payload_text_included_count, 0);
+        assert!(!report.redacted_diff_review_present);
+        assert!(!report.context_handoff_approval_present);
+        assert!(!report.prompt_preview_allowed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.prompt_payload_materialized);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.model_invoked);
+        assert!(!report.ci_promotion_allowed);
+        assert!(!report.preflight_execution_performed);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.source_gates_nonzero);
+        assert!(report.checks.source_gates_all_linked);
+        assert!(report.checks.source_gates_all_checks_ready);
+        assert!(report.checks.source_gates_all_blocked);
+        assert!(report.checks.source_gates_all_report_only);
+        assert!(report.checks.context_handoff_contract_linked);
+        assert!(report.checks.context_handoff_checks_ready);
+        assert!(report.checks.context_handoff_blocked);
+        assert!(report.checks.operator_evidence_incomplete);
+        assert!(report.checks.safety_controls_incomplete);
+        assert!(report.checks.handoff_requirements_incomplete);
+        assert!(report.checks.redacted_diff_review_required);
+        assert!(report.checks.context_handoff_approval_required);
+        assert!(report.checks.redacted_refs_only);
+        assert!(report.checks.prompt_preview_disabled);
+        assert!(report.checks.prompt_payload_not_materialized);
+        assert!(report.checks.context_injection_disabled);
+        assert!(report.checks.no_model_invoked);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(report.checks.no_external_reads_enabled);
+        assert!(report.checks.no_network_calls_enabled);
+        assert!(report.checks.no_live_writes_enabled);
+        assert!(report.checks.ci_promotion_disabled);
+        assert!(report.checks.no_preflight_execution_performed);
     }
 
     #[tokio::test]
