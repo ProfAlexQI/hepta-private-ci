@@ -1,10 +1,11 @@
 [package]
-name = "hepta-intelligence"
+name = "hepta-kg"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-hepta-core.workspace = true
-hepta-kg.workspace = true
 serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json.workspace = true

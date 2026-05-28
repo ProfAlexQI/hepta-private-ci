@@ -85,6 +85,7 @@ members = [
     "hepta-cli",
     "hepta-kernel",
     "hepta-intelligence",
+    "hepta-kg",
     "hepta-gateway",
     "hepta-memory",
     "hepta-plugins",
@@ -184,6 +185,7 @@ hepta-core = { path = "hepta-core" }
 hepta-gateway = { path = "hepta-gateway" }
 hepta-intelligence = { path = "hepta-intelligence" }
 hepta-kernel = { path = "hepta-kernel" }
+hepta-kg = { path = "hepta-kg" }
 hepta-memory = { path = "hepta-memory" }
 hepta-plugins = { path = "hepta-plugins" }
 hepta-runtime = { path = "hepta-runtime" }

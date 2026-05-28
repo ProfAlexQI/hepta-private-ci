@@ -13,15 +13,16 @@ use hepta_core::{
 };
 use hepta_intelligence::{
     IntuitionCalibrationFeedbackSummary, IntuitionCalibrationTargetSummary,
-    LearnedSemanticRouterEvidence, SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY,
-    SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord,
-    TopicAwareModelFeedbackSummary, TopicRouteShellPatch, compute_intuition_feedback_delta,
-    evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
-    intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
-    intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
-    is_learned_feedback_contrast_case, learned_feedback_contrast_expected_signal_direction,
-    learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
-    neuron_lifecycle_health_summary, semantic_score_from_counts,
+    LearnedSemanticRouterEvidence, MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY,
+    SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome,
+    TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary, TopicRouteShellPatch,
+    compute_intuition_feedback_delta, evaluate_intelligence_semantic_expectations,
+    format_intuition_feedback_outcome, intuition_calibration_feedback_summary,
+    intuition_calibration_skill_targets, intuition_calibration_workflow_targets,
+    intuition_feedback_confidence_shift, is_learned_feedback_contrast_case,
+    learned_feedback_contrast_expected_signal_direction, learned_feedback_contrast_focus,
+    learned_semantic_terms_for_feedback, memory_atom_pipeline_sample_report,
+    memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
     summarize_topic_aware_model_feedback,
 };
 use serde::{Deserialize, Serialize};
@@ -2616,6 +2617,11 @@ impl RuntimeKernel {
             skill_limit,
             None,
         )
+    }
+
+    pub fn knowledge_graph_dry_run_overview(&self) -> MemoryKgWriteCandidateReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_write_candidate_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -8839,6 +8845,25 @@ mod tests {
         assert_eq!(overview.gates.len(), 4);
         assert!(overview.gates.iter().all(|gate| gate.ready));
         assert!(overview.findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_dry_run_overview_exposes_candidates_without_live_write() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_dry_run_overview();
+
+        assert_eq!(report.status, "ready");
+        assert!(report.candidate_count > 0);
+        assert_eq!(report.memory_unit_count, report.candidate_count);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert_eq!(report.external_side_effect_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.all_candidates_have_provenance);
+        assert!(report.checks.all_candidates_have_graph_payload);
+        assert!(report.checks.all_plans_are_dry_run);
+        assert!(report.checks.no_live_write_enabled);
+        assert!(report.checks.no_external_side_effects);
     }
 
     #[tokio::test]

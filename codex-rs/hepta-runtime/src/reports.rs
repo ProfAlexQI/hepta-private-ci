@@ -605,6 +605,60 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_dry_run_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_dry_run_overview();
+        let mut lines = vec![
+            format!("Hepta KG dry-run: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!("- sample run: {}", report.sample_run),
+            format!("- memory units: {}", report.memory_unit_count),
+            format!("- write candidates: {}", report.candidate_count),
+            format!("- live write enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- external side effects enabled: {}",
+                report.external_side_effect_enabled_count
+            ),
+            format!(
+                "- all candidates have provenance: {}",
+                report.checks.all_candidates_have_provenance
+            ),
+            format!(
+                "- all candidates have graph payload: {}",
+                report.checks.all_candidates_have_graph_payload
+            ),
+            format!(
+                "- all plans are dry-run: {}",
+                report.checks.all_plans_are_dry_run
+            ),
+            format!(
+                "- no live write enabled: {}",
+                report.checks.no_live_write_enabled
+            ),
+            format!(
+                "- no external side effects: {}",
+                report.checks.no_external_side_effects
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Candidates:".to_string(),
+        ];
+
+        if report.candidates.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.candidates.iter().take(4).map(|candidate| {
+                format!(
+                    "  - {} episode={} entities={} relations={}",
+                    candidate.id,
+                    candidate.episode.id,
+                    candidate.entities.len(),
+                    candidate.relations.len()
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2107,6 +2161,26 @@ mod tests {
         assert!(rendered.contains("score=100"));
         assert!(rendered.contains("hello adaptive memory"));
         assert!(rendered.contains("rust worker pipeline"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_dry_run_summary_renders_no_write_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_dry_run_summary()
+            .expect("kg dry-run summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG dry-run: ready"));
+        assert!(rendered.contains("- contract: hepta-intelligence-memory-kg-write-candidate-v0"));
+        assert!(rendered.contains("- write candidates: "));
+        assert!(rendered.contains("- live write enabled: 0"));
+        assert!(rendered.contains("- external side effects enabled: 0"));
+        assert!(rendered.contains("- all plans are dry-run: true"));
+        assert!(rendered.contains("- no live write enabled: true"));
+        assert!(rendered.contains("- no external side effects: true"));
+        assert!(rendered.contains("Candidates:"));
     }
 
     #[tokio::test]
