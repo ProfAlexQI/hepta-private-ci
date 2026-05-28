@@ -25,6 +25,8 @@ pub const MEMORY_KG_CONTEXT_RECALL_BRIDGE_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-context-recall-bridge-v0";
 pub const MEMORY_KG_RECALL_EVALUATION_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-recall-evaluation-v0";
+pub const MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-context-injection-readiness-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -446,6 +448,88 @@ pub struct MemoryKgRecallEvaluationReport {
     pub context_injection_performed: bool,
     pub cases: Vec<MemoryKgRecallEvaluationCase>,
     pub checks: MemoryKgRecallEvaluationChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryKgContextInjectionReadinessBlocker {
+    QualityGateNotReady,
+    QualityThresholdNotMet,
+    MissingOperatorApproval,
+    ShadowRankNotEnabled,
+    MissingRollbackPlan,
+    MissingKillSwitch,
+    InjectionDisabledByDefault,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgContextInjectionReadinessChecks {
+    pub recall_evaluation_ready: bool,
+    pub quality_threshold_met: bool,
+    pub operator_approval_required: bool,
+    pub shadow_rank_required: bool,
+    pub rollback_plan_required: bool,
+    pub kill_switch_required: bool,
+    pub injection_disabled_by_default: bool,
+    pub activation_blocked_without_operator_approval: bool,
+    pub prompt_preview_not_rendered: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+}
+
+impl MemoryKgContextInjectionReadinessChecks {
+    pub fn ready(&self) -> bool {
+        self.recall_evaluation_ready
+            && self.quality_threshold_met
+            && self.operator_approval_required
+            && self.shadow_rank_required
+            && self.rollback_plan_required
+            && self.kill_switch_required
+            && self.injection_disabled_by_default
+            && self.activation_blocked_without_operator_approval
+            && self.prompt_preview_not_rendered
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgContextInjectionReadinessReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub sample_run: bool,
+    pub kg_recall_evaluation_contract: &'static str,
+    pub kg_context_bridge_contract: &'static str,
+    pub evaluation_case_count: usize,
+    pub passed_case_count: usize,
+    pub failed_case_count: usize,
+    pub coverage_basis_points: u16,
+    pub precision_proxy_basis_points: u16,
+    pub score_stability_basis_points: u16,
+    pub quality_threshold_basis_points: u16,
+    pub quality_gate_ready: bool,
+    pub operator_approved: bool,
+    pub shadow_rank_enabled: bool,
+    pub rollback_plan_ready: bool,
+    pub kill_switch_ready: bool,
+    pub context_injection_allowed: bool,
+    pub context_injection_performed: bool,
+    pub prompt_preview_rendered: bool,
+    pub model_invoked: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub blockers: Vec<MemoryKgContextInjectionReadinessBlocker>,
+    pub checks: MemoryKgContextInjectionReadinessChecks,
     pub next_phase: &'static str,
 }
 
@@ -1059,6 +1143,113 @@ pub fn memory_kg_recall_evaluation_report(
         cases,
         checks,
         next_phase: "shadow-rank KG-backed recall beside transcript and durable-memory recall without prompt injection",
+    }
+}
+
+pub fn memory_kg_context_injection_readiness_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgContextInjectionReadinessReport {
+    const QUALITY_THRESHOLD_BASIS_POINTS: u16 = 9_000;
+
+    let evaluation_report = memory_kg_recall_evaluation_report(memory_units, sample_run);
+    let quality_gate_ready = evaluation_report.checks.ready();
+    let quality_threshold_met = evaluation_report.coverage_basis_points
+        >= QUALITY_THRESHOLD_BASIS_POINTS
+        && evaluation_report.precision_proxy_basis_points >= QUALITY_THRESHOLD_BASIS_POINTS
+        && evaluation_report.score_stability_basis_points >= QUALITY_THRESHOLD_BASIS_POINTS;
+
+    let operator_approved = false;
+    let shadow_rank_enabled = false;
+    let rollback_plan_ready = false;
+    let kill_switch_ready = false;
+    let context_injection_allowed = quality_gate_ready
+        && quality_threshold_met
+        && operator_approved
+        && shadow_rank_enabled
+        && rollback_plan_ready
+        && kill_switch_ready;
+    let prompt_preview_rendered = false;
+    let model_invoked = false;
+    let context_injection_performed = false;
+
+    let mut blockers = Vec::new();
+    if !quality_gate_ready {
+        blockers.push(MemoryKgContextInjectionReadinessBlocker::QualityGateNotReady);
+    }
+    if !quality_threshold_met {
+        blockers.push(MemoryKgContextInjectionReadinessBlocker::QualityThresholdNotMet);
+    }
+    if !operator_approved {
+        blockers.push(MemoryKgContextInjectionReadinessBlocker::MissingOperatorApproval);
+    }
+    if !shadow_rank_enabled {
+        blockers.push(MemoryKgContextInjectionReadinessBlocker::ShadowRankNotEnabled);
+    }
+    if !rollback_plan_ready {
+        blockers.push(MemoryKgContextInjectionReadinessBlocker::MissingRollbackPlan);
+    }
+    if !kill_switch_ready {
+        blockers.push(MemoryKgContextInjectionReadinessBlocker::MissingKillSwitch);
+    }
+    if !context_injection_allowed {
+        blockers.push(MemoryKgContextInjectionReadinessBlocker::InjectionDisabledByDefault);
+    }
+
+    let checks = MemoryKgContextInjectionReadinessChecks {
+        recall_evaluation_ready: quality_gate_ready,
+        quality_threshold_met,
+        operator_approval_required: !operator_approved,
+        shadow_rank_required: !shadow_rank_enabled,
+        rollback_plan_required: !rollback_plan_ready,
+        kill_switch_required: !kill_switch_ready,
+        injection_disabled_by_default: !context_injection_allowed,
+        activation_blocked_without_operator_approval: !context_injection_allowed
+            && !operator_approved,
+        prompt_preview_not_rendered: !prompt_preview_rendered,
+        no_external_reads_enabled: evaluation_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: evaluation_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: evaluation_report.live_write_enabled_count == 0,
+        no_model_invoked: !model_invoked,
+        no_context_injection_performed: !context_injection_performed,
+    };
+
+    MemoryKgContextInjectionReadinessReport {
+        product: "Hepta",
+        command: "memory-kg-context-injection-readiness",
+        contract: MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT,
+        status: if checks.ready() && !context_injection_allowed {
+            "blocked"
+        } else if checks.ready() && context_injection_allowed {
+            "ready"
+        } else {
+            "attention"
+        },
+        sample_run,
+        kg_recall_evaluation_contract: MEMORY_KG_RECALL_EVALUATION_V0_CONTRACT,
+        kg_context_bridge_contract: MEMORY_KG_CONTEXT_RECALL_BRIDGE_V0_CONTRACT,
+        evaluation_case_count: evaluation_report.evaluation_case_count,
+        passed_case_count: evaluation_report.passed_case_count,
+        failed_case_count: evaluation_report.failed_case_count,
+        coverage_basis_points: evaluation_report.coverage_basis_points,
+        precision_proxy_basis_points: evaluation_report.precision_proxy_basis_points,
+        score_stability_basis_points: evaluation_report.score_stability_basis_points,
+        quality_threshold_basis_points: QUALITY_THRESHOLD_BASIS_POINTS,
+        quality_gate_ready,
+        operator_approved,
+        shadow_rank_enabled,
+        rollback_plan_ready,
+        kill_switch_ready,
+        context_injection_allowed,
+        context_injection_performed,
+        prompt_preview_rendered,
+        model_invoked,
+        external_read_enabled_count: evaluation_report.external_read_enabled_count,
+        network_call_enabled_count: evaluation_report.network_call_enabled_count,
+        live_write_enabled_count: evaluation_report.live_write_enabled_count,
+        blockers,
+        checks,
+        next_phase: "shadow-rank KG recall beside existing context sources until operator approval, rollback, and kill-switch gates are recorded",
     }
 }
 
@@ -1979,5 +2170,72 @@ mod tests {
 
         assert!(report.checks.source_memory_ids_unique);
         assert!(report.checks.scores_stably_ordered);
+    }
+
+    #[test]
+    fn memory_kg_context_injection_readiness_blocks_prompt_injection_by_default() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_context_injection_readiness_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.contract,
+            MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT
+        );
+        assert_eq!(
+            report.kg_recall_evaluation_contract,
+            MEMORY_KG_RECALL_EVALUATION_V0_CONTRACT
+        );
+        assert_eq!(
+            report.kg_context_bridge_contract,
+            MEMORY_KG_CONTEXT_RECALL_BRIDGE_V0_CONTRACT
+        );
+        assert!(report.quality_gate_ready);
+        assert_eq!(report.evaluation_case_count, report.passed_case_count);
+        assert_eq!(report.failed_case_count, 0);
+        assert_eq!(report.coverage_basis_points, 10_000);
+        assert_eq!(report.precision_proxy_basis_points, 10_000);
+        assert_eq!(report.score_stability_basis_points, 10_000);
+        assert_eq!(report.quality_threshold_basis_points, 9_000);
+        assert!(!report.operator_approved);
+        assert!(!report.shadow_rank_enabled);
+        assert!(!report.rollback_plan_ready);
+        assert!(!report.kill_switch_ready);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.model_invoked);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.activation_blocked_without_operator_approval);
+        assert!(report.checks.prompt_preview_not_rendered);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgContextInjectionReadinessBlocker::MissingOperatorApproval)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgContextInjectionReadinessBlocker::ShadowRankNotEnabled)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgContextInjectionReadinessBlocker::MissingRollbackPlan)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgContextInjectionReadinessBlocker::MissingKillSwitch)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgContextInjectionReadinessBlocker::InjectionDisabledByDefault)
+        );
     }
 }

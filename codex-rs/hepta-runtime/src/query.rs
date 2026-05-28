@@ -15,10 +15,11 @@ use hepta_intelligence::{
     IntuitionCalibrationFeedbackSummary, IntuitionCalibrationTargetSummary,
     LearnedSemanticRouterEvidence, MemoryKgAdapterClientReport, MemoryKgAdapterConfigEnvReport,
     MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
-    MemoryKgContextRecallBridgeReport, MemoryKgRecallEvaluationReport, MemoryKgRecallPlanReport,
-    MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY,
-    SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord,
-    TopicAwareModelFeedbackSummary, TopicRouteShellPatch, compute_intuition_feedback_delta,
+    MemoryKgContextInjectionReadinessReport, MemoryKgContextRecallBridgeReport,
+    MemoryKgRecallEvaluationReport, MemoryKgRecallPlanReport, MemoryKgWriteCandidateReport,
+    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
+    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
+    TopicRouteShellPatch, compute_intuition_feedback_delta,
     evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
     intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
     intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
@@ -26,9 +27,10 @@ use hepta_intelligence::{
     learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
     memory_atom_pipeline_sample_report, memory_kg_adapter_client_report,
     memory_kg_adapter_config_env_report, memory_kg_adapter_dry_run_report,
-    memory_kg_adapter_staging_gate_report, memory_kg_context_recall_bridge_report,
-    memory_kg_recall_evaluation_report, memory_kg_recall_plan_report,
-    memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
+    memory_kg_adapter_staging_gate_report, memory_kg_context_injection_readiness_report,
+    memory_kg_context_recall_bridge_report, memory_kg_recall_evaluation_report,
+    memory_kg_recall_plan_report, memory_kg_write_candidate_report,
+    neuron_lifecycle_health_summary, semantic_score_from_counts,
     summarize_topic_aware_model_feedback,
 };
 use serde::{Deserialize, Serialize};
@@ -2666,6 +2668,13 @@ impl RuntimeKernel {
     pub fn knowledge_graph_recall_evaluation_overview(&self) -> MemoryKgRecallEvaluationReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_recall_evaluation_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_context_injection_readiness_overview(
+        &self,
+    ) -> MemoryKgContextInjectionReadinessReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_context_injection_readiness_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -9086,6 +9095,36 @@ mod tests {
         assert!(report.checks.ready());
         assert!(report.checks.source_memory_ids_unique);
         assert!(report.checks.scores_stably_ordered);
+        assert!(report.checks.no_context_injection_performed);
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_context_injection_readiness_overview_blocks_injection() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_context_injection_readiness_overview();
+
+        assert_eq!(report.status, "blocked");
+        assert!(report.quality_gate_ready);
+        assert_eq!(report.evaluation_case_count, report.passed_case_count);
+        assert_eq!(report.failed_case_count, 0);
+        assert_eq!(report.coverage_basis_points, 10_000);
+        assert_eq!(report.precision_proxy_basis_points, 10_000);
+        assert_eq!(report.score_stability_basis_points, 10_000);
+        assert_eq!(report.quality_threshold_basis_points, 9_000);
+        assert!(!report.operator_approved);
+        assert!(!report.shadow_rank_enabled);
+        assert!(!report.rollback_plan_ready);
+        assert!(!report.kill_switch_ready);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.model_invoked);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.activation_blocked_without_operator_approval);
         assert!(report.checks.no_context_injection_performed);
     }
 

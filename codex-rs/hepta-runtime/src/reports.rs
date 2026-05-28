@@ -1261,6 +1261,104 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_context_injection_readiness_summary(
+        &self,
+    ) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_context_injection_readiness_overview();
+        let mut lines = vec![
+            format!("Hepta KG context injection readiness: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- kg recall evaluation contract: {}",
+                report.kg_recall_evaluation_contract
+            ),
+            format!(
+                "- kg context bridge contract: {}",
+                report.kg_context_bridge_contract
+            ),
+            format!("- sample run: {}", report.sample_run),
+            format!("- evaluation cases: {}", report.evaluation_case_count),
+            format!("- passed cases: {}", report.passed_case_count),
+            format!("- failed cases: {}", report.failed_case_count),
+            format!("- coverage bp: {}", report.coverage_basis_points),
+            format!(
+                "- precision proxy bp: {}",
+                report.precision_proxy_basis_points
+            ),
+            format!(
+                "- score stability bp: {}",
+                report.score_stability_basis_points
+            ),
+            format!(
+                "- quality threshold bp: {}",
+                report.quality_threshold_basis_points
+            ),
+            format!("- quality gate ready: {}", report.quality_gate_ready),
+            format!("- operator approved: {}", report.operator_approved),
+            format!("- shadow rank enabled: {}", report.shadow_rank_enabled),
+            format!("- rollback plan ready: {}", report.rollback_plan_ready),
+            format!("- kill switch ready: {}", report.kill_switch_ready),
+            format!(
+                "- context injection allowed: {}",
+                report.context_injection_allowed
+            ),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- recall evaluation ready: {}",
+                report.checks.recall_evaluation_ready
+            ),
+            format!(
+                "- quality threshold met: {}",
+                report.checks.quality_threshold_met
+            ),
+            format!(
+                "- activation blocked without operator approval: {}",
+                report.checks.activation_blocked_without_operator_approval
+            ),
+            format!(
+                "- prompt preview not rendered: {}",
+                report.checks.prompt_preview_not_rendered
+            ),
+            format!("- no model invoked: {}", report.checks.no_model_invoked),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Readiness blockers:".to_string(),
+        ];
+
+        if report.blockers.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(
+                report
+                    .blockers
+                    .iter()
+                    .map(|blocker| format!("  - {:?}", blocker)),
+            );
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2969,6 +3067,48 @@ mod tests {
         assert!(rendered.contains("- source memory ids unique: true"));
         assert!(rendered.contains("- scores stably ordered: true"));
         assert!(rendered.contains("Evaluation cases:"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_context_injection_readiness_summary_renders_blocking_gate() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_context_injection_readiness_summary()
+            .expect("kg context injection readiness summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG context injection readiness: blocked"));
+        assert!(
+            rendered.contains(
+                "- contract: hepta-intelligence-memory-kg-context-injection-readiness-v0"
+            )
+        );
+        assert!(rendered.contains(
+            "- kg recall evaluation contract: hepta-intelligence-memory-kg-recall-evaluation-v0"
+        ));
+        assert!(rendered.contains("- failed cases: 0"));
+        assert!(rendered.contains("- coverage bp: 10000"));
+        assert!(rendered.contains("- quality threshold bp: 9000"));
+        assert!(rendered.contains("- quality gate ready: true"));
+        assert!(rendered.contains("- operator approved: false"));
+        assert!(rendered.contains("- shadow rank enabled: false"));
+        assert!(rendered.contains("- rollback plan ready: false"));
+        assert!(rendered.contains("- kill switch ready: false"));
+        assert!(rendered.contains("- context injection allowed: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- recall evaluation ready: true"));
+        assert!(rendered.contains("- activation blocked without operator approval: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("Readiness blockers:"));
+        assert!(rendered.contains("MissingOperatorApproval"));
+        assert!(rendered.contains("ShadowRankNotEnabled"));
+        assert!(rendered.contains("InjectionDisabledByDefault"));
     }
 
     #[tokio::test]
