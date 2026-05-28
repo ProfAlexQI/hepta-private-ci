@@ -425,6 +425,9 @@ scripts/hepta-core-activation-readiness-summary-gate.sh
 echo "[hepta-preflight] core activation long-soak operator approval packet gate"
 scripts/hepta-core-activation-long-soak-operator-approval-packet-gate.sh
 
+echo "[hepta-preflight] core activation operator approval fresh evidence supersession-expiry denial gate"
+scripts/hepta-core-activation-operator-approval-fresh-evidence-supersession-expiry-denial-gate.sh
+
 echo "[hepta-preflight] core activation fresh long-soak evidence ledger receipt gate"
 scripts/hepta-core-activation-fresh-long-soak-evidence-ledger-receipt-gate.sh
 
