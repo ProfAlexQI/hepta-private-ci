@@ -87,6 +87,9 @@ scripts/hepta-kg-prompt-preview-preflight-gate.sh
 echo "[hepta-preflight] KG prompt-preview terminal summary gate"
 scripts/hepta-kg-prompt-preview-terminal-summary-gate.sh
 
+echo "[hepta-preflight] KG prompt-preview operator briefing non-persistence gate"
+scripts/hepta-kg-prompt-preview-operator-briefing-non-persistence-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 
