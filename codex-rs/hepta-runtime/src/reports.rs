@@ -720,6 +720,81 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_adapter_staging_gate_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_adapter_staging_gate_overview();
+        let mut lines = vec![
+            format!("Hepta KG adapter staging gate: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!("- sample run: {}", report.sample_run),
+            format!("- write candidates: {}", report.candidate_count),
+            format!("- supported adapters: {}", report.adapter_count),
+            format!("- staging plans: {}", report.staging_plan_count),
+            format!("- staging ready: {}", report.staging_ready_count),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!(
+                "- external writes enabled: {}",
+                report.external_write_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- all supported adapters gated: {}",
+                report.checks.all_supported_adapters_gated
+            ),
+            format!(
+                "- closed by default: {}",
+                report.checks.all_staging_plans_closed_by_default
+            ),
+            format!(
+                "- operator review required: {}",
+                report.checks.operator_review_required
+            ),
+            format!(
+                "- rollback plan required: {}",
+                report.checks.rollback_plan_required
+            ),
+            format!(
+                "- post-write validation required: {}",
+                report.checks.post_write_validation_required
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no external writes enabled: {}",
+                report.checks.no_external_writes_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Adapter staging gates:".to_string(),
+        ];
+
+        if report.plans.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.plans.iter().take(6).map(|plan| {
+                format!(
+                    "  - adapter={} candidate={} gate={} staging_ready={} network={} write={} live={}",
+                    plan.adapter_id,
+                    plan.source_candidate_id,
+                    plan.feature_gate_name,
+                    plan.staging_ready,
+                    plan.network_call_allowed,
+                    plan.external_write_allowed,
+                    plan.live_write_allowed
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2265,6 +2340,31 @@ mod tests {
         assert!(rendered.contains("adapter=graphiti"));
         assert!(rendered.contains("adapter=neo4j"));
         assert!(rendered.contains("adapter=cocoindex"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_adapter_staging_gate_summary_renders_closed_gate_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_adapter_staging_gate_summary()
+            .expect("kg adapter staging gate summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG adapter staging gate: ready"));
+        assert!(rendered.contains("- contract: hepta-kg-external-adapter-staging-gate-v0"));
+        assert!(rendered.contains("- supported adapters: 3"));
+        assert!(rendered.contains("- staging ready: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- external writes enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- closed by default: true"));
+        assert!(rendered.contains("- operator review required: true"));
+        assert!(rendered.contains("- rollback plan required: true"));
+        assert!(rendered.contains("- post-write validation required: true"));
+        assert!(rendered.contains("gate=HEPTA_KG_GRAPHITI_STAGING"));
+        assert!(rendered.contains("gate=HEPTA_KG_NEO4J_STAGING"));
+        assert!(rendered.contains("gate=HEPTA_KG_COCOINDEX_STAGING"));
     }
 
     #[tokio::test]

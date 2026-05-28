@@ -13,17 +13,18 @@ use hepta_core::{
 };
 use hepta_intelligence::{
     IntuitionCalibrationFeedbackSummary, IntuitionCalibrationTargetSummary,
-    LearnedSemanticRouterEvidence, MemoryKgAdapterDryRunReport, MemoryKgWriteCandidateReport,
-    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
-    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
-    TopicRouteShellPatch, compute_intuition_feedback_delta,
+    LearnedSemanticRouterEvidence, MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
+    MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY,
+    SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord,
+    TopicAwareModelFeedbackSummary, TopicRouteShellPatch, compute_intuition_feedback_delta,
     evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
     intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
     intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
     is_learned_feedback_contrast_case, learned_feedback_contrast_expected_signal_direction,
     learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
     memory_atom_pipeline_sample_report, memory_kg_adapter_dry_run_report,
-    memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
+    memory_kg_adapter_staging_gate_report, memory_kg_write_candidate_report,
+    neuron_lifecycle_health_summary, semantic_score_from_counts,
     summarize_topic_aware_model_feedback,
 };
 use serde::{Deserialize, Serialize};
@@ -2628,6 +2629,13 @@ impl RuntimeKernel {
     pub fn knowledge_graph_adapter_dry_run_overview(&self) -> MemoryKgAdapterDryRunReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_adapter_dry_run_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_adapter_staging_gate_overview(
+        &self,
+    ) -> MemoryKgAdapterStagingGateReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_adapter_staging_gate_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -8907,6 +8915,29 @@ mod tests {
                 .iter()
                 .any(|plan| plan.adapter_id == "cocoindex")
         );
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_adapter_staging_gate_overview_keeps_adapters_closed() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_adapter_staging_gate_overview();
+
+        assert_eq!(report.status, "ready");
+        assert!(report.candidate_count > 0);
+        assert_eq!(report.adapter_count, 3);
+        assert_eq!(
+            report.staging_plan_count,
+            report.candidate_count * report.adapter_count
+        );
+        assert_eq!(report.staging_ready_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.external_write_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.operator_review_required);
+        assert!(report.checks.rollback_plan_required);
+        assert!(report.checks.post_write_validation_required);
     }
 
     #[tokio::test]

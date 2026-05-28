@@ -302,6 +302,14 @@ impl KgExternalAdapterKind {
             Self::CocoIndex => "document-chunk-entity-index",
         }
     }
+
+    pub fn staging_feature_gate_name(self) -> &'static str {
+        match self {
+            Self::Graphiti => "HEPTA_KG_GRAPHITI_STAGING",
+            Self::Neo4j => "HEPTA_KG_NEO4J_STAGING",
+            Self::CocoIndex => "HEPTA_KG_COCOINDEX_STAGING",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -332,6 +340,75 @@ pub enum KgExternalAdapterBlocker {
     SourceWritePlanNotLiveReady,
     MissingGraphPayload,
     MissingSourceProvenance,
+}
+
+pub const KG_EXTERNAL_ADAPTER_STAGING_GATE_CONTRACT: &str =
+    "hepta-kg-external-adapter-staging-gate-v0";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgExternalAdapterStagingConfig {
+    pub adapter: KgExternalAdapterKind,
+    pub feature_gate_name: String,
+    pub feature_enabled: bool,
+    pub endpoint_configured: bool,
+    pub credentials_configured: bool,
+    pub network_allowlisted: bool,
+    pub external_write_allowlisted: bool,
+    pub operator_review: KgOperatorReviewState,
+    pub dry_run_sample_passed: bool,
+    pub rollback_plan_ready: bool,
+    pub post_write_validation_ready: bool,
+    pub live_write_requested: bool,
+}
+
+impl KgExternalAdapterStagingConfig {
+    pub fn disabled(adapter: KgExternalAdapterKind) -> Self {
+        Self {
+            adapter,
+            feature_gate_name: adapter.staging_feature_gate_name().to_string(),
+            feature_enabled: false,
+            endpoint_configured: false,
+            credentials_configured: false,
+            network_allowlisted: false,
+            external_write_allowlisted: false,
+            operator_review: KgOperatorReviewState::NotReviewed,
+            dry_run_sample_passed: false,
+            rollback_plan_ready: false,
+            post_write_validation_ready: false,
+            live_write_requested: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgExternalAdapterStagingPlan {
+    pub adapter: KgExternalAdapterKind,
+    pub adapter_id: String,
+    pub contract: String,
+    pub source_candidate_id: String,
+    pub feature_gate_name: String,
+    pub staging_ready: bool,
+    pub network_call_allowed: bool,
+    pub external_write_allowed: bool,
+    pub live_write_allowed: bool,
+    #[serde(default)]
+    pub blockers: Vec<KgExternalAdapterStagingBlocker>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KgExternalAdapterStagingBlocker {
+    FeatureGateDisabled,
+    EndpointMissing,
+    CredentialsMissing,
+    NetworkAllowlistMissing,
+    ExternalWriteAllowlistMissing,
+    OperatorReviewMissing,
+    DryRunSampleMissing,
+    RollbackPlanMissing,
+    PostWriteValidationMissing,
+    SourceDryRunProjectionNotReady,
+    LiveWriteForbidden,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -469,6 +546,71 @@ pub fn plan_external_adapter_dry_run(
         projected_entity_records,
         projected_relation_records,
         projected_total_records,
+        network_call_allowed: false,
+        external_write_allowed: false,
+        live_write_allowed: false,
+        blockers,
+    }
+}
+
+pub fn default_external_adapter_staging_configs() -> Vec<KgExternalAdapterStagingConfig> {
+    KgExternalAdapterKind::ALL
+        .into_iter()
+        .map(KgExternalAdapterStagingConfig::disabled)
+        .collect()
+}
+
+pub fn plan_external_adapter_staging_gate(
+    dry_run_plan: &KgExternalAdapterDryRunPlan,
+    config: &KgExternalAdapterStagingConfig,
+) -> KgExternalAdapterStagingPlan {
+    let mut blockers = Vec::new();
+
+    if !config.feature_enabled {
+        blockers.push(KgExternalAdapterStagingBlocker::FeatureGateDisabled);
+    }
+    if !config.endpoint_configured {
+        blockers.push(KgExternalAdapterStagingBlocker::EndpointMissing);
+    }
+    if !config.credentials_configured {
+        blockers.push(KgExternalAdapterStagingBlocker::CredentialsMissing);
+    }
+    if !config.network_allowlisted {
+        blockers.push(KgExternalAdapterStagingBlocker::NetworkAllowlistMissing);
+    }
+    if !config.external_write_allowlisted {
+        blockers.push(KgExternalAdapterStagingBlocker::ExternalWriteAllowlistMissing);
+    }
+    if config.operator_review != KgOperatorReviewState::Approved {
+        blockers.push(KgExternalAdapterStagingBlocker::OperatorReviewMissing);
+    }
+    if !config.dry_run_sample_passed {
+        blockers.push(KgExternalAdapterStagingBlocker::DryRunSampleMissing);
+    }
+    if !config.rollback_plan_ready {
+        blockers.push(KgExternalAdapterStagingBlocker::RollbackPlanMissing);
+    }
+    if !config.post_write_validation_ready {
+        blockers.push(KgExternalAdapterStagingBlocker::PostWriteValidationMissing);
+    }
+    if dry_run_plan.projected_total_records == 0
+        || dry_run_plan.network_call_allowed
+        || dry_run_plan.external_write_allowed
+        || dry_run_plan.live_write_allowed
+    {
+        blockers.push(KgExternalAdapterStagingBlocker::SourceDryRunProjectionNotReady);
+    }
+    if config.live_write_requested {
+        blockers.push(KgExternalAdapterStagingBlocker::LiveWriteForbidden);
+    }
+
+    KgExternalAdapterStagingPlan {
+        adapter: config.adapter,
+        adapter_id: config.adapter.id().to_string(),
+        contract: KG_EXTERNAL_ADAPTER_STAGING_GATE_CONTRACT.to_string(),
+        source_candidate_id: dry_run_plan.candidate_id.clone(),
+        feature_gate_name: config.feature_gate_name.clone(),
+        staging_ready: blockers.is_empty(),
         network_call_allowed: false,
         external_write_allowed: false,
         live_write_allowed: false,
@@ -632,6 +774,95 @@ mod tests {
         assert!(plans.iter().any(|plan| plan.adapter_id == "graphiti"));
         assert!(plans.iter().any(|plan| plan.adapter_id == "neo4j"));
         assert!(plans.iter().any(|plan| plan.adapter_id == "cocoindex"));
+    }
+
+    #[test]
+    fn default_external_adapter_staging_configs_keep_all_adapters_disabled() {
+        let configs = default_external_adapter_staging_configs();
+
+        assert_eq!(configs.len(), 3);
+        assert!(configs.iter().all(|config| !config.feature_enabled));
+        assert!(
+            configs
+                .iter()
+                .any(|config| config.feature_gate_name == "HEPTA_KG_GRAPHITI_STAGING")
+        );
+        assert!(
+            configs
+                .iter()
+                .any(|config| config.feature_gate_name == "HEPTA_KG_NEO4J_STAGING")
+        );
+        assert!(
+            configs
+                .iter()
+                .any(|config| config.feature_gate_name == "HEPTA_KG_COCOINDEX_STAGING")
+        );
+    }
+
+    #[test]
+    fn external_adapter_staging_gate_requires_explicit_review_and_safety_plans() {
+        let candidate = sample_candidate();
+        let write_plan = plan_kg_write(&candidate, &KgWritePolicy::default());
+        let dry_run_plan =
+            plan_external_adapter_dry_run(&candidate, &write_plan, KgExternalAdapterKind::Neo4j);
+        let config = KgExternalAdapterStagingConfig::disabled(KgExternalAdapterKind::Neo4j);
+
+        let staging_plan = plan_external_adapter_staging_gate(&dry_run_plan, &config);
+
+        assert!(!staging_plan.staging_ready);
+        assert!(!staging_plan.network_call_allowed);
+        assert!(!staging_plan.external_write_allowed);
+        assert!(!staging_plan.live_write_allowed);
+        assert!(
+            staging_plan
+                .blockers
+                .contains(&KgExternalAdapterStagingBlocker::FeatureGateDisabled)
+        );
+        assert!(
+            staging_plan
+                .blockers
+                .contains(&KgExternalAdapterStagingBlocker::OperatorReviewMissing)
+        );
+        assert!(
+            staging_plan
+                .blockers
+                .contains(&KgExternalAdapterStagingBlocker::RollbackPlanMissing)
+        );
+    }
+
+    #[test]
+    fn external_adapter_staging_gate_can_clear_without_enabling_writes() {
+        let candidate = sample_candidate();
+        let write_plan = plan_kg_write(&candidate, &KgWritePolicy::default());
+        let dry_run_plan = plan_external_adapter_dry_run(
+            &candidate,
+            &write_plan,
+            KgExternalAdapterKind::CocoIndex,
+        );
+        let config = KgExternalAdapterStagingConfig {
+            adapter: KgExternalAdapterKind::CocoIndex,
+            feature_gate_name: KgExternalAdapterKind::CocoIndex
+                .staging_feature_gate_name()
+                .to_string(),
+            feature_enabled: true,
+            endpoint_configured: true,
+            credentials_configured: true,
+            network_allowlisted: true,
+            external_write_allowlisted: true,
+            operator_review: KgOperatorReviewState::Approved,
+            dry_run_sample_passed: true,
+            rollback_plan_ready: true,
+            post_write_validation_ready: true,
+            live_write_requested: false,
+        };
+
+        let staging_plan = plan_external_adapter_staging_gate(&dry_run_plan, &config);
+
+        assert!(staging_plan.staging_ready);
+        assert!(staging_plan.blockers.is_empty());
+        assert!(!staging_plan.network_call_allowed);
+        assert!(!staging_plan.external_write_allowed);
+        assert!(!staging_plan.live_write_allowed);
     }
 
     fn sample_candidate() -> KgWriteCandidate {

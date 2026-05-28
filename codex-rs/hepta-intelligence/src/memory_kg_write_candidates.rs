@@ -4,9 +4,11 @@ use hepta_core::{
 };
 use hepta_kg::{
     KgConfidence, KgEntity, KgEntityKind, KgEpisode, KgEpisodeKind, KgExternalAdapterDryRunPlan,
-    KgExternalAdapterKind, KgOperatorReviewState, KgProvenance, KgRedactionState, KgRelation,
-    KgRelationKind, KgSourceKind, KgSourceSpan, KgTemporalValidity, KgWriteCandidate, KgWriteMode,
-    KgWritePlan, KgWritePolicy, plan_external_adapter_dry_run, plan_kg_write,
+    KgExternalAdapterKind, KgExternalAdapterStagingBlocker, KgExternalAdapterStagingPlan,
+    KgOperatorReviewState, KgProvenance, KgRedactionState, KgRelation, KgRelationKind,
+    KgSourceKind, KgSourceSpan, KgTemporalValidity, KgWriteCandidate, KgWriteMode, KgWritePlan,
+    KgWritePolicy, default_external_adapter_staging_configs, plan_external_adapter_dry_run,
+    plan_external_adapter_staging_gate, plan_kg_write,
 };
 use serde::{Deserialize, Serialize};
 
@@ -87,6 +89,52 @@ pub struct MemoryKgAdapterDryRunReport {
     pub live_write_enabled_count: usize,
     pub projections: Vec<KgExternalAdapterDryRunPlan>,
     pub checks: MemoryKgAdapterDryRunChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgAdapterStagingGateChecks {
+    pub candidate_count_nonzero: bool,
+    pub all_supported_adapters_gated: bool,
+    pub all_staging_plans_closed_by_default: bool,
+    pub operator_review_required: bool,
+    pub rollback_plan_required: bool,
+    pub post_write_validation_required: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_external_writes_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgAdapterStagingGateChecks {
+    pub fn ready(&self) -> bool {
+        self.candidate_count_nonzero
+            && self.all_supported_adapters_gated
+            && self.all_staging_plans_closed_by_default
+            && self.operator_review_required
+            && self.rollback_plan_required
+            && self.post_write_validation_required
+            && self.no_network_calls_enabled
+            && self.no_external_writes_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgAdapterStagingGateReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub sample_run: bool,
+    pub candidate_count: usize,
+    pub adapter_count: usize,
+    pub staging_plan_count: usize,
+    pub staging_ready_count: usize,
+    pub network_call_enabled_count: usize,
+    pub external_write_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub plans: Vec<KgExternalAdapterStagingPlan>,
+    pub checks: MemoryKgAdapterStagingGateChecks,
     pub next_phase: &'static str,
 }
 
@@ -194,6 +242,78 @@ pub fn memory_kg_adapter_dry_run_report(
         projections,
         checks,
         next_phase: "replace dry-run adapter projections with reviewed adapter-specific staging plans",
+    }
+}
+
+pub fn memory_kg_adapter_staging_gate_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgAdapterStagingGateReport {
+    let dry_run_report = memory_kg_adapter_dry_run_report(memory_units, sample_run);
+    let configs = default_external_adapter_staging_configs();
+    let plans = dry_run_report
+        .projections
+        .iter()
+        .map(|projection| {
+            let config = configs
+                .iter()
+                .find(|config| config.adapter == projection.adapter)
+                .expect("each supported adapter must have a default staging config");
+            plan_external_adapter_staging_gate(projection, config)
+        })
+        .collect::<Vec<_>>();
+
+    let staging_ready_count = plans.iter().filter(|plan| plan.staging_ready).count();
+    let network_call_enabled_count = plans
+        .iter()
+        .filter(|plan| plan.network_call_allowed)
+        .count();
+    let external_write_enabled_count = plans
+        .iter()
+        .filter(|plan| plan.external_write_allowed)
+        .count();
+    let live_write_enabled_count = plans.iter().filter(|plan| plan.live_write_allowed).count();
+    let adapter_count = KgExternalAdapterKind::ALL.len();
+    let checks = MemoryKgAdapterStagingGateChecks {
+        candidate_count_nonzero: dry_run_report.candidate_count > 0,
+        all_supported_adapters_gated: configs.len() == adapter_count
+            && KgExternalAdapterKind::ALL
+                .into_iter()
+                .all(|adapter| configs.iter().any(|config| config.adapter == adapter)),
+        all_staging_plans_closed_by_default: staging_ready_count == 0,
+        operator_review_required: plans.iter().all(|plan| {
+            plan.blockers
+                .contains(&KgExternalAdapterStagingBlocker::OperatorReviewMissing)
+        }),
+        rollback_plan_required: plans.iter().all(|plan| {
+            plan.blockers
+                .contains(&KgExternalAdapterStagingBlocker::RollbackPlanMissing)
+        }),
+        post_write_validation_required: plans.iter().all(|plan| {
+            plan.blockers
+                .contains(&KgExternalAdapterStagingBlocker::PostWriteValidationMissing)
+        }),
+        no_network_calls_enabled: network_call_enabled_count == 0,
+        no_external_writes_enabled: external_write_enabled_count == 0,
+        no_live_writes_enabled: live_write_enabled_count == 0,
+    };
+
+    MemoryKgAdapterStagingGateReport {
+        product: "Hepta",
+        command: "memory-kg-adapter-staging-gate",
+        contract: hepta_kg::KG_EXTERNAL_ADAPTER_STAGING_GATE_CONTRACT,
+        status: if checks.ready() { "ready" } else { "attention" },
+        sample_run,
+        candidate_count: dry_run_report.candidate_count,
+        adapter_count,
+        staging_plan_count: plans.len(),
+        staging_ready_count,
+        network_call_enabled_count,
+        external_write_enabled_count,
+        live_write_enabled_count,
+        plans,
+        checks,
+        next_phase: "add disabled-by-default adapter clients behind the staging gate",
     }
 }
 
@@ -505,5 +625,25 @@ mod tests {
                 .iter()
                 .any(|plan| plan.adapter_id == "cocoindex")
         );
+    }
+
+    #[test]
+    fn memory_atoms_emit_closed_adapter_staging_gates_by_default() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_adapter_staging_gate_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.candidate_count, atom_report.atoms.len());
+        assert_eq!(report.adapter_count, 3);
+        assert_eq!(report.staging_plan_count, report.candidate_count * 3);
+        assert_eq!(report.staging_ready_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.external_write_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.operator_review_required);
+        assert!(report.checks.rollback_plan_required);
+        assert!(report.checks.post_write_validation_required);
+        assert!(report.plans.iter().all(|plan| !plan.staging_ready));
     }
 }
