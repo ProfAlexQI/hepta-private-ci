@@ -1659,6 +1659,163 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_prompt_preview_approval_packet_summary(
+        &self,
+    ) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_prompt_preview_approval_packet_overview();
+        let mut lines = vec![
+            format!("Hepta KG prompt-preview approval packet: {}", report.status),
+            format!("- verdict: {}", report.verdict),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- kg shadow-rank drift contract: {}",
+                report.kg_shadow_rank_drift_contract
+            ),
+            format!(
+                "- kg context injection readiness contract: {}",
+                report.kg_context_injection_readiness_contract
+            ),
+            format!("- approval packet id: {}", report.approval_packet_id),
+            format!("- approval packet mode: {}", report.approval_packet_mode),
+            format!("- sample run: {}", report.sample_run),
+            format!("- drift cases: {}", report.drift_case_count),
+            format!("- stable cases: {}", report.stable_case_count),
+            format!("- drifted cases: {}", report.drifted_case_count),
+            format!("- approval items: {}", report.approval_item_count),
+            format!(
+                "- redacted context refs: {}",
+                report.redacted_context_ref_count
+            ),
+            format!(
+                "- operator approval recorded: {}",
+                report.operator_approval_recorded
+            ),
+            format!("- rollback plan ready: {}", report.rollback_plan_ready),
+            format!("- kill switch ready: {}", report.kill_switch_ready),
+            format!(
+                "- approval packet accepted: {}",
+                report.approval_packet_accepted
+            ),
+            format!(
+                "- prompt preview allowed: {}",
+                report.prompt_preview_allowed
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!(
+                "- prompt payload materialized: {}",
+                report.prompt_payload_materialized
+            ),
+            format!(
+                "- context injection allowed: {}",
+                report.context_injection_allowed
+            ),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!("- drift gate stable: {}", report.checks.drift_gate_stable),
+            format!(
+                "- approval items cover drift cases: {}",
+                report.checks.approval_items_cover_drift_cases
+            ),
+            format!(
+                "- redacted refs present: {}",
+                report.checks.redacted_refs_present
+            ),
+            format!(
+                "- operator approval required: {}",
+                report.checks.operator_approval_required
+            ),
+            format!(
+                "- rollback plan required: {}",
+                report.checks.rollback_plan_required
+            ),
+            format!(
+                "- kill switch required: {}",
+                report.checks.kill_switch_required
+            ),
+            format!(
+                "- prompt preview disabled by default: {}",
+                report.checks.prompt_preview_disabled_by_default
+            ),
+            format!(
+                "- prompt preview not rendered: {}",
+                report.checks.prompt_preview_not_rendered
+            ),
+            format!(
+                "- prompt payload not materialized: {}",
+                report.checks.prompt_payload_not_materialized
+            ),
+            format!(
+                "- context injection disabled by default: {}",
+                report.checks.context_injection_disabled_by_default
+            ),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!("- no model invoked: {}", report.checks.no_model_invoked),
+            format!(
+                "- no external reads enabled: {}",
+                report.checks.no_external_reads_enabled
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Approval packet blockers:".to_string(),
+        ];
+
+        if report.blockers.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(
+                report
+                    .blockers
+                    .iter()
+                    .map(|blocker| format!("  - {:?}", blocker)),
+            );
+        }
+
+        lines.push("Approval packet items:".to_string());
+        if report.items.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.items.iter().take(8).map(|item| {
+                format!(
+                    "  - item={} kg_rank={} baseline={:?} candidate={} ref={} prompt_preview_included={} injection_allowed={}",
+                    item.packet_item_index,
+                    item.kg_rank,
+                    item.baseline_kind,
+                    item.kg_candidate_id,
+                    item.redacted_context_ref,
+                    item.prompt_preview_included,
+                    item.context_injection_allowed
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -3521,6 +3678,59 @@ mod tests {
         assert!(rendered.contains("- no context injection performed: true"));
         assert!(rendered.contains("Drift cases:"));
         assert!(rendered.contains("stable=true"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_prompt_preview_approval_packet_summary_renders_blocked_packet() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_prompt_preview_approval_packet_summary()
+            .expect("kg prompt-preview approval packet summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG prompt-preview approval packet: blocked"));
+        assert!(rendered.contains(
+            "- contract: hepta-intelligence-memory-kg-prompt-preview-approval-packet-v0"
+        ));
+        assert!(rendered.contains(
+            "- kg shadow-rank drift contract: hepta-intelligence-memory-kg-shadow-rank-drift-v0"
+        ));
+        assert!(
+            rendered.contains("- approval packet mode: draft_redacted_refs_only_no_prompt_preview")
+        );
+        assert!(rendered.contains("- drifted cases: 0"));
+        assert!(rendered.contains("- operator approval recorded: false"));
+        assert!(rendered.contains("- rollback plan ready: false"));
+        assert!(rendered.contains("- kill switch ready: false"));
+        assert!(rendered.contains("- approval packet accepted: false"));
+        assert!(rendered.contains("- prompt preview allowed: false"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- prompt payload materialized: false"));
+        assert!(rendered.contains("- context injection allowed: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- drift gate stable: true"));
+        assert!(rendered.contains("- approval items cover drift cases: true"));
+        assert!(rendered.contains("- redacted refs present: true"));
+        assert!(rendered.contains("- operator approval required: true"));
+        assert!(rendered.contains("- prompt preview disabled by default: true"));
+        assert!(rendered.contains("- prompt payload not materialized: true"));
+        assert!(rendered.contains("- context injection disabled by default: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("- no model invoked: true"));
+        assert!(rendered.contains("- no external reads enabled: true"));
+        assert!(rendered.contains("- no network calls enabled: true"));
+        assert!(rendered.contains("- no live writes enabled: true"));
+        assert!(rendered.contains("Approval packet blockers:"));
+        assert!(rendered.contains("MissingOperatorApproval"));
+        assert!(rendered.contains("PromptPreviewDisabledByDefault"));
+        assert!(rendered.contains("Approval packet items:"));
+        assert!(rendered.contains("prompt_preview_included=false"));
+        assert!(rendered.contains("injection_allowed=false"));
     }
 
     #[tokio::test]

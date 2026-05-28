@@ -16,20 +16,21 @@ use hepta_intelligence::{
     LearnedSemanticRouterEvidence, MemoryKgAdapterClientReport, MemoryKgAdapterConfigEnvReport,
     MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
     MemoryKgContextInjectionReadinessReport, MemoryKgContextRecallBridgeReport,
-    MemoryKgRecallEvaluationReport, MemoryKgRecallPlanReport, MemoryKgShadowRankComparisonReport,
-    MemoryKgShadowRankDriftReport, MemoryKgShadowRankReport, MemoryKgWriteCandidateReport,
-    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
-    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
-    TopicRouteShellPatch, compute_intuition_feedback_delta,
-    evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
-    intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
-    intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
-    is_learned_feedback_contrast_case, learned_feedback_contrast_expected_signal_direction,
-    learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
-    memory_atom_pipeline_sample_report, memory_kg_adapter_client_report,
-    memory_kg_adapter_config_env_report, memory_kg_adapter_dry_run_report,
-    memory_kg_adapter_staging_gate_report, memory_kg_context_injection_readiness_report,
-    memory_kg_context_recall_bridge_report, memory_kg_recall_evaluation_report,
+    MemoryKgPromptPreviewApprovalPacketReport, MemoryKgRecallEvaluationReport,
+    MemoryKgRecallPlanReport, MemoryKgShadowRankComparisonReport, MemoryKgShadowRankDriftReport,
+    MemoryKgShadowRankReport, MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY,
+    SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome,
+    TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary, TopicRouteShellPatch,
+    compute_intuition_feedback_delta, evaluate_intelligence_semantic_expectations,
+    format_intuition_feedback_outcome, intuition_calibration_feedback_summary,
+    intuition_calibration_skill_targets, intuition_calibration_workflow_targets,
+    intuition_feedback_confidence_shift, is_learned_feedback_contrast_case,
+    learned_feedback_contrast_expected_signal_direction, learned_feedback_contrast_focus,
+    learned_semantic_terms_for_feedback, memory_atom_pipeline_sample_report,
+    memory_kg_adapter_client_report, memory_kg_adapter_config_env_report,
+    memory_kg_adapter_dry_run_report, memory_kg_adapter_staging_gate_report,
+    memory_kg_context_injection_readiness_report, memory_kg_context_recall_bridge_report,
+    memory_kg_prompt_preview_approval_packet_report, memory_kg_recall_evaluation_report,
     memory_kg_recall_plan_report, memory_kg_shadow_rank_comparison_report,
     memory_kg_shadow_rank_drift_report, memory_kg_shadow_rank_report,
     memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
@@ -2694,6 +2695,13 @@ impl RuntimeKernel {
     pub fn knowledge_graph_shadow_rank_drift_overview(&self) -> MemoryKgShadowRankDriftReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_shadow_rank_drift_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_prompt_preview_approval_packet_overview(
+        &self,
+    ) -> MemoryKgPromptPreviewApprovalPacketReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_prompt_preview_approval_packet_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -9247,6 +9255,50 @@ mod tests {
         assert!(report.checks.rank_order_stable);
         assert!(report.checks.score_delta_within_thresholds);
         assert!(report.checks.prompt_flags_stable);
+        assert!(report.checks.no_context_injection_performed);
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_prompt_preview_approval_packet_overview_blocks_prompt_preview() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_prompt_preview_approval_packet_overview();
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.contract,
+            hepta_intelligence::MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT
+        );
+        assert_eq!(
+            report.kg_shadow_rank_drift_contract,
+            hepta_intelligence::MEMORY_KG_SHADOW_RANK_DRIFT_V0_CONTRACT
+        );
+        assert!(report.drift_case_count > 0);
+        assert_eq!(report.approval_item_count, report.drift_case_count);
+        assert_eq!(
+            report.redacted_context_ref_count,
+            report.approval_item_count
+        );
+        assert_eq!(report.drifted_case_count, 0);
+        assert!(!report.operator_approval_recorded);
+        assert!(!report.rollback_plan_ready);
+        assert!(!report.kill_switch_ready);
+        assert!(!report.approval_packet_accepted);
+        assert!(!report.prompt_preview_allowed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.prompt_payload_materialized);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.model_invoked);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.drift_gate_stable);
+        assert!(report.checks.operator_approval_required);
+        assert!(report.checks.prompt_preview_disabled_by_default);
+        assert!(report.checks.prompt_payload_not_materialized);
+        assert!(report.checks.context_injection_disabled_by_default);
         assert!(report.checks.no_context_injection_performed);
     }
 

@@ -32,6 +32,8 @@ pub const MEMORY_KG_SHADOW_RANK_COMPARISON_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-shadow-rank-comparison-v0";
 pub const MEMORY_KG_SHADOW_RANK_DRIFT_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-shadow-rank-drift-v0";
+pub const MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-prompt-preview-approval-packet-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -770,6 +772,109 @@ pub struct MemoryKgShadowRankDriftReport {
     pub live_write_enabled_count: usize,
     pub cases: Vec<MemoryKgShadowRankDriftCase>,
     pub checks: MemoryKgShadowRankDriftChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MemoryKgPromptPreviewApprovalPacketBlocker {
+    DriftGateNotStable,
+    MissingOperatorApproval,
+    MissingRollbackPlan,
+    MissingKillSwitch,
+    PromptPreviewDisabledByDefault,
+    ContextInjectionDisabledByDefault,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewApprovalPacketItem {
+    pub packet_item_index: usize,
+    pub kg_rank: usize,
+    pub baseline_kind: MemoryKgShadowRankBaselineKind,
+    pub kg_candidate_id: String,
+    pub rank_delta: isize,
+    pub score_delta_basis_points: i16,
+    pub redacted_context_ref: String,
+    pub prompt_preview_included: bool,
+    pub context_injection_allowed: bool,
+    pub operator_approval_required: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewApprovalPacketChecks {
+    pub drift_gate_stable: bool,
+    pub drift_cases_nonzero: bool,
+    pub approval_items_nonzero: bool,
+    pub approval_items_cover_drift_cases: bool,
+    pub redacted_refs_present: bool,
+    pub operator_approval_required: bool,
+    pub rollback_plan_required: bool,
+    pub kill_switch_required: bool,
+    pub prompt_preview_disabled_by_default: bool,
+    pub prompt_preview_not_rendered: bool,
+    pub prompt_payload_not_materialized: bool,
+    pub context_injection_disabled_by_default: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgPromptPreviewApprovalPacketChecks {
+    pub fn ready(&self) -> bool {
+        self.drift_gate_stable
+            && self.drift_cases_nonzero
+            && self.approval_items_nonzero
+            && self.approval_items_cover_drift_cases
+            && self.redacted_refs_present
+            && self.operator_approval_required
+            && self.rollback_plan_required
+            && self.kill_switch_required
+            && self.prompt_preview_disabled_by_default
+            && self.prompt_preview_not_rendered
+            && self.prompt_payload_not_materialized
+            && self.context_injection_disabled_by_default
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewApprovalPacketReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub verdict: &'static str,
+    pub sample_run: bool,
+    pub kg_shadow_rank_drift_contract: &'static str,
+    pub kg_context_injection_readiness_contract: &'static str,
+    pub approval_packet_id: String,
+    pub approval_packet_mode: &'static str,
+    pub drift_case_count: usize,
+    pub stable_case_count: usize,
+    pub drifted_case_count: usize,
+    pub approval_item_count: usize,
+    pub redacted_context_ref_count: usize,
+    pub operator_approval_recorded: bool,
+    pub rollback_plan_ready: bool,
+    pub kill_switch_ready: bool,
+    pub approval_packet_accepted: bool,
+    pub prompt_preview_allowed: bool,
+    pub prompt_preview_rendered: bool,
+    pub prompt_payload_materialized: bool,
+    pub context_injection_allowed: bool,
+    pub context_injection_performed: bool,
+    pub model_invoked: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub blockers: Vec<MemoryKgPromptPreviewApprovalPacketBlocker>,
+    pub items: Vec<MemoryKgPromptPreviewApprovalPacketItem>,
+    pub checks: MemoryKgPromptPreviewApprovalPacketChecks,
     pub next_phase: &'static str,
 }
 
@@ -1725,6 +1830,128 @@ pub fn memory_kg_shadow_rank_drift_report(
     }
 }
 
+pub fn memory_kg_prompt_preview_approval_packet_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgPromptPreviewApprovalPacketReport {
+    let drift_report = memory_kg_shadow_rank_drift_report(memory_units, sample_run);
+    let readiness_report = memory_kg_context_injection_readiness_report(memory_units, sample_run);
+    let items = memory_kg_prompt_preview_approval_packet_items(&drift_report.cases);
+    let approval_item_count = items.len();
+    let redacted_context_ref_count = items
+        .iter()
+        .filter(|item| !item.redacted_context_ref.trim().is_empty())
+        .count();
+    let operator_approval_recorded = false;
+    let rollback_plan_ready = false;
+    let kill_switch_ready = false;
+    let approval_packet_accepted = false;
+    let prompt_preview_allowed = false;
+    let prompt_preview_rendered = false;
+    let prompt_payload_materialized = false;
+    let context_injection_allowed = false;
+    let context_injection_performed = false;
+    let model_invoked = false;
+
+    let drift_gate_stable = drift_report.checks.ready()
+        && drift_report.verdict == "stable"
+        && drift_report.drifted_case_count == 0;
+    let mut blockers = Vec::new();
+    if !drift_gate_stable {
+        blockers.push(MemoryKgPromptPreviewApprovalPacketBlocker::DriftGateNotStable);
+    }
+    if !operator_approval_recorded {
+        blockers.push(MemoryKgPromptPreviewApprovalPacketBlocker::MissingOperatorApproval);
+    }
+    if !rollback_plan_ready {
+        blockers.push(MemoryKgPromptPreviewApprovalPacketBlocker::MissingRollbackPlan);
+    }
+    if !kill_switch_ready {
+        blockers.push(MemoryKgPromptPreviewApprovalPacketBlocker::MissingKillSwitch);
+    }
+    if !prompt_preview_allowed {
+        blockers.push(MemoryKgPromptPreviewApprovalPacketBlocker::PromptPreviewDisabledByDefault);
+    }
+    if !context_injection_allowed {
+        blockers
+            .push(MemoryKgPromptPreviewApprovalPacketBlocker::ContextInjectionDisabledByDefault);
+    }
+
+    let checks = MemoryKgPromptPreviewApprovalPacketChecks {
+        drift_gate_stable,
+        drift_cases_nonzero: drift_report.drift_case_count > 0,
+        approval_items_nonzero: approval_item_count > 0,
+        approval_items_cover_drift_cases: approval_item_count == drift_report.drift_case_count,
+        redacted_refs_present: approval_item_count > 0
+            && redacted_context_ref_count == approval_item_count,
+        operator_approval_required: !operator_approval_recorded,
+        rollback_plan_required: !rollback_plan_ready,
+        kill_switch_required: !kill_switch_ready,
+        prompt_preview_disabled_by_default: !prompt_preview_allowed,
+        prompt_preview_not_rendered: !prompt_preview_rendered,
+        prompt_payload_not_materialized: !prompt_payload_materialized,
+        context_injection_disabled_by_default: !context_injection_allowed,
+        no_model_invoked: !model_invoked,
+        no_context_injection_performed: !context_injection_performed,
+        no_external_reads_enabled: drift_report.external_read_enabled_count == 0
+            && readiness_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: drift_report.network_call_enabled_count == 0
+            && readiness_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: drift_report.live_write_enabled_count == 0
+            && readiness_report.live_write_enabled_count == 0,
+    };
+
+    MemoryKgPromptPreviewApprovalPacketReport {
+        product: "Hepta",
+        command: "memory-kg-prompt-preview-approval-packet",
+        contract: MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT,
+        status: if checks.ready() && !approval_packet_accepted {
+            "blocked"
+        } else if checks.ready() && approval_packet_accepted {
+            "ready"
+        } else {
+            "attention"
+        },
+        verdict: if approval_packet_accepted {
+            "accepted"
+        } else {
+            "blocked_until_operator_prompt_preview_approval_rollback_and_kill_switch"
+        },
+        sample_run,
+        kg_shadow_rank_drift_contract: MEMORY_KG_SHADOW_RANK_DRIFT_V0_CONTRACT,
+        kg_context_injection_readiness_contract: MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT,
+        approval_packet_id: format!(
+            "kg-prompt-preview-approval:{}:{}:{}",
+            drift_report.top_n_kg_rank_count,
+            drift_report.drift_case_count,
+            redacted_context_ref_count
+        ),
+        approval_packet_mode: "draft_redacted_refs_only_no_prompt_preview",
+        drift_case_count: drift_report.drift_case_count,
+        stable_case_count: drift_report.stable_case_count,
+        drifted_case_count: drift_report.drifted_case_count,
+        approval_item_count,
+        redacted_context_ref_count,
+        operator_approval_recorded,
+        rollback_plan_ready,
+        kill_switch_ready,
+        approval_packet_accepted,
+        prompt_preview_allowed,
+        prompt_preview_rendered,
+        prompt_payload_materialized,
+        context_injection_allowed,
+        context_injection_performed,
+        model_invoked,
+        external_read_enabled_count: drift_report.external_read_enabled_count,
+        network_call_enabled_count: drift_report.network_call_enabled_count,
+        live_write_enabled_count: drift_report.live_write_enabled_count,
+        blockers,
+        items,
+        checks,
+        next_phase: "require explicit operator approval, rollback, and kill-switch evidence before rendering any KG prompt preview",
+    }
+}
+
 fn memory_kg_shadow_rank_items(items: &[ContextRecallItem]) -> Vec<MemoryKgShadowRankItem> {
     items
         .iter()
@@ -1845,6 +2072,30 @@ fn memory_kg_shadow_rank_drift_cases(
                 prompt_flags_stable,
                 stable,
             }
+        })
+        .collect()
+}
+
+fn memory_kg_prompt_preview_approval_packet_items(
+    cases: &[MemoryKgShadowRankDriftCase],
+) -> Vec<MemoryKgPromptPreviewApprovalPacketItem> {
+    cases
+        .iter()
+        .enumerate()
+        .map(|(idx, case)| MemoryKgPromptPreviewApprovalPacketItem {
+            packet_item_index: idx + 1,
+            kg_rank: case.kg_rank,
+            baseline_kind: case.baseline_kind,
+            kg_candidate_id: case.kg_candidate_id.clone(),
+            rank_delta: case.rank_delta,
+            score_delta_basis_points: case.kg_score_delta_basis_points,
+            redacted_context_ref: format!(
+                "kg-shadow-rank-drift-ref:rank-{}:case-{}",
+                case.kg_rank, case.case_index
+            ),
+            prompt_preview_included: false,
+            context_injection_allowed: false,
+            operator_approval_required: true,
         })
         .collect()
 }
@@ -3027,5 +3278,87 @@ mod tests {
                 .iter()
                 .all(|case| case.score_delta_within_threshold && case.prompt_flags_stable)
         );
+    }
+
+    #[test]
+    fn memory_kg_prompt_preview_approval_packet_blocks_prompt_preview_until_operator_approval() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_prompt_preview_approval_packet_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.verdict,
+            "blocked_until_operator_prompt_preview_approval_rollback_and_kill_switch"
+        );
+        assert_eq!(
+            report.contract,
+            MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT
+        );
+        assert_eq!(
+            report.kg_shadow_rank_drift_contract,
+            MEMORY_KG_SHADOW_RANK_DRIFT_V0_CONTRACT
+        );
+        assert_eq!(
+            report.kg_context_injection_readiness_contract,
+            MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT
+        );
+        assert_eq!(
+            report.approval_packet_mode,
+            "draft_redacted_refs_only_no_prompt_preview"
+        );
+        assert!(report.drift_case_count > 0);
+        assert_eq!(report.approval_item_count, report.drift_case_count);
+        assert_eq!(
+            report.redacted_context_ref_count,
+            report.approval_item_count
+        );
+        assert_eq!(report.stable_case_count, report.drift_case_count);
+        assert_eq!(report.drifted_case_count, 0);
+        assert!(!report.operator_approval_recorded);
+        assert!(!report.rollback_plan_ready);
+        assert!(!report.kill_switch_ready);
+        assert!(!report.approval_packet_accepted);
+        assert!(!report.prompt_preview_allowed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.prompt_payload_materialized);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.model_invoked);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.drift_gate_stable);
+        assert!(report.checks.approval_items_cover_drift_cases);
+        assert!(report.checks.redacted_refs_present);
+        assert!(report.checks.operator_approval_required);
+        assert!(report.checks.prompt_preview_disabled_by_default);
+        assert!(report.checks.prompt_preview_not_rendered);
+        assert!(report.checks.prompt_payload_not_materialized);
+        assert!(report.checks.context_injection_disabled_by_default);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewApprovalPacketBlocker::MissingOperatorApproval)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewApprovalPacketBlocker::MissingRollbackPlan)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewApprovalPacketBlocker::MissingKillSwitch)
+        );
+        assert!(report.items.iter().all(|item| {
+            !item.prompt_preview_included
+                && !item.context_injection_allowed
+                && item.operator_approval_required
+                && item
+                    .redacted_context_ref
+                    .starts_with("kg-shadow-rank-drift-ref:")
+        }));
     }
 }
