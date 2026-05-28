@@ -102,6 +102,9 @@ scripts/hepta-kg-prompt-preview-rollback-kill-switch-evidence-checklist-gate.sh
 echo "[hepta-preflight] KG prompt-preview redacted diff review checklist gate"
 scripts/hepta-kg-prompt-preview-redacted-diff-review-checklist-gate.sh
 
+echo "[hepta-preflight] KG prompt-preview context handoff checklist gate"
+scripts/hepta-kg-prompt-preview-context-handoff-checklist-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 
