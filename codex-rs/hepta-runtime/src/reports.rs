@@ -1359,6 +1359,91 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_shadow_rank_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_shadow_rank_overview();
+        let mut lines = vec![
+            format!("Hepta KG shadow rank: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- kg context injection readiness contract: {}",
+                report.kg_context_injection_readiness_contract
+            ),
+            format!(
+                "- kg recall evaluation contract: {}",
+                report.kg_recall_evaluation_contract
+            ),
+            format!(
+                "- injection readiness status: {}",
+                report.injection_readiness_status
+            ),
+            format!("- sample run: {}", report.sample_run),
+            format!("- context items: {}", report.context_item_count),
+            format!("- ranked items: {}", report.ranked_item_count),
+            format!("- observed only items: {}", report.observed_only_count),
+            format!(
+                "- would enter prompt context: {}",
+                report.would_enter_prompt_context_count
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- injection readiness blocked: {}",
+                report.checks.injection_readiness_blocked
+            ),
+            format!(
+                "- all items observed only: {}",
+                report.checks.all_items_observed_only
+            ),
+            format!(
+                "- no items enter prompt context: {}",
+                report.checks.no_items_enter_prompt_context
+            ),
+            format!(
+                "- scores stably ordered: {}",
+                report.checks.scores_stably_ordered
+            ),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Shadow-rank items:".to_string(),
+        ];
+
+        if report.items.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.items.iter().take(6).map(|item| {
+                format!(
+                    "  - rank={} candidate={} score={} observed_only={} enters_prompt={}",
+                    item.rank,
+                    item.candidate_id,
+                    item.final_score_basis_points,
+                    item.observed_only,
+                    item.would_enter_prompt_context
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -3109,6 +3194,38 @@ mod tests {
         assert!(rendered.contains("MissingOperatorApproval"));
         assert!(rendered.contains("ShadowRankNotEnabled"));
         assert!(rendered.contains("InjectionDisabledByDefault"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_shadow_rank_summary_renders_observation_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_shadow_rank_summary()
+            .expect("kg shadow-rank summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG shadow rank: ready"));
+        assert!(rendered.contains("- contract: hepta-intelligence-memory-kg-shadow-rank-v0"));
+        assert!(rendered.contains(
+            "- kg context injection readiness contract: hepta-intelligence-memory-kg-context-injection-readiness-v0"
+        ));
+        assert!(rendered.contains("- injection readiness status: blocked"));
+        assert!(rendered.contains("- would enter prompt context: 0"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- injection readiness blocked: true"));
+        assert!(rendered.contains("- all items observed only: true"));
+        assert!(rendered.contains("- no items enter prompt context: true"));
+        assert!(rendered.contains("- scores stably ordered: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("Shadow-rank items:"));
+        assert!(rendered.contains("observed_only=true"));
+        assert!(rendered.contains("enters_prompt=false"));
     }
 
     #[tokio::test]

@@ -16,10 +16,10 @@ use hepta_intelligence::{
     LearnedSemanticRouterEvidence, MemoryKgAdapterClientReport, MemoryKgAdapterConfigEnvReport,
     MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
     MemoryKgContextInjectionReadinessReport, MemoryKgContextRecallBridgeReport,
-    MemoryKgRecallEvaluationReport, MemoryKgRecallPlanReport, MemoryKgWriteCandidateReport,
-    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
-    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
-    TopicRouteShellPatch, compute_intuition_feedback_delta,
+    MemoryKgRecallEvaluationReport, MemoryKgRecallPlanReport, MemoryKgShadowRankReport,
+    MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY,
+    SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord,
+    TopicAwareModelFeedbackSummary, TopicRouteShellPatch, compute_intuition_feedback_delta,
     evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
     intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
     intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
@@ -29,7 +29,7 @@ use hepta_intelligence::{
     memory_kg_adapter_config_env_report, memory_kg_adapter_dry_run_report,
     memory_kg_adapter_staging_gate_report, memory_kg_context_injection_readiness_report,
     memory_kg_context_recall_bridge_report, memory_kg_recall_evaluation_report,
-    memory_kg_recall_plan_report, memory_kg_write_candidate_report,
+    memory_kg_recall_plan_report, memory_kg_shadow_rank_report, memory_kg_write_candidate_report,
     neuron_lifecycle_health_summary, semantic_score_from_counts,
     summarize_topic_aware_model_feedback,
 };
@@ -2675,6 +2675,11 @@ impl RuntimeKernel {
     ) -> MemoryKgContextInjectionReadinessReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_context_injection_readiness_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_shadow_rank_overview(&self) -> MemoryKgShadowRankReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_shadow_rank_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -9125,6 +9130,32 @@ mod tests {
         assert_eq!(report.live_write_enabled_count, 0);
         assert!(report.checks.ready());
         assert!(report.checks.activation_blocked_without_operator_approval);
+        assert!(report.checks.no_context_injection_performed);
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_shadow_rank_overview_observes_without_injection() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_shadow_rank_overview();
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.injection_readiness_status, "blocked");
+        assert!(report.context_item_count > 0);
+        assert_eq!(report.ranked_item_count, report.context_item_count);
+        assert_eq!(report.observed_only_count, report.ranked_item_count);
+        assert_eq!(report.would_enter_prompt_context_count, 0);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.model_invoked);
+        assert!(!report.context_injection_performed);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.injection_readiness_blocked);
+        assert!(report.checks.all_items_observed_only);
+        assert!(report.checks.no_items_enter_prompt_context);
+        assert!(report.checks.scores_stably_ordered);
         assert!(report.checks.no_context_injection_performed);
     }
 

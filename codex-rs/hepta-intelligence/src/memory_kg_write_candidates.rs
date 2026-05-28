@@ -27,6 +27,7 @@ pub const MEMORY_KG_RECALL_EVALUATION_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-recall-evaluation-v0";
 pub const MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-context-injection-readiness-v0";
+pub const MEMORY_KG_SHADOW_RANK_V0_CONTRACT: &str = "hepta-intelligence-memory-kg-shadow-rank-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -530,6 +531,76 @@ pub struct MemoryKgContextInjectionReadinessReport {
     pub live_write_enabled_count: usize,
     pub blockers: Vec<MemoryKgContextInjectionReadinessBlocker>,
     pub checks: MemoryKgContextInjectionReadinessChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgShadowRankItem {
+    pub rank: usize,
+    pub context_source_id: String,
+    pub candidate_id: String,
+    pub final_score_basis_points: u16,
+    pub relevance_basis_points: u16,
+    pub durability_basis_points: u16,
+    pub confidence_basis_points: u16,
+    pub transcript_span_count: usize,
+    pub observed_only: bool,
+    pub would_enter_prompt_context: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgShadowRankChecks {
+    pub injection_readiness_blocked: bool,
+    pub ranked_items_nonzero: bool,
+    pub all_items_observed_only: bool,
+    pub no_items_enter_prompt_context: bool,
+    pub scores_stably_ordered: bool,
+    pub no_prompt_preview_rendered: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgShadowRankChecks {
+    pub fn ready(&self) -> bool {
+        self.injection_readiness_blocked
+            && self.ranked_items_nonzero
+            && self.all_items_observed_only
+            && self.no_items_enter_prompt_context
+            && self.scores_stably_ordered
+            && self.no_prompt_preview_rendered
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgShadowRankReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub sample_run: bool,
+    pub kg_context_injection_readiness_contract: &'static str,
+    pub kg_recall_evaluation_contract: &'static str,
+    pub injection_readiness_status: &'static str,
+    pub context_item_count: usize,
+    pub ranked_item_count: usize,
+    pub observed_only_count: usize,
+    pub would_enter_prompt_context_count: usize,
+    pub prompt_preview_rendered: bool,
+    pub model_invoked: bool,
+    pub context_injection_performed: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub items: Vec<MemoryKgShadowRankItem>,
+    pub checks: MemoryKgShadowRankChecks,
     pub next_phase: &'static str,
 }
 
@@ -1251,6 +1322,92 @@ pub fn memory_kg_context_injection_readiness_report(
         checks,
         next_phase: "shadow-rank KG recall beside existing context sources until operator approval, rollback, and kill-switch gates are recorded",
     }
+}
+
+pub fn memory_kg_shadow_rank_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgShadowRankReport {
+    let readiness_report = memory_kg_context_injection_readiness_report(memory_units, sample_run);
+    let bridge_report = memory_kg_context_recall_bridge_report(memory_units, sample_run);
+    let items = memory_kg_shadow_rank_items(&bridge_report.items);
+    let ranked_item_count = items.len();
+    let observed_only_count = items.iter().filter(|item| item.observed_only).count();
+    let would_enter_prompt_context_count = items
+        .iter()
+        .filter(|item| item.would_enter_prompt_context)
+        .count();
+    let prompt_preview_rendered = false;
+    let model_invoked = false;
+    let context_injection_performed = false;
+
+    let checks = MemoryKgShadowRankChecks {
+        injection_readiness_blocked: readiness_report.status == "blocked"
+            && !readiness_report.context_injection_allowed,
+        ranked_items_nonzero: ranked_item_count > 0,
+        all_items_observed_only: ranked_item_count > 0 && observed_only_count == ranked_item_count,
+        no_items_enter_prompt_context: would_enter_prompt_context_count == 0,
+        scores_stably_ordered: shadow_rank_scores_stably_ordered(&items),
+        no_prompt_preview_rendered: !prompt_preview_rendered,
+        no_model_invoked: !model_invoked,
+        no_context_injection_performed: !context_injection_performed,
+        no_external_reads_enabled: readiness_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: readiness_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: readiness_report.live_write_enabled_count == 0,
+    };
+
+    MemoryKgShadowRankReport {
+        product: "Hepta",
+        command: "memory-kg-shadow-rank",
+        contract: MEMORY_KG_SHADOW_RANK_V0_CONTRACT,
+        status: if checks.ready() { "ready" } else { "attention" },
+        sample_run,
+        kg_context_injection_readiness_contract: MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT,
+        kg_recall_evaluation_contract: MEMORY_KG_RECALL_EVALUATION_V0_CONTRACT,
+        injection_readiness_status: readiness_report.status,
+        context_item_count: bridge_report.context_item_count,
+        ranked_item_count,
+        observed_only_count,
+        would_enter_prompt_context_count,
+        prompt_preview_rendered,
+        model_invoked,
+        context_injection_performed,
+        external_read_enabled_count: readiness_report.external_read_enabled_count,
+        network_call_enabled_count: readiness_report.network_call_enabled_count,
+        live_write_enabled_count: readiness_report.live_write_enabled_count,
+        items,
+        checks,
+        next_phase: "compare shadow KG rank against transcript and durable-memory rank before any operator-approved context injection",
+    }
+}
+
+fn memory_kg_shadow_rank_items(items: &[ContextRecallItem]) -> Vec<MemoryKgShadowRankItem> {
+    items
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| MemoryKgShadowRankItem {
+            rank: idx + 1,
+            context_source_id: item.source_id.clone(),
+            candidate_id: item
+                .source_memory_ids
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "missing-candidate".to_string()),
+            final_score_basis_points: score_to_basis_points(item.score.final_score),
+            relevance_basis_points: score_to_basis_points(item.score.relevance),
+            durability_basis_points: score_to_basis_points(item.score.durability),
+            confidence_basis_points: score_to_basis_points(item.score.confidence),
+            transcript_span_count: item.source_transcript_spans.len(),
+            observed_only: true,
+            would_enter_prompt_context: false,
+        })
+        .collect()
+}
+
+fn shadow_rank_scores_stably_ordered(items: &[MemoryKgShadowRankItem]) -> bool {
+    items
+        .windows(2)
+        .all(|window| window[1].final_score_basis_points <= window[0].final_score_basis_points)
 }
 
 fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> Vec<KgReadQuery> {
@@ -2237,5 +2394,58 @@ mod tests {
                 .blockers
                 .contains(&MemoryKgContextInjectionReadinessBlocker::InjectionDisabledByDefault)
         );
+    }
+
+    #[test]
+    fn memory_kg_shadow_rank_report_observes_rank_without_prompt_injection() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_shadow_rank_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.contract, MEMORY_KG_SHADOW_RANK_V0_CONTRACT);
+        assert_eq!(
+            report.kg_context_injection_readiness_contract,
+            MEMORY_KG_CONTEXT_INJECTION_READINESS_V0_CONTRACT
+        );
+        assert_eq!(
+            report.kg_recall_evaluation_contract,
+            MEMORY_KG_RECALL_EVALUATION_V0_CONTRACT
+        );
+        assert_eq!(report.injection_readiness_status, "blocked");
+        assert!(report.context_item_count > 0);
+        assert_eq!(report.ranked_item_count, report.context_item_count);
+        assert_eq!(report.observed_only_count, report.ranked_item_count);
+        assert_eq!(report.would_enter_prompt_context_count, 0);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.model_invoked);
+        assert!(!report.context_injection_performed);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.injection_readiness_blocked);
+        assert!(report.checks.all_items_observed_only);
+        assert!(report.checks.no_items_enter_prompt_context);
+        assert!(report.checks.scores_stably_ordered);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(report.items.iter().all(|item| item.observed_only));
+        assert!(
+            report
+                .items
+                .iter()
+                .all(|item| !item.would_enter_prompt_context)
+        );
+
+        let mut previous_score = None;
+        for (idx, item) in report.items.iter().enumerate() {
+            assert_eq!(item.rank, idx + 1);
+            assert!(item.context_source_id.starts_with("kg-context:"));
+            assert!(item.final_score_basis_points > 0);
+            assert!(item.transcript_span_count > 0);
+            if let Some(score) = previous_score {
+                assert!(item.final_score_basis_points <= score);
+            }
+            previous_score = Some(item.final_score_basis_points);
+        }
     }
 }
