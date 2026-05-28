@@ -428,6 +428,9 @@ scripts/hepta-core-activation-long-soak-operator-approval-packet-gate.sh
 echo "[hepta-preflight] core activation operator approval fresh evidence supersession-expiry denial gate"
 scripts/hepta-core-activation-operator-approval-fresh-evidence-supersession-expiry-denial-gate.sh
 
+echo "[hepta-preflight] core activation request monotonic single-use approval nonce denial gate"
+scripts/hepta-core-activation-request-monotonic-single-use-approval-nonce-denial-gate.sh
+
 echo "[hepta-preflight] core activation fresh long-soak evidence ledger receipt gate"
 scripts/hepta-core-activation-fresh-long-soak-evidence-ledger-receipt-gate.sh
 
