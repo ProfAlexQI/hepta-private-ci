@@ -38,6 +38,8 @@ pub const MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-operator-evidence-v0";
 pub const MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-redaction-diff-v0";
+pub const MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-prompt-preview-rollback-kill-switch-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -1087,6 +1089,115 @@ pub struct MemoryKgPromptPreviewRedactionDiffReport {
     pub blockers: Vec<MemoryKgPromptPreviewRedactionDiffBlocker>,
     pub items: Vec<MemoryKgPromptPreviewRedactionDiffItem>,
     pub checks: MemoryKgPromptPreviewRedactionDiffChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MemoryKgPromptPreviewRollbackKillSwitchBlocker {
+    RedactionDiffNotReady,
+    RollbackPlanEvidenceMissing,
+    RollbackExerciseEvidenceMissing,
+    KillSwitchEvidenceMissing,
+    KillSwitchDryRunEvidenceMissing,
+    PromptPreviewDisabled,
+    ContextInjectionDisabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewRollbackKillSwitchControl {
+    pub control_index: usize,
+    pub control: &'static str,
+    pub control_kind: &'static str,
+    pub present: bool,
+    pub redacted_evidence_ref: String,
+    pub blocks_prompt_preview: bool,
+    pub allows_context_injection: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewRollbackKillSwitchChecks {
+    pub redaction_diff_contract_linked: bool,
+    pub redaction_diff_checks_ready: bool,
+    pub redaction_diff_blocked: bool,
+    pub only_redacted_refs_reported: bool,
+    pub rollback_controls_nonzero: bool,
+    pub kill_switch_controls_nonzero: bool,
+    pub controls_all_missing_and_blocking: bool,
+    pub rollback_plan_required: bool,
+    pub rollback_exercise_required: bool,
+    pub kill_switch_required: bool,
+    pub kill_switch_dry_run_required: bool,
+    pub prompt_preview_disabled: bool,
+    pub prompt_payload_not_materialized: bool,
+    pub context_injection_disabled: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgPromptPreviewRollbackKillSwitchChecks {
+    pub fn ready(&self) -> bool {
+        self.redaction_diff_contract_linked
+            && self.redaction_diff_checks_ready
+            && self.redaction_diff_blocked
+            && self.only_redacted_refs_reported
+            && self.rollback_controls_nonzero
+            && self.kill_switch_controls_nonzero
+            && self.controls_all_missing_and_blocking
+            && self.rollback_plan_required
+            && self.rollback_exercise_required
+            && self.kill_switch_required
+            && self.kill_switch_dry_run_required
+            && self.prompt_preview_disabled
+            && self.prompt_payload_not_materialized
+            && self.context_injection_disabled
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewRollbackKillSwitchReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub verdict: &'static str,
+    pub sample_run: bool,
+    pub redaction_diff_contract: &'static str,
+    pub redaction_diff_status: &'static str,
+    pub redaction_diff_mode: &'static str,
+    pub required_evidence_count: usize,
+    pub missing_evidence_count: usize,
+    pub required_control_count: usize,
+    pub missing_control_count: usize,
+    pub rollback_control_count: usize,
+    pub kill_switch_control_count: usize,
+    pub rollback_plan_ready: bool,
+    pub rollback_exercise_ready: bool,
+    pub kill_switch_ready: bool,
+    pub kill_switch_dry_run_ready: bool,
+    pub redacted_ref_count: usize,
+    pub raw_prompt_diff_count: usize,
+    pub prompt_text_included_count: usize,
+    pub payload_text_included_count: usize,
+    pub prompt_preview_allowed: bool,
+    pub prompt_preview_rendered: bool,
+    pub prompt_payload_materialized: bool,
+    pub context_injection_allowed: bool,
+    pub context_injection_performed: bool,
+    pub model_invoked: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub blockers: Vec<MemoryKgPromptPreviewRollbackKillSwitchBlocker>,
+    pub controls: Vec<MemoryKgPromptPreviewRollbackKillSwitchControl>,
+    pub checks: MemoryKgPromptPreviewRollbackKillSwitchChecks,
     pub next_phase: &'static str,
 }
 
@@ -2401,6 +2512,134 @@ pub fn memory_kg_prompt_preview_redaction_diff_report(
     }
 }
 
+pub fn memory_kg_prompt_preview_rollback_kill_switch_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgPromptPreviewRollbackKillSwitchReport {
+    let redaction_report = memory_kg_prompt_preview_redaction_diff_report(memory_units, sample_run);
+    let controls = memory_kg_prompt_preview_rollback_kill_switch_controls();
+    let required_control_count = controls.len();
+    let missing_control_count = controls.iter().filter(|control| !control.present).count();
+    let rollback_control_count = controls
+        .iter()
+        .filter(|control| control.control_kind == "rollback")
+        .count();
+    let kill_switch_control_count = controls
+        .iter()
+        .filter(|control| control.control_kind == "kill_switch")
+        .count();
+    let rollback_plan_ready = false;
+    let rollback_exercise_ready = false;
+    let kill_switch_ready = false;
+    let kill_switch_dry_run_ready = false;
+    let prompt_preview_allowed = false;
+    let prompt_preview_rendered = false;
+    let prompt_payload_materialized = false;
+    let context_injection_allowed = false;
+    let context_injection_performed = false;
+    let model_invoked = false;
+
+    let mut blockers = Vec::new();
+    if !redaction_report.checks.ready() || redaction_report.status != "blocked" {
+        blockers.push(MemoryKgPromptPreviewRollbackKillSwitchBlocker::RedactionDiffNotReady);
+    }
+    if !rollback_plan_ready {
+        blockers.push(MemoryKgPromptPreviewRollbackKillSwitchBlocker::RollbackPlanEvidenceMissing);
+    }
+    if !rollback_exercise_ready {
+        blockers
+            .push(MemoryKgPromptPreviewRollbackKillSwitchBlocker::RollbackExerciseEvidenceMissing);
+    }
+    if !kill_switch_ready {
+        blockers.push(MemoryKgPromptPreviewRollbackKillSwitchBlocker::KillSwitchEvidenceMissing);
+    }
+    if !kill_switch_dry_run_ready {
+        blockers
+            .push(MemoryKgPromptPreviewRollbackKillSwitchBlocker::KillSwitchDryRunEvidenceMissing);
+    }
+    if !prompt_preview_allowed {
+        blockers.push(MemoryKgPromptPreviewRollbackKillSwitchBlocker::PromptPreviewDisabled);
+    }
+    if !context_injection_allowed {
+        blockers.push(MemoryKgPromptPreviewRollbackKillSwitchBlocker::ContextInjectionDisabled);
+    }
+
+    let checks = MemoryKgPromptPreviewRollbackKillSwitchChecks {
+        redaction_diff_contract_linked: redaction_report.contract
+            == MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT,
+        redaction_diff_checks_ready: redaction_report.checks.ready(),
+        redaction_diff_blocked: redaction_report.status == "blocked",
+        only_redacted_refs_reported: redaction_report.redacted_diff_reported
+            && redaction_report.raw_prompt_diff_count == 0
+            && redaction_report.prompt_text_included_count == 0
+            && redaction_report.payload_text_included_count == 0,
+        rollback_controls_nonzero: rollback_control_count > 0,
+        kill_switch_controls_nonzero: kill_switch_control_count > 0,
+        controls_all_missing_and_blocking: required_control_count > 0
+            && missing_control_count == required_control_count
+            && controls.iter().all(|control| {
+                control.blocks_prompt_preview
+                    && !control.present
+                    && !control.allows_context_injection
+            }),
+        rollback_plan_required: !rollback_plan_ready,
+        rollback_exercise_required: !rollback_exercise_ready,
+        kill_switch_required: !kill_switch_ready,
+        kill_switch_dry_run_required: !kill_switch_dry_run_ready,
+        prompt_preview_disabled: !prompt_preview_allowed && !prompt_preview_rendered,
+        prompt_payload_not_materialized: !prompt_payload_materialized,
+        context_injection_disabled: !context_injection_allowed,
+        no_model_invoked: !model_invoked,
+        no_context_injection_performed: !context_injection_performed,
+        no_external_reads_enabled: redaction_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: redaction_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: redaction_report.live_write_enabled_count == 0,
+    };
+
+    MemoryKgPromptPreviewRollbackKillSwitchReport {
+        product: "Hepta",
+        command: "memory-kg-prompt-preview-rollback-kill-switch",
+        contract: MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT,
+        status: if checks.ready() {
+            "blocked"
+        } else {
+            "attention"
+        },
+        verdict: "blocked_until_rollback_plan_and_kill_switch_evidence_are_recorded",
+        sample_run,
+        redaction_diff_contract: MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT,
+        redaction_diff_status: redaction_report.status,
+        redaction_diff_mode: redaction_report.redaction_diff_mode,
+        required_evidence_count: redaction_report.required_evidence_count,
+        missing_evidence_count: redaction_report.missing_evidence_count,
+        required_control_count,
+        missing_control_count,
+        rollback_control_count,
+        kill_switch_control_count,
+        rollback_plan_ready,
+        rollback_exercise_ready,
+        kill_switch_ready,
+        kill_switch_dry_run_ready,
+        redacted_ref_count: redaction_report.redacted_ref_count,
+        raw_prompt_diff_count: redaction_report.raw_prompt_diff_count,
+        prompt_text_included_count: redaction_report.prompt_text_included_count,
+        payload_text_included_count: redaction_report.payload_text_included_count,
+        prompt_preview_allowed,
+        prompt_preview_rendered,
+        prompt_payload_materialized,
+        context_injection_allowed,
+        context_injection_performed,
+        model_invoked,
+        external_read_enabled_count: redaction_report.external_read_enabled_count,
+        network_call_enabled_count: redaction_report.network_call_enabled_count,
+        live_write_enabled_count: redaction_report.live_write_enabled_count,
+        blockers,
+        controls,
+        checks,
+        next_phase: "record rollback plan and kill-switch dry-run evidence before any KG prompt-preview payload can be materialized",
+    }
+}
+
 fn memory_kg_shadow_rank_items(items: &[ContextRecallItem]) -> Vec<MemoryKgShadowRankItem> {
     items
         .iter()
@@ -2598,6 +2837,30 @@ fn memory_kg_prompt_preview_redaction_diff_items(
             blocks_prompt_preview: requirement.blocks_prompt_preview,
         })
         .collect()
+}
+
+fn memory_kg_prompt_preview_rollback_kill_switch_controls()
+-> Vec<MemoryKgPromptPreviewRollbackKillSwitchControl> {
+    [
+        ("rollback_plan_record", "rollback"),
+        ("rollback_exercise_receipt", "rollback"),
+        ("kill_switch_record", "kill_switch"),
+        ("kill_switch_dry_run_receipt", "kill_switch"),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(
+        |(idx, (control, control_kind))| MemoryKgPromptPreviewRollbackKillSwitchControl {
+            control_index: idx + 1,
+            control,
+            control_kind,
+            present: false,
+            redacted_evidence_ref: format!("missing:kg-prompt-preview-safety:{control}"),
+            blocks_prompt_preview: true,
+            allows_context_injection: false,
+        },
+    )
+    .collect()
 }
 
 fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> Vec<KgReadQuery> {
@@ -4030,6 +4293,93 @@ mod tests {
                     .redacted_before_ref
                     .starts_with("redacted-diff:before:")
                 && item.redacted_after_ref.starts_with("redacted-diff:after:")
+        }));
+    }
+
+    #[test]
+    fn memory_kg_prompt_preview_rollback_kill_switch_requires_safety_evidence() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_prompt_preview_rollback_kill_switch_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.verdict,
+            "blocked_until_rollback_plan_and_kill_switch_evidence_are_recorded"
+        );
+        assert_eq!(
+            report.contract,
+            MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT
+        );
+        assert_eq!(
+            report.redaction_diff_contract,
+            MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT
+        );
+        assert_eq!(report.redaction_diff_status, "blocked");
+        assert_eq!(
+            report.redaction_diff_mode,
+            "redacted_requirement_refs_only_no_prompt_or_payload"
+        );
+        assert_eq!(report.required_evidence_count, 7);
+        assert_eq!(
+            report.missing_evidence_count,
+            report.required_evidence_count
+        );
+        assert_eq!(report.required_control_count, 4);
+        assert_eq!(report.missing_control_count, report.required_control_count);
+        assert_eq!(report.rollback_control_count, 2);
+        assert_eq!(report.kill_switch_control_count, 2);
+        assert!(!report.rollback_plan_ready);
+        assert!(!report.rollback_exercise_ready);
+        assert!(!report.kill_switch_ready);
+        assert!(!report.kill_switch_dry_run_ready);
+        assert_eq!(report.redacted_ref_count, report.required_evidence_count);
+        assert_eq!(report.raw_prompt_diff_count, 0);
+        assert_eq!(report.prompt_text_included_count, 0);
+        assert_eq!(report.payload_text_included_count, 0);
+        assert!(!report.prompt_preview_allowed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.prompt_payload_materialized);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.model_invoked);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.redaction_diff_contract_linked);
+        assert!(report.checks.redaction_diff_checks_ready);
+        assert!(report.checks.redaction_diff_blocked);
+        assert!(report.checks.only_redacted_refs_reported);
+        assert!(report.checks.rollback_controls_nonzero);
+        assert!(report.checks.kill_switch_controls_nonzero);
+        assert!(report.checks.controls_all_missing_and_blocking);
+        assert!(report.checks.rollback_plan_required);
+        assert!(report.checks.rollback_exercise_required);
+        assert!(report.checks.kill_switch_required);
+        assert!(report.checks.kill_switch_dry_run_required);
+        assert!(report.checks.prompt_preview_disabled);
+        assert!(report.checks.prompt_payload_not_materialized);
+        assert!(report.checks.context_injection_disabled);
+        assert!(report.checks.no_model_invoked);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(report.checks.no_external_reads_enabled);
+        assert!(report.checks.no_network_calls_enabled);
+        assert!(report.checks.no_live_writes_enabled);
+        assert!(report.blockers.contains(
+            &MemoryKgPromptPreviewRollbackKillSwitchBlocker::RollbackPlanEvidenceMissing
+        ));
+        assert!(
+            report.blockers.contains(
+                &MemoryKgPromptPreviewRollbackKillSwitchBlocker::KillSwitchEvidenceMissing
+            )
+        );
+        assert!(report.controls.iter().all(|control| {
+            !control.present
+                && control.blocks_prompt_preview
+                && !control.allows_context_injection
+                && control
+                    .redacted_evidence_ref
+                    .starts_with("missing:kg-prompt-preview-safety:")
         }));
     }
 }

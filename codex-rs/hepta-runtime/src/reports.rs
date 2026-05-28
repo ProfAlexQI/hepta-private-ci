@@ -2169,6 +2169,191 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_prompt_preview_rollback_kill_switch_summary(
+        &self,
+    ) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_prompt_preview_rollback_kill_switch_overview();
+        let mut lines = vec![
+            format!(
+                "Hepta KG prompt-preview rollback/kill-switch: {}",
+                report.status
+            ),
+            format!("- verdict: {}", report.verdict),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- redaction diff contract: {}",
+                report.redaction_diff_contract
+            ),
+            format!("- redaction diff status: {}", report.redaction_diff_status),
+            format!("- redaction diff mode: {}", report.redaction_diff_mode),
+            format!("- sample run: {}", report.sample_run),
+            format!("- required evidence: {}", report.required_evidence_count),
+            format!("- missing evidence: {}", report.missing_evidence_count),
+            format!("- required controls: {}", report.required_control_count),
+            format!("- missing controls: {}", report.missing_control_count),
+            format!("- rollback controls: {}", report.rollback_control_count),
+            format!(
+                "- kill switch controls: {}",
+                report.kill_switch_control_count
+            ),
+            format!("- rollback plan ready: {}", report.rollback_plan_ready),
+            format!(
+                "- rollback exercise ready: {}",
+                report.rollback_exercise_ready
+            ),
+            format!("- kill switch ready: {}", report.kill_switch_ready),
+            format!(
+                "- kill switch dry run ready: {}",
+                report.kill_switch_dry_run_ready
+            ),
+            format!("- redacted refs: {}", report.redacted_ref_count),
+            format!("- raw prompt diffs: {}", report.raw_prompt_diff_count),
+            format!(
+                "- prompt text included: {}",
+                report.prompt_text_included_count
+            ),
+            format!(
+                "- payload text included: {}",
+                report.payload_text_included_count
+            ),
+            format!(
+                "- prompt preview allowed: {}",
+                report.prompt_preview_allowed
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!(
+                "- prompt payload materialized: {}",
+                report.prompt_payload_materialized
+            ),
+            format!(
+                "- context injection allowed: {}",
+                report.context_injection_allowed
+            ),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- redaction diff contract linked: {}",
+                report.checks.redaction_diff_contract_linked
+            ),
+            format!(
+                "- redaction diff checks ready: {}",
+                report.checks.redaction_diff_checks_ready
+            ),
+            format!(
+                "- redaction diff blocked: {}",
+                report.checks.redaction_diff_blocked
+            ),
+            format!(
+                "- only redacted refs reported: {}",
+                report.checks.only_redacted_refs_reported
+            ),
+            format!(
+                "- rollback controls nonzero: {}",
+                report.checks.rollback_controls_nonzero
+            ),
+            format!(
+                "- kill switch controls nonzero: {}",
+                report.checks.kill_switch_controls_nonzero
+            ),
+            format!(
+                "- controls all missing and blocking: {}",
+                report.checks.controls_all_missing_and_blocking
+            ),
+            format!(
+                "- rollback plan required: {}",
+                report.checks.rollback_plan_required
+            ),
+            format!(
+                "- rollback exercise required: {}",
+                report.checks.rollback_exercise_required
+            ),
+            format!(
+                "- kill switch required: {}",
+                report.checks.kill_switch_required
+            ),
+            format!(
+                "- kill switch dry run required: {}",
+                report.checks.kill_switch_dry_run_required
+            ),
+            format!(
+                "- prompt preview disabled: {}",
+                report.checks.prompt_preview_disabled
+            ),
+            format!(
+                "- prompt payload not materialized: {}",
+                report.checks.prompt_payload_not_materialized
+            ),
+            format!(
+                "- context injection disabled: {}",
+                report.checks.context_injection_disabled
+            ),
+            format!("- no model invoked: {}", report.checks.no_model_invoked),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!(
+                "- no external reads enabled: {}",
+                report.checks.no_external_reads_enabled
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Rollback/kill-switch blockers:".to_string(),
+        ];
+
+        if report.blockers.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(
+                report
+                    .blockers
+                    .iter()
+                    .map(|blocker| format!("  - {:?}", blocker)),
+            );
+        }
+
+        lines.push("Rollback/kill-switch controls:".to_string());
+        if report.controls.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.controls.iter().map(|control| {
+                format!(
+                    "  - control={} kind={} present={} ref={} blocks_prompt_preview={} allows_context_injection={}",
+                    control.control,
+                    control.control_kind,
+                    control.present,
+                    control.redacted_evidence_ref,
+                    control.blocks_prompt_preview,
+                    control.allows_context_injection
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -4210,6 +4395,79 @@ mod tests {
         assert!(rendered.contains("raw_after=false"));
         assert!(rendered.contains("prompt_text=false"));
         assert!(rendered.contains("payload_text=false"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_prompt_preview_rollback_kill_switch_summary_renders_blocked_gate() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_prompt_preview_rollback_kill_switch_summary()
+            .expect("kg prompt-preview rollback/kill-switch summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG prompt-preview rollback/kill-switch: blocked"));
+        assert!(rendered.contains(
+            "- contract: hepta-intelligence-memory-kg-prompt-preview-rollback-kill-switch-v0"
+        ));
+        assert!(rendered.contains(
+            "- redaction diff contract: hepta-intelligence-memory-kg-prompt-preview-redaction-diff-v0"
+        ));
+        assert!(rendered.contains("- redaction diff status: blocked"));
+        assert!(rendered.contains(
+            "- redaction diff mode: redacted_requirement_refs_only_no_prompt_or_payload"
+        ));
+        assert!(rendered.contains("- required evidence: 7"));
+        assert!(rendered.contains("- missing evidence: 7"));
+        assert!(rendered.contains("- required controls: 4"));
+        assert!(rendered.contains("- missing controls: 4"));
+        assert!(rendered.contains("- rollback controls: 2"));
+        assert!(rendered.contains("- kill switch controls: 2"));
+        assert!(rendered.contains("- rollback plan ready: false"));
+        assert!(rendered.contains("- rollback exercise ready: false"));
+        assert!(rendered.contains("- kill switch ready: false"));
+        assert!(rendered.contains("- kill switch dry run ready: false"));
+        assert!(rendered.contains("- raw prompt diffs: 0"));
+        assert!(rendered.contains("- prompt text included: 0"));
+        assert!(rendered.contains("- payload text included: 0"));
+        assert!(rendered.contains("- prompt preview allowed: false"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- prompt payload materialized: false"));
+        assert!(rendered.contains("- context injection allowed: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- redaction diff checks ready: true"));
+        assert!(rendered.contains("- redaction diff blocked: true"));
+        assert!(rendered.contains("- only redacted refs reported: true"));
+        assert!(rendered.contains("- rollback controls nonzero: true"));
+        assert!(rendered.contains("- kill switch controls nonzero: true"));
+        assert!(rendered.contains("- controls all missing and blocking: true"));
+        assert!(rendered.contains("- rollback plan required: true"));
+        assert!(rendered.contains("- rollback exercise required: true"));
+        assert!(rendered.contains("- kill switch required: true"));
+        assert!(rendered.contains("- kill switch dry run required: true"));
+        assert!(rendered.contains("- prompt preview disabled: true"));
+        assert!(rendered.contains("- prompt payload not materialized: true"));
+        assert!(rendered.contains("- context injection disabled: true"));
+        assert!(rendered.contains("- no model invoked: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("- no external reads enabled: true"));
+        assert!(rendered.contains("- no network calls enabled: true"));
+        assert!(rendered.contains("- no live writes enabled: true"));
+        assert!(rendered.contains("Rollback/kill-switch blockers:"));
+        assert!(rendered.contains("RollbackPlanEvidenceMissing"));
+        assert!(rendered.contains("KillSwitchEvidenceMissing"));
+        assert!(rendered.contains("Rollback/kill-switch controls:"));
+        assert!(rendered.contains("control=rollback_plan_record"));
+        assert!(rendered.contains("kind=rollback"));
+        assert!(rendered.contains("control=kill_switch_record"));
+        assert!(rendered.contains("kind=kill_switch"));
+        assert!(rendered.contains("present=false"));
+        assert!(rendered.contains("blocks_prompt_preview=true"));
+        assert!(rendered.contains("allows_context_injection=false"));
     }
 
     #[tokio::test]
