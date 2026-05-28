@@ -866,6 +866,120 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_adapter_config_env_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_adapter_config_env_overview();
+        let mut lines = vec![
+            format!("Hepta KG adapter config env: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!("- sample run: {}", report.sample_run),
+            format!("- supported adapters: {}", report.adapter_count),
+            format!("- config reads: {}", report.config_read_count),
+            format!("- feature enabled: {}", report.feature_enabled_count),
+            format!(
+                "- endpoints configured: {}",
+                report.endpoint_configured_count
+            ),
+            format!(
+                "- credentials configured: {}",
+                report.credentials_configured_count
+            ),
+            format!(
+                "- network allowlisted: {}",
+                report.network_allowlisted_count
+            ),
+            format!(
+                "- external write allowlisted: {}",
+                report.external_write_allowlisted_count
+            ),
+            format!("- operator approved: {}", report.operator_approved_count),
+            format!(
+                "- dry-run samples passed: {}",
+                report.dry_run_sample_passed_count
+            ),
+            format!(
+                "- rollback plans ready: {}",
+                report.rollback_plan_ready_count
+            ),
+            format!(
+                "- post-write validations ready: {}",
+                report.post_write_validation_ready_count
+            ),
+            format!("- fully configured: {}", report.fully_configured_count),
+            format!(
+                "- live writes requested: {}",
+                report.live_write_requested_count
+            ),
+            format!(
+                "- credential values captured: {}",
+                report.credential_value_captured_count
+            ),
+            format!(
+                "- network calls attempted: {}",
+                report.network_call_attempted_count
+            ),
+            format!(
+                "- external writes attempted: {}",
+                report.external_write_attempted_count
+            ),
+            format!(
+                "- live writes attempted: {}",
+                report.live_write_attempted_count
+            ),
+            format!(
+                "- all supported adapters read: {}",
+                report.checks.all_supported_adapters_read
+            ),
+            format!(
+                "- env keys present in report: {}",
+                report.checks.all_env_keys_present_in_report
+            ),
+            format!(
+                "- configs closed by default: {}",
+                report.checks.all_configs_closed_by_default
+            ),
+            format!(
+                "- no credential values captured: {}",
+                report.checks.no_credential_values_captured
+            ),
+            format!(
+                "- no network calls attempted: {}",
+                report.checks.no_network_calls_attempted
+            ),
+            format!(
+                "- no external writes attempted: {}",
+                report.checks.no_external_writes_attempted
+            ),
+            format!(
+                "- no live writes attempted: {}",
+                report.checks.no_live_writes_attempted
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Adapter config env reads:".to_string(),
+        ];
+
+        if report.reads.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.reads.iter().take(6).map(|read| {
+                format!(
+                    "  - adapter={} gate_key={} endpoint_key={} credential_ref_key={} feature={} endpoint={} credential_ref={} network={} write={} live_requested={}",
+                    read.adapter_id,
+                    read.keys.feature_gate,
+                    read.keys.endpoint,
+                    read.keys.credential_ref,
+                    read.staging_config.feature_enabled,
+                    read.staging_config.endpoint_configured,
+                    read.staging_config.credentials_configured,
+                    read.staging_config.network_allowlisted,
+                    read.staging_config.external_write_allowlisted,
+                    read.staging_config.live_write_requested
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2460,6 +2574,36 @@ mod tests {
         assert!(rendered.contains("disabled-graphiti-adapter-client"));
         assert!(rendered.contains("disabled-neo4j-adapter-client"));
         assert!(rendered.contains("disabled-cocoindex-adapter-client"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_adapter_config_env_summary_renders_default_closed_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_adapter_config_env_summary()
+            .expect("kg adapter config env summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG adapter config env: ready"));
+        assert!(rendered.contains("- contract: hepta-kg-external-adapter-config-env-v0"));
+        assert!(rendered.contains("- supported adapters: 3"));
+        assert!(rendered.contains("- config reads: 3"));
+        assert!(rendered.contains("- feature enabled: 0"));
+        assert!(rendered.contains("- endpoints configured: 0"));
+        assert!(rendered.contains("- credentials configured: 0"));
+        assert!(rendered.contains("- network allowlisted: 0"));
+        assert!(rendered.contains("- external write allowlisted: 0"));
+        assert!(rendered.contains("- live writes requested: 0"));
+        assert!(rendered.contains("- credential values captured: 0"));
+        assert!(rendered.contains("- network calls attempted: 0"));
+        assert!(rendered.contains("- external writes attempted: 0"));
+        assert!(rendered.contains("- live writes attempted: 0"));
+        assert!(rendered.contains("- configs closed by default: true"));
+        assert!(rendered.contains("- no credential values captured: true"));
+        assert!(rendered.contains("gate_key=HEPTA_KG_GRAPHITI_STAGING"));
+        assert!(rendered.contains("credential_ref_key=HEPTA_KG_NEO4J_CREDENTIAL_REF"));
+        assert!(rendered.contains("endpoint_key=HEPTA_KG_COCOINDEX_ENDPOINT"));
     }
 
     #[tokio::test]

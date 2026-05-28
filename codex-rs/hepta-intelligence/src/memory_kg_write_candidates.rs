@@ -4,12 +4,14 @@ use hepta_core::{
 };
 use hepta_kg::{
     KgConfidence, KgEntity, KgEntityKind, KgEpisode, KgEpisodeKind, KgExternalAdapterClientAudit,
-    KgExternalAdapterClientBlocker, KgExternalAdapterClientRequest, KgExternalAdapterDryRunPlan,
-    KgExternalAdapterKind, KgExternalAdapterStagingBlocker, KgExternalAdapterStagingPlan,
-    KgOperatorReviewState, KgProvenance, KgRedactionState, KgRelation, KgRelationKind,
-    KgSourceKind, KgSourceSpan, KgTemporalValidity, KgWriteCandidate, KgWriteMode, KgWritePlan,
-    KgWritePolicy, default_external_adapter_staging_configs, plan_external_adapter_dry_run,
+    KgExternalAdapterClientBlocker, KgExternalAdapterClientRequest, KgExternalAdapterConfigEnvRead,
+    KgExternalAdapterDryRunPlan, KgExternalAdapterKind, KgExternalAdapterStagingBlocker,
+    KgExternalAdapterStagingConfig, KgExternalAdapterStagingPlan, KgOperatorReviewState,
+    KgProvenance, KgRedactionState, KgRelation, KgRelationKind, KgSourceKind, KgSourceSpan,
+    KgTemporalValidity, KgWriteCandidate, KgWriteMode, KgWritePlan, KgWritePolicy,
+    default_external_adapter_staging_configs, plan_external_adapter_dry_run,
     plan_external_adapter_staging_gate, plan_kg_write, preview_disabled_external_adapter_write,
+    read_all_external_adapter_staging_configs_from_env_pairs,
 };
 use serde::{Deserialize, Serialize};
 
@@ -179,6 +181,58 @@ pub struct MemoryKgAdapterClientReport {
     pub persisted_record_count: usize,
     pub audits: Vec<KgExternalAdapterClientAudit>,
     pub checks: MemoryKgAdapterClientChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgAdapterConfigEnvChecks {
+    pub all_supported_adapters_read: bool,
+    pub all_env_keys_present_in_report: bool,
+    pub all_configs_closed_by_default: bool,
+    pub no_credential_values_captured: bool,
+    pub no_network_calls_attempted: bool,
+    pub no_external_writes_attempted: bool,
+    pub no_live_writes_attempted: bool,
+}
+
+impl MemoryKgAdapterConfigEnvChecks {
+    pub fn ready(&self) -> bool {
+        self.all_supported_adapters_read
+            && self.all_env_keys_present_in_report
+            && self.all_configs_closed_by_default
+            && self.no_credential_values_captured
+            && self.no_network_calls_attempted
+            && self.no_external_writes_attempted
+            && self.no_live_writes_attempted
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgAdapterConfigEnvReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub sample_run: bool,
+    pub adapter_count: usize,
+    pub config_read_count: usize,
+    pub feature_enabled_count: usize,
+    pub endpoint_configured_count: usize,
+    pub credentials_configured_count: usize,
+    pub network_allowlisted_count: usize,
+    pub external_write_allowlisted_count: usize,
+    pub operator_approved_count: usize,
+    pub dry_run_sample_passed_count: usize,
+    pub rollback_plan_ready_count: usize,
+    pub post_write_validation_ready_count: usize,
+    pub fully_configured_count: usize,
+    pub live_write_requested_count: usize,
+    pub credential_value_captured_count: usize,
+    pub network_call_attempted_count: usize,
+    pub external_write_attempted_count: usize,
+    pub live_write_attempted_count: usize,
+    pub reads: Vec<KgExternalAdapterConfigEnvRead>,
+    pub checks: MemoryKgAdapterConfigEnvChecks,
     pub next_phase: &'static str,
 }
 
@@ -431,6 +485,162 @@ pub fn memory_kg_adapter_client_report(
         checks,
         next_phase: "replace disabled adapter clients with feature-gated real clients after staging approval",
     }
+}
+
+pub fn memory_kg_adapter_config_env_report(sample_run: bool) -> MemoryKgAdapterConfigEnvReport {
+    memory_kg_adapter_config_env_report_from_env_pairs(sample_run, Vec::<(&str, &str)>::new())
+}
+
+pub fn memory_kg_adapter_config_env_report_from_env_pairs<I, K, V>(
+    sample_run: bool,
+    vars: I,
+) -> MemoryKgAdapterConfigEnvReport
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    let reads = read_all_external_adapter_staging_configs_from_env_pairs(vars);
+    let adapter_count = KgExternalAdapterKind::ALL.len();
+    let feature_enabled_count = reads
+        .iter()
+        .filter(|read| read.staging_config.feature_enabled)
+        .count();
+    let endpoint_configured_count = reads
+        .iter()
+        .filter(|read| read.staging_config.endpoint_configured)
+        .count();
+    let credentials_configured_count = reads
+        .iter()
+        .filter(|read| read.staging_config.credentials_configured)
+        .count();
+    let network_allowlisted_count = reads
+        .iter()
+        .filter(|read| read.staging_config.network_allowlisted)
+        .count();
+    let external_write_allowlisted_count = reads
+        .iter()
+        .filter(|read| read.staging_config.external_write_allowlisted)
+        .count();
+    let operator_approved_count = reads
+        .iter()
+        .filter(|read| read.staging_config.operator_review == KgOperatorReviewState::Approved)
+        .count();
+    let dry_run_sample_passed_count = reads
+        .iter()
+        .filter(|read| read.staging_config.dry_run_sample_passed)
+        .count();
+    let rollback_plan_ready_count = reads
+        .iter()
+        .filter(|read| read.staging_config.rollback_plan_ready)
+        .count();
+    let post_write_validation_ready_count = reads
+        .iter()
+        .filter(|read| read.staging_config.post_write_validation_ready)
+        .count();
+    let fully_configured_count = reads
+        .iter()
+        .filter(|read| adapter_staging_config_is_fully_configured(&read.staging_config))
+        .count();
+    let live_write_requested_count = reads
+        .iter()
+        .filter(|read| read.staging_config.live_write_requested)
+        .count();
+    let credential_value_captured_count = reads
+        .iter()
+        .filter(|read| read.credential_value_captured)
+        .count();
+    let network_call_attempted_count = reads
+        .iter()
+        .filter(|read| read.network_call_attempted)
+        .count();
+    let external_write_attempted_count = reads
+        .iter()
+        .filter(|read| read.external_write_attempted)
+        .count();
+    let live_write_attempted_count = reads
+        .iter()
+        .filter(|read| read.live_write_attempted)
+        .count();
+    let checks = MemoryKgAdapterConfigEnvChecks {
+        all_supported_adapters_read: reads.len() == adapter_count
+            && KgExternalAdapterKind::ALL
+                .into_iter()
+                .all(|adapter| reads.iter().any(|read| read.adapter == adapter)),
+        all_env_keys_present_in_report: reads.iter().all(|read| {
+            !read.keys.feature_gate.trim().is_empty()
+                && !read.keys.endpoint.trim().is_empty()
+                && !read.keys.credential_ref.trim().is_empty()
+                && !read.keys.network_allowlist.trim().is_empty()
+                && !read.keys.external_write_allowlist.trim().is_empty()
+                && !read.keys.operator_review.trim().is_empty()
+                && !read.keys.dry_run_sample_passed.trim().is_empty()
+                && !read.keys.rollback_plan_ready.trim().is_empty()
+                && !read.keys.post_write_validation_ready.trim().is_empty()
+                && !read.keys.live_write_requested.trim().is_empty()
+        }),
+        all_configs_closed_by_default: reads
+            .iter()
+            .all(|read| adapter_staging_config_is_closed(&read.staging_config)),
+        no_credential_values_captured: credential_value_captured_count == 0,
+        no_network_calls_attempted: network_call_attempted_count == 0,
+        no_external_writes_attempted: external_write_attempted_count == 0,
+        no_live_writes_attempted: live_write_attempted_count == 0,
+    };
+
+    MemoryKgAdapterConfigEnvReport {
+        product: "Hepta",
+        command: "memory-kg-adapter-config-env",
+        contract: hepta_kg::KG_EXTERNAL_ADAPTER_CONFIG_ENV_CONTRACT,
+        status: if checks.ready() { "ready" } else { "attention" },
+        sample_run,
+        adapter_count,
+        config_read_count: reads.len(),
+        feature_enabled_count,
+        endpoint_configured_count,
+        credentials_configured_count,
+        network_allowlisted_count,
+        external_write_allowlisted_count,
+        operator_approved_count,
+        dry_run_sample_passed_count,
+        rollback_plan_ready_count,
+        post_write_validation_ready_count,
+        fully_configured_count,
+        live_write_requested_count,
+        credential_value_captured_count,
+        network_call_attempted_count,
+        external_write_attempted_count,
+        live_write_attempted_count,
+        reads,
+        checks,
+        next_phase: "bind approved env snapshots to staged adapter clients without reading credential values",
+    }
+}
+
+fn adapter_staging_config_is_closed(config: &KgExternalAdapterStagingConfig) -> bool {
+    !config.feature_enabled
+        && !config.endpoint_configured
+        && !config.credentials_configured
+        && !config.network_allowlisted
+        && !config.external_write_allowlisted
+        && config.operator_review == KgOperatorReviewState::NotReviewed
+        && !config.dry_run_sample_passed
+        && !config.rollback_plan_ready
+        && !config.post_write_validation_ready
+        && !config.live_write_requested
+}
+
+fn adapter_staging_config_is_fully_configured(config: &KgExternalAdapterStagingConfig) -> bool {
+    config.feature_enabled
+        && config.endpoint_configured
+        && config.credentials_configured
+        && config.network_allowlisted
+        && config.external_write_allowlisted
+        && config.operator_review == KgOperatorReviewState::Approved
+        && config.dry_run_sample_passed
+        && config.rollback_plan_ready
+        && config.post_write_validation_ready
+        && !config.live_write_requested
 }
 
 pub fn kg_write_candidates_from_memory_units(
@@ -796,5 +1006,65 @@ mod tests {
                 .iter()
                 .any(|audit| audit.client_name == "disabled-cocoindex-adapter-client")
         );
+    }
+
+    #[test]
+    fn adapter_config_env_report_reads_all_supported_adapters_closed_by_default() {
+        let report = memory_kg_adapter_config_env_report(true);
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.adapter_count, 3);
+        assert_eq!(report.config_read_count, 3);
+        assert_eq!(report.feature_enabled_count, 0);
+        assert_eq!(report.endpoint_configured_count, 0);
+        assert_eq!(report.credentials_configured_count, 0);
+        assert_eq!(report.fully_configured_count, 0);
+        assert_eq!(report.live_write_requested_count, 0);
+        assert_eq!(report.credential_value_captured_count, 0);
+        assert_eq!(report.network_call_attempted_count, 0);
+        assert_eq!(report.external_write_attempted_count, 0);
+        assert_eq!(report.live_write_attempted_count, 0);
+        assert!(report.checks.ready());
+        assert!(
+            report
+                .reads
+                .iter()
+                .any(|read| read.keys.feature_gate == "HEPTA_KG_GRAPHITI_STAGING")
+        );
+    }
+
+    #[test]
+    fn adapter_config_env_report_can_show_reviewed_config_without_secret_capture() {
+        let report = memory_kg_adapter_config_env_report_from_env_pairs(
+            true,
+            [
+                ("HEPTA_KG_GRAPHITI_STAGING", "true"),
+                ("HEPTA_KG_GRAPHITI_ENDPOINT", "https://graphiti.local"),
+                ("HEPTA_KG_GRAPHITI_CREDENTIAL_REF", "op://hepta/kg/graphiti"),
+                ("HEPTA_KG_GRAPHITI_NETWORK_ALLOWLIST", "true"),
+                ("HEPTA_KG_GRAPHITI_EXTERNAL_WRITE_ALLOWLIST", "true"),
+                ("HEPTA_KG_GRAPHITI_OPERATOR_REVIEW", "approved"),
+                ("HEPTA_KG_GRAPHITI_DRY_RUN_SAMPLE_PASSED", "true"),
+                ("HEPTA_KG_GRAPHITI_ROLLBACK_PLAN_READY", "true"),
+                ("HEPTA_KG_GRAPHITI_POST_WRITE_VALIDATION_READY", "true"),
+            ],
+        );
+
+        assert_eq!(report.status, "attention");
+        assert_eq!(report.config_read_count, 3);
+        assert_eq!(report.feature_enabled_count, 1);
+        assert_eq!(report.endpoint_configured_count, 1);
+        assert_eq!(report.credentials_configured_count, 1);
+        assert_eq!(report.operator_approved_count, 1);
+        assert_eq!(report.dry_run_sample_passed_count, 1);
+        assert_eq!(report.rollback_plan_ready_count, 1);
+        assert_eq!(report.post_write_validation_ready_count, 1);
+        assert_eq!(report.fully_configured_count, 1);
+        assert_eq!(report.credential_value_captured_count, 0);
+        assert_eq!(report.network_call_attempted_count, 0);
+        assert_eq!(report.external_write_attempted_count, 0);
+        assert_eq!(report.live_write_attempted_count, 0);
+        assert!(!report.checks.all_configs_closed_by_default);
+        assert!(report.checks.no_credential_values_captured);
     }
 }

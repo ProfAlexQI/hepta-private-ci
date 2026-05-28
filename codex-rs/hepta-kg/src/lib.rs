@@ -411,6 +411,43 @@ pub enum KgExternalAdapterStagingBlocker {
     LiveWriteForbidden,
 }
 
+pub const KG_EXTERNAL_ADAPTER_CONFIG_ENV_CONTRACT: &str = "hepta-kg-external-adapter-config-env-v0";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgExternalAdapterConfigEnvKeys {
+    pub feature_gate: String,
+    pub endpoint: String,
+    pub credential_ref: String,
+    pub network_allowlist: String,
+    pub external_write_allowlist: String,
+    pub operator_review: String,
+    pub dry_run_sample_passed: String,
+    pub rollback_plan_ready: String,
+    pub post_write_validation_ready: String,
+    pub live_write_requested: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgExternalAdapterConfigEnvRead {
+    pub adapter: KgExternalAdapterKind,
+    pub adapter_id: String,
+    pub contract: String,
+    pub keys: KgExternalAdapterConfigEnvKeys,
+    pub staging_config: KgExternalAdapterStagingConfig,
+    pub credential_value_captured: bool,
+    pub network_call_attempted: bool,
+    pub external_write_attempted: bool,
+    pub live_write_attempted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EnvConfigValueState {
+    key: String,
+    present: bool,
+    flag_enabled: bool,
+    operator_review: KgOperatorReviewState,
+}
+
 pub const KG_EXTERNAL_ADAPTER_CLIENT_CONTRACT: &str = "hepta-kg-external-adapter-client-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -699,6 +736,85 @@ pub fn default_external_adapter_staging_configs() -> Vec<KgExternalAdapterStagin
         .collect()
 }
 
+pub fn external_adapter_config_env_keys(
+    adapter: KgExternalAdapterKind,
+) -> KgExternalAdapterConfigEnvKeys {
+    let suffix = adapter.id().to_ascii_uppercase();
+    KgExternalAdapterConfigEnvKeys {
+        feature_gate: adapter.staging_feature_gate_name().to_string(),
+        endpoint: format!("HEPTA_KG_{suffix}_ENDPOINT"),
+        credential_ref: format!("HEPTA_KG_{suffix}_CREDENTIAL_REF"),
+        network_allowlist: format!("HEPTA_KG_{suffix}_NETWORK_ALLOWLIST"),
+        external_write_allowlist: format!("HEPTA_KG_{suffix}_EXTERNAL_WRITE_ALLOWLIST"),
+        operator_review: format!("HEPTA_KG_{suffix}_OPERATOR_REVIEW"),
+        dry_run_sample_passed: format!("HEPTA_KG_{suffix}_DRY_RUN_SAMPLE_PASSED"),
+        rollback_plan_ready: format!("HEPTA_KG_{suffix}_ROLLBACK_PLAN_READY"),
+        post_write_validation_ready: format!("HEPTA_KG_{suffix}_POST_WRITE_VALIDATION_READY"),
+        live_write_requested: format!("HEPTA_KG_{suffix}_LIVE_WRITE_REQUESTED"),
+    }
+}
+
+pub fn read_external_adapter_staging_config_from_env_pairs<I, K, V>(
+    adapter: KgExternalAdapterKind,
+    vars: I,
+) -> KgExternalAdapterConfigEnvRead
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    let states = collect_env_config_value_states(vars);
+    read_external_adapter_staging_config_from_env_states(adapter, &states)
+}
+
+fn read_external_adapter_staging_config_from_env_states(
+    adapter: KgExternalAdapterKind,
+    states: &[EnvConfigValueState],
+) -> KgExternalAdapterConfigEnvRead {
+    let keys = external_adapter_config_env_keys(adapter);
+    let config = KgExternalAdapterStagingConfig {
+        adapter,
+        feature_gate_name: keys.feature_gate.clone(),
+        feature_enabled: env_flag_enabled(states, &keys.feature_gate),
+        endpoint_configured: env_value_present(states, &keys.endpoint),
+        credentials_configured: env_value_present(states, &keys.credential_ref),
+        network_allowlisted: env_flag_enabled(states, &keys.network_allowlist),
+        external_write_allowlisted: env_flag_enabled(states, &keys.external_write_allowlist),
+        operator_review: env_operator_review_state(states, &keys.operator_review),
+        dry_run_sample_passed: env_flag_enabled(states, &keys.dry_run_sample_passed),
+        rollback_plan_ready: env_flag_enabled(states, &keys.rollback_plan_ready),
+        post_write_validation_ready: env_flag_enabled(states, &keys.post_write_validation_ready),
+        live_write_requested: env_flag_enabled(states, &keys.live_write_requested),
+    };
+
+    KgExternalAdapterConfigEnvRead {
+        adapter,
+        adapter_id: adapter.id().to_string(),
+        contract: KG_EXTERNAL_ADAPTER_CONFIG_ENV_CONTRACT.to_string(),
+        keys,
+        staging_config: config,
+        credential_value_captured: false,
+        network_call_attempted: false,
+        external_write_attempted: false,
+        live_write_attempted: false,
+    }
+}
+
+pub fn read_all_external_adapter_staging_configs_from_env_pairs<I, K, V>(
+    vars: I,
+) -> Vec<KgExternalAdapterConfigEnvRead>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    let states = collect_env_config_value_states(vars);
+    KgExternalAdapterKind::ALL
+        .into_iter()
+        .map(|adapter| read_external_adapter_staging_config_from_env_states(adapter, &states))
+        .collect()
+}
+
 pub fn plan_external_adapter_staging_gate(
     dry_run_plan: &KgExternalAdapterDryRunPlan,
     config: &KgExternalAdapterStagingConfig,
@@ -817,6 +933,58 @@ fn disabled_adapter_client_audit(
         persisted_records: 0,
         blockers,
     }
+}
+
+fn collect_env_config_value_states<I, K, V>(vars: I) -> Vec<EnvConfigValueState>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    vars.into_iter()
+        .map(|(key, value)| {
+            let trimmed = value.as_ref().trim();
+            EnvConfigValueState {
+                key: key.as_ref().to_string(),
+                present: !trimmed.is_empty(),
+                flag_enabled: matches_env_true(trimmed),
+                operator_review: env_operator_review_value(trimmed),
+            }
+        })
+        .collect()
+}
+
+fn env_value_present(vars: &[EnvConfigValueState], key: &str) -> bool {
+    vars.iter().any(|state| state.key == key && state.present)
+}
+
+fn env_flag_enabled(vars: &[EnvConfigValueState], key: &str) -> bool {
+    vars.iter()
+        .find(|state| state.key == key)
+        .map(|state| state.flag_enabled)
+        .unwrap_or(false)
+}
+
+fn env_operator_review_state(vars: &[EnvConfigValueState], key: &str) -> KgOperatorReviewState {
+    vars.iter()
+        .find(|state| state.key == key)
+        .map(|state| state.operator_review.clone())
+        .unwrap_or_default()
+}
+
+fn env_operator_review_value(value: &str) -> KgOperatorReviewState {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "approved" | "approve" | "true" | "1" | "yes" | "on" => KgOperatorReviewState::Approved,
+        "rejected" | "reject" | "false" | "0" | "no" | "off" => KgOperatorReviewState::Rejected,
+        _ => KgOperatorReviewState::NotReviewed,
+    }
+}
+
+fn matches_env_true(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on" | "enabled" | "allow" | "allowed" | "approved" | "ready"
+    )
 }
 
 fn default_schema_version() -> String {
@@ -1064,6 +1232,103 @@ mod tests {
         assert!(!staging_plan.network_call_allowed);
         assert!(!staging_plan.external_write_allowed);
         assert!(!staging_plan.live_write_allowed);
+    }
+
+    #[test]
+    fn external_adapter_env_reader_defaults_to_closed_without_side_effects() {
+        let read = read_external_adapter_staging_config_from_env_pairs(
+            KgExternalAdapterKind::Graphiti,
+            Vec::<(&str, &str)>::new(),
+        );
+
+        assert_eq!(read.contract, KG_EXTERNAL_ADAPTER_CONFIG_ENV_CONTRACT);
+        assert_eq!(read.keys.feature_gate, "HEPTA_KG_GRAPHITI_STAGING");
+        assert_eq!(read.keys.endpoint, "HEPTA_KG_GRAPHITI_ENDPOINT");
+        assert!(!read.staging_config.feature_enabled);
+        assert!(!read.staging_config.endpoint_configured);
+        assert!(!read.staging_config.credentials_configured);
+        assert_eq!(
+            read.staging_config.operator_review,
+            KgOperatorReviewState::NotReviewed
+        );
+        assert!(!read.credential_value_captured);
+        assert!(!read.network_call_attempted);
+        assert!(!read.external_write_attempted);
+        assert!(!read.live_write_attempted);
+    }
+
+    #[test]
+    fn external_adapter_env_reader_parses_presence_without_capturing_secret_values() {
+        let read = read_external_adapter_staging_config_from_env_pairs(
+            KgExternalAdapterKind::Neo4j,
+            [
+                ("HEPTA_KG_NEO4J_STAGING", "enabled"),
+                ("HEPTA_KG_NEO4J_ENDPOINT", "bolt://neo4j.local:7687"),
+                ("HEPTA_KG_NEO4J_CREDENTIAL_REF", "op://hepta/kg/neo4j"),
+                ("HEPTA_KG_NEO4J_NETWORK_ALLOWLIST", "yes"),
+                ("HEPTA_KG_NEO4J_EXTERNAL_WRITE_ALLOWLIST", "allowed"),
+                ("HEPTA_KG_NEO4J_OPERATOR_REVIEW", "approved"),
+                ("HEPTA_KG_NEO4J_DRY_RUN_SAMPLE_PASSED", "true"),
+                ("HEPTA_KG_NEO4J_ROLLBACK_PLAN_READY", "ready"),
+                ("HEPTA_KG_NEO4J_POST_WRITE_VALIDATION_READY", "1"),
+            ],
+        );
+
+        assert_eq!(read.adapter_id, "neo4j");
+        assert!(read.staging_config.feature_enabled);
+        assert!(read.staging_config.endpoint_configured);
+        assert!(read.staging_config.credentials_configured);
+        assert!(read.staging_config.network_allowlisted);
+        assert!(read.staging_config.external_write_allowlisted);
+        assert_eq!(
+            read.staging_config.operator_review,
+            KgOperatorReviewState::Approved
+        );
+        assert!(read.staging_config.dry_run_sample_passed);
+        assert!(read.staging_config.rollback_plan_ready);
+        assert!(read.staging_config.post_write_validation_ready);
+        assert!(!read.staging_config.live_write_requested);
+        assert!(!read.credential_value_captured);
+    }
+
+    #[test]
+    fn external_adapter_env_reader_preserves_live_write_forbidden_gate() {
+        let candidate = sample_candidate();
+        let write_plan = plan_kg_write(&candidate, &KgWritePolicy::default());
+        let dry_run_plan = plan_external_adapter_dry_run(
+            &candidate,
+            &write_plan,
+            KgExternalAdapterKind::CocoIndex,
+        );
+        let read = read_external_adapter_staging_config_from_env_pairs(
+            KgExternalAdapterKind::CocoIndex,
+            [
+                ("HEPTA_KG_COCOINDEX_STAGING", "true"),
+                ("HEPTA_KG_COCOINDEX_ENDPOINT", "https://cocoindex.local"),
+                (
+                    "HEPTA_KG_COCOINDEX_CREDENTIAL_REF",
+                    "op://hepta/kg/cocoindex",
+                ),
+                ("HEPTA_KG_COCOINDEX_NETWORK_ALLOWLIST", "true"),
+                ("HEPTA_KG_COCOINDEX_EXTERNAL_WRITE_ALLOWLIST", "true"),
+                ("HEPTA_KG_COCOINDEX_OPERATOR_REVIEW", "approved"),
+                ("HEPTA_KG_COCOINDEX_DRY_RUN_SAMPLE_PASSED", "true"),
+                ("HEPTA_KG_COCOINDEX_ROLLBACK_PLAN_READY", "true"),
+                ("HEPTA_KG_COCOINDEX_POST_WRITE_VALIDATION_READY", "true"),
+                ("HEPTA_KG_COCOINDEX_LIVE_WRITE_REQUESTED", "true"),
+            ],
+        );
+
+        let staging_plan = plan_external_adapter_staging_gate(&dry_run_plan, &read.staging_config);
+
+        assert!(read.staging_config.live_write_requested);
+        assert!(!staging_plan.staging_ready);
+        assert!(!staging_plan.live_write_allowed);
+        assert!(
+            staging_plan
+                .blockers
+                .contains(&KgExternalAdapterStagingBlocker::LiveWriteForbidden)
+        );
     }
 
     #[test]

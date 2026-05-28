@@ -13,8 +13,8 @@ use hepta_core::{
 };
 use hepta_intelligence::{
     IntuitionCalibrationFeedbackSummary, IntuitionCalibrationTargetSummary,
-    LearnedSemanticRouterEvidence, MemoryKgAdapterClientReport, MemoryKgAdapterDryRunReport,
-    MemoryKgAdapterStagingGateReport, MemoryKgWriteCandidateReport,
+    LearnedSemanticRouterEvidence, MemoryKgAdapterClientReport, MemoryKgAdapterConfigEnvReport,
+    MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport, MemoryKgWriteCandidateReport,
     SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
     TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
     TopicRouteShellPatch, compute_intuition_feedback_delta,
@@ -24,8 +24,9 @@ use hepta_intelligence::{
     is_learned_feedback_contrast_case, learned_feedback_contrast_expected_signal_direction,
     learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
     memory_atom_pipeline_sample_report, memory_kg_adapter_client_report,
-    memory_kg_adapter_dry_run_report, memory_kg_adapter_staging_gate_report,
-    memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
+    memory_kg_adapter_config_env_report, memory_kg_adapter_dry_run_report,
+    memory_kg_adapter_staging_gate_report, memory_kg_write_candidate_report,
+    neuron_lifecycle_health_summary, semantic_score_from_counts,
     summarize_topic_aware_model_feedback,
 };
 use serde::{Deserialize, Serialize};
@@ -2642,6 +2643,10 @@ impl RuntimeKernel {
     pub fn knowledge_graph_adapter_client_overview(&self) -> MemoryKgAdapterClientReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_adapter_client_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_adapter_config_env_overview(&self) -> MemoryKgAdapterConfigEnvReport {
+        memory_kg_adapter_config_env_report(true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -8967,6 +8972,29 @@ mod tests {
         assert!(report.checks.ready());
         assert!(report.checks.all_supported_clients_present);
         assert!(report.checks.all_client_calls_denied_by_default);
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_adapter_config_env_overview_reads_default_closed_snapshot() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_adapter_config_env_overview();
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.adapter_count, 3);
+        assert_eq!(report.config_read_count, 3);
+        assert_eq!(report.feature_enabled_count, 0);
+        assert_eq!(report.endpoint_configured_count, 0);
+        assert_eq!(report.credentials_configured_count, 0);
+        assert_eq!(report.fully_configured_count, 0);
+        assert_eq!(report.live_write_requested_count, 0);
+        assert_eq!(report.credential_value_captured_count, 0);
+        assert_eq!(report.network_call_attempted_count, 0);
+        assert_eq!(report.external_write_attempted_count, 0);
+        assert_eq!(report.live_write_attempted_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.all_supported_adapters_read);
+        assert!(report.checks.all_configs_closed_by_default);
     }
 
     #[tokio::test]
