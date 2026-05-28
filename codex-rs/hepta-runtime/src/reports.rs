@@ -1816,6 +1816,199 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_prompt_preview_operator_evidence_summary(
+        &self,
+    ) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_prompt_preview_operator_evidence_overview();
+        let mut lines = vec![
+            format!(
+                "Hepta KG prompt-preview operator evidence: {}",
+                report.status
+            ),
+            format!("- verdict: {}", report.verdict),
+            format!("- contract: {}", report.contract),
+            format!(
+                "- approval packet contract: {}",
+                report.approval_packet_contract
+            ),
+            format!("- approval packet id: {}", report.approval_packet_id),
+            format!(
+                "- approval packet status: {}",
+                report.approval_packet_status
+            ),
+            format!("- evidence gate mode: {}", report.evidence_gate_mode),
+            format!("- sample run: {}", report.sample_run),
+            format!(
+                "- operator approval evidence present: {}",
+                report.operator_approval_evidence_present
+            ),
+            format!(
+                "- rollback plan evidence present: {}",
+                report.rollback_plan_evidence_present
+            ),
+            format!(
+                "- kill switch evidence present: {}",
+                report.kill_switch_evidence_present
+            ),
+            format!(
+                "- reviewer identity present: {}",
+                report.reviewer_identity_present
+            ),
+            format!(
+                "- reviewer identity redacted: {}",
+                report.reviewer_identity_redacted
+            ),
+            format!(
+                "- approval timestamp present: {}",
+                report.approval_timestamp_present
+            ),
+            format!(
+                "- signed approval digest present: {}",
+                report.signed_approval_digest_present
+            ),
+            format!(
+                "- bounded preview scope present: {}",
+                report.bounded_preview_scope_present
+            ),
+            format!("- required evidence: {}", report.required_evidence_count),
+            format!("- missing evidence: {}", report.missing_evidence_count),
+            format!(
+                "- prompt preview allowed: {}",
+                report.prompt_preview_allowed
+            ),
+            format!(
+                "- prompt preview rendered: {}",
+                report.prompt_preview_rendered
+            ),
+            format!(
+                "- prompt payload materialized: {}",
+                report.prompt_payload_materialized
+            ),
+            format!(
+                "- context injection allowed: {}",
+                report.context_injection_allowed
+            ),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- approval packet contract linked: {}",
+                report.checks.approval_packet_contract_linked
+            ),
+            format!(
+                "- approval packet checks ready: {}",
+                report.checks.approval_packet_checks_ready
+            ),
+            format!(
+                "- approval packet not accepted: {}",
+                report.checks.approval_packet_not_accepted
+            ),
+            format!(
+                "- evidence requirements all blocking: {}",
+                report.checks.evidence_requirements_all_blocking
+            ),
+            format!(
+                "- operator approval evidence required: {}",
+                report.checks.operator_approval_evidence_required
+            ),
+            format!(
+                "- rollback plan evidence required: {}",
+                report.checks.rollback_plan_evidence_required
+            ),
+            format!(
+                "- kill switch evidence required: {}",
+                report.checks.kill_switch_evidence_required
+            ),
+            format!(
+                "- reviewer identity required: {}",
+                report.checks.reviewer_identity_required
+            ),
+            format!(
+                "- approval timestamp required: {}",
+                report.checks.approval_timestamp_required
+            ),
+            format!(
+                "- signed approval digest required: {}",
+                report.checks.signed_approval_digest_required
+            ),
+            format!(
+                "- bounded preview scope required: {}",
+                report.checks.bounded_preview_scope_required
+            ),
+            format!(
+                "- prompt preview disabled: {}",
+                report.checks.prompt_preview_disabled
+            ),
+            format!(
+                "- prompt payload not materialized: {}",
+                report.checks.prompt_payload_not_materialized
+            ),
+            format!(
+                "- context injection disabled: {}",
+                report.checks.context_injection_disabled
+            ),
+            format!("- no model invoked: {}", report.checks.no_model_invoked),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!(
+                "- no external reads enabled: {}",
+                report.checks.no_external_reads_enabled
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Operator evidence blockers:".to_string(),
+        ];
+
+        if report.blockers.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(
+                report
+                    .blockers
+                    .iter()
+                    .map(|blocker| format!("  - {:?}", blocker)),
+            );
+        }
+
+        lines.push("Operator evidence requirements:".to_string());
+        if report.requirements.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.requirements.iter().map(|requirement| {
+                format!(
+                    "  - requirement={} name={} present={} ref={} blocks_prompt_preview={}",
+                    requirement.requirement_index,
+                    requirement.requirement,
+                    requirement.present,
+                    requirement.redacted_evidence_ref,
+                    requirement.blocks_prompt_preview
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -3731,6 +3924,68 @@ mod tests {
         assert!(rendered.contains("Approval packet items:"));
         assert!(rendered.contains("prompt_preview_included=false"));
         assert!(rendered.contains("injection_allowed=false"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_prompt_preview_operator_evidence_summary_renders_blocking_gate() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_prompt_preview_operator_evidence_summary()
+            .expect("kg prompt-preview operator evidence summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG prompt-preview operator evidence: blocked"));
+        assert!(rendered.contains(
+            "- contract: hepta-intelligence-memory-kg-prompt-preview-operator-evidence-v0"
+        ));
+        assert!(rendered.contains(
+            "- approval packet contract: hepta-intelligence-memory-kg-prompt-preview-approval-packet-v0"
+        ));
+        assert!(rendered.contains("- approval packet status: blocked"));
+        assert!(rendered.contains(
+            "- evidence gate mode: operator_evidence_requirements_only_no_prompt_preview"
+        ));
+        assert!(rendered.contains("- operator approval evidence present: false"));
+        assert!(rendered.contains("- rollback plan evidence present: false"));
+        assert!(rendered.contains("- kill switch evidence present: false"));
+        assert!(rendered.contains("- reviewer identity present: false"));
+        assert!(rendered.contains("- reviewer identity redacted: true"));
+        assert!(rendered.contains("- approval timestamp present: false"));
+        assert!(rendered.contains("- signed approval digest present: false"));
+        assert!(rendered.contains("- bounded preview scope present: false"));
+        assert!(rendered.contains("- required evidence: 7"));
+        assert!(rendered.contains("- missing evidence: 7"));
+        assert!(rendered.contains("- prompt preview allowed: false"));
+        assert!(rendered.contains("- prompt preview rendered: false"));
+        assert!(rendered.contains("- prompt payload materialized: false"));
+        assert!(rendered.contains("- context injection allowed: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- approval packet checks ready: true"));
+        assert!(rendered.contains("- approval packet not accepted: true"));
+        assert!(rendered.contains("- evidence requirements all blocking: true"));
+        assert!(rendered.contains("- operator approval evidence required: true"));
+        assert!(rendered.contains("- signed approval digest required: true"));
+        assert!(rendered.contains("- bounded preview scope required: true"));
+        assert!(rendered.contains("- prompt preview disabled: true"));
+        assert!(rendered.contains("- prompt payload not materialized: true"));
+        assert!(rendered.contains("- context injection disabled: true"));
+        assert!(rendered.contains("- no model invoked: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("- no external reads enabled: true"));
+        assert!(rendered.contains("- no network calls enabled: true"));
+        assert!(rendered.contains("- no live writes enabled: true"));
+        assert!(rendered.contains("Operator evidence blockers:"));
+        assert!(rendered.contains("ApprovalPacketNotAccepted"));
+        assert!(rendered.contains("MissingOperatorApprovalEvidence"));
+        assert!(rendered.contains("MissingSignedApprovalDigest"));
+        assert!(rendered.contains("Operator evidence requirements:"));
+        assert!(rendered.contains("name=operator_approval_record present=false"));
+        assert!(rendered.contains("blocks_prompt_preview=true"));
     }
 
     #[tokio::test]

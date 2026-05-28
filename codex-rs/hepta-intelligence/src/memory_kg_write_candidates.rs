@@ -34,6 +34,8 @@ pub const MEMORY_KG_SHADOW_RANK_DRIFT_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-shadow-rank-drift-v0";
 pub const MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-approval-packet-v0";
+pub const MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-prompt-preview-operator-evidence-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -875,6 +877,114 @@ pub struct MemoryKgPromptPreviewApprovalPacketReport {
     pub blockers: Vec<MemoryKgPromptPreviewApprovalPacketBlocker>,
     pub items: Vec<MemoryKgPromptPreviewApprovalPacketItem>,
     pub checks: MemoryKgPromptPreviewApprovalPacketChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MemoryKgPromptPreviewOperatorEvidenceBlocker {
+    ApprovalPacketNotAccepted,
+    MissingOperatorApprovalEvidence,
+    MissingRollbackPlanEvidence,
+    MissingKillSwitchEvidence,
+    MissingReviewerIdentity,
+    MissingApprovalTimestamp,
+    MissingSignedApprovalDigest,
+    MissingBoundedPreviewScope,
+    PromptPreviewStillDisabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewOperatorEvidenceRequirement {
+    pub requirement_index: usize,
+    pub requirement: &'static str,
+    pub present: bool,
+    pub redacted_evidence_ref: String,
+    pub blocks_prompt_preview: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewOperatorEvidenceChecks {
+    pub approval_packet_contract_linked: bool,
+    pub approval_packet_checks_ready: bool,
+    pub approval_packet_not_accepted: bool,
+    pub evidence_requirements_nonzero: bool,
+    pub evidence_requirements_all_blocking: bool,
+    pub operator_approval_evidence_required: bool,
+    pub rollback_plan_evidence_required: bool,
+    pub kill_switch_evidence_required: bool,
+    pub reviewer_identity_required: bool,
+    pub approval_timestamp_required: bool,
+    pub signed_approval_digest_required: bool,
+    pub bounded_preview_scope_required: bool,
+    pub prompt_preview_disabled: bool,
+    pub prompt_payload_not_materialized: bool,
+    pub context_injection_disabled: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgPromptPreviewOperatorEvidenceChecks {
+    pub fn ready(&self) -> bool {
+        self.approval_packet_contract_linked
+            && self.approval_packet_checks_ready
+            && self.approval_packet_not_accepted
+            && self.evidence_requirements_nonzero
+            && self.evidence_requirements_all_blocking
+            && self.operator_approval_evidence_required
+            && self.rollback_plan_evidence_required
+            && self.kill_switch_evidence_required
+            && self.reviewer_identity_required
+            && self.approval_timestamp_required
+            && self.signed_approval_digest_required
+            && self.bounded_preview_scope_required
+            && self.prompt_preview_disabled
+            && self.prompt_payload_not_materialized
+            && self.context_injection_disabled
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewOperatorEvidenceReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub verdict: &'static str,
+    pub sample_run: bool,
+    pub approval_packet_contract: &'static str,
+    pub approval_packet_id: String,
+    pub approval_packet_status: &'static str,
+    pub evidence_gate_mode: &'static str,
+    pub operator_approval_evidence_present: bool,
+    pub rollback_plan_evidence_present: bool,
+    pub kill_switch_evidence_present: bool,
+    pub reviewer_identity_present: bool,
+    pub reviewer_identity_redacted: bool,
+    pub approval_timestamp_present: bool,
+    pub signed_approval_digest_present: bool,
+    pub bounded_preview_scope_present: bool,
+    pub required_evidence_count: usize,
+    pub missing_evidence_count: usize,
+    pub prompt_preview_allowed: bool,
+    pub prompt_preview_rendered: bool,
+    pub prompt_payload_materialized: bool,
+    pub context_injection_allowed: bool,
+    pub context_injection_performed: bool,
+    pub model_invoked: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub blockers: Vec<MemoryKgPromptPreviewOperatorEvidenceBlocker>,
+    pub requirements: Vec<MemoryKgPromptPreviewOperatorEvidenceRequirement>,
+    pub checks: MemoryKgPromptPreviewOperatorEvidenceChecks,
     pub next_phase: &'static str,
 }
 
@@ -1952,6 +2062,130 @@ pub fn memory_kg_prompt_preview_approval_packet_report(
     }
 }
 
+pub fn memory_kg_prompt_preview_operator_evidence_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgPromptPreviewOperatorEvidenceReport {
+    let approval_report = memory_kg_prompt_preview_approval_packet_report(memory_units, sample_run);
+    let operator_approval_evidence_present = false;
+    let rollback_plan_evidence_present = false;
+    let kill_switch_evidence_present = false;
+    let reviewer_identity_present = false;
+    let reviewer_identity_redacted = true;
+    let approval_timestamp_present = false;
+    let signed_approval_digest_present = false;
+    let bounded_preview_scope_present = false;
+    let prompt_preview_allowed = false;
+    let prompt_preview_rendered = false;
+    let prompt_payload_materialized = false;
+    let context_injection_allowed = false;
+    let context_injection_performed = false;
+    let model_invoked = false;
+    let requirements = memory_kg_prompt_preview_operator_evidence_requirements();
+    let required_evidence_count = requirements.len();
+    let missing_evidence_count = requirements
+        .iter()
+        .filter(|requirement| !requirement.present)
+        .count();
+
+    let mut blockers = Vec::new();
+    if !approval_report.approval_packet_accepted {
+        blockers.push(MemoryKgPromptPreviewOperatorEvidenceBlocker::ApprovalPacketNotAccepted);
+    }
+    if !operator_approval_evidence_present {
+        blockers
+            .push(MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingOperatorApprovalEvidence);
+    }
+    if !rollback_plan_evidence_present {
+        blockers.push(MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingRollbackPlanEvidence);
+    }
+    if !kill_switch_evidence_present {
+        blockers.push(MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingKillSwitchEvidence);
+    }
+    if !reviewer_identity_present {
+        blockers.push(MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingReviewerIdentity);
+    }
+    if !approval_timestamp_present {
+        blockers.push(MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingApprovalTimestamp);
+    }
+    if !signed_approval_digest_present {
+        blockers.push(MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingSignedApprovalDigest);
+    }
+    if !bounded_preview_scope_present {
+        blockers.push(MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingBoundedPreviewScope);
+    }
+    if !prompt_preview_allowed {
+        blockers.push(MemoryKgPromptPreviewOperatorEvidenceBlocker::PromptPreviewStillDisabled);
+    }
+
+    let checks = MemoryKgPromptPreviewOperatorEvidenceChecks {
+        approval_packet_contract_linked: approval_report.contract
+            == MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT,
+        approval_packet_checks_ready: approval_report.checks.ready(),
+        approval_packet_not_accepted: !approval_report.approval_packet_accepted,
+        evidence_requirements_nonzero: required_evidence_count > 0,
+        evidence_requirements_all_blocking: required_evidence_count > 0
+            && requirements
+                .iter()
+                .all(|requirement| requirement.blocks_prompt_preview),
+        operator_approval_evidence_required: !operator_approval_evidence_present,
+        rollback_plan_evidence_required: !rollback_plan_evidence_present,
+        kill_switch_evidence_required: !kill_switch_evidence_present,
+        reviewer_identity_required: !reviewer_identity_present && reviewer_identity_redacted,
+        approval_timestamp_required: !approval_timestamp_present,
+        signed_approval_digest_required: !signed_approval_digest_present,
+        bounded_preview_scope_required: !bounded_preview_scope_present,
+        prompt_preview_disabled: !prompt_preview_allowed && !prompt_preview_rendered,
+        prompt_payload_not_materialized: !prompt_payload_materialized,
+        context_injection_disabled: !context_injection_allowed,
+        no_model_invoked: !model_invoked,
+        no_context_injection_performed: !context_injection_performed,
+        no_external_reads_enabled: approval_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: approval_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: approval_report.live_write_enabled_count == 0,
+    };
+
+    MemoryKgPromptPreviewOperatorEvidenceReport {
+        product: "Hepta",
+        command: "memory-kg-prompt-preview-operator-evidence",
+        contract: MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT,
+        status: if checks.ready() {
+            "blocked"
+        } else {
+            "attention"
+        },
+        verdict: "blocked_until_operator_evidence_packet_is_complete_and_signed",
+        sample_run,
+        approval_packet_contract: MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT,
+        approval_packet_id: approval_report.approval_packet_id,
+        approval_packet_status: approval_report.status,
+        evidence_gate_mode: "operator_evidence_requirements_only_no_prompt_preview",
+        operator_approval_evidence_present,
+        rollback_plan_evidence_present,
+        kill_switch_evidence_present,
+        reviewer_identity_present,
+        reviewer_identity_redacted,
+        approval_timestamp_present,
+        signed_approval_digest_present,
+        bounded_preview_scope_present,
+        required_evidence_count,
+        missing_evidence_count,
+        prompt_preview_allowed,
+        prompt_preview_rendered,
+        prompt_payload_materialized,
+        context_injection_allowed,
+        context_injection_performed,
+        model_invoked,
+        external_read_enabled_count: approval_report.external_read_enabled_count,
+        network_call_enabled_count: approval_report.network_call_enabled_count,
+        live_write_enabled_count: approval_report.live_write_enabled_count,
+        blockers,
+        requirements,
+        checks,
+        next_phase: "wire operator-provided approval, rollback, kill-switch, reviewer, timestamp, digest, and bounded-scope evidence before enabling any KG prompt preview",
+    }
+}
+
 fn memory_kg_shadow_rank_items(items: &[ContextRecallItem]) -> Vec<MemoryKgShadowRankItem> {
     items
         .iter()
@@ -2098,6 +2332,31 @@ fn memory_kg_prompt_preview_approval_packet_items(
             operator_approval_required: true,
         })
         .collect()
+}
+
+fn memory_kg_prompt_preview_operator_evidence_requirements()
+-> Vec<MemoryKgPromptPreviewOperatorEvidenceRequirement> {
+    [
+        "operator_approval_record",
+        "rollback_plan_record",
+        "kill_switch_record",
+        "reviewer_identity_record",
+        "approval_timestamp_record",
+        "signed_approval_digest",
+        "bounded_prompt_preview_scope",
+    ]
+    .into_iter()
+    .enumerate()
+    .map(
+        |(idx, requirement)| MemoryKgPromptPreviewOperatorEvidenceRequirement {
+            requirement_index: idx + 1,
+            requirement,
+            present: false,
+            redacted_evidence_ref: format!("missing:kg-prompt-preview-evidence:{requirement}"),
+            blocks_prompt_preview: true,
+        },
+    )
+    .collect()
 }
 
 fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> Vec<KgReadQuery> {
@@ -3359,6 +3618,92 @@ mod tests {
                 && item
                     .redacted_context_ref
                     .starts_with("kg-shadow-rank-drift-ref:")
+        }));
+    }
+
+    #[test]
+    fn memory_kg_prompt_preview_operator_evidence_blocks_until_evidence_is_complete() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_prompt_preview_operator_evidence_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.verdict,
+            "blocked_until_operator_evidence_packet_is_complete_and_signed"
+        );
+        assert_eq!(
+            report.contract,
+            MEMORY_KG_PROMPT_PREVIEW_OPERATOR_EVIDENCE_V0_CONTRACT
+        );
+        assert_eq!(
+            report.approval_packet_contract,
+            MEMORY_KG_PROMPT_PREVIEW_APPROVAL_PACKET_V0_CONTRACT
+        );
+        assert_eq!(report.approval_packet_status, "blocked");
+        assert_eq!(
+            report.evidence_gate_mode,
+            "operator_evidence_requirements_only_no_prompt_preview"
+        );
+        assert!(!report.operator_approval_evidence_present);
+        assert!(!report.rollback_plan_evidence_present);
+        assert!(!report.kill_switch_evidence_present);
+        assert!(!report.reviewer_identity_present);
+        assert!(report.reviewer_identity_redacted);
+        assert!(!report.approval_timestamp_present);
+        assert!(!report.signed_approval_digest_present);
+        assert!(!report.bounded_preview_scope_present);
+        assert_eq!(report.required_evidence_count, 7);
+        assert_eq!(
+            report.missing_evidence_count,
+            report.required_evidence_count
+        );
+        assert!(!report.prompt_preview_allowed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.prompt_payload_materialized);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.model_invoked);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.approval_packet_contract_linked);
+        assert!(report.checks.approval_packet_checks_ready);
+        assert!(report.checks.approval_packet_not_accepted);
+        assert!(report.checks.evidence_requirements_all_blocking);
+        assert!(report.checks.operator_approval_evidence_required);
+        assert!(report.checks.rollback_plan_evidence_required);
+        assert!(report.checks.kill_switch_evidence_required);
+        assert!(report.checks.reviewer_identity_required);
+        assert!(report.checks.signed_approval_digest_required);
+        assert!(report.checks.bounded_preview_scope_required);
+        assert!(report.checks.prompt_preview_disabled);
+        assert!(report.checks.prompt_payload_not_materialized);
+        assert!(report.checks.context_injection_disabled);
+        assert!(report.checks.no_model_invoked);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(report.checks.no_external_reads_enabled);
+        assert!(report.checks.no_network_calls_enabled);
+        assert!(report.checks.no_live_writes_enabled);
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewOperatorEvidenceBlocker::ApprovalPacketNotAccepted)
+        );
+        assert!(report.blockers.contains(
+            &MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingOperatorApprovalEvidence
+        ));
+        assert!(
+            report.blockers.contains(
+                &MemoryKgPromptPreviewOperatorEvidenceBlocker::MissingSignedApprovalDigest
+            )
+        );
+        assert!(report.requirements.iter().all(|requirement| {
+            !requirement.present
+                && requirement.blocks_prompt_preview
+                && requirement
+                    .redacted_evidence_ref
+                    .starts_with("missing:kg-prompt-preview-evidence:")
         }));
     }
 }
