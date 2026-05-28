@@ -14,10 +14,11 @@ use hepta_core::{
 use hepta_intelligence::{
     IntuitionCalibrationFeedbackSummary, IntuitionCalibrationTargetSummary,
     LearnedSemanticRouterEvidence, MemoryKgAdapterClientReport, MemoryKgAdapterConfigEnvReport,
-    MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport, MemoryKgRecallPlanReport,
-    MemoryKgWriteCandidateReport, SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY,
-    SEMANTIC_ROUTER_NET_DELTA_KEY, TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord,
-    TopicAwareModelFeedbackSummary, TopicRouteShellPatch, compute_intuition_feedback_delta,
+    MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
+    MemoryKgContextRecallBridgeReport, MemoryKgRecallPlanReport, MemoryKgWriteCandidateReport,
+    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
+    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
+    TopicRouteShellPatch, compute_intuition_feedback_delta,
     evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
     intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
     intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
@@ -25,8 +26,9 @@ use hepta_intelligence::{
     learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
     memory_atom_pipeline_sample_report, memory_kg_adapter_client_report,
     memory_kg_adapter_config_env_report, memory_kg_adapter_dry_run_report,
-    memory_kg_adapter_staging_gate_report, memory_kg_recall_plan_report,
-    memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
+    memory_kg_adapter_staging_gate_report, memory_kg_context_recall_bridge_report,
+    memory_kg_recall_plan_report, memory_kg_write_candidate_report,
+    neuron_lifecycle_health_summary, semantic_score_from_counts,
     summarize_topic_aware_model_feedback,
 };
 use serde::{Deserialize, Serialize};
@@ -2652,6 +2654,13 @@ impl RuntimeKernel {
     pub fn knowledge_graph_recall_plan_overview(&self) -> MemoryKgRecallPlanReport {
         let atom_report = memory_atom_pipeline_sample_report(true);
         memory_kg_recall_plan_report(&atom_report.atoms, true)
+    }
+
+    pub fn knowledge_graph_context_recall_bridge_overview(
+        &self,
+    ) -> MemoryKgContextRecallBridgeReport {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        memory_kg_context_recall_bridge_report(&atom_report.atoms, true)
     }
 
     pub fn intelligence_eval_overview_with_router(
@@ -9023,6 +9032,29 @@ mod tests {
         assert!(report.checks.no_external_reads_enabled);
         assert!(report.checks.no_network_calls_enabled);
         assert!(report.checks.no_live_writes_enabled);
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_context_recall_bridge_overview_emits_kg_ranked_items() {
+        let runtime = RuntimeKernel::new();
+
+        let report = runtime.knowledge_graph_context_recall_bridge_overview();
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.query_count, 2);
+        assert!(report.kg_plan_count > 0);
+        assert!(report.kg_evidence_path_count > 0);
+        assert!(report.context_item_count > 0);
+        assert!(report.transcript_span_count > 0);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(!report.model_invoked);
+        assert!(!report.context_injection_performed);
+        assert!(report.checks.ready());
+        assert!(report.checks.all_items_have_kg_source);
+        assert!(report.checks.transcript_provenance_preserved);
+        assert!(report.checks.no_context_injection_performed);
     }
 
     #[tokio::test]

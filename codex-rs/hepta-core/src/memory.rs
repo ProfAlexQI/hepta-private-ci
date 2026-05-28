@@ -700,6 +700,7 @@ pub enum ContextRecallSource {
     SummaryMemory,
     ActiveTopicSession,
     ActiveNeuron,
+    KnowledgeGraph,
 }
 
 /// Explainable score used to rank items inside an intelligence turn frame.

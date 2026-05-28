@@ -1,6 +1,7 @@
 use hepta_core::{
-    MemoryConflict, MemoryLink, MemoryLinkKind, MemorySourceKind, MemorySourceSpan, MemoryUnit,
-    MemoryUnitKind,
+    ContextRecallItem, ContextRecallScore, ContextRecallSource, MemoryConflict, MemoryLink,
+    MemoryLinkKind, MemorySourceKind, MemorySourceSpan, MemoryUnit, MemoryUnitKind, SessionId,
+    TranscriptRange, TranscriptSpanRef,
 };
 use hepta_kg::{
     KgConfidence, KgEntity, KgEntityKind, KgEpisode, KgEpisodeKind, KgExternalAdapterClientAudit,
@@ -18,6 +19,8 @@ use serde::{Deserialize, Serialize};
 
 pub const MEMORY_KG_WRITE_CANDIDATE_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-write-candidate-v0";
+pub const MEMORY_KG_CONTEXT_RECALL_BRIDGE_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-context-recall-bridge-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -282,6 +285,58 @@ pub struct MemoryKgRecallPlanReport {
     pub live_write_enabled_count: usize,
     pub plans: Vec<KgRecallPlan>,
     pub checks: MemoryKgRecallPlanChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgContextRecallBridgeChecks {
+    pub recall_plan_ready: bool,
+    pub context_items_nonzero: bool,
+    pub all_items_have_kg_source: bool,
+    pub all_items_have_scores: bool,
+    pub transcript_provenance_preserved: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+}
+
+impl MemoryKgContextRecallBridgeChecks {
+    pub fn ready(&self) -> bool {
+        self.recall_plan_ready
+            && self.context_items_nonzero
+            && self.all_items_have_kg_source
+            && self.all_items_have_scores
+            && self.transcript_provenance_preserved
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MemoryKgContextRecallBridgeReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub sample_run: bool,
+    pub kg_recall_contract: &'static str,
+    pub query_count: usize,
+    pub kg_plan_count: usize,
+    pub kg_evidence_path_count: usize,
+    pub context_item_count: usize,
+    pub transcript_span_count: usize,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub model_invoked: bool,
+    pub context_injection_performed: bool,
+    pub items: Vec<ContextRecallItem>,
+    pub checks: MemoryKgContextRecallBridgeChecks,
     pub next_phase: &'static str,
 }
 
@@ -730,6 +785,62 @@ pub fn memory_kg_recall_plan_report(
     }
 }
 
+pub fn memory_kg_context_recall_bridge_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgContextRecallBridgeReport {
+    let recall_report = memory_kg_recall_plan_report(memory_units, sample_run);
+    let items = context_recall_items_from_kg_recall_plans(&recall_report.plans);
+    let transcript_span_count = items
+        .iter()
+        .map(|item| item.source_transcript_spans.len())
+        .sum();
+    let checks = MemoryKgContextRecallBridgeChecks {
+        recall_plan_ready: recall_report.checks.ready(),
+        context_items_nonzero: !items.is_empty(),
+        all_items_have_kg_source: items
+            .iter()
+            .all(|item| item.source == ContextRecallSource::KnowledgeGraph),
+        all_items_have_scores: items.iter().all(|item| {
+            item.score.final_score > 0.0
+                && item.score.relevance > 0.0
+                && item.score.durability > 0.0
+                && item.score.confidence > 0.0
+        }),
+        transcript_provenance_preserved: !items.is_empty()
+            && items
+                .iter()
+                .all(|item| !item.source_transcript_spans.is_empty()),
+        no_external_reads_enabled: recall_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: recall_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: recall_report.live_write_enabled_count == 0,
+        no_model_invoked: true,
+        no_context_injection_performed: true,
+    };
+
+    MemoryKgContextRecallBridgeReport {
+        product: "Hepta",
+        command: "memory-kg-context-recall-bridge",
+        contract: MEMORY_KG_CONTEXT_RECALL_BRIDGE_V0_CONTRACT,
+        status: if checks.ready() { "ready" } else { "attention" },
+        sample_run,
+        kg_recall_contract: hepta_kg::KG_READ_RECALL_CONTRACT,
+        query_count: recall_report.query_count,
+        kg_plan_count: recall_report.plans.len(),
+        kg_evidence_path_count: recall_report.evidence_path_count,
+        context_item_count: items.len(),
+        transcript_span_count,
+        external_read_enabled_count: recall_report.external_read_enabled_count,
+        network_call_enabled_count: recall_report.network_call_enabled_count,
+        live_write_enabled_count: recall_report.live_write_enabled_count,
+        model_invoked: false,
+        context_injection_performed: false,
+        items,
+        checks,
+        next_phase: "rank KG-backed recall beside live transcript and durable-memory recall without prompt injection",
+    }
+}
+
 fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> Vec<KgReadQuery> {
     let focus_label = candidates
         .iter()
@@ -766,6 +877,125 @@ fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> V
             max_evidence_paths: 6,
         },
     ]
+}
+
+fn context_recall_items_from_kg_recall_plans(plans: &[KgRecallPlan]) -> Vec<ContextRecallItem> {
+    let mut items = plans
+        .iter()
+        .flat_map(context_recall_items_from_kg_recall_plan)
+        .collect::<Vec<_>>();
+    items.sort_by(|left, right| {
+        right
+            .score
+            .final_score
+            .total_cmp(&left.score.final_score)
+            .then_with(|| left.source_id.cmp(&right.source_id))
+    });
+    items.truncate(8);
+    items
+}
+
+fn context_recall_items_from_kg_recall_plan(plan: &KgRecallPlan) -> Vec<ContextRecallItem> {
+    plan.evidence_paths
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, path)| {
+            let spans = path
+                .source_spans
+                .iter()
+                .filter_map(kg_source_span_to_transcript_span_ref)
+                .collect::<Vec<_>>();
+            if spans.is_empty() {
+                return None;
+            }
+
+            Some(ContextRecallItem {
+                source: ContextRecallSource::KnowledgeGraph,
+                source_id: format!("kg-context:{}:{}:{}", plan.query_id, path.candidate_id, idx),
+                summary: kg_context_recall_summary(plan, path),
+                score: kg_context_recall_score(plan, path, spans.len()),
+                source_transcript_spans: spans,
+                source_memory_ids: vec![path.candidate_id.clone()],
+                topic_session_ids: Vec::new(),
+                neuron_ids: Vec::new(),
+            })
+        })
+        .collect()
+}
+
+fn kg_context_recall_summary(plan: &KgRecallPlan, path: &hepta_kg::KgEvidencePath) -> String {
+    let first_entity = path
+        .entity_ids
+        .first()
+        .map(String::as_str)
+        .unwrap_or("no-entity");
+    let relation_count = path.relation_ids.len();
+    format!(
+        "KG recall query {} matched {} with {} relation evidence path(s)",
+        plan.query_id, first_entity, relation_count
+    )
+}
+
+fn kg_context_recall_score(
+    plan: &KgRecallPlan,
+    path: &hepta_kg::KgEvidencePath,
+    transcript_span_count: usize,
+) -> ContextRecallScore {
+    let entity_signal = capped_ratio(path.entity_ids.len(), 4);
+    let relation_signal = capped_ratio(path.relation_ids.len(), 4);
+    let evidence_signal = capped_ratio(transcript_span_count, 3);
+    let relevance = (0.46 + entity_signal * 0.24 + relation_signal * 0.20).clamp(0.0, 1.0);
+    let durability = (0.68 + capped_ratio(plan.candidate_count, 6) * 0.22).clamp(0.0, 1.0);
+    let confidence = (0.62 + evidence_signal * 0.28).clamp(0.0, 1.0);
+    let recency = 0.56;
+    let topic_activation = 0.0;
+    let neuron_activation = 0.0;
+    let final_score = ((recency * 0.18)
+        + (relevance * 0.34)
+        + (durability * 0.22)
+        + (topic_activation * 0.08)
+        + (neuron_activation * 0.06)
+        + (confidence * 0.12))
+        .clamp(0.0, 1.0);
+
+    ContextRecallScore {
+        recency,
+        relevance,
+        durability,
+        topic_activation,
+        neuron_activation,
+        confidence,
+        final_score,
+        reason: Some("knowledge graph recall bridge".to_string()),
+    }
+}
+
+fn capped_ratio(value: usize, cap: usize) -> f32 {
+    if cap == 0 {
+        return 0.0;
+    }
+    (value.min(cap) as f32 / cap as f32).clamp(0.0, 1.0)
+}
+
+fn kg_source_span_to_transcript_span_ref(span: &KgSourceSpan) -> Option<TranscriptSpanRef> {
+    if span.source_kind != KgSourceKind::Transcript {
+        return None;
+    }
+    let session_id = span.uri.as_deref()?.trim();
+    if session_id.is_empty() {
+        return None;
+    }
+    let start_sequence = span.start_offset? as u64;
+    let end_sequence = span.end_offset.unwrap_or(span.start_offset?) as u64;
+
+    Some(TranscriptSpanRef {
+        session_id: SessionId(session_id.to_string()),
+        range: TranscriptRange {
+            start_sequence,
+            end_sequence,
+        },
+        reason: Some(format!("kg_context_recall_bridge:{}", span.source_id)),
+    })
 }
 
 fn adapter_staging_config_is_closed(config: &KgExternalAdapterStagingConfig) -> bool {
@@ -1259,5 +1489,57 @@ mod tests {
         assert!(report.checks.no_live_writes_enabled);
         assert!(report.checks.no_external_reads_enabled);
         assert!(report.checks.no_network_calls_enabled);
+    }
+
+    #[test]
+    fn memory_kg_context_recall_bridge_emits_ranked_items_without_side_effects() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_context_recall_bridge_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.kg_recall_contract, hepta_kg::KG_READ_RECALL_CONTRACT);
+        assert_eq!(report.query_count, 2);
+        assert!(report.kg_plan_count > 0);
+        assert!(report.kg_evidence_path_count > 0);
+        assert!(report.context_item_count > 0);
+        assert!(report.transcript_span_count > 0);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(!report.model_invoked);
+        assert!(!report.context_injection_performed);
+        assert!(report.checks.ready());
+        assert!(
+            report
+                .items
+                .iter()
+                .all(|item| item.source == ContextRecallSource::KnowledgeGraph)
+        );
+        assert!(report.items.iter().all(|item| item.score.final_score > 0.0));
+        assert!(
+            report
+                .items
+                .iter()
+                .all(|item| !item.source_transcript_spans.is_empty())
+        );
+    }
+
+    #[test]
+    fn memory_kg_context_recall_bridge_preserves_transcript_span_reasons() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_context_recall_bridge_report(&atom_report.atoms, true);
+
+        assert!(
+            report
+                .items
+                .iter()
+                .flat_map(|item| item.source_transcript_spans.iter())
+                .any(|span| span
+                    .reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.starts_with("kg_context_recall_bridge:")))
+        );
+        assert!(report.checks.transcript_provenance_preserved);
+        assert!(report.checks.no_context_injection_performed);
     }
 }

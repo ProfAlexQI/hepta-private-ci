@@ -1068,6 +1068,83 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_context_recall_bridge_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_context_recall_bridge_overview();
+        let mut lines = vec![
+            format!("Hepta KG context recall bridge: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!("- kg recall contract: {}", report.kg_recall_contract),
+            format!("- sample run: {}", report.sample_run),
+            format!("- recall queries: {}", report.query_count),
+            format!("- kg recall plans: {}", report.kg_plan_count),
+            format!("- kg evidence paths: {}", report.kg_evidence_path_count),
+            format!("- context recall items: {}", report.context_item_count),
+            format!("- transcript spans: {}", report.transcript_span_count),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!("- recall plan ready: {}", report.checks.recall_plan_ready),
+            format!(
+                "- all items have KG source: {}",
+                report.checks.all_items_have_kg_source
+            ),
+            format!(
+                "- all items have scores: {}",
+                report.checks.all_items_have_scores
+            ),
+            format!(
+                "- transcript provenance preserved: {}",
+                report.checks.transcript_provenance_preserved
+            ),
+            format!(
+                "- no external reads enabled: {}",
+                report.checks.no_external_reads_enabled
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- no model invoked: {}", report.checks.no_model_invoked),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "KG context recall items:".to_string(),
+        ];
+
+        if report.items.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.items.iter().take(6).map(|item| {
+                format!(
+                    "  - source_id={} score={:.3} spans={} summary={}",
+                    item.source_id,
+                    item.score.final_score,
+                    item.source_transcript_spans.len(),
+                    item.summary
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2719,6 +2796,32 @@ mod tests {
         assert!(rendered.contains("- no live writes enabled: true"));
         assert!(rendered.contains("Recall plans:"));
         assert!(rendered.contains("Entity matches:"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_context_recall_bridge_summary_renders_no_injection_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_context_recall_bridge_summary()
+            .expect("kg context recall bridge summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG context recall bridge: ready"));
+        assert!(
+            rendered.contains("- contract: hepta-intelligence-memory-kg-context-recall-bridge-v0")
+        );
+        assert!(rendered.contains("- kg recall contract: hepta-kg-read-recall-v0"));
+        assert!(rendered.contains("- context recall items: "));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- all items have KG source: true"));
+        assert!(rendered.contains("- transcript provenance preserved: true"));
+        assert!(rendered.contains("- no context injection performed: true"));
+        assert!(rendered.contains("KG context recall items:"));
     }
 
     #[tokio::test]
