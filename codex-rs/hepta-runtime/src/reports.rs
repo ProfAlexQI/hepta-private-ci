@@ -980,6 +980,94 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_recall_plan_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_recall_plan_overview();
+        let mut lines = vec![
+            format!("Hepta KG recall plan: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!("- sample run: {}", report.sample_run),
+            format!("- recall queries: {}", report.query_count),
+            format!("- write candidates: {}", report.candidate_count),
+            format!("- entity matches: {}", report.entity_match_count),
+            format!(
+                "- relation neighborhoods: {}",
+                report.relation_neighborhood_count
+            ),
+            format!("- timeline slices: {}", report.timeline_slice_count),
+            format!("- evidence paths: {}", report.evidence_path_count),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- all plans are read-only: {}",
+                report.checks.all_plans_are_read_only
+            ),
+            format!(
+                "- no external reads enabled: {}",
+                report.checks.no_external_reads_enabled
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Recall plans:".to_string(),
+        ];
+
+        if report.plans.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.plans.iter().take(4).map(|plan| {
+                format!(
+                    "  - query={} entities={} relations={} timeline={} evidence={} read_only={} external_read={} network={} live={}",
+                    plan.query_id,
+                    plan.entity_match_count,
+                    plan.relation_neighborhood_count,
+                    plan.timeline_slice_count,
+                    plan.evidence_path_count,
+                    plan.read_only,
+                    plan.external_read_allowed,
+                    plan.network_call_allowed,
+                    plan.live_write_allowed
+                )
+            }));
+        }
+
+        lines.push("Entity matches:".to_string());
+        let entity_lines = report
+            .plans
+            .iter()
+            .flat_map(|plan| plan.entity_matches.iter())
+            .take(6)
+            .map(|entity_match| {
+                format!(
+                    "  - entity={} label={} confidence={} evidence_spans={}",
+                    entity_match.entity.id,
+                    entity_match.matched_label,
+                    entity_match.confidence.basis_points,
+                    entity_match.evidence_span_count
+                )
+            })
+            .collect::<Vec<_>>();
+        if entity_lines.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(entity_lines);
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2604,6 +2692,33 @@ mod tests {
         assert!(rendered.contains("gate_key=HEPTA_KG_GRAPHITI_STAGING"));
         assert!(rendered.contains("credential_ref_key=HEPTA_KG_NEO4J_CREDENTIAL_REF"));
         assert!(rendered.contains("endpoint_key=HEPTA_KG_COCOINDEX_ENDPOINT"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_recall_plan_summary_renders_read_only_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_recall_plan_summary()
+            .expect("kg recall plan summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG recall plan: ready"));
+        assert!(rendered.contains("- contract: hepta-kg-read-recall-v0"));
+        assert!(rendered.contains("- recall queries: 2"));
+        assert!(rendered.contains("- entity matches: "));
+        assert!(rendered.contains("- relation neighborhoods: "));
+        assert!(rendered.contains("- timeline slices: "));
+        assert!(rendered.contains("- evidence paths: "));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- all plans are read-only: true"));
+        assert!(rendered.contains("- no external reads enabled: true"));
+        assert!(rendered.contains("- no network calls enabled: true"));
+        assert!(rendered.contains("- no live writes enabled: true"));
+        assert!(rendered.contains("Recall plans:"));
+        assert!(rendered.contains("Entity matches:"));
     }
 
     #[tokio::test]

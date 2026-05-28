@@ -6,6 +6,8 @@
 //! gate refuses live writes until provenance, redaction, idempotency, rollback,
 //! and post-write validation are wired by an adapter.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_KG_SCHEMA_VERSION: &str = "hepta-kg-v0";
@@ -272,6 +274,85 @@ pub enum KgWriteBlocker {
     IdempotencyKeyMissing,
     ExternalSideEffectsDisabled,
     PostWriteValidationRequired,
+}
+
+pub const KG_READ_RECALL_CONTRACT: &str = "hepta-kg-read-recall-v0";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgReadQuery {
+    pub id: String,
+    pub contract: String,
+    pub query_text: String,
+    #[serde(default)]
+    pub focus_entity_label: Option<String>,
+    #[serde(default)]
+    pub relation_kinds: Vec<KgRelationKind>,
+    pub max_entities: usize,
+    pub max_relations: usize,
+    pub max_evidence_paths: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgEntityMatch {
+    pub entity: KgEntity,
+    pub matched_label: String,
+    pub confidence: KgConfidence,
+    pub evidence_span_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgRelationNeighborhood {
+    pub relation: KgRelation,
+    pub from_label: String,
+    pub to_label: String,
+    pub evidence_span_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgTimelineSlice {
+    pub episode_id: String,
+    pub episode_kind: KgEpisodeKind,
+    pub summary: String,
+    #[serde(default)]
+    pub occurred_at_unix_ms: Option<i64>,
+    pub entity_count: usize,
+    pub relation_count: usize,
+    pub evidence_span_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgEvidencePath {
+    pub candidate_id: String,
+    pub episode_id: String,
+    #[serde(default)]
+    pub entity_ids: Vec<String>,
+    #[serde(default)]
+    pub relation_ids: Vec<String>,
+    #[serde(default)]
+    pub source_spans: Vec<KgSourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgRecallPlan {
+    pub query_id: String,
+    pub contract: String,
+    pub candidate_count: usize,
+    pub entity_match_count: usize,
+    pub relation_neighborhood_count: usize,
+    pub timeline_slice_count: usize,
+    pub evidence_path_count: usize,
+    pub read_only: bool,
+    pub external_read_allowed: bool,
+    pub network_call_allowed: bool,
+    pub live_write_allowed: bool,
+    #[serde(default)]
+    pub entity_matches: Vec<KgEntityMatch>,
+    #[serde(default)]
+    pub relation_neighborhoods: Vec<KgRelationNeighborhood>,
+    #[serde(default)]
+    pub timeline_slices: Vec<KgTimelineSlice>,
+    #[serde(default)]
+    pub evidence_paths: Vec<KgEvidencePath>,
 }
 
 pub const KG_EXTERNAL_ADAPTER_DRY_RUN_CONTRACT: &str = "hepta-kg-external-adapter-dry-run-v0";
@@ -684,6 +765,121 @@ pub fn plan_kg_write(candidate: &KgWriteCandidate, policy: &KgWritePolicy) -> Kg
     }
 }
 
+pub fn plan_kg_recall(query: &KgReadQuery, candidates: &[KgWriteCandidate]) -> KgRecallPlan {
+    let mut entity_matches = Vec::new();
+    let mut relation_neighborhoods = Vec::new();
+    let mut timeline_slices = Vec::new();
+    let mut evidence_paths = Vec::new();
+    let mut seen_entity_ids = BTreeSet::new();
+    let mut seen_relation_ids = BTreeSet::new();
+
+    for candidate in candidates {
+        let entity_by_id = candidate
+            .entities
+            .iter()
+            .map(|entity| (entity.id.clone(), entity.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let episode_matches = text_matches_query(&candidate.episode.summary, &query.query_text);
+        let mut candidate_entity_ids = Vec::new();
+        let mut candidate_relation_ids = Vec::new();
+
+        for entity in &candidate.entities {
+            if entity_matches_recall_query(entity, query) {
+                candidate_entity_ids.push(entity.id.clone());
+                if entity_matches.len() < query.max_entities
+                    && seen_entity_ids.insert(entity.id.clone())
+                {
+                    entity_matches.push(KgEntityMatch {
+                        entity: entity.clone(),
+                        matched_label: matched_entity_label(entity, query),
+                        confidence: max_relation_confidence_for_entity(entity, candidate),
+                        evidence_span_count: evidence_span_count_for_entity(entity, candidate),
+                    });
+                }
+            }
+        }
+
+        for relation in &candidate.relations {
+            if relation_matches_recall_query(relation, query, &entity_by_id) {
+                candidate_relation_ids.push(relation.id.clone());
+                if relation_neighborhoods.len() < query.max_relations
+                    && seen_relation_ids.insert(relation.id.clone())
+                {
+                    relation_neighborhoods.push(KgRelationNeighborhood {
+                        relation: relation.clone(),
+                        from_label: label_for_entity_id(&relation.from_entity_id, &entity_by_id),
+                        to_label: label_for_entity_id(&relation.to_entity_id, &entity_by_id),
+                        evidence_span_count: evidence_span_count_for_relation(relation, candidate),
+                    });
+                }
+            }
+        }
+
+        let candidate_recalled = episode_matches
+            || !candidate_entity_ids.is_empty()
+            || !candidate_relation_ids.is_empty();
+
+        if candidate_recalled {
+            if timeline_slices.len() < query.max_evidence_paths {
+                timeline_slices.push(KgTimelineSlice {
+                    episode_id: candidate.episode.id.clone(),
+                    episode_kind: candidate.episode.kind.clone(),
+                    summary: candidate.episode.summary.clone(),
+                    occurred_at_unix_ms: candidate.episode.occurred_at_unix_ms,
+                    entity_count: candidate.entities.len(),
+                    relation_count: candidate.relations.len(),
+                    evidence_span_count: candidate_source_spans(candidate).len(),
+                });
+            }
+
+            let source_spans = candidate_source_spans(candidate);
+            if evidence_paths.len() < query.max_evidence_paths && !source_spans.is_empty() {
+                evidence_paths.push(KgEvidencePath {
+                    candidate_id: candidate.id.clone(),
+                    episode_id: candidate.episode.id.clone(),
+                    entity_ids: if candidate_entity_ids.is_empty() {
+                        candidate
+                            .entities
+                            .iter()
+                            .map(|entity| entity.id.clone())
+                            .collect()
+                    } else {
+                        candidate_entity_ids
+                    },
+                    relation_ids: if candidate_relation_ids.is_empty() {
+                        candidate
+                            .relations
+                            .iter()
+                            .map(|relation| relation.id.clone())
+                            .collect()
+                    } else {
+                        candidate_relation_ids
+                    },
+                    source_spans,
+                });
+            }
+        }
+    }
+
+    KgRecallPlan {
+        query_id: query.id.clone(),
+        contract: KG_READ_RECALL_CONTRACT.to_string(),
+        candidate_count: candidates.len(),
+        entity_match_count: entity_matches.len(),
+        relation_neighborhood_count: relation_neighborhoods.len(),
+        timeline_slice_count: timeline_slices.len(),
+        evidence_path_count: evidence_paths.len(),
+        read_only: true,
+        external_read_allowed: false,
+        network_call_allowed: false,
+        live_write_allowed: false,
+        entity_matches,
+        relation_neighborhoods,
+        timeline_slices,
+        evidence_paths,
+    }
+}
+
 pub fn plan_external_adapter_dry_run(
     candidate: &KgWriteCandidate,
     source_plan: &KgWritePlan,
@@ -985,6 +1181,167 @@ fn matches_env_true(value: &str) -> bool {
         value.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on" | "enabled" | "allow" | "allowed" | "approved" | "ready"
     )
+}
+
+fn entity_matches_recall_query(entity: &KgEntity, query: &KgReadQuery) -> bool {
+    if let Some(focus) = query
+        .focus_entity_label
+        .as_ref()
+        .filter(|label| !label.trim().is_empty())
+    {
+        if entity_text_matches(entity, focus) {
+            return true;
+        }
+    }
+
+    entity_text_matches(entity, &query.query_text)
+}
+
+fn relation_matches_recall_query(
+    relation: &KgRelation,
+    query: &KgReadQuery,
+    entity_by_id: &BTreeMap<String, KgEntity>,
+) -> bool {
+    if !query.relation_kinds.is_empty() && !query.relation_kinds.contains(&relation.kind) {
+        return false;
+    }
+
+    let has_text_filter = !query.query_text.trim().is_empty()
+        || query
+            .focus_entity_label
+            .as_ref()
+            .is_some_and(|label| !label.trim().is_empty());
+    if !has_text_filter {
+        return true;
+    }
+
+    let focus_matches = query
+        .focus_entity_label
+        .as_ref()
+        .is_some_and(|focus| relation_endpoint_matches(relation, focus, entity_by_id));
+    let query_matches = relation_endpoint_matches(relation, &query.query_text, entity_by_id)
+        || text_matches_query(&relation.id, &query.query_text)
+        || text_matches_query(&format!("{:?}", relation.kind), &query.query_text);
+
+    focus_matches || query_matches
+}
+
+fn relation_endpoint_matches(
+    relation: &KgRelation,
+    query_text: &str,
+    entity_by_id: &BTreeMap<String, KgEntity>,
+) -> bool {
+    text_matches_query(&relation.from_entity_id, query_text)
+        || text_matches_query(&relation.to_entity_id, query_text)
+        || entity_by_id
+            .get(&relation.from_entity_id)
+            .is_some_and(|entity| entity_text_matches(entity, query_text))
+        || entity_by_id
+            .get(&relation.to_entity_id)
+            .is_some_and(|entity| entity_text_matches(entity, query_text))
+}
+
+fn entity_text_matches(entity: &KgEntity, query_text: &str) -> bool {
+    text_matches_query(&entity.id, query_text)
+        || text_matches_query(&entity.label, query_text)
+        || entity
+            .aliases
+            .iter()
+            .any(|alias| text_matches_query(alias, query_text))
+}
+
+fn text_matches_query(value: &str, query_text: &str) -> bool {
+    let normalized_value = value.to_ascii_lowercase();
+    let normalized_query = query_text.trim().to_ascii_lowercase();
+    if normalized_query.is_empty() {
+        return true;
+    }
+    if normalized_value.contains(&normalized_query) {
+        return true;
+    }
+
+    normalized_query
+        .split(|ch: char| !ch.is_alphanumeric())
+        .filter(|token| token.len() >= 2)
+        .any(|token| normalized_value.contains(token))
+}
+
+fn matched_entity_label(entity: &KgEntity, query: &KgReadQuery) -> String {
+    if let Some(focus) = query.focus_entity_label.as_ref() {
+        if text_matches_query(&entity.label, focus) {
+            return entity.label.clone();
+        }
+    }
+    if text_matches_query(&entity.label, &query.query_text) {
+        return entity.label.clone();
+    }
+    entity
+        .aliases
+        .iter()
+        .find(|alias| {
+            query
+                .focus_entity_label
+                .as_ref()
+                .is_some_and(|focus| text_matches_query(alias, focus))
+                || text_matches_query(alias, &query.query_text)
+        })
+        .cloned()
+        .unwrap_or_else(|| entity.label.clone())
+}
+
+fn max_relation_confidence_for_entity(
+    entity: &KgEntity,
+    candidate: &KgWriteCandidate,
+) -> KgConfidence {
+    candidate
+        .relations
+        .iter()
+        .filter(|relation| {
+            relation.from_entity_id == entity.id || relation.to_entity_id == entity.id
+        })
+        .map(|relation| relation.confidence)
+        .max()
+        .unwrap_or(KgConfidence::ZERO)
+}
+
+fn evidence_span_count_for_entity(entity: &KgEntity, candidate: &KgWriteCandidate) -> usize {
+    let mut spans = candidate_source_spans(candidate);
+    extend_unique_source_spans(&mut spans, &entity.source_spans);
+    spans.len()
+}
+
+fn evidence_span_count_for_relation(relation: &KgRelation, candidate: &KgWriteCandidate) -> usize {
+    let mut spans = candidate_source_spans(candidate);
+    extend_unique_source_spans(&mut spans, &relation.source_spans);
+    spans.len()
+}
+
+fn candidate_source_spans(candidate: &KgWriteCandidate) -> Vec<KgSourceSpan> {
+    let mut spans = Vec::new();
+    extend_unique_source_spans(&mut spans, &candidate.provenance.source_spans);
+    extend_unique_source_spans(&mut spans, &candidate.episode.source_spans);
+    for entity in &candidate.entities {
+        extend_unique_source_spans(&mut spans, &entity.source_spans);
+    }
+    for relation in &candidate.relations {
+        extend_unique_source_spans(&mut spans, &relation.source_spans);
+    }
+    spans
+}
+
+fn extend_unique_source_spans(spans: &mut Vec<KgSourceSpan>, next_spans: &[KgSourceSpan]) {
+    for span in next_spans {
+        if !spans.contains(span) {
+            spans.push(span.clone());
+        }
+    }
+}
+
+fn label_for_entity_id(entity_id: &str, entity_by_id: &BTreeMap<String, KgEntity>) -> String {
+    entity_by_id
+        .get(entity_id)
+        .map(|entity| entity.label.clone())
+        .unwrap_or_else(|| entity_id.to_string())
 }
 
 fn default_schema_version() -> String {
@@ -1413,6 +1770,68 @@ mod tests {
         assert!(!audit.external_write_attempted);
         assert!(!audit.live_write_attempted);
         assert_eq!(audit.persisted_records, 0);
+    }
+
+    #[test]
+    fn kg_recall_plan_is_read_only_and_local() {
+        let candidate = sample_candidate();
+        let query = KgReadQuery {
+            id: "kg-recall:hepta".to_string(),
+            contract: KG_READ_RECALL_CONTRACT.to_string(),
+            query_text: "Hepta".to_string(),
+            focus_entity_label: Some("Hepta".to_string()),
+            relation_kinds: Vec::new(),
+            max_entities: 4,
+            max_relations: 4,
+            max_evidence_paths: 4,
+        };
+
+        let plan = plan_kg_recall(&query, &[candidate]);
+
+        assert_eq!(plan.contract, KG_READ_RECALL_CONTRACT);
+        assert_eq!(plan.candidate_count, 1);
+        assert!(plan.entity_match_count > 0);
+        assert!(plan.relation_neighborhood_count > 0);
+        assert!(plan.timeline_slice_count > 0);
+        assert!(plan.evidence_path_count > 0);
+        assert!(plan.read_only);
+        assert!(!plan.external_read_allowed);
+        assert!(!plan.network_call_allowed);
+        assert!(!plan.live_write_allowed);
+    }
+
+    #[test]
+    fn kg_recall_plan_filters_focus_entity_and_keeps_evidence_paths() {
+        let candidate = sample_candidate();
+        let query = KgReadQuery {
+            id: "kg-recall:knowledge-graph-supports".to_string(),
+            contract: KG_READ_RECALL_CONTRACT.to_string(),
+            query_text: "knowledge graph".to_string(),
+            focus_entity_label: Some("OpenClaw Hepta".to_string()),
+            relation_kinds: vec![KgRelationKind::Supports],
+            max_entities: 2,
+            max_relations: 2,
+            max_evidence_paths: 2,
+        };
+
+        let plan = plan_kg_recall(&query, &[candidate]);
+
+        assert_eq!(plan.entity_match_count, 1);
+        assert_eq!(plan.entity_matches[0].entity.id, "project:hepta");
+        assert_eq!(plan.relation_neighborhood_count, 1);
+        assert_eq!(
+            plan.relation_neighborhoods[0].relation.kind,
+            KgRelationKind::Supports
+        );
+        assert_eq!(plan.evidence_path_count, 1);
+        assert!(
+            plan.evidence_paths[0]
+                .source_spans
+                .iter()
+                .any(|span| span.source_id == "turn:21179")
+        );
+        assert!(plan.read_only);
+        assert!(!plan.network_call_allowed);
     }
 
     fn sample_candidate() -> KgWriteCandidate {

@@ -7,10 +7,11 @@ use hepta_kg::{
     KgExternalAdapterClientBlocker, KgExternalAdapterClientRequest, KgExternalAdapterConfigEnvRead,
     KgExternalAdapterDryRunPlan, KgExternalAdapterKind, KgExternalAdapterStagingBlocker,
     KgExternalAdapterStagingConfig, KgExternalAdapterStagingPlan, KgOperatorReviewState,
-    KgProvenance, KgRedactionState, KgRelation, KgRelationKind, KgSourceKind, KgSourceSpan,
-    KgTemporalValidity, KgWriteCandidate, KgWriteMode, KgWritePlan, KgWritePolicy,
-    default_external_adapter_staging_configs, plan_external_adapter_dry_run,
-    plan_external_adapter_staging_gate, plan_kg_write, preview_disabled_external_adapter_write,
+    KgProvenance, KgReadQuery, KgRecallPlan, KgRedactionState, KgRelation, KgRelationKind,
+    KgSourceKind, KgSourceSpan, KgTemporalValidity, KgWriteCandidate, KgWriteMode, KgWritePlan,
+    KgWritePolicy, default_external_adapter_staging_configs, plan_external_adapter_dry_run,
+    plan_external_adapter_staging_gate, plan_kg_recall, plan_kg_write,
+    preview_disabled_external_adapter_write,
     read_all_external_adapter_staging_configs_from_env_pairs,
 };
 use serde::{Deserialize, Serialize};
@@ -233,6 +234,54 @@ pub struct MemoryKgAdapterConfigEnvReport {
     pub live_write_attempted_count: usize,
     pub reads: Vec<KgExternalAdapterConfigEnvRead>,
     pub checks: MemoryKgAdapterConfigEnvChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgRecallPlanChecks {
+    pub candidate_count_nonzero: bool,
+    pub entity_matches_nonzero: bool,
+    pub relation_neighborhoods_nonzero: bool,
+    pub timeline_slices_nonzero: bool,
+    pub evidence_paths_nonzero: bool,
+    pub all_plans_are_read_only: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgRecallPlanChecks {
+    pub fn ready(&self) -> bool {
+        self.candidate_count_nonzero
+            && self.entity_matches_nonzero
+            && self.relation_neighborhoods_nonzero
+            && self.timeline_slices_nonzero
+            && self.evidence_paths_nonzero
+            && self.all_plans_are_read_only
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgRecallPlanReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub sample_run: bool,
+    pub query_count: usize,
+    pub candidate_count: usize,
+    pub entity_match_count: usize,
+    pub relation_neighborhood_count: usize,
+    pub timeline_slice_count: usize,
+    pub evidence_path_count: usize,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub plans: Vec<KgRecallPlan>,
+    pub checks: MemoryKgRecallPlanChecks,
     pub next_phase: &'static str,
 }
 
@@ -615,6 +664,108 @@ where
         checks,
         next_phase: "bind approved env snapshots to staged adapter clients without reading credential values",
     }
+}
+
+pub fn memory_kg_recall_plan_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgRecallPlanReport {
+    let candidates = kg_write_candidates_from_memory_units(
+        memory_units,
+        "hepta-intelligence",
+        "memory-kg-recall",
+    );
+    let queries = memory_kg_recall_queries_for_candidates(&candidates);
+    let plans = queries
+        .iter()
+        .map(|query| plan_kg_recall(query, &candidates))
+        .collect::<Vec<_>>();
+
+    let entity_match_count = plans.iter().map(|plan| plan.entity_match_count).sum();
+    let relation_neighborhood_count = plans
+        .iter()
+        .map(|plan| plan.relation_neighborhood_count)
+        .sum();
+    let timeline_slice_count = plans.iter().map(|plan| plan.timeline_slice_count).sum();
+    let evidence_path_count = plans.iter().map(|plan| plan.evidence_path_count).sum();
+    let external_read_enabled_count = plans
+        .iter()
+        .filter(|plan| plan.external_read_allowed)
+        .count();
+    let network_call_enabled_count = plans
+        .iter()
+        .filter(|plan| plan.network_call_allowed)
+        .count();
+    let live_write_enabled_count = plans.iter().filter(|plan| plan.live_write_allowed).count();
+    let checks = MemoryKgRecallPlanChecks {
+        candidate_count_nonzero: !candidates.is_empty(),
+        entity_matches_nonzero: entity_match_count > 0,
+        relation_neighborhoods_nonzero: relation_neighborhood_count > 0,
+        timeline_slices_nonzero: timeline_slice_count > 0,
+        evidence_paths_nonzero: evidence_path_count > 0,
+        all_plans_are_read_only: plans.iter().all(|plan| plan.read_only),
+        no_external_reads_enabled: external_read_enabled_count == 0,
+        no_network_calls_enabled: network_call_enabled_count == 0,
+        no_live_writes_enabled: live_write_enabled_count == 0,
+    };
+
+    MemoryKgRecallPlanReport {
+        product: "Hepta",
+        command: "memory-kg-recall-plan",
+        contract: hepta_kg::KG_READ_RECALL_CONTRACT,
+        status: if checks.ready() { "ready" } else { "attention" },
+        sample_run,
+        query_count: queries.len(),
+        candidate_count: candidates.len(),
+        entity_match_count,
+        relation_neighborhood_count,
+        timeline_slice_count,
+        evidence_path_count,
+        external_read_enabled_count,
+        network_call_enabled_count,
+        live_write_enabled_count,
+        plans,
+        checks,
+        next_phase: "bind reviewed read plans to local recall surfaces before enabling external adapter reads",
+    }
+}
+
+fn memory_kg_recall_queries_for_candidates(candidates: &[KgWriteCandidate]) -> Vec<KgReadQuery> {
+    let focus_label = candidates
+        .iter()
+        .flat_map(|candidate| candidate.entities.iter())
+        .find(|entity| !entity.label.trim().is_empty())
+        .map(|entity| entity.label.clone())
+        .unwrap_or_else(|| "memory".to_string());
+
+    vec![
+        KgReadQuery {
+            id: "kg-recall-query:focus-entity".to_string(),
+            contract: hepta_kg::KG_READ_RECALL_CONTRACT.to_string(),
+            query_text: focus_label.clone(),
+            focus_entity_label: Some(focus_label),
+            relation_kinds: Vec::new(),
+            max_entities: 8,
+            max_relations: 8,
+            max_evidence_paths: 4,
+        },
+        KgReadQuery {
+            id: "kg-recall-query:memory-neighborhood".to_string(),
+            contract: hepta_kg::KG_READ_RECALL_CONTRACT.to_string(),
+            query_text: "memory".to_string(),
+            focus_entity_label: None,
+            relation_kinds: vec![
+                KgRelationKind::Mentions,
+                KgRelationKind::RelatedTo,
+                KgRelationKind::DerivedFrom,
+                KgRelationKind::TriggeredBy,
+                KgRelationKind::TemporalContinuation,
+            ],
+            max_entities: 12,
+            max_relations: 12,
+            max_evidence_paths: 6,
+        },
+    ]
 }
 
 fn adapter_staging_config_is_closed(config: &KgExternalAdapterStagingConfig) -> bool {
@@ -1066,5 +1217,47 @@ mod tests {
         assert_eq!(report.live_write_attempted_count, 0);
         assert!(!report.checks.all_configs_closed_by_default);
         assert!(report.checks.no_credential_values_captured);
+    }
+
+    #[test]
+    fn memory_atoms_emit_read_only_kg_recall_plans() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_recall_plan_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.query_count, 2);
+        assert_eq!(report.candidate_count, atom_report.atoms.len());
+        assert!(report.entity_match_count > 0);
+        assert!(report.relation_neighborhood_count > 0);
+        assert!(report.timeline_slice_count > 0);
+        assert!(report.evidence_path_count > 0);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.plans.iter().all(|plan| plan.read_only));
+        assert!(
+            report
+                .plans
+                .iter()
+                .all(|plan| !plan.external_read_allowed && !plan.network_call_allowed)
+        );
+    }
+
+    #[test]
+    fn memory_kg_recall_plans_keep_evidence_paths_without_writes() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_recall_plan_report(&atom_report.atoms, true);
+
+        assert!(
+            report
+                .plans
+                .iter()
+                .flat_map(|plan| plan.evidence_paths.iter())
+                .any(|path| !path.source_spans.is_empty())
+        );
+        assert!(report.checks.no_live_writes_enabled);
+        assert!(report.checks.no_external_reads_enabled);
+        assert!(report.checks.no_network_calls_enabled);
     }
 }
