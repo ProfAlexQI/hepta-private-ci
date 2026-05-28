@@ -3,9 +3,10 @@ use hepta_core::{
     MemoryUnitKind,
 };
 use hepta_kg::{
-    KgConfidence, KgEntity, KgEntityKind, KgEpisode, KgEpisodeKind, KgOperatorReviewState,
-    KgProvenance, KgRedactionState, KgRelation, KgRelationKind, KgSourceKind, KgSourceSpan,
-    KgTemporalValidity, KgWriteCandidate, KgWriteMode, KgWritePlan, KgWritePolicy, plan_kg_write,
+    KgConfidence, KgEntity, KgEntityKind, KgEpisode, KgEpisodeKind, KgExternalAdapterDryRunPlan,
+    KgExternalAdapterKind, KgOperatorReviewState, KgProvenance, KgRedactionState, KgRelation,
+    KgRelationKind, KgSourceKind, KgSourceSpan, KgTemporalValidity, KgWriteCandidate, KgWriteMode,
+    KgWritePlan, KgWritePolicy, plan_external_adapter_dry_run, plan_kg_write,
 };
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +48,45 @@ pub struct MemoryKgWriteCandidateReport {
     pub candidates: Vec<KgWriteCandidate>,
     pub plans: Vec<KgWritePlan>,
     pub checks: MemoryKgWriteCandidateChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgAdapterDryRunChecks {
+    pub candidate_count_nonzero: bool,
+    pub all_supported_adapters_projected: bool,
+    pub all_projections_have_records: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_external_writes_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgAdapterDryRunChecks {
+    pub fn ready(&self) -> bool {
+        self.candidate_count_nonzero
+            && self.all_supported_adapters_projected
+            && self.all_projections_have_records
+            && self.no_network_calls_enabled
+            && self.no_external_writes_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgAdapterDryRunReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub sample_run: bool,
+    pub candidate_count: usize,
+    pub adapter_count: usize,
+    pub projection_count: usize,
+    pub network_call_enabled_count: usize,
+    pub external_write_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub projections: Vec<KgExternalAdapterDryRunPlan>,
+    pub checks: MemoryKgAdapterDryRunChecks,
     pub next_phase: &'static str,
 }
 
@@ -96,6 +136,64 @@ pub fn memory_kg_write_candidate_report(
         plans,
         checks,
         next_phase: "wire reviewed KgWriteCandidate batches into a durable adapter such as Graphiti or Neo4j",
+    }
+}
+
+pub fn memory_kg_adapter_dry_run_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgAdapterDryRunReport {
+    let candidate_report = memory_kg_write_candidate_report(memory_units, sample_run);
+    let projections = candidate_report
+        .candidates
+        .iter()
+        .zip(candidate_report.plans.iter())
+        .flat_map(|(candidate, plan)| {
+            KgExternalAdapterKind::ALL
+                .into_iter()
+                .map(move |adapter| plan_external_adapter_dry_run(candidate, plan, adapter))
+        })
+        .collect::<Vec<_>>();
+    let network_call_enabled_count = projections
+        .iter()
+        .filter(|projection| projection.network_call_allowed)
+        .count();
+    let external_write_enabled_count = projections
+        .iter()
+        .filter(|projection| projection.external_write_allowed)
+        .count();
+    let live_write_enabled_count = projections
+        .iter()
+        .filter(|projection| projection.live_write_allowed)
+        .count();
+    let adapter_count = KgExternalAdapterKind::ALL.len();
+    let checks = MemoryKgAdapterDryRunChecks {
+        candidate_count_nonzero: candidate_report.candidate_count > 0,
+        all_supported_adapters_projected: projections.len()
+            == candidate_report.candidate_count * adapter_count,
+        all_projections_have_records: projections
+            .iter()
+            .all(|projection| projection.projected_total_records > 0),
+        no_network_calls_enabled: network_call_enabled_count == 0,
+        no_external_writes_enabled: external_write_enabled_count == 0,
+        no_live_writes_enabled: live_write_enabled_count == 0,
+    };
+
+    MemoryKgAdapterDryRunReport {
+        product: "Hepta",
+        command: "memory-kg-adapter-dry-run",
+        contract: hepta_kg::KG_EXTERNAL_ADAPTER_DRY_RUN_CONTRACT,
+        status: if checks.ready() { "ready" } else { "attention" },
+        sample_run,
+        candidate_count: candidate_report.candidate_count,
+        adapter_count,
+        projection_count: projections.len(),
+        network_call_enabled_count,
+        external_write_enabled_count,
+        live_write_enabled_count,
+        projections,
+        checks,
+        next_phase: "replace dry-run adapter projections with reviewed adapter-specific staging plans",
     }
 }
 
@@ -374,5 +472,38 @@ mod tests {
             KgOperatorReviewState::NotReviewed
         );
         assert!(!plan.live_write_allowed);
+    }
+
+    #[test]
+    fn memory_atoms_emit_external_adapter_dry_run_projections_without_side_effects() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_adapter_dry_run_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.candidate_count, atom_report.atoms.len());
+        assert_eq!(report.adapter_count, 3);
+        assert_eq!(report.projection_count, report.candidate_count * 3);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.external_write_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(
+            report
+                .projections
+                .iter()
+                .any(|plan| plan.adapter_id == "graphiti")
+        );
+        assert!(
+            report
+                .projections
+                .iter()
+                .any(|plan| plan.adapter_id == "neo4j")
+        );
+        assert!(
+            report
+                .projections
+                .iter()
+                .any(|plan| plan.adapter_id == "cocoindex")
+        );
     }
 }

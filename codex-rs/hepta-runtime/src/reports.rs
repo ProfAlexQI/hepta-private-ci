@@ -659,6 +659,67 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_adapter_dry_run_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_adapter_dry_run_overview();
+        let mut lines = vec![
+            format!("Hepta KG adapter dry-run: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!("- sample run: {}", report.sample_run),
+            format!("- write candidates: {}", report.candidate_count),
+            format!("- supported adapters: {}", report.adapter_count),
+            format!("- adapter projections: {}", report.projection_count),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!(
+                "- external writes enabled: {}",
+                report.external_write_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!(
+                "- all supported adapters projected: {}",
+                report.checks.all_supported_adapters_projected
+            ),
+            format!(
+                "- all projections have records: {}",
+                report.checks.all_projections_have_records
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no external writes enabled: {}",
+                report.checks.no_external_writes_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Adapter projections:".to_string(),
+        ];
+
+        if report.projections.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.projections.iter().take(6).map(|projection| {
+                format!(
+                    "  - adapter={} candidate={} family={} records={} network={} write={}",
+                    projection.adapter_id,
+                    projection.candidate_id,
+                    projection.projection_family,
+                    projection.projected_total_records,
+                    projection.network_call_allowed,
+                    projection.external_write_allowed
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2181,6 +2242,29 @@ mod tests {
         assert!(rendered.contains("- no live write enabled: true"));
         assert!(rendered.contains("- no external side effects: true"));
         assert!(rendered.contains("Candidates:"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_adapter_dry_run_summary_renders_no_external_write_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_adapter_dry_run_summary()
+            .expect("kg adapter dry-run summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG adapter dry-run: ready"));
+        assert!(rendered.contains("- contract: hepta-kg-external-adapter-dry-run-v0"));
+        assert!(rendered.contains("- supported adapters: 3"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- external writes enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- no network calls enabled: true"));
+        assert!(rendered.contains("- no external writes enabled: true"));
+        assert!(rendered.contains("- no live writes enabled: true"));
+        assert!(rendered.contains("adapter=graphiti"));
+        assert!(rendered.contains("adapter=neo4j"));
+        assert!(rendered.contains("adapter=cocoindex"));
     }
 
     #[tokio::test]

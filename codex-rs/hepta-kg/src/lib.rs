@@ -274,6 +274,66 @@ pub enum KgWriteBlocker {
     PostWriteValidationRequired,
 }
 
+pub const KG_EXTERNAL_ADAPTER_DRY_RUN_CONTRACT: &str = "hepta-kg-external-adapter-dry-run-v0";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KgExternalAdapterKind {
+    Graphiti,
+    Neo4j,
+    CocoIndex,
+}
+
+impl KgExternalAdapterKind {
+    pub const ALL: [Self; 3] = [Self::Graphiti, Self::Neo4j, Self::CocoIndex];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Graphiti => "graphiti",
+            Self::Neo4j => "neo4j",
+            Self::CocoIndex => "cocoindex",
+        }
+    }
+
+    pub fn projection_family(self) -> &'static str {
+        match self {
+            Self::Graphiti => "episode-entity-relation-temporal-memory",
+            Self::Neo4j => "node-relationship-property-graph",
+            Self::CocoIndex => "document-chunk-entity-index",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgExternalAdapterDryRunPlan {
+    pub adapter: KgExternalAdapterKind,
+    pub adapter_id: String,
+    pub projection_family: String,
+    pub contract: String,
+    pub candidate_id: String,
+    pub projected_episode_records: usize,
+    pub projected_entity_records: usize,
+    pub projected_relation_records: usize,
+    pub projected_total_records: usize,
+    pub network_call_allowed: bool,
+    pub external_write_allowed: bool,
+    pub live_write_allowed: bool,
+    #[serde(default)]
+    pub blockers: Vec<KgExternalAdapterBlocker>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KgExternalAdapterBlocker {
+    AdapterDryRunGate,
+    NetworkDisabled,
+    ExternalWriteDisabled,
+    AdapterReviewRequired,
+    SourceWritePlanNotLiveReady,
+    MissingGraphPayload,
+    MissingSourceProvenance,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KgWriteAudit {
     pub candidate_id: String,
@@ -367,6 +427,51 @@ pub fn plan_kg_write(candidate: &KgWriteCandidate, policy: &KgWritePolicy) -> Kg
         live_write_allowed: policy.mode == KgWriteMode::LiveWrite && blockers.is_empty(),
         review_required,
         external_side_effects_allowed: policy.allow_external_side_effects,
+        blockers,
+    }
+}
+
+pub fn plan_external_adapter_dry_run(
+    candidate: &KgWriteCandidate,
+    source_plan: &KgWritePlan,
+    adapter: KgExternalAdapterKind,
+) -> KgExternalAdapterDryRunPlan {
+    let mut blockers = vec![
+        KgExternalAdapterBlocker::AdapterDryRunGate,
+        KgExternalAdapterBlocker::NetworkDisabled,
+        KgExternalAdapterBlocker::ExternalWriteDisabled,
+        KgExternalAdapterBlocker::AdapterReviewRequired,
+    ];
+
+    if !source_plan.ready_for_live_write() {
+        blockers.push(KgExternalAdapterBlocker::SourceWritePlanNotLiveReady);
+    }
+    if !candidate.has_graph_payload() {
+        blockers.push(KgExternalAdapterBlocker::MissingGraphPayload);
+    }
+    if !candidate.provenance.has_source_evidence() {
+        blockers.push(KgExternalAdapterBlocker::MissingSourceProvenance);
+    }
+
+    let projected_episode_records = usize::from(!candidate.episode.id.trim().is_empty());
+    let projected_entity_records = candidate.entities.len();
+    let projected_relation_records = candidate.relations.len();
+    let projected_total_records =
+        projected_episode_records + projected_entity_records + projected_relation_records;
+
+    KgExternalAdapterDryRunPlan {
+        adapter,
+        adapter_id: adapter.id().to_string(),
+        projection_family: adapter.projection_family().to_string(),
+        contract: KG_EXTERNAL_ADAPTER_DRY_RUN_CONTRACT.to_string(),
+        candidate_id: candidate.id.clone(),
+        projected_episode_records,
+        projected_entity_records,
+        projected_relation_records,
+        projected_total_records,
+        network_call_allowed: false,
+        external_write_allowed: false,
+        live_write_allowed: false,
         blockers,
     }
 }
@@ -475,6 +580,58 @@ mod tests {
 
         assert_eq!(parsed, candidate);
         assert_eq!(parsed.schema_version, DEFAULT_KG_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn external_adapter_dry_run_projects_without_network_or_writes() {
+        let candidate = sample_candidate();
+        let write_plan = plan_kg_write(&candidate, &KgWritePolicy::default());
+
+        let plan =
+            plan_external_adapter_dry_run(&candidate, &write_plan, KgExternalAdapterKind::Graphiti);
+
+        assert_eq!(plan.adapter_id, "graphiti");
+        assert_eq!(
+            plan.projection_family,
+            "episode-entity-relation-temporal-memory"
+        );
+        assert_eq!(plan.projected_episode_records, 1);
+        assert_eq!(plan.projected_entity_records, 1);
+        assert_eq!(plan.projected_relation_records, 1);
+        assert_eq!(plan.projected_total_records, 3);
+        assert!(!plan.network_call_allowed);
+        assert!(!plan.external_write_allowed);
+        assert!(!plan.live_write_allowed);
+        assert!(
+            plan.blockers
+                .contains(&KgExternalAdapterBlocker::AdapterDryRunGate)
+        );
+        assert!(
+            plan.blockers
+                .contains(&KgExternalAdapterBlocker::NetworkDisabled)
+        );
+        assert!(
+            plan.blockers
+                .contains(&KgExternalAdapterBlocker::ExternalWriteDisabled)
+        );
+    }
+
+    #[test]
+    fn external_adapter_dry_run_covers_graphiti_neo4j_and_cocoindex() {
+        let candidate = sample_candidate();
+        let write_plan = plan_kg_write(&candidate, &KgWritePolicy::default());
+        let plans = KgExternalAdapterKind::ALL
+            .into_iter()
+            .map(|adapter| plan_external_adapter_dry_run(&candidate, &write_plan, adapter))
+            .collect::<Vec<_>>();
+
+        assert_eq!(plans.len(), 3);
+        assert!(plans.iter().all(|plan| !plan.network_call_allowed));
+        assert!(plans.iter().all(|plan| !plan.external_write_allowed));
+        assert!(plans.iter().all(|plan| !plan.live_write_allowed));
+        assert!(plans.iter().any(|plan| plan.adapter_id == "graphiti"));
+        assert!(plans.iter().any(|plan| plan.adapter_id == "neo4j"));
+        assert!(plans.iter().any(|plan| plan.adapter_id == "cocoindex"));
     }
 
     fn sample_candidate() -> KgWriteCandidate {
