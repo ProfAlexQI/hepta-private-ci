@@ -40,6 +40,8 @@ pub const MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-redaction-diff-v0";
 pub const MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-prompt-preview-rollback-kill-switch-v0";
+pub const MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT: &str =
+    "hepta-intelligence-memory-kg-prompt-preview-context-handoff-v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryKgWriteCandidateChecks {
@@ -1198,6 +1200,111 @@ pub struct MemoryKgPromptPreviewRollbackKillSwitchReport {
     pub blockers: Vec<MemoryKgPromptPreviewRollbackKillSwitchBlocker>,
     pub controls: Vec<MemoryKgPromptPreviewRollbackKillSwitchControl>,
     pub checks: MemoryKgPromptPreviewRollbackKillSwitchChecks,
+    pub next_phase: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MemoryKgPromptPreviewContextHandoffBlocker {
+    SafetyGateNotReady,
+    OperatorEvidenceIncomplete,
+    SafetyControlsIncomplete,
+    RedactedDiffReviewMissing,
+    ContextHandoffApprovalMissing,
+    PromptPreviewDisabled,
+    ContextInjectionDisabled,
+    ModelInvocationDisabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewContextHandoffRequirement {
+    pub requirement_index: usize,
+    pub requirement: &'static str,
+    pub requirement_kind: &'static str,
+    pub present: bool,
+    pub redacted_evidence_ref: String,
+    pub blocks_context_injection: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewContextHandoffChecks {
+    pub safety_gate_contract_linked: bool,
+    pub safety_gate_checks_ready: bool,
+    pub safety_gate_blocked: bool,
+    pub operator_evidence_incomplete: bool,
+    pub safety_controls_incomplete: bool,
+    pub handoff_requirements_nonzero: bool,
+    pub handoff_requirements_all_missing_and_blocking: bool,
+    pub redacted_refs_only: bool,
+    pub redacted_diff_review_required: bool,
+    pub context_handoff_approval_required: bool,
+    pub prompt_preview_disabled: bool,
+    pub prompt_payload_not_materialized: bool,
+    pub context_injection_disabled: bool,
+    pub no_model_invoked: bool,
+    pub no_context_injection_performed: bool,
+    pub no_external_reads_enabled: bool,
+    pub no_network_calls_enabled: bool,
+    pub no_live_writes_enabled: bool,
+}
+
+impl MemoryKgPromptPreviewContextHandoffChecks {
+    pub fn ready(&self) -> bool {
+        self.safety_gate_contract_linked
+            && self.safety_gate_checks_ready
+            && self.safety_gate_blocked
+            && self.operator_evidence_incomplete
+            && self.safety_controls_incomplete
+            && self.handoff_requirements_nonzero
+            && self.handoff_requirements_all_missing_and_blocking
+            && self.redacted_refs_only
+            && self.redacted_diff_review_required
+            && self.context_handoff_approval_required
+            && self.prompt_preview_disabled
+            && self.prompt_payload_not_materialized
+            && self.context_injection_disabled
+            && self.no_model_invoked
+            && self.no_context_injection_performed
+            && self.no_external_reads_enabled
+            && self.no_network_calls_enabled
+            && self.no_live_writes_enabled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryKgPromptPreviewContextHandoffReport {
+    pub product: &'static str,
+    pub command: &'static str,
+    pub contract: &'static str,
+    pub status: &'static str,
+    pub verdict: &'static str,
+    pub sample_run: bool,
+    pub safety_gate_contract: &'static str,
+    pub safety_gate_status: &'static str,
+    pub redaction_diff_contract: &'static str,
+    pub required_evidence_count: usize,
+    pub missing_evidence_count: usize,
+    pub required_control_count: usize,
+    pub missing_control_count: usize,
+    pub handoff_requirement_count: usize,
+    pub missing_handoff_requirement_count: usize,
+    pub redacted_ref_count: usize,
+    pub raw_prompt_diff_count: usize,
+    pub prompt_text_included_count: usize,
+    pub payload_text_included_count: usize,
+    pub redacted_diff_review_present: bool,
+    pub context_handoff_approval_present: bool,
+    pub prompt_preview_allowed: bool,
+    pub prompt_preview_rendered: bool,
+    pub prompt_payload_materialized: bool,
+    pub context_injection_allowed: bool,
+    pub context_injection_performed: bool,
+    pub model_invoked: bool,
+    pub external_read_enabled_count: usize,
+    pub network_call_enabled_count: usize,
+    pub live_write_enabled_count: usize,
+    pub blockers: Vec<MemoryKgPromptPreviewContextHandoffBlocker>,
+    pub requirements: Vec<MemoryKgPromptPreviewContextHandoffRequirement>,
+    pub checks: MemoryKgPromptPreviewContextHandoffChecks,
     pub next_phase: &'static str,
 }
 
@@ -2640,6 +2747,129 @@ pub fn memory_kg_prompt_preview_rollback_kill_switch_report(
     }
 }
 
+pub fn memory_kg_prompt_preview_context_handoff_report(
+    memory_units: &[MemoryUnit],
+    sample_run: bool,
+) -> MemoryKgPromptPreviewContextHandoffReport {
+    let safety_report =
+        memory_kg_prompt_preview_rollback_kill_switch_report(memory_units, sample_run);
+    let requirements = memory_kg_prompt_preview_context_handoff_requirements();
+    let handoff_requirement_count = requirements.len();
+    let missing_handoff_requirement_count = requirements
+        .iter()
+        .filter(|requirement| !requirement.present)
+        .count();
+    let redacted_diff_review_present = false;
+    let context_handoff_approval_present = false;
+    let prompt_preview_allowed = false;
+    let prompt_preview_rendered = false;
+    let prompt_payload_materialized = false;
+    let context_injection_allowed = false;
+    let context_injection_performed = false;
+    let model_invoked = false;
+
+    let mut blockers = Vec::new();
+    if !safety_report.checks.ready() || safety_report.status != "blocked" {
+        blockers.push(MemoryKgPromptPreviewContextHandoffBlocker::SafetyGateNotReady);
+    }
+    if safety_report.missing_evidence_count > 0 {
+        blockers.push(MemoryKgPromptPreviewContextHandoffBlocker::OperatorEvidenceIncomplete);
+    }
+    if safety_report.missing_control_count > 0 {
+        blockers.push(MemoryKgPromptPreviewContextHandoffBlocker::SafetyControlsIncomplete);
+    }
+    if !redacted_diff_review_present {
+        blockers.push(MemoryKgPromptPreviewContextHandoffBlocker::RedactedDiffReviewMissing);
+    }
+    if !context_handoff_approval_present {
+        blockers.push(MemoryKgPromptPreviewContextHandoffBlocker::ContextHandoffApprovalMissing);
+    }
+    if !prompt_preview_allowed {
+        blockers.push(MemoryKgPromptPreviewContextHandoffBlocker::PromptPreviewDisabled);
+    }
+    if !context_injection_allowed {
+        blockers.push(MemoryKgPromptPreviewContextHandoffBlocker::ContextInjectionDisabled);
+    }
+    if !model_invoked {
+        blockers.push(MemoryKgPromptPreviewContextHandoffBlocker::ModelInvocationDisabled);
+    }
+
+    let checks = MemoryKgPromptPreviewContextHandoffChecks {
+        safety_gate_contract_linked: safety_report.contract
+            == MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT,
+        safety_gate_checks_ready: safety_report.checks.ready(),
+        safety_gate_blocked: safety_report.status == "blocked",
+        operator_evidence_incomplete: safety_report.missing_evidence_count > 0,
+        safety_controls_incomplete: safety_report.missing_control_count > 0,
+        handoff_requirements_nonzero: handoff_requirement_count > 0,
+        handoff_requirements_all_missing_and_blocking: handoff_requirement_count > 0
+            && missing_handoff_requirement_count == handoff_requirement_count
+            && requirements
+                .iter()
+                .all(|requirement| !requirement.present && requirement.blocks_context_injection),
+        redacted_refs_only: safety_report.redacted_ref_count > 0
+            && safety_report.raw_prompt_diff_count == 0
+            && safety_report.prompt_text_included_count == 0
+            && safety_report.payload_text_included_count == 0
+            && requirements.iter().all(|requirement| {
+                requirement
+                    .redacted_evidence_ref
+                    .starts_with("missing:kg-prompt-preview-context-handoff:")
+            }),
+        redacted_diff_review_required: !redacted_diff_review_present,
+        context_handoff_approval_required: !context_handoff_approval_present,
+        prompt_preview_disabled: !prompt_preview_allowed && !prompt_preview_rendered,
+        prompt_payload_not_materialized: !prompt_payload_materialized,
+        context_injection_disabled: !context_injection_allowed,
+        no_model_invoked: !model_invoked,
+        no_context_injection_performed: !context_injection_performed,
+        no_external_reads_enabled: safety_report.external_read_enabled_count == 0,
+        no_network_calls_enabled: safety_report.network_call_enabled_count == 0,
+        no_live_writes_enabled: safety_report.live_write_enabled_count == 0,
+    };
+
+    MemoryKgPromptPreviewContextHandoffReport {
+        product: "Hepta",
+        command: "memory-kg-prompt-preview-context-handoff",
+        contract: MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT,
+        status: if checks.ready() {
+            "blocked"
+        } else {
+            "attention"
+        },
+        verdict: "blocked_until_operator_evidence_safety_controls_redacted_diff_review_and_context_handoff_approval_exist",
+        sample_run,
+        safety_gate_contract: MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT,
+        safety_gate_status: safety_report.status,
+        redaction_diff_contract: MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT,
+        required_evidence_count: safety_report.required_evidence_count,
+        missing_evidence_count: safety_report.missing_evidence_count,
+        required_control_count: safety_report.required_control_count,
+        missing_control_count: safety_report.missing_control_count,
+        handoff_requirement_count,
+        missing_handoff_requirement_count,
+        redacted_ref_count: safety_report.redacted_ref_count,
+        raw_prompt_diff_count: safety_report.raw_prompt_diff_count,
+        prompt_text_included_count: safety_report.prompt_text_included_count,
+        payload_text_included_count: safety_report.payload_text_included_count,
+        redacted_diff_review_present,
+        context_handoff_approval_present,
+        prompt_preview_allowed,
+        prompt_preview_rendered,
+        prompt_payload_materialized,
+        context_injection_allowed,
+        context_injection_performed,
+        model_invoked,
+        external_read_enabled_count: safety_report.external_read_enabled_count,
+        network_call_enabled_count: safety_report.network_call_enabled_count,
+        live_write_enabled_count: safety_report.live_write_enabled_count,
+        blockers,
+        requirements,
+        checks,
+        next_phase: "complete operator evidence, safety controls, redacted diff review, and context-handoff approval before any KG context injection can run",
+    }
+}
+
 fn memory_kg_shadow_rank_items(items: &[ContextRecallItem]) -> Vec<MemoryKgShadowRankItem> {
     items
         .iter()
@@ -2858,6 +3088,33 @@ fn memory_kg_prompt_preview_rollback_kill_switch_controls()
             redacted_evidence_ref: format!("missing:kg-prompt-preview-safety:{control}"),
             blocks_prompt_preview: true,
             allows_context_injection: false,
+        },
+    )
+    .collect()
+}
+
+fn memory_kg_prompt_preview_context_handoff_requirements()
+-> Vec<MemoryKgPromptPreviewContextHandoffRequirement> {
+    [
+        ("operator_evidence_packet", "operator_evidence"),
+        ("rollback_kill_switch_safety_packet", "safety"),
+        ("redacted_diff_review_receipt", "review"),
+        ("context_handoff_operator_approval", "operator_approval"),
+        ("context_injection_scope_record", "scope"),
+        ("post_handoff_monitoring_plan", "monitoring"),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(
+        |(idx, (requirement, requirement_kind))| MemoryKgPromptPreviewContextHandoffRequirement {
+            requirement_index: idx + 1,
+            requirement,
+            requirement_kind,
+            present: false,
+            redacted_evidence_ref: format!(
+                "missing:kg-prompt-preview-context-handoff:{requirement}"
+            ),
+            blocks_context_injection: true,
         },
     )
     .collect()
@@ -4380,6 +4637,104 @@ mod tests {
                 && control
                     .redacted_evidence_ref
                     .starts_with("missing:kg-prompt-preview-safety:")
+        }));
+    }
+
+    #[test]
+    fn memory_kg_prompt_preview_context_handoff_blocks_injection_until_final_evidence() {
+        let atom_report = memory_atom_pipeline_sample_report(true);
+        let report = memory_kg_prompt_preview_context_handoff_report(&atom_report.atoms, true);
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(
+            report.verdict,
+            "blocked_until_operator_evidence_safety_controls_redacted_diff_review_and_context_handoff_approval_exist"
+        );
+        assert_eq!(
+            report.contract,
+            MEMORY_KG_PROMPT_PREVIEW_CONTEXT_HANDOFF_V0_CONTRACT
+        );
+        assert_eq!(
+            report.safety_gate_contract,
+            MEMORY_KG_PROMPT_PREVIEW_ROLLBACK_KILL_SWITCH_V0_CONTRACT
+        );
+        assert_eq!(report.safety_gate_status, "blocked");
+        assert_eq!(
+            report.redaction_diff_contract,
+            MEMORY_KG_PROMPT_PREVIEW_REDACTION_DIFF_V0_CONTRACT
+        );
+        assert_eq!(report.required_evidence_count, 7);
+        assert_eq!(
+            report.missing_evidence_count,
+            report.required_evidence_count
+        );
+        assert_eq!(report.required_control_count, 4);
+        assert_eq!(report.missing_control_count, report.required_control_count);
+        assert_eq!(report.handoff_requirement_count, 6);
+        assert_eq!(
+            report.missing_handoff_requirement_count,
+            report.handoff_requirement_count
+        );
+        assert_eq!(report.redacted_ref_count, report.required_evidence_count);
+        assert_eq!(report.raw_prompt_diff_count, 0);
+        assert_eq!(report.prompt_text_included_count, 0);
+        assert_eq!(report.payload_text_included_count, 0);
+        assert!(!report.redacted_diff_review_present);
+        assert!(!report.context_handoff_approval_present);
+        assert!(!report.prompt_preview_allowed);
+        assert!(!report.prompt_preview_rendered);
+        assert!(!report.prompt_payload_materialized);
+        assert!(!report.context_injection_allowed);
+        assert!(!report.context_injection_performed);
+        assert!(!report.model_invoked);
+        assert_eq!(report.external_read_enabled_count, 0);
+        assert_eq!(report.network_call_enabled_count, 0);
+        assert_eq!(report.live_write_enabled_count, 0);
+        assert!(report.checks.ready());
+        assert!(report.checks.safety_gate_contract_linked);
+        assert!(report.checks.safety_gate_checks_ready);
+        assert!(report.checks.safety_gate_blocked);
+        assert!(report.checks.operator_evidence_incomplete);
+        assert!(report.checks.safety_controls_incomplete);
+        assert!(report.checks.handoff_requirements_nonzero);
+        assert!(report.checks.handoff_requirements_all_missing_and_blocking);
+        assert!(report.checks.redacted_refs_only);
+        assert!(report.checks.redacted_diff_review_required);
+        assert!(report.checks.context_handoff_approval_required);
+        assert!(report.checks.prompt_preview_disabled);
+        assert!(report.checks.prompt_payload_not_materialized);
+        assert!(report.checks.context_injection_disabled);
+        assert!(report.checks.no_model_invoked);
+        assert!(report.checks.no_context_injection_performed);
+        assert!(report.checks.no_external_reads_enabled);
+        assert!(report.checks.no_network_calls_enabled);
+        assert!(report.checks.no_live_writes_enabled);
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewContextHandoffBlocker::OperatorEvidenceIncomplete)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewContextHandoffBlocker::SafetyControlsIncomplete)
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&MemoryKgPromptPreviewContextHandoffBlocker::RedactedDiffReviewMissing)
+        );
+        assert!(
+            report.blockers.contains(
+                &MemoryKgPromptPreviewContextHandoffBlocker::ContextHandoffApprovalMissing
+            )
+        );
+        assert!(report.requirements.iter().all(|requirement| {
+            !requirement.present
+                && requirement.blocks_context_injection
+                && requirement
+                    .redacted_evidence_ref
+                    .starts_with("missing:kg-prompt-preview-context-handoff:")
         }));
     }
 }
