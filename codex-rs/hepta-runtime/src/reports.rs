@@ -1145,6 +1145,122 @@ impl RuntimeKernel {
         Ok(lines)
     }
 
+    pub fn knowledge_graph_recall_evaluation_summary(&self) -> Result<Vec<String>, HeptaError> {
+        let report = self.knowledge_graph_recall_evaluation_overview();
+        let mut lines = vec![
+            format!("Hepta KG recall evaluation: {}", report.status),
+            format!("- contract: {}", report.contract),
+            format!("- kg recall contract: {}", report.kg_recall_contract),
+            format!(
+                "- kg context bridge contract: {}",
+                report.kg_context_bridge_contract
+            ),
+            format!("- sample run: {}", report.sample_run),
+            format!("- recall queries: {}", report.query_count),
+            format!("- context recall items: {}", report.context_item_count),
+            format!("- evaluation cases: {}", report.evaluation_case_count),
+            format!("- passed cases: {}", report.passed_case_count),
+            format!("- failed cases: {}", report.failed_case_count),
+            format!(
+                "- entity evidence cases: {}",
+                report.entity_evidence_case_count
+            ),
+            format!("- relation path cases: {}", report.relation_path_case_count),
+            format!(
+                "- timeline slice cases: {}",
+                report.timeline_slice_case_count
+            ),
+            format!(
+                "- transcript provenance cases: {}",
+                report.transcript_provenance_case_count
+            ),
+            format!(
+                "- duplicate context source ids: {}",
+                report.duplicate_context_source_id_count
+            ),
+            format!(
+                "- duplicate source memory ids: {}",
+                report.duplicate_source_memory_id_count
+            ),
+            format!(
+                "- score order violations: {}",
+                report.score_order_violation_count
+            ),
+            format!("- coverage bp: {}", report.coverage_basis_points),
+            format!(
+                "- precision proxy bp: {}",
+                report.precision_proxy_basis_points
+            ),
+            format!(
+                "- score stability bp: {}",
+                report.score_stability_basis_points
+            ),
+            format!(
+                "- external reads enabled: {}",
+                report.external_read_enabled_count
+            ),
+            format!(
+                "- network calls enabled: {}",
+                report.network_call_enabled_count
+            ),
+            format!("- live writes enabled: {}", report.live_write_enabled_count),
+            format!("- model invoked: {}", report.model_invoked),
+            format!(
+                "- context injection performed: {}",
+                report.context_injection_performed
+            ),
+            format!("- bridge ready: {}", report.checks.bridge_ready),
+            format!("- all cases passed: {}", report.checks.all_cases_passed),
+            format!(
+                "- source memory ids unique: {}",
+                report.checks.source_memory_ids_unique
+            ),
+            format!(
+                "- scores stably ordered: {}",
+                report.checks.scores_stably_ordered
+            ),
+            format!(
+                "- no external reads enabled: {}",
+                report.checks.no_external_reads_enabled
+            ),
+            format!(
+                "- no network calls enabled: {}",
+                report.checks.no_network_calls_enabled
+            ),
+            format!(
+                "- no live writes enabled: {}",
+                report.checks.no_live_writes_enabled
+            ),
+            format!("- no model invoked: {}", report.checks.no_model_invoked),
+            format!(
+                "- no context injection performed: {}",
+                report.checks.no_context_injection_performed
+            ),
+            format!("- next phase: {}", report.next_phase),
+            "Evaluation cases:".to_string(),
+        ];
+
+        if report.cases.is_empty() {
+            lines.push("  - none".to_string());
+        } else {
+            lines.extend(report.cases.iter().take(6).map(|case| {
+                format!(
+                    "  - query={} candidate={} score={} entity={} relation={} timeline={} transcript={} passed={}",
+                    case.query_id,
+                    case.candidate_id,
+                    case.final_score_basis_points,
+                    case.entity_evidence_count,
+                    case.relation_path_count,
+                    case.timeline_slice_count,
+                    case.transcript_span_count,
+                    case.passed
+                )
+            }));
+        }
+
+        Ok(lines)
+    }
+
     pub fn intelligence_eval_summary(
         &self,
         session_id: &str,
@@ -2822,6 +2938,37 @@ mod tests {
         assert!(rendered.contains("- transcript provenance preserved: true"));
         assert!(rendered.contains("- no context injection performed: true"));
         assert!(rendered.contains("KG context recall items:"));
+    }
+
+    #[tokio::test]
+    async fn knowledge_graph_recall_evaluation_summary_renders_quality_gate_report() {
+        let runtime = RuntimeKernel::new();
+
+        let summary = runtime
+            .knowledge_graph_recall_evaluation_summary()
+            .expect("kg recall evaluation summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta KG recall evaluation: ready"));
+        assert!(rendered.contains("- contract: hepta-intelligence-memory-kg-recall-evaluation-v0"));
+        assert!(rendered.contains("- kg recall contract: hepta-kg-read-recall-v0"));
+        assert!(rendered.contains(
+            "- kg context bridge contract: hepta-intelligence-memory-kg-context-recall-bridge-v0"
+        ));
+        assert!(rendered.contains("- failed cases: 0"));
+        assert!(rendered.contains("- duplicate source memory ids: 0"));
+        assert!(rendered.contains("- score order violations: 0"));
+        assert!(rendered.contains("- coverage bp: 10000"));
+        assert!(rendered.contains("- precision proxy bp: 10000"));
+        assert!(rendered.contains("- score stability bp: 10000"));
+        assert!(rendered.contains("- external reads enabled: 0"));
+        assert!(rendered.contains("- network calls enabled: 0"));
+        assert!(rendered.contains("- live writes enabled: 0"));
+        assert!(rendered.contains("- model invoked: false"));
+        assert!(rendered.contains("- context injection performed: false"));
+        assert!(rendered.contains("- source memory ids unique: true"));
+        assert!(rendered.contains("- scores stably ordered: true"));
+        assert!(rendered.contains("Evaluation cases:"));
     }
 
     #[tokio::test]
