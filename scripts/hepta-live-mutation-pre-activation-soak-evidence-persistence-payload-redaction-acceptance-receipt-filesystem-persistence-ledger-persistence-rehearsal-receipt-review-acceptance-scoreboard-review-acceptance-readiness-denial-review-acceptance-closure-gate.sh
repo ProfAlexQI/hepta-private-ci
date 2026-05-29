@@ -5,24 +5,8 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 
+source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
-
-capture_json_report() {
-  local command_name="$1"
-  shift
-
-  local output
-  output="$("$@")"
-  local report
-  report="$(printf '%s\n' "$output" | sed '$d')"
-
-  if ! jq -e . >/dev/null <<<"$report"; then
-    echo "$command_name did not emit a parseable JSON report" >&2
-    exit 1
-  fi
-
-  printf '%s\n' "$report"
-}
 
 sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
