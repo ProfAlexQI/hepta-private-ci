@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+
+source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
+cd "$REPO_ROOT"
 
 MANIFEST="${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}"
 BASE_HEAD="${HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_BASE_HEAD:-9f42c89c0112771dc29100a6f3fc904049b2655f}"
@@ -21,49 +24,6 @@ validate_sha() {
     echo "invalid $label: expected 40-hex git object id, got '$value'" >&2
     exit 1
   fi
-}
-
-extract_first_json_object() {
-  awk '
-    BEGIN {
-      capture = 0
-      depth = 0
-    }
-    {
-      if (!capture && $0 ~ /^[[:space:]]*\{[[:space:]]*$/) {
-        capture = 1
-      }
-      if (capture) {
-        print
-        line = $0
-        open_line = line
-        close_line = line
-        opens = gsub(/\{/, "", open_line)
-        closes = gsub(/\}/, "", close_line)
-        depth += opens - closes
-        if (depth == 0) {
-          exit
-        }
-      }
-    }
-  '
-}
-
-capture_json_report() {
-  local command_name="$1"
-  shift
-
-  local output
-  output="$("$@")"
-  local report
-  report="$(printf '%s\n' "$output" | extract_first_json_object)"
-
-  if ! jq -e . >/dev/null <<<"$report"; then
-    echo "$command_name did not emit a parseable JSON report" >&2
-    exit 1
-  fi
-
-  printf '%s\n' "$report"
 }
 
 json_array_from_stdin() {
