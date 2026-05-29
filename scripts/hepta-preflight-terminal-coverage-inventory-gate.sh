@@ -59,6 +59,116 @@ required_markers=(
   "whitespace/status"
 )
 
+phase_family_ids=(
+  "early-core-spine"
+  "legacy-migration-closure"
+  "kg-prompt-preview-readiness"
+  "live-mutation-denial"
+  "readiness-denial-closure"
+  "upstream-codex-absorption-activation"
+  "terminal-governance-release"
+  "core-activation-tail"
+  "json-terminal-coverage"
+  "latest-regression-and-tests"
+)
+
+phase_family_min_counts=(
+  7
+  11
+  9
+  54
+  1
+  44
+  11
+  11
+  4
+  12
+)
+
+marker_matches_phase_family() {
+  local family_id="$1"
+  local marker="$2"
+
+  case "$family_id" in
+    early-core-spine)
+      case "$marker" in
+        "metadata"|"fmt"|"cargo check"|"adapter behavior-equivalence gate"|"adapter shadow-replay gate"|"name/repository closure gate"|"active service dependency isolation gate")
+          return 0
+          ;;
+      esac
+      ;;
+    legacy-migration-closure)
+      if [[ "$marker" == legacy*" entrypoint migration gate" \
+        || "$marker" == "memory-rem status closure gate" \
+        || "$marker" == "memory-tools catalog closure gate" \
+        || "$marker" == "native residual runtime status closure gate" \
+        || "$marker" == "plugin migration plan closure gate" \
+        || "$marker" == "skill workshop plan closure gate" \
+        || "$marker" == "memory/intelligence closure gate" ]]; then
+        return 0
+      fi
+      ;;
+    kg-prompt-preview-readiness)
+      if [[ "$marker" == KG\ prompt-preview* ]]; then
+        return 0
+      fi
+      ;;
+    live-mutation-denial)
+      if [[ "$marker" == *"live mutation"* ]]; then
+        return 0
+      fi
+      ;;
+    readiness-denial-closure)
+      if [[ "$marker" == "readiness denial review acceptance closure summary gate" ]]; then
+        return 0
+      fi
+      ;;
+    upstream-codex-absorption-activation)
+      if [[ "$marker" == upstream\ Codex* \
+        && "$marker" != upstream\ Codex\ latest\ active-safety* \
+        && "$marker" != upstream\ Codex\ latest\ release-governance* \
+        && "$marker" != upstream\ Codex\ latest\ operator\ briefing* ]]; then
+        return 0
+      fi
+      ;;
+    terminal-governance-release)
+      if [[ "$marker" == terminal\ * \
+        || "$marker" == "operator-security attention-budget diagnostic gate" ]]; then
+        return 0
+      fi
+      ;;
+    core-activation-tail)
+      if [[ "$marker" == core\ activation* ]]; then
+        return 0
+      fi
+      ;;
+    json-terminal-coverage)
+      if [[ "$marker" == JSON\ report\ capture* \
+        || "$marker" == preflight\ terminal\ coverage* ]]; then
+        return 0
+      fi
+      ;;
+    latest-regression-and-tests)
+      if [[ "$marker" == upstream\ Codex\ latest\ active-safety* \
+        || "$marker" == upstream\ Codex\ latest\ release-governance* \
+        || "$marker" == upstream\ Codex\ latest\ operator\ briefing* \
+        || "$marker" == "hepta-gateway tests" \
+        || "$marker" == "codex-cli native tests" \
+        || "$marker" == "control-ui smoke" \
+        || "$marker" == "native app metadata/check/tests" \
+        || "$marker" == native\ app\ gates\ skipped* \
+        || "$marker" == "release build compatibility codex-cli" \
+        || "$marker" == "release build active hepta-cli" \
+        || "$marker" == release\ build\ skipped* \
+        || "$marker" == "whitespace/status" ]]; then
+        return 0
+      fi
+      ;;
+  esac
+
+  return 1
+}
+
 inline_fixture_mode=false
 if [[ -n "$PREFLIGHT_TEXT" ]]; then
   inline_fixture_mode=true
@@ -97,6 +207,39 @@ marker_count="${#preflight_markers[@]}"
 marker_count_budget_ok=false
 if [[ "$marker_count" -ge "$MIN_MARKER_COUNT" ]]; then
   marker_count_budget_ok=true
+fi
+
+phase_family_records=()
+phase_family_failures=()
+phase_family_ready_count=0
+
+for index in "${!phase_family_ids[@]}"; do
+  family_id="${phase_family_ids[$index]}"
+  min_count="${phase_family_min_counts[$index]}"
+  current_count=0
+
+  for marker in "${preflight_markers[@]}"; do
+    if marker_matches_phase_family "$family_id" "$marker"; then
+      current_count=$((current_count + 1))
+    fi
+  done
+
+  family_ready=false
+  if [[ "$current_count" -ge "$min_count" ]]; then
+    family_ready=true
+    phase_family_ready_count=$((phase_family_ready_count + 1))
+  else
+    phase_family_failures+=("$family_id|$current_count|$min_count")
+  fi
+
+  phase_family_records+=("$family_id|$current_count|$min_count|$family_ready")
+done
+
+phase_family_count="${#phase_family_ids[@]}"
+phase_family_budget_failure_count="${#phase_family_failures[@]}"
+phase_family_budget_ready=false
+if [[ "$phase_family_budget_failure_count" -eq 0 ]]; then
+  phase_family_budget_ready=true
 fi
 
 terminal_pass_marker_present=false
@@ -239,6 +382,7 @@ coverage_ready=false
 if [[ "$preflight_exists" == true \
   && "$syntax_ok" == true \
   && "$marker_count_budget_ok" == true \
+  && "$phase_family_budget_ready" == true \
   && "$terminal_pass_marker_present" == true \
   && "$native_release_skip_branches_present" == true \
   && "$final_status_checks_ready" == true \
@@ -261,9 +405,35 @@ required_marker_lines_json="$(
         | map(split("|") | {marker: .[0], line: (.[1] | tonumber)})
       '
 )"
+phase_family_records_json="$(
+  printf '%s\n' "${phase_family_records[@]}" \
+    | jq -R -s '
+        split("\n")
+        | map(select(length > 0))
+        | map(split("|") | {
+            id: .[0],
+            current_count: (.[1] | tonumber),
+            minimum_count: (.[2] | tonumber),
+            ready: (.[3] == "true"),
+            blocked: true
+          })
+      '
+)"
+phase_family_failures_json="$(
+  printf '%s\n' "${phase_family_failures[@]}" \
+    | jq -R -s '
+        split("\n")
+        | map(select(length > 0))
+        | map(split("|") | {
+            id: .[0],
+            current_count: (.[1] | tonumber),
+            minimum_count: (.[2] | tonumber)
+          })
+      '
+)"
 
 inventory_hash_sha256="$(
-  sha256_text "$marker_count:$present_required_marker_count:$MIN_MARKER_COUNT:$terminal_pass_marker_present:$native_release_skip_branches_present:$final_status_checks_ready:${required_marker_lines[*]}"
+  sha256_text "$marker_count:$present_required_marker_count:$MIN_MARKER_COUNT:$phase_family_budget_ready:${phase_family_records[*]}:$terminal_pass_marker_present:$native_release_skip_branches_present:$final_status_checks_ready:${required_marker_lines[*]}"
 )"
 policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage:static-inventory:no-run:no-write:no-restart")"
 side_effect_hash_sha256="$(sha256_text "filesystem_written=false;runtime_mutation=false;service_restarted=false;external_send=false;secret_read=false")"
@@ -287,6 +457,10 @@ jq -n \
   --argjson marker_count "$marker_count" \
   --argjson min_marker_count "$MIN_MARKER_COUNT" \
   --argjson marker_count_budget_ok "$marker_count_budget_ok" \
+  --argjson phase_family_count "$phase_family_count" \
+  --argjson phase_family_ready_count "$phase_family_ready_count" \
+  --argjson phase_family_budget_failure_count "$phase_family_budget_failure_count" \
+  --argjson phase_family_budget_ready "$phase_family_budget_ready" \
   --argjson required_marker_count "${#required_markers[@]}" \
   --argjson present_required_marker_count "$present_required_marker_count" \
   --argjson ordered_markers "$ordered_markers" \
@@ -309,6 +483,8 @@ jq -n \
   --argjson duplicate_markers "$duplicate_markers_json" \
   --argjson out_of_order_markers "$out_of_order_markers_json" \
   --argjson required_marker_lines "$required_marker_lines_json" \
+  --argjson phase_family_records "$phase_family_records_json" \
+  --argjson phase_family_failures "$phase_family_failures_json" \
   '{
     product: $product,
     runtime: $runtime,
@@ -325,6 +501,10 @@ jq -n \
     preflight_marker_count: $marker_count,
     minimum_required_preflight_marker_count: $min_marker_count,
     marker_count_budget_ok: $marker_count_budget_ok,
+    phase_family_count: $phase_family_count,
+    phase_family_ready_count: $phase_family_ready_count,
+    phase_family_budget_failure_count: $phase_family_budget_failure_count,
+    phase_family_budget_ready: $phase_family_budget_ready,
     required_marker_count: $required_marker_count,
     present_required_marker_count: $present_required_marker_count,
     missing_required_marker_count: ($missing_markers | length),
@@ -349,6 +529,8 @@ jq -n \
     missing_required_markers: $missing_markers,
     duplicate_required_markers: $duplicate_markers,
     out_of_order_required_markers: $out_of_order_markers,
+    phase_family_coverage: $phase_family_records,
+    phase_family_budget_failures: $phase_family_failures,
     preflight_markers: $preflight_markers,
     inventory_hash_sha256: $inventory_hash_sha256,
     policy_hash_sha256: $policy_hash_sha256,
@@ -367,6 +549,16 @@ jq -n \
         current_count: $marker_count,
         minimum_count: $min_marker_count,
         reason: "large terminal coverage inventory cannot shrink silently"
+      },
+      {
+        id: "phase-family-coverage-budget",
+        ready: $phase_family_budget_ready,
+        blocked: true,
+        ready_count: $phase_family_ready_count,
+        required_count: $phase_family_count,
+        failure_count: $phase_family_budget_failure_count,
+        failures: $phase_family_failures,
+        reason: "large preflight phase families must not collapse to one representative marker"
       },
       {
         id: "required-terminal-marker-order",

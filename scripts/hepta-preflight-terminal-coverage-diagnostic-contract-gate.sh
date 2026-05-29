@@ -53,6 +53,36 @@ required_markers=(
   "whitespace/status"
 )
 
+emit_phase_family_budget_markers() {
+  local mode="${1:-good}"
+  local i
+  local live_marker_count=54
+
+  if [[ "$mode" == "missing-phase-family-budget" ]]; then
+    live_marker_count=53
+  fi
+
+  for ((i = 1; i <= 7; i++)); do
+    printf 'echo "[hepta-preflight] KG prompt-preview synthetic family budget marker %02d"\n' "$i"
+  done
+
+  for ((i = 1; i <= live_marker_count; i++)); do
+    printf 'echo "[hepta-preflight] live mutation synthetic family budget marker %02d"\n' "$i"
+  done
+
+  for ((i = 1; i <= 43; i++)); do
+    printf 'echo "[hepta-preflight] upstream Codex synthetic family budget marker %02d"\n' "$i"
+  done
+
+  for ((i = 1; i <= 8; i++)); do
+    printf 'echo "[hepta-preflight] terminal synthetic family budget marker %02d"\n' "$i"
+  done
+
+  for ((i = 1; i <= 10; i++)); do
+    printf 'echo "[hepta-preflight] core activation synthetic family budget marker %02d"\n' "$i"
+  done
+}
+
 emit_fixture_preflight() {
   local mode="${1:-good}"
   local marker
@@ -94,6 +124,8 @@ emit_fixture_preflight() {
       printf 'echo "[hepta-preflight] %s"\n' "$marker"
     fi
   done
+
+  emit_phase_family_budget_markers "$mode"
 
   if [[ "$mode" != "missing-native-release-skip-branches" ]]; then
     printf '%s\n' \
@@ -170,6 +202,7 @@ missing_workspace_diff_fixture="$(emit_fixture_preflight missing-workspace-diff-
 missing_cached_diff_fixture="$(emit_fixture_preflight missing-cached-diff-check)"
 missing_git_status_fixture="$(emit_fixture_preflight missing-git-status-check)"
 out_of_order_final_status_fixture="$(emit_fixture_preflight out-of-order-final-status-checks)"
+missing_phase_family_budget_fixture="$(emit_fixture_preflight missing-phase-family-budget)"
 
 capture_fixture_report "$good_fixture" 0
 good_report="$fixture_report"
@@ -219,6 +252,10 @@ capture_fixture_report "$out_of_order_final_status_fixture" 0
 out_of_order_final_status_report="$fixture_report"
 out_of_order_final_status_rc="$fixture_rc"
 
+capture_fixture_report "$missing_phase_family_budget_fixture" 0
+missing_phase_family_budget_report="$fixture_report"
+missing_phase_family_budget_rc="$fixture_rc"
+
 good_fixture_ok=false
 missing_required_marker_fixture_ok=false
 missing_spine_marker_fixture_ok=false
@@ -231,6 +268,7 @@ missing_workspace_diff_check_fixture_ok=false
 missing_cached_diff_check_fixture_ok=false
 missing_git_status_check_fixture_ok=false
 out_of_order_final_status_checks_fixture_ok=false
+missing_phase_family_budget_fixture_ok=false
 
 if [[ "$good_rc" -eq 0 ]] \
   && jq -e '
@@ -243,6 +281,10 @@ if [[ "$good_rc" -eq 0 ]] \
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
     and .required_markers_ordered == true
+    and .phase_family_count == 10
+    and .phase_family_ready_count == 10
+    and .phase_family_budget_failure_count == 0
+    and .phase_family_budget_ready == true
     and .terminal_pass_marker_present == true
     and .native_release_skip_branches_present == true
     and .final_workspace_diff_check_present == true
@@ -377,8 +419,26 @@ if [[ "$out_of_order_final_status_rc" -eq 1 ]] \
   out_of_order_final_status_checks_fixture_ok=true
 fi
 
+if [[ "$missing_phase_family_budget_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .missing_required_marker_count == 0
+    and .duplicate_required_marker_count == 0
+    and .out_of_order_required_marker_count == 0
+    and .phase_family_budget_ready == false
+    and .phase_family_budget_failure_count == 1
+    and (.phase_family_budget_failures[] | select(
+      .id == "live-mutation-denial"
+      and .current_count == 53
+      and .minimum_count == 54
+    ))
+  ' >/dev/null <<<"$missing_phase_family_budget_report"; then
+  missing_phase_family_budget_fixture_ok=true
+fi
+
 contract_hash_sha256="$(
-  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$missing_spine_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok:$missing_workspace_diff_check_fixture_ok:$missing_cached_diff_check_fixture_ok:$missing_git_status_check_fixture_ok:$out_of_order_final_status_checks_fixture_ok"
+  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$missing_spine_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok:$missing_workspace_diff_check_fixture_ok:$missing_cached_diff_check_fixture_ok:$missing_git_status_check_fixture_ok:$out_of_order_final_status_checks_fixture_ok:$missing_phase_family_budget_fixture_ok"
 )"
 policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage-diagnostic:synthetic-fixtures:no-child-gate-execution:no-workspace-write:no-release-build:no-native-gate")"
 side_effect_hash_sha256="$(sha256_text "preflight_fixture_text_only=true;workspace_written=false;release_build=false;native_gate=false;service_restart=false")"
@@ -399,6 +459,7 @@ jq -n -e \
   --argjson missing_cached_diff_check_fixture_ok "$missing_cached_diff_check_fixture_ok" \
   --argjson missing_git_status_check_fixture_ok "$missing_git_status_check_fixture_ok" \
   --argjson out_of_order_final_status_checks_fixture_ok "$out_of_order_final_status_checks_fixture_ok" \
+  --argjson missing_phase_family_budget_fixture_ok "$missing_phase_family_budget_fixture_ok" \
   '
     if (
       $good_fixture_ok == true
@@ -413,6 +474,7 @@ jq -n -e \
       and $missing_cached_diff_check_fixture_ok == true
       and $missing_git_status_check_fixture_ok == true
       and $out_of_order_final_status_checks_fixture_ok == true
+      and $missing_phase_family_budget_fixture_ok == true
     ) then {
       product: "Hepta",
       runtime: "hepta",
@@ -421,9 +483,9 @@ jq -n -e \
       preflight_terminal_coverage_diagnostic_contract_schema_version: "hepta_preflight_terminal_coverage_diagnostic_contract_v1",
       preflight_terminal_coverage_diagnostic_contract_ready: true,
       diagnostic_mode: "synthetic_inline_preflight_fixture_inventory_no_child_gate_execution",
-      diagnostic_decision: "preflight_terminal_coverage_inventory_passes_good_fixture_and_fails_closed_for_missing_spine_terminal_duplicate_reordered_and_shrunken_coverage",
+      diagnostic_decision: "preflight_terminal_coverage_inventory_passes_good_fixture_and_fails_closed_for_missing_spine_phase_family_terminal_duplicate_reordered_and_shrunken_coverage",
       inventory_gate_path: "scripts/hepta-preflight-terminal-coverage-inventory-gate.sh",
-      diagnostic_fixture_count: 12,
+      diagnostic_fixture_count: 13,
       good_fixture_ok: $good_fixture_ok,
       missing_required_marker_fixture_ok: $missing_required_marker_fixture_ok,
       missing_spine_marker_fixture_ok: $missing_spine_marker_fixture_ok,
@@ -436,6 +498,7 @@ jq -n -e \
       missing_cached_diff_check_fixture_ok: $missing_cached_diff_check_fixture_ok,
       missing_git_status_check_fixture_ok: $missing_git_status_check_fixture_ok,
       out_of_order_final_status_checks_fixture_ok: $out_of_order_final_status_checks_fixture_ok,
+      missing_phase_family_budget_fixture_ok: $missing_phase_family_budget_fixture_ok,
       good_fixture_ready_preserved: true,
       missing_required_marker_attention_exposed: true,
       missing_spine_marker_attention_exposed: true,
@@ -448,6 +511,7 @@ jq -n -e \
       final_cached_diff_check_attention_exposed: true,
       final_git_status_check_attention_exposed: true,
       final_status_check_order_attention_exposed: true,
+      phase_family_budget_attention_exposed: true,
       contract_hash_sha256: $contract_hash_sha256,
       policy_hash_sha256: $policy_hash_sha256,
       side_effect_hash_sha256: $side_effect_hash_sha256,

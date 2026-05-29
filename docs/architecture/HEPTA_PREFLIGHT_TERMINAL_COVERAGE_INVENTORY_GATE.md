@@ -19,6 +19,10 @@ The gate checks:
 
 - the canonical preflight script exists and parses with `bash -n`;
 - the marker count is at least the configured minimum;
+- phase-family budgets remain satisfied across early core spine, legacy
+  migration closure, KG prompt-preview readiness, live-mutation denial,
+  upstream Codex absorption/activation, terminal governance/release, Core
+  activation tail, JSON/terminal coverage, and latest regression/test families;
 - critical markers are present exactly once and in order;
 - early spine markers for fmt/check, adapters, name/repository closure, active
   dependency isolation, legacy entrypoint migration, and memory/intelligence
@@ -40,6 +44,7 @@ passes and negative fixtures fail closed for:
 - duplicated required marker;
 - out-of-order required marker;
 - marker count budget shrinkage;
+- phase-family budget shrinkage with all required markers still present;
 - missing terminal pass marker;
 - missing native/release skip branches.
 - missing final workspace diff check;
