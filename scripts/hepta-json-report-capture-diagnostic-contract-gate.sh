@@ -51,11 +51,72 @@ no_json_diagnostic="$(
   ) 2>&1
 )"
 no_json_rc=$?
+
+stderr_json_report="$(
+  capture_json_report "stderr-json-fixture" bash -c '
+    printf "%s\n" "stderr diagnostic before json" >&2
+    printf "%s\n" \
+      "{" \
+      "  \"status\": \"ready\"," \
+      "  \"gate\": \"stderr_json_fixture\"," \
+      "  \"side_effects\": {\"filesystem_written\": false}" \
+      "}"
+    printf "%s\n" "stderr diagnostic after json" >&2
+  '
+)"
+
+multiple_json_report="$(
+  capture_json_report "multiple-json-fixture" bash -c '
+    printf "%s\n" \
+      "{" \
+      "  \"status\": \"ready\"," \
+      "  \"gate\": \"first_json_fixture\"," \
+      "  \"sequence\": 1," \
+      "  \"side_effects\": {\"filesystem_written\": false}" \
+      "}" \
+      "{" \
+      "  \"status\": \"attention\"," \
+      "  \"gate\": \"second_json_noise\"," \
+      "  \"sequence\": 2" \
+      "}"
+  '
+)"
+
+malformed_json_diagnostic="$(
+  (
+    capture_json_report "malformed-json-fixture" bash -c '
+      printf "%s\n" \
+        "{" \
+        "  \"status\": \"ready\"," \
+        "  \"gate\":" \
+        "}"
+    '
+  ) 2>&1
+)"
+malformed_json_rc=$?
+
+bounded_tail_diagnostic="$(
+  (
+    HEPTA_JSON_REPORT_CAPTURE_DIAGNOSTIC_LINES=2 \
+      capture_json_report "bounded-tail-fixture" bash -c '
+        printf "%s\n" \
+          "bounded tail line one" \
+          "bounded tail line two" \
+          "bounded tail line three" \
+          "bounded tail line four"
+      '
+  ) 2>&1
+)"
+bounded_tail_rc=$?
 set -e
 
 success_fixture_ok=false
 failing_json_fixture_ok=false
 no_json_fixture_ok=false
+stderr_json_fixture_ok=false
+multiple_json_fixture_ok=false
+malformed_json_fixture_ok=false
+bounded_tail_fixture_ok=false
 
 if jq -e '
   .status == "ready"
@@ -77,7 +138,42 @@ if [[ "$no_json_rc" -eq 1 ]] \
   no_json_fixture_ok=true
 fi
 
-contract_hash_sha256="$(sha256_text "hepta-json-report-capture:contract:$success_fixture_ok:$failing_json_fixture_ok:$no_json_fixture_ok")"
+if jq -e '
+  .status == "ready"
+  and .gate == "stderr_json_fixture"
+  and .side_effects.filesystem_written == false
+' >/dev/null <<<"$stderr_json_report"; then
+  stderr_json_fixture_ok=true
+fi
+
+if jq -e '
+  .status == "ready"
+  and .gate == "first_json_fixture"
+  and .sequence == 1
+  and .side_effects.filesystem_written == false
+' >/dev/null <<<"$multiple_json_report"; then
+  multiple_json_fixture_ok=true
+fi
+
+if [[ "$malformed_json_rc" -eq 1 ]] \
+  && grep -Fq "malformed-json-fixture did not emit a parseable JSON report" <<<"$malformed_json_diagnostic" \
+  && grep -Fq "malformed-json-fixture output tail:" <<<"$malformed_json_diagnostic" \
+  && grep -Fq "  \"gate\":" <<<"$malformed_json_diagnostic"; then
+  malformed_json_fixture_ok=true
+fi
+
+if [[ "$bounded_tail_rc" -eq 1 ]] \
+  && grep -Fq "bounded-tail-fixture did not emit a parseable JSON report" <<<"$bounded_tail_diagnostic" \
+  && grep -Fq "bounded tail line three" <<<"$bounded_tail_diagnostic" \
+  && grep -Fq "bounded tail line four" <<<"$bounded_tail_diagnostic" \
+  && ! grep -Fq "bounded tail line one" <<<"$bounded_tail_diagnostic" \
+  && ! grep -Fq "bounded tail line two" <<<"$bounded_tail_diagnostic"; then
+  bounded_tail_fixture_ok=true
+fi
+
+contract_hash_sha256="$(
+  sha256_text "hepta-json-report-capture:contract:$success_fixture_ok:$failing_json_fixture_ok:$no_json_fixture_ok:$stderr_json_fixture_ok:$multiple_json_fixture_ok:$malformed_json_fixture_ok:$bounded_tail_fixture_ok"
+)"
 policy_hash_sha256="$(sha256_text "hepta-json-report-capture:policy:no-workspace-write:no-secret-read:no-external-send")"
 side_effect_hash_sha256="$(sha256_text "hepta-json-report-capture:side-effects:false:false:false")"
 
@@ -88,27 +184,45 @@ jq -n -e \
   --argjson success_fixture_ok "$success_fixture_ok" \
   --argjson failing_json_fixture_ok "$failing_json_fixture_ok" \
   --argjson no_json_fixture_ok "$no_json_fixture_ok" \
+  --argjson stderr_json_fixture_ok "$stderr_json_fixture_ok" \
+  --argjson multiple_json_fixture_ok "$multiple_json_fixture_ok" \
+  --argjson malformed_json_fixture_ok "$malformed_json_fixture_ok" \
+  --argjson bounded_tail_fixture_ok "$bounded_tail_fixture_ok" \
   '
-    $success_fixture_ok == true
-    and $failing_json_fixture_ok == true
-    and $no_json_fixture_ok == true
-    | {
+    if (
+      $success_fixture_ok == true
+      and $failing_json_fixture_ok == true
+      and $no_json_fixture_ok == true
+      and $stderr_json_fixture_ok == true
+      and $multiple_json_fixture_ok == true
+      and $malformed_json_fixture_ok == true
+      and $bounded_tail_fixture_ok == true
+    ) then {
       product: "Hepta",
       runtime: "hepta",
       status: "ready",
       gate: "hepta_json_report_capture_diagnostic_contract_gate",
-      json_report_capture_diagnostic_contract_schema_version: "json_report_capture_diagnostic_contract_v1",
+      json_report_capture_diagnostic_contract_schema_version: "json_report_capture_diagnostic_contract_v2",
       json_report_capture_diagnostic_contract_ready: true,
       diagnostic_mode: "synthetic_child_command_capture_no_workspace_write",
-      diagnostic_decision: "child_json_report_capture_preserves_success_reports_and_exposes_failure_diagnostics",
+      diagnostic_decision: "child_json_report_capture_preserves_success_reports_and_exposes_bounded_failure_diagnostics",
       helper_path: "scripts/lib/hepta-json-report-capture.sh",
+      diagnostic_fixture_count: 7,
       success_fixture_ok: $success_fixture_ok,
       failing_json_fixture_ok: $failing_json_fixture_ok,
       no_json_fixture_ok: $no_json_fixture_ok,
+      stderr_json_fixture_ok: $stderr_json_fixture_ok,
+      multiple_json_fixture_ok: $multiple_json_fixture_ok,
+      malformed_json_fixture_ok: $malformed_json_fixture_ok,
+      bounded_tail_fixture_ok: $bounded_tail_fixture_ok,
       parseable_json_report_preserved: true,
       failing_child_exit_code_preserved: true,
       failing_child_json_report_exposed: true,
       non_json_output_tail_exposed: true,
+      stderr_output_tolerated: true,
+      first_json_object_preserved_when_multiple_json_objects_follow: true,
+      malformed_json_output_tail_exposed: true,
+      diagnostic_tail_line_budget_enforced: true,
       contract_hash_sha256: $contract_hash_sha256,
       policy_hash_sha256: $policy_hash_sha256,
       side_effect_hash_sha256: $side_effect_hash_sha256,
@@ -128,7 +242,7 @@ jq -n -e \
         secret_file_read: false,
         external_send_performed: false
       }
-    }
+    } else false end
   '
 
 echo "Hepta JSON report capture diagnostic contract gate passed"
