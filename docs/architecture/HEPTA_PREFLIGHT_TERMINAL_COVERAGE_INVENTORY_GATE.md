@@ -22,6 +22,8 @@ The gate checks:
   upstream safety/governance/operator-briefing gates;
 - gateway/native/control-ui verification markers remain wired;
 - native app and release build branches keep explicit skip controls;
+- the final whitespace/status block runs workspace diff, cached diff, and git
+  status checks in that order before the pass marker;
 - the final `Hepta preflight passed` marker remains present.
 
 `scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh` is a
@@ -34,6 +36,10 @@ passes and negative fixtures fail closed for:
 - marker count budget shrinkage;
 - missing terminal pass marker;
 - missing native/release skip branches.
+- missing final workspace diff check;
+- missing final cached diff check;
+- missing final git status check.
+- out-of-order final whitespace/status checks.
 
 The gate does not run the full preflight, run native app gates, build release
 artifacts, restart services, mutate launchd, fetch or merge upstream, invoke a

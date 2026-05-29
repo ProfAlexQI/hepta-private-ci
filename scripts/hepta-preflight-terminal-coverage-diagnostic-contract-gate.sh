@@ -84,6 +84,23 @@ emit_fixture_preflight() {
       'fi'
   fi
 
+  if [[ "$mode" == "out-of-order-final-status-checks" ]]; then
+    printf '%s\n' \
+      'git diff --cached --check' \
+      'git diff --check' \
+      'git status -sb'
+  else
+    if [[ "$mode" != "missing-workspace-diff-check" ]]; then
+      printf '%s\n' 'git diff --check'
+    fi
+    if [[ "$mode" != "missing-cached-diff-check" ]]; then
+      printf '%s\n' 'git diff --cached --check'
+    fi
+    if [[ "$mode" != "missing-git-status-check" ]]; then
+      printf '%s\n' 'git status -sb'
+    fi
+  fi
+
   if [[ "$mode" != "missing-terminal-pass-marker" ]]; then
     printf '%s\n' 'echo "Hepta preflight passed"'
   fi
@@ -127,6 +144,10 @@ duplicate_marker_fixture="$(emit_fixture_preflight duplicate-required-marker)"
 out_of_order_fixture="$(emit_fixture_preflight out-of-order-required-marker)"
 missing_pass_fixture="$(emit_fixture_preflight missing-terminal-pass-marker)"
 missing_skip_fixture="$(emit_fixture_preflight missing-native-release-skip-branches)"
+missing_workspace_diff_fixture="$(emit_fixture_preflight missing-workspace-diff-check)"
+missing_cached_diff_fixture="$(emit_fixture_preflight missing-cached-diff-check)"
+missing_git_status_fixture="$(emit_fixture_preflight missing-git-status-check)"
+out_of_order_final_status_fixture="$(emit_fixture_preflight out-of-order-final-status-checks)"
 
 capture_fixture_report "$good_fixture" 0
 good_report="$fixture_report"
@@ -156,6 +177,22 @@ capture_fixture_report "$missing_skip_fixture" 0
 missing_skip_report="$fixture_report"
 missing_skip_rc="$fixture_rc"
 
+capture_fixture_report "$missing_workspace_diff_fixture" 0
+missing_workspace_diff_report="$fixture_report"
+missing_workspace_diff_rc="$fixture_rc"
+
+capture_fixture_report "$missing_cached_diff_fixture" 0
+missing_cached_diff_report="$fixture_report"
+missing_cached_diff_rc="$fixture_rc"
+
+capture_fixture_report "$missing_git_status_fixture" 0
+missing_git_status_report="$fixture_report"
+missing_git_status_rc="$fixture_rc"
+
+capture_fixture_report "$out_of_order_final_status_fixture" 0
+out_of_order_final_status_report="$fixture_report"
+out_of_order_final_status_rc="$fixture_rc"
+
 good_fixture_ok=false
 missing_required_marker_fixture_ok=false
 duplicate_required_marker_fixture_ok=false
@@ -163,6 +200,10 @@ out_of_order_required_marker_fixture_ok=false
 marker_count_budget_fixture_ok=false
 missing_terminal_pass_marker_fixture_ok=false
 missing_native_release_skip_branches_fixture_ok=false
+missing_workspace_diff_check_fixture_ok=false
+missing_cached_diff_check_fixture_ok=false
+missing_git_status_check_fixture_ok=false
+out_of_order_final_status_checks_fixture_ok=false
 
 if [[ "$good_rc" -eq 0 ]] \
   && jq -e '
@@ -177,6 +218,12 @@ if [[ "$good_rc" -eq 0 ]] \
     and .required_markers_ordered == true
     and .terminal_pass_marker_present == true
     and .native_release_skip_branches_present == true
+    and .final_workspace_diff_check_present == true
+    and .final_cached_diff_check_present == true
+    and .final_git_status_present == true
+    and .final_status_checks_present == true
+    and .final_status_checks_ordered == true
+    and .final_status_checks_ready == true
   ' >/dev/null <<<"$good_report"; then
   good_fixture_ok=true
 fi
@@ -240,8 +287,61 @@ if [[ "$missing_skip_rc" -eq 1 ]] \
   missing_native_release_skip_branches_fixture_ok=true
 fi
 
+if [[ "$missing_workspace_diff_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .final_workspace_diff_check_present == false
+    and .final_cached_diff_check_present == true
+    and .final_git_status_present == true
+    and .final_status_checks_present == false
+    and .final_status_checks_ready == false
+  ' >/dev/null <<<"$missing_workspace_diff_report"; then
+  missing_workspace_diff_check_fixture_ok=true
+fi
+
+if [[ "$missing_cached_diff_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .final_workspace_diff_check_present == true
+    and .final_cached_diff_check_present == false
+    and .final_git_status_present == true
+    and .final_status_checks_present == false
+    and .final_status_checks_ready == false
+  ' >/dev/null <<<"$missing_cached_diff_report"; then
+  missing_cached_diff_check_fixture_ok=true
+fi
+
+if [[ "$missing_git_status_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .final_workspace_diff_check_present == true
+    and .final_cached_diff_check_present == true
+    and .final_git_status_present == false
+    and .final_status_checks_present == false
+    and .final_status_checks_ready == false
+  ' >/dev/null <<<"$missing_git_status_report"; then
+  missing_git_status_check_fixture_ok=true
+fi
+
+if [[ "$out_of_order_final_status_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .final_workspace_diff_check_present == true
+    and .final_cached_diff_check_present == true
+    and .final_git_status_present == true
+    and .final_status_checks_present == true
+    and .final_status_checks_ordered == false
+    and .final_status_checks_ready == false
+  ' >/dev/null <<<"$out_of_order_final_status_report"; then
+  out_of_order_final_status_checks_fixture_ok=true
+fi
+
 contract_hash_sha256="$(
-  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok"
+  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok:$missing_workspace_diff_check_fixture_ok:$missing_cached_diff_check_fixture_ok:$missing_git_status_check_fixture_ok:$out_of_order_final_status_checks_fixture_ok"
 )"
 policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage-diagnostic:synthetic-fixtures:no-child-gate-execution:no-workspace-write:no-release-build:no-native-gate")"
 side_effect_hash_sha256="$(sha256_text "preflight_fixture_text_only=true;workspace_written=false;release_build=false;native_gate=false;service_restart=false")"
@@ -257,6 +357,10 @@ jq -n -e \
   --argjson marker_count_budget_fixture_ok "$marker_count_budget_fixture_ok" \
   --argjson missing_terminal_pass_marker_fixture_ok "$missing_terminal_pass_marker_fixture_ok" \
   --argjson missing_native_release_skip_branches_fixture_ok "$missing_native_release_skip_branches_fixture_ok" \
+  --argjson missing_workspace_diff_check_fixture_ok "$missing_workspace_diff_check_fixture_ok" \
+  --argjson missing_cached_diff_check_fixture_ok "$missing_cached_diff_check_fixture_ok" \
+  --argjson missing_git_status_check_fixture_ok "$missing_git_status_check_fixture_ok" \
+  --argjson out_of_order_final_status_checks_fixture_ok "$out_of_order_final_status_checks_fixture_ok" \
   '
     if (
       $good_fixture_ok == true
@@ -266,6 +370,10 @@ jq -n -e \
       and $marker_count_budget_fixture_ok == true
       and $missing_terminal_pass_marker_fixture_ok == true
       and $missing_native_release_skip_branches_fixture_ok == true
+      and $missing_workspace_diff_check_fixture_ok == true
+      and $missing_cached_diff_check_fixture_ok == true
+      and $missing_git_status_check_fixture_ok == true
+      and $out_of_order_final_status_checks_fixture_ok == true
     ) then {
       product: "Hepta",
       runtime: "hepta",
@@ -276,7 +384,7 @@ jq -n -e \
       diagnostic_mode: "synthetic_inline_preflight_fixture_inventory_no_child_gate_execution",
       diagnostic_decision: "preflight_terminal_coverage_inventory_passes_good_fixture_and_fails_closed_for_missing_duplicate_reordered_and_shrunken_terminal_coverage",
       inventory_gate_path: "scripts/hepta-preflight-terminal-coverage-inventory-gate.sh",
-      diagnostic_fixture_count: 7,
+      diagnostic_fixture_count: 11,
       good_fixture_ok: $good_fixture_ok,
       missing_required_marker_fixture_ok: $missing_required_marker_fixture_ok,
       duplicate_required_marker_fixture_ok: $duplicate_required_marker_fixture_ok,
@@ -284,6 +392,10 @@ jq -n -e \
       marker_count_budget_fixture_ok: $marker_count_budget_fixture_ok,
       missing_terminal_pass_marker_fixture_ok: $missing_terminal_pass_marker_fixture_ok,
       missing_native_release_skip_branches_fixture_ok: $missing_native_release_skip_branches_fixture_ok,
+      missing_workspace_diff_check_fixture_ok: $missing_workspace_diff_check_fixture_ok,
+      missing_cached_diff_check_fixture_ok: $missing_cached_diff_check_fixture_ok,
+      missing_git_status_check_fixture_ok: $missing_git_status_check_fixture_ok,
+      out_of_order_final_status_checks_fixture_ok: $out_of_order_final_status_checks_fixture_ok,
       good_fixture_ready_preserved: true,
       missing_required_marker_attention_exposed: true,
       duplicate_required_marker_attention_exposed: true,
@@ -291,6 +403,10 @@ jq -n -e \
       marker_count_budget_attention_exposed: true,
       terminal_pass_marker_attention_exposed: true,
       native_release_skip_branch_attention_exposed: true,
+      final_workspace_diff_check_attention_exposed: true,
+      final_cached_diff_check_attention_exposed: true,
+      final_git_status_check_attention_exposed: true,
+      final_status_check_order_attention_exposed: true,
       contract_hash_sha256: $contract_hash_sha256,
       policy_hash_sha256: $policy_hash_sha256,
       side_effect_hash_sha256: $side_effect_hash_sha256,

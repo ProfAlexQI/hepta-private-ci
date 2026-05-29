@@ -525,6 +525,7 @@ fi
 
 echo "[hepta-preflight] whitespace/status"
 git diff --check
+git diff --cached --check
 git status -sb
 
 echo "Hepta preflight passed"

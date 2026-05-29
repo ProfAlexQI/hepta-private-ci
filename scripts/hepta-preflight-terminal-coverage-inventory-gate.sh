@@ -109,6 +109,77 @@ else
   fi
 fi
 
+final_workspace_diff_check_present=false
+final_cached_diff_check_present=false
+final_git_status_present=false
+line_for_literal() {
+  local target="$1"
+  local line
+  if [[ "$inline_fixture_mode" == true ]]; then
+    line="$(
+      printf '%s\n' "$PREFLIGHT_TEXT" \
+        | awk -v target="$target" '$0 == target { print NR; exit }'
+    )"
+  else
+    line="$(
+      awk -v target="$target" '$0 == target { print NR; exit }' "$PREFLIGHT_PATH"
+    )"
+  fi
+  printf '%s' "${line:-0}"
+}
+
+whitespace_status_marker_line="$(line_for_literal 'echo "[hepta-preflight] whitespace/status"')"
+terminal_pass_marker_line="$(line_for_literal 'echo "Hepta preflight passed"')"
+workspace_diff_check_line="$(line_for_literal 'git diff --check')"
+cached_diff_check_line="$(line_for_literal 'git diff --cached --check')"
+git_status_line="$(line_for_literal 'git status -sb')"
+
+if [[ "$inline_fixture_mode" == true ]]; then
+  if grep -Eq '^[[:space:]]*git diff --check[[:space:]]*$' <<<"$PREFLIGHT_TEXT"; then
+    final_workspace_diff_check_present=true
+  fi
+  if grep -Eq '^[[:space:]]*git diff --cached --check[[:space:]]*$' <<<"$PREFLIGHT_TEXT"; then
+    final_cached_diff_check_present=true
+  fi
+  if grep -Eq '^[[:space:]]*git status -sb[[:space:]]*$' <<<"$PREFLIGHT_TEXT"; then
+    final_git_status_present=true
+  fi
+else
+  if grep -Eq '^[[:space:]]*git diff --check[[:space:]]*$' "$PREFLIGHT_PATH"; then
+    final_workspace_diff_check_present=true
+  fi
+  if grep -Eq '^[[:space:]]*git diff --cached --check[[:space:]]*$' "$PREFLIGHT_PATH"; then
+    final_cached_diff_check_present=true
+  fi
+  if grep -Eq '^[[:space:]]*git status -sb[[:space:]]*$' "$PREFLIGHT_PATH"; then
+    final_git_status_present=true
+  fi
+fi
+
+final_status_checks_present=false
+if [[ "$final_workspace_diff_check_present" == true \
+  && "$final_cached_diff_check_present" == true \
+  && "$final_git_status_present" == true ]]; then
+  final_status_checks_present=true
+fi
+
+final_status_checks_ordered=false
+if [[ "$final_status_checks_present" == true \
+  && "$whitespace_status_marker_line" -gt 0 \
+  && "$terminal_pass_marker_line" -gt 0 \
+  && "$workspace_diff_check_line" -gt "$whitespace_status_marker_line" \
+  && "$cached_diff_check_line" -gt "$workspace_diff_check_line" \
+  && "$git_status_line" -gt "$cached_diff_check_line" \
+  && "$git_status_line" -lt "$terminal_pass_marker_line" ]]; then
+  final_status_checks_ordered=true
+fi
+
+final_status_checks_ready=false
+if [[ "$final_status_checks_present" == true \
+  && "$final_status_checks_ordered" == true ]]; then
+  final_status_checks_ready=true
+fi
+
 missing_markers=()
 duplicate_markers=()
 out_of_order_markers=()
@@ -154,6 +225,7 @@ if [[ "$preflight_exists" == true \
   && "$marker_count_budget_ok" == true \
   && "$terminal_pass_marker_present" == true \
   && "$native_release_skip_branches_present" == true \
+  && "$final_status_checks_ready" == true \
   && "${#missing_markers[@]}" -eq 0 \
   && "${#duplicate_markers[@]}" -eq 0 \
   && "$ordered_markers" == true ]]; then
@@ -175,7 +247,7 @@ required_marker_lines_json="$(
 )"
 
 inventory_hash_sha256="$(
-  sha256_text "$marker_count:$present_required_marker_count:$MIN_MARKER_COUNT:$terminal_pass_marker_present:$native_release_skip_branches_present:${required_marker_lines[*]}"
+  sha256_text "$marker_count:$present_required_marker_count:$MIN_MARKER_COUNT:$terminal_pass_marker_present:$native_release_skip_branches_present:$final_status_checks_ready:${required_marker_lines[*]}"
 )"
 policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage:static-inventory:no-run:no-write:no-restart")"
 side_effect_hash_sha256="$(sha256_text "filesystem_written=false;runtime_mutation=false;service_restarted=false;external_send=false;secret_read=false")"
@@ -204,6 +276,17 @@ jq -n \
   --argjson ordered_markers "$ordered_markers" \
   --argjson terminal_pass_marker_present "$terminal_pass_marker_present" \
   --argjson native_release_skip_branches_present "$native_release_skip_branches_present" \
+  --argjson final_workspace_diff_check_present "$final_workspace_diff_check_present" \
+  --argjson final_cached_diff_check_present "$final_cached_diff_check_present" \
+  --argjson final_git_status_present "$final_git_status_present" \
+  --argjson final_status_checks_present "$final_status_checks_present" \
+  --argjson final_status_checks_ordered "$final_status_checks_ordered" \
+  --argjson final_status_checks_ready "$final_status_checks_ready" \
+  --argjson whitespace_status_marker_line "$whitespace_status_marker_line" \
+  --argjson terminal_pass_marker_line "$terminal_pass_marker_line" \
+  --argjson workspace_diff_check_line "$workspace_diff_check_line" \
+  --argjson cached_diff_check_line "$cached_diff_check_line" \
+  --argjson git_status_line "$git_status_line" \
   --argjson required_markers "$required_markers_json" \
   --argjson preflight_markers "$preflight_markers_json" \
   --argjson missing_markers "$missing_markers_json" \
@@ -234,6 +317,17 @@ jq -n \
     required_markers_ordered: $ordered_markers,
     terminal_pass_marker_present: $terminal_pass_marker_present,
     native_release_skip_branches_present: $native_release_skip_branches_present,
+    final_workspace_diff_check_present: $final_workspace_diff_check_present,
+    final_cached_diff_check_present: $final_cached_diff_check_present,
+    final_git_status_present: $final_git_status_present,
+    final_status_checks_present: $final_status_checks_present,
+    final_status_checks_ordered: $final_status_checks_ordered,
+    final_status_checks_ready: $final_status_checks_ready,
+    whitespace_status_marker_line: $whitespace_status_marker_line,
+    terminal_pass_marker_line: $terminal_pass_marker_line,
+    workspace_diff_check_line: $workspace_diff_check_line,
+    cached_diff_check_line: $cached_diff_check_line,
+    git_status_line: $git_status_line,
     required_markers: $required_markers,
     required_marker_lines: $required_marker_lines,
     missing_required_markers: $missing_markers,
@@ -277,6 +371,16 @@ jq -n \
         ready: $terminal_pass_marker_present,
         blocked: true,
         reason: "preflight completion must retain the terminal pass marker consumed by operators"
+      },
+      {
+        id: "final-whitespace-status-checks",
+        ready: $final_status_checks_ready,
+        blocked: true,
+        workspace_diff_check_present: $final_workspace_diff_check_present,
+        cached_diff_check_present: $final_cached_diff_check_present,
+        git_status_present: $final_git_status_present,
+        status_checks_ordered: $final_status_checks_ordered,
+        reason: "preflight must end with workspace diff, cached diff, and status checks"
       }
     ],
     denied_by_preflight_terminal_coverage_inventory: [
