@@ -43,6 +43,7 @@ required_markers=(
   "operator-security attention-budget diagnostic gate"
   "terminal watchdog/soak regression gate"
   "core activation evidence receipt terminal closure decision gate"
+  "core activation terminal closure gap evidence index gate"
   "JSON report capture diagnostic contract gate"
   "JSON report capture migration inventory gate"
   "preflight terminal coverage inventory gate"
@@ -80,7 +81,7 @@ phase_family_min_counts=(
   1
   44
   11
-  11
+  12
   4
   12
 )
@@ -106,6 +107,7 @@ phase_family_anchor_specs=(
   "core-activation-tail|core activation long-soak observation non-acceptance gate"
   "core-activation-tail|core activation fresh long-soak evidence ledger receipt gate"
   "core-activation-tail|core activation evidence receipt terminal closure decision gate"
+  "core-activation-tail|core activation terminal closure gap evidence index gate"
   "json-terminal-coverage|JSON report capture diagnostic contract gate"
   "json-terminal-coverage|JSON report capture migration inventory gate"
   "json-terminal-coverage|preflight terminal coverage inventory gate"

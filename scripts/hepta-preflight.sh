@@ -473,6 +473,9 @@ scripts/hepta-core-activation-evidence-receipt-acceptance-denial-gate.sh
 echo "[hepta-preflight] core activation evidence receipt terminal closure decision gate"
 scripts/hepta-core-activation-evidence-receipt-terminal-closure-decision-gate.sh
 
+echo "[hepta-preflight] core activation terminal closure gap evidence index gate"
+scripts/hepta-core-activation-terminal-closure-gap-evidence-index-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
