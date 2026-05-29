@@ -8,8 +8,10 @@ tests, control-ui smoke, explicit native/release skip branches, and the final
 
 `scripts/hepta-preflight-terminal-coverage-inventory-gate.sh` is a static,
 stdout-only inventory gate for that coverage. It reads
-`scripts/hepta-preflight.sh`, validates shell syntax, extracts
+`scripts/hepta-preflight.sh` by default, validates shell syntax, extracts
 `[hepta-preflight]` markers, and verifies a required terminal marker sequence.
+For synthetic diagnostics only, `HEPTA_PREFLIGHT_TERMINAL_COVERAGE_PREFLIGHT_TEXT`
+can provide inline preflight text without writing fixture files.
 
 The gate checks:
 
@@ -21,6 +23,17 @@ The gate checks:
 - gateway/native/control-ui verification markers remain wired;
 - native app and release build branches keep explicit skip controls;
 - the final `Hepta preflight passed` marker remains present.
+
+`scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh` is a
+synthetic fixture contract for the inventory gate. It proves the good fixture
+passes and negative fixtures fail closed for:
+
+- missing required marker;
+- duplicated required marker;
+- out-of-order required marker;
+- marker count budget shrinkage;
+- missing terminal pass marker;
+- missing native/release skip branches.
 
 The gate does not run the full preflight, run native app gates, build release
 artifacts, restart services, mutate launchd, fetch or merge upstream, invoke a

@@ -1,0 +1,328 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+sha256_text() {
+  printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+}
+
+required_markers=(
+  "metadata"
+  "cargo check"
+  "KG prompt-preview preflight gate"
+  "KG prompt-preview terminal next-action activation denial summary gate"
+  "readiness denial review acceptance closure summary gate"
+  "upstream Codex promotion closure gate"
+  "terminal release-governance final audit index gate"
+  "operator-security attention-budget diagnostic gate"
+  "terminal watchdog/soak regression gate"
+  "core activation evidence receipt terminal closure decision gate"
+  "JSON report capture diagnostic contract gate"
+  "JSON report capture migration inventory gate"
+  "preflight terminal coverage inventory gate"
+  "preflight terminal coverage diagnostic contract gate"
+  "upstream Codex latest active-safety regression gate"
+  "upstream Codex latest release-governance non-activation gate"
+  "upstream Codex latest operator briefing non-persistence gate"
+  "hepta-gateway tests"
+  "codex-cli native tests"
+  "control-ui smoke"
+  "native app metadata/check/tests"
+  "release build compatibility codex-cli"
+  "release build active hepta-cli"
+  "whitespace/status"
+)
+
+emit_fixture_preflight() {
+  local mode="${1:-good}"
+  local marker
+
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -euo pipefail' \
+    'RUN_NATIVE="${HEPTA_PREFLIGHT_NATIVE:-0}"' \
+    'RUN_RELEASE="${HEPTA_PREFLIGHT_RELEASE:-0}"'
+
+  for marker in "${required_markers[@]}"; do
+    if [[ "$mode" == "missing-required-marker" \
+      && "$marker" == "upstream Codex latest operator briefing non-persistence gate" ]]; then
+      continue
+    fi
+
+    if [[ "$mode" == "out-of-order-required-marker" \
+      && "$marker" == "JSON report capture diagnostic contract gate" ]]; then
+      printf '%s\n' \
+        'echo "[hepta-preflight] JSON report capture migration inventory gate"' \
+        'echo "[hepta-preflight] JSON report capture diagnostic contract gate"'
+      continue
+    fi
+
+    if [[ "$mode" == "out-of-order-required-marker" \
+      && "$marker" == "JSON report capture migration inventory gate" ]]; then
+      continue
+    fi
+
+    printf 'echo "[hepta-preflight] %s"\n' "$marker"
+
+    if [[ "$mode" == "duplicate-required-marker" \
+      && "$marker" == "preflight terminal coverage inventory gate" ]]; then
+      printf 'echo "[hepta-preflight] %s"\n' "$marker"
+    fi
+  done
+
+  if [[ "$mode" != "missing-native-release-skip-branches" ]]; then
+    printf '%s\n' \
+      'if [[ "$RUN_NATIVE" != "1" ]]; then' \
+      '  echo "[hepta-preflight] native app gates skipped (HEPTA_PREFLIGHT_NATIVE=$RUN_NATIVE)"' \
+      'fi' \
+      'if [[ "$RUN_RELEASE" != "1" ]]; then' \
+      '  echo "[hepta-preflight] release build skipped (set HEPTA_PREFLIGHT_RELEASE=1)"' \
+      'fi'
+  fi
+
+  if [[ "$mode" != "missing-terminal-pass-marker" ]]; then
+    printf '%s\n' 'echo "Hepta preflight passed"'
+  fi
+}
+
+fixture_report=""
+fixture_rc=0
+
+capture_fixture_report() {
+  local fixture_text="$1"
+  local min_marker_count="$2"
+  local output
+  local report
+  local rc=0
+
+  set +e
+  output="$(
+    HEPTA_PREFLIGHT_TERMINAL_COVERAGE_PREFLIGHT_TEXT="$fixture_text" \
+    HEPTA_PREFLIGHT_TERMINAL_COVERAGE_MIN_MARKER_COUNT="$min_marker_count" \
+      scripts/hepta-preflight-terminal-coverage-inventory-gate.sh 2>&1
+  )"
+  rc=$?
+  set -e
+
+  report="$(printf '%s\n' "$output" | extract_first_json_object)"
+  if ! jq -e . >/dev/null <<<"$report"; then
+    echo "fixture inventory did not emit parseable JSON" >&2
+    printf '%s\n' "$output" >&2
+    fixture_report='{}'
+    fixture_rc=99
+    return
+  fi
+
+  fixture_report="$report"
+  fixture_rc="$rc"
+}
+
+good_fixture="$(emit_fixture_preflight good)"
+missing_marker_fixture="$(emit_fixture_preflight missing-required-marker)"
+duplicate_marker_fixture="$(emit_fixture_preflight duplicate-required-marker)"
+out_of_order_fixture="$(emit_fixture_preflight out-of-order-required-marker)"
+missing_pass_fixture="$(emit_fixture_preflight missing-terminal-pass-marker)"
+missing_skip_fixture="$(emit_fixture_preflight missing-native-release-skip-branches)"
+
+capture_fixture_report "$good_fixture" 0
+good_report="$fixture_report"
+good_rc="$fixture_rc"
+
+capture_fixture_report "$missing_marker_fixture" 0
+missing_marker_report="$fixture_report"
+missing_marker_rc="$fixture_rc"
+
+capture_fixture_report "$duplicate_marker_fixture" 0
+duplicate_marker_report="$fixture_report"
+duplicate_marker_rc="$fixture_rc"
+
+capture_fixture_report "$out_of_order_fixture" 0
+out_of_order_report="$fixture_report"
+out_of_order_rc="$fixture_rc"
+
+capture_fixture_report "$good_fixture" 999
+marker_count_budget_report="$fixture_report"
+marker_count_budget_rc="$fixture_rc"
+
+capture_fixture_report "$missing_pass_fixture" 0
+missing_pass_report="$fixture_report"
+missing_pass_rc="$fixture_rc"
+
+capture_fixture_report "$missing_skip_fixture" 0
+missing_skip_report="$fixture_report"
+missing_skip_rc="$fixture_rc"
+
+good_fixture_ok=false
+missing_required_marker_fixture_ok=false
+duplicate_required_marker_fixture_ok=false
+out_of_order_required_marker_fixture_ok=false
+marker_count_budget_fixture_ok=false
+missing_terminal_pass_marker_fixture_ok=false
+missing_native_release_skip_branches_fixture_ok=false
+
+if [[ "$good_rc" -eq 0 ]] \
+  && jq -e '
+    .status == "ready"
+    and .preflight_terminal_coverage_inventory_ready == true
+    and .inline_fixture_mode == true
+    and .required_marker_count == 24
+    and .present_required_marker_count == 24
+    and .missing_required_marker_count == 0
+    and .duplicate_required_marker_count == 0
+    and .out_of_order_required_marker_count == 0
+    and .required_markers_ordered == true
+    and .terminal_pass_marker_present == true
+    and .native_release_skip_branches_present == true
+  ' >/dev/null <<<"$good_report"; then
+  good_fixture_ok=true
+fi
+
+if [[ "$missing_marker_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .missing_required_marker_count == 1
+    and (.missing_required_markers | index("upstream Codex latest operator briefing non-persistence gate") != null)
+  ' >/dev/null <<<"$missing_marker_report"; then
+  missing_required_marker_fixture_ok=true
+fi
+
+if [[ "$duplicate_marker_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .duplicate_required_marker_count == 1
+    and (.duplicate_required_markers | index("preflight terminal coverage inventory gate") != null)
+  ' >/dev/null <<<"$duplicate_marker_report"; then
+  duplicate_required_marker_fixture_ok=true
+fi
+
+if [[ "$out_of_order_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .out_of_order_required_marker_count == 1
+    and .required_markers_ordered == false
+    and (.out_of_order_required_markers | index("JSON report capture migration inventory gate") != null)
+  ' >/dev/null <<<"$out_of_order_report"; then
+  out_of_order_required_marker_fixture_ok=true
+fi
+
+if [[ "$marker_count_budget_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .marker_count_budget_ok == false
+    and .minimum_required_preflight_marker_count == 999
+  ' >/dev/null <<<"$marker_count_budget_report"; then
+  marker_count_budget_fixture_ok=true
+fi
+
+if [[ "$missing_pass_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .terminal_pass_marker_present == false
+  ' >/dev/null <<<"$missing_pass_report"; then
+  missing_terminal_pass_marker_fixture_ok=true
+fi
+
+if [[ "$missing_skip_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .native_release_skip_branches_present == false
+  ' >/dev/null <<<"$missing_skip_report"; then
+  missing_native_release_skip_branches_fixture_ok=true
+fi
+
+contract_hash_sha256="$(
+  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok"
+)"
+policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage-diagnostic:synthetic-fixtures:no-child-gate-execution:no-workspace-write:no-release-build:no-native-gate")"
+side_effect_hash_sha256="$(sha256_text "preflight_fixture_text_only=true;workspace_written=false;release_build=false;native_gate=false;service_restart=false")"
+
+jq -n -e \
+  --arg contract_hash_sha256 "$contract_hash_sha256" \
+  --arg policy_hash_sha256 "$policy_hash_sha256" \
+  --arg side_effect_hash_sha256 "$side_effect_hash_sha256" \
+  --argjson good_fixture_ok "$good_fixture_ok" \
+  --argjson missing_required_marker_fixture_ok "$missing_required_marker_fixture_ok" \
+  --argjson duplicate_required_marker_fixture_ok "$duplicate_required_marker_fixture_ok" \
+  --argjson out_of_order_required_marker_fixture_ok "$out_of_order_required_marker_fixture_ok" \
+  --argjson marker_count_budget_fixture_ok "$marker_count_budget_fixture_ok" \
+  --argjson missing_terminal_pass_marker_fixture_ok "$missing_terminal_pass_marker_fixture_ok" \
+  --argjson missing_native_release_skip_branches_fixture_ok "$missing_native_release_skip_branches_fixture_ok" \
+  '
+    if (
+      $good_fixture_ok == true
+      and $missing_required_marker_fixture_ok == true
+      and $duplicate_required_marker_fixture_ok == true
+      and $out_of_order_required_marker_fixture_ok == true
+      and $marker_count_budget_fixture_ok == true
+      and $missing_terminal_pass_marker_fixture_ok == true
+      and $missing_native_release_skip_branches_fixture_ok == true
+    ) then {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_preflight_terminal_coverage_diagnostic_contract_gate",
+      preflight_terminal_coverage_diagnostic_contract_schema_version: "hepta_preflight_terminal_coverage_diagnostic_contract_v1",
+      preflight_terminal_coverage_diagnostic_contract_ready: true,
+      diagnostic_mode: "synthetic_inline_preflight_fixture_inventory_no_child_gate_execution",
+      diagnostic_decision: "preflight_terminal_coverage_inventory_passes_good_fixture_and_fails_closed_for_missing_duplicate_reordered_and_shrunken_terminal_coverage",
+      inventory_gate_path: "scripts/hepta-preflight-terminal-coverage-inventory-gate.sh",
+      diagnostic_fixture_count: 7,
+      good_fixture_ok: $good_fixture_ok,
+      missing_required_marker_fixture_ok: $missing_required_marker_fixture_ok,
+      duplicate_required_marker_fixture_ok: $duplicate_required_marker_fixture_ok,
+      out_of_order_required_marker_fixture_ok: $out_of_order_required_marker_fixture_ok,
+      marker_count_budget_fixture_ok: $marker_count_budget_fixture_ok,
+      missing_terminal_pass_marker_fixture_ok: $missing_terminal_pass_marker_fixture_ok,
+      missing_native_release_skip_branches_fixture_ok: $missing_native_release_skip_branches_fixture_ok,
+      good_fixture_ready_preserved: true,
+      missing_required_marker_attention_exposed: true,
+      duplicate_required_marker_attention_exposed: true,
+      out_of_order_required_marker_attention_exposed: true,
+      marker_count_budget_attention_exposed: true,
+      terminal_pass_marker_attention_exposed: true,
+      native_release_skip_branch_attention_exposed: true,
+      contract_hash_sha256: $contract_hash_sha256,
+      policy_hash_sha256: $policy_hash_sha256,
+      side_effect_hash_sha256: $side_effect_hash_sha256,
+      denied_by_preflight_terminal_coverage_diagnostic_contract: [
+        "preflight_terminal_coverage_diagnostic_child_gate_execution_denied",
+        "preflight_terminal_coverage_diagnostic_release_build_denied",
+        "preflight_terminal_coverage_diagnostic_native_gate_execution_denied",
+        "preflight_terminal_coverage_diagnostic_workspace_write_denied",
+        "preflight_terminal_coverage_diagnostic_service_restart_denied",
+        "preflight_terminal_coverage_diagnostic_external_send_denied",
+        "preflight_terminal_coverage_diagnostic_secret_read_denied"
+      ],
+      side_effects: {
+        child_gate_execution_performed: false,
+        synthetic_fixture_workspace_written: false,
+        workspace_written: false,
+        filesystem_written: false,
+        release_build_executed: false,
+        native_app_gate_executed: false,
+        runtime_mutation_performed: false,
+        active_binary_mutated: false,
+        service_restarted: false,
+        launchd_mutated: false,
+        upstream_fetch_performed: false,
+        upstream_merge_performed: false,
+        provider_invoked: false,
+        model_invoked: false,
+        external_send_performed: false,
+        credential_read: false,
+        secret_file_read: false
+      }
+    } else false end
+  '
+
+echo "Hepta preflight terminal coverage diagnostic contract gate passed"

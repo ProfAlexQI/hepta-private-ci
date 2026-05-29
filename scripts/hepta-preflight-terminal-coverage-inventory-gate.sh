@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT"
 
-PREFLIGHT_PATH="scripts/hepta-preflight.sh"
+PREFLIGHT_PATH="${HEPTA_PREFLIGHT_TERMINAL_COVERAGE_PREFLIGHT_PATH:-scripts/hepta-preflight.sh}"
+PREFLIGHT_TEXT="${HEPTA_PREFLIGHT_TERMINAL_COVERAGE_PREFLIGHT_TEXT:-}"
 MIN_MARKER_COUNT="${HEPTA_PREFLIGHT_TERMINAL_COVERAGE_MIN_MARKER_COUNT:-160}"
 
 sha256_text() {
@@ -29,6 +30,7 @@ required_markers=(
   "JSON report capture diagnostic contract gate"
   "JSON report capture migration inventory gate"
   "preflight terminal coverage inventory gate"
+  "preflight terminal coverage diagnostic contract gate"
   "upstream Codex latest active-safety regression gate"
   "upstream Codex latest release-governance non-activation gate"
   "upstream Codex latest operator briefing non-persistence gate"
@@ -41,20 +43,39 @@ required_markers=(
   "whitespace/status"
 )
 
+inline_fixture_mode=false
+if [[ -n "$PREFLIGHT_TEXT" ]]; then
+  inline_fixture_mode=true
+fi
+
 preflight_exists=false
-if [[ -x "$PREFLIGHT_PATH" ]]; then
+if [[ "$inline_fixture_mode" == true || -x "$PREFLIGHT_PATH" ]]; then
   preflight_exists=true
 fi
 
 syntax_ok=false
-if bash -n "$PREFLIGHT_PATH"; then
-  syntax_ok=true
+if [[ "$inline_fixture_mode" == true ]]; then
+  if printf '%s\n' "$PREFLIGHT_TEXT" | bash -n; then
+    syntax_ok=true
+  fi
+else
+  if bash -n "$PREFLIGHT_PATH"; then
+    syntax_ok=true
+  fi
 fi
 
-mapfile -t preflight_markers < <(
-  grep -E '^[[:space:]]*echo "\[hepta-preflight\] ' "$PREFLIGHT_PATH" \
-    | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/'
-)
+if [[ "$inline_fixture_mode" == true ]]; then
+  mapfile -t preflight_markers < <(
+    printf '%s\n' "$PREFLIGHT_TEXT" \
+      | grep -E '^[[:space:]]*echo "\[hepta-preflight\] ' \
+      | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/'
+  )
+else
+  mapfile -t preflight_markers < <(
+    grep -E '^[[:space:]]*echo "\[hepta-preflight\] ' "$PREFLIGHT_PATH" \
+      | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/'
+  )
+fi
 
 marker_count="${#preflight_markers[@]}"
 marker_count_budget_ok=false
@@ -63,16 +84,29 @@ if [[ "$marker_count" -ge "$MIN_MARKER_COUNT" ]]; then
 fi
 
 terminal_pass_marker_present=false
-if grep -q '^echo "Hepta preflight passed"$' "$PREFLIGHT_PATH"; then
+if [[ "$inline_fixture_mode" == true ]]; then
+  if grep -q '^echo "Hepta preflight passed"$' <<<"$PREFLIGHT_TEXT"; then
+    terminal_pass_marker_present=true
+  fi
+elif grep -q '^echo "Hepta preflight passed"$' "$PREFLIGHT_PATH"; then
   terminal_pass_marker_present=true
 fi
 
 native_release_skip_branches_present=false
-if grep -q 'native app gates skipped' "$PREFLIGHT_PATH" \
-  && grep -q 'release build skipped' "$PREFLIGHT_PATH" \
-  && grep -q 'HEPTA_PREFLIGHT_NATIVE' "$PREFLIGHT_PATH" \
-  && grep -q 'HEPTA_PREFLIGHT_RELEASE' "$PREFLIGHT_PATH"; then
-  native_release_skip_branches_present=true
+if [[ "$inline_fixture_mode" == true ]]; then
+  if grep -q 'native app gates skipped' <<<"$PREFLIGHT_TEXT" \
+    && grep -q 'release build skipped' <<<"$PREFLIGHT_TEXT" \
+    && grep -q 'HEPTA_PREFLIGHT_NATIVE' <<<"$PREFLIGHT_TEXT" \
+    && grep -q 'HEPTA_PREFLIGHT_RELEASE' <<<"$PREFLIGHT_TEXT"; then
+    native_release_skip_branches_present=true
+  fi
+else
+  if grep -q 'native app gates skipped' "$PREFLIGHT_PATH" \
+    && grep -q 'release build skipped' "$PREFLIGHT_PATH" \
+    && grep -q 'HEPTA_PREFLIGHT_NATIVE' "$PREFLIGHT_PATH" \
+    && grep -q 'HEPTA_PREFLIGHT_RELEASE' "$PREFLIGHT_PATH"; then
+    native_release_skip_branches_present=true
+  fi
 fi
 
 missing_markers=()
@@ -84,10 +118,17 @@ ordered_markers=true
 present_required_marker_count=0
 
 for marker in "${required_markers[@]}"; do
-  mapfile -t lines < <(
-    grep -nF "echo \"[hepta-preflight] $marker\"" "$PREFLIGHT_PATH" \
-      | cut -d: -f1
-  )
+  if [[ "$inline_fixture_mode" == true ]]; then
+    mapfile -t lines < <(
+      grep -nF "echo \"[hepta-preflight] $marker\"" <<<"$PREFLIGHT_TEXT" \
+        | cut -d: -f1
+    )
+  else
+    mapfile -t lines < <(
+      grep -nF "echo \"[hepta-preflight] $marker\"" "$PREFLIGHT_PATH" \
+        | cut -d: -f1
+    )
+  fi
   line_count="${#lines[@]}"
   if [[ "$line_count" -eq 0 ]]; then
     missing_markers+=("$marker")
@@ -152,6 +193,7 @@ jq -n \
   --arg policy_hash_sha256 "$policy_hash_sha256" \
   --arg side_effect_hash_sha256 "$side_effect_hash_sha256" \
   --argjson ready "$coverage_ready" \
+  --argjson inline_fixture_mode "$inline_fixture_mode" \
   --argjson preflight_exists "$preflight_exists" \
   --argjson syntax_ok "$syntax_ok" \
   --argjson marker_count "$marker_count" \
@@ -178,6 +220,7 @@ jq -n \
     inventory_mode: $mode,
     inventory_decision: $decision,
     preflight_path: $preflight_path,
+    inline_fixture_mode: $inline_fixture_mode,
     preflight_exists: $preflight_exists,
     preflight_syntax_ok: $syntax_ok,
     preflight_marker_count: $marker_count,

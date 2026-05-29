@@ -482,6 +482,9 @@ scripts/hepta-json-report-capture-migration-inventory-gate.sh
 echo "[hepta-preflight] preflight terminal coverage inventory gate"
 scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 
+echo "[hepta-preflight] preflight terminal coverage diagnostic contract gate"
+scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh
+
 echo "[hepta-preflight] upstream Codex latest active-safety regression gate"
 scripts/hepta-upstream-codex-latest-active-safety-regression.sh
 
