@@ -85,6 +85,38 @@ phase_family_min_counts=(
   12
 )
 
+phase_family_anchor_specs=(
+  "early-core-spine|metadata"
+  "early-core-spine|active service dependency isolation gate"
+  "legacy-migration-closure|legacy preflight entrypoint migration gate"
+  "legacy-migration-closure|memory/intelligence closure gate"
+  "kg-prompt-preview-readiness|KG prompt-preview preflight gate"
+  "kg-prompt-preview-readiness|KG prompt-preview operator approval checklist schema gate"
+  "kg-prompt-preview-readiness|KG prompt-preview terminal next-action activation denial summary gate"
+  "live-mutation-denial|live mutation governance gate"
+  "live-mutation-denial|memory live mutation operator write execution activation command result receipt final operator acknowledgement non-acceptance denial gate"
+  "live-mutation-denial|live mutation pre-activation soak evidence persistence payload redaction acceptance receipt filesystem persistence ledger persistence rehearsal receipt review acceptance scoreboard review acceptance readiness denial review acceptance closure gate"
+  "readiness-denial-closure|readiness denial review acceptance closure summary gate"
+  "upstream-codex-absorption-activation|upstream Codex snapshot gate"
+  "upstream-codex-absorption-activation|upstream Codex activation evidence receipt filesystem persistence execution denial matrix gate"
+  "upstream-codex-absorption-activation|upstream Codex sync lane gate"
+  "terminal-governance-release|terminal denial index gate"
+  "terminal-governance-release|terminal public distribution non-publication lock gate"
+  "terminal-governance-release|terminal release-governance final audit index gate"
+  "core-activation-tail|core activation long-soak observation non-acceptance gate"
+  "core-activation-tail|core activation fresh long-soak evidence ledger receipt gate"
+  "core-activation-tail|core activation evidence receipt terminal closure decision gate"
+  "json-terminal-coverage|JSON report capture diagnostic contract gate"
+  "json-terminal-coverage|JSON report capture migration inventory gate"
+  "json-terminal-coverage|preflight terminal coverage inventory gate"
+  "json-terminal-coverage|preflight terminal coverage diagnostic contract gate"
+  "latest-regression-and-tests|upstream Codex latest active-safety regression gate"
+  "latest-regression-and-tests|upstream Codex latest operator briefing non-persistence gate"
+  "latest-regression-and-tests|hepta-gateway tests"
+  "latest-regression-and-tests|codex-cli native tests"
+  "latest-regression-and-tests|whitespace/status"
+)
+
 marker_matches_phase_family() {
   local family_id="$1"
   local marker="$2"
@@ -169,6 +201,19 @@ marker_matches_phase_family() {
   return 1
 }
 
+marker_present_exact() {
+  local target="$1"
+  local marker
+
+  for marker in "${preflight_markers[@]}"; do
+    if [[ "$marker" == "$target" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 inline_fixture_mode=false
 if [[ -n "$PREFLIGHT_TEXT" ]]; then
   inline_fixture_mode=true
@@ -240,6 +285,32 @@ phase_family_budget_failure_count="${#phase_family_failures[@]}"
 phase_family_budget_ready=false
 if [[ "$phase_family_budget_failure_count" -eq 0 ]]; then
   phase_family_budget_ready=true
+fi
+
+phase_family_anchor_records=()
+phase_family_anchor_failures=()
+phase_family_anchor_ready_count=0
+phase_family_anchor_count="${#phase_family_anchor_specs[@]}"
+
+for anchor_spec in "${phase_family_anchor_specs[@]}"; do
+  family_id="${anchor_spec%%|*}"
+  anchor_marker="${anchor_spec#*|}"
+  anchor_ready=false
+
+  if marker_present_exact "$anchor_marker"; then
+    anchor_ready=true
+    phase_family_anchor_ready_count=$((phase_family_anchor_ready_count + 1))
+  else
+    phase_family_anchor_failures+=("$family_id|$anchor_marker")
+  fi
+
+  phase_family_anchor_records+=("$family_id|$anchor_marker|$anchor_ready")
+done
+
+phase_family_anchor_failure_count="${#phase_family_anchor_failures[@]}"
+phase_family_anchor_ready=false
+if [[ "$phase_family_anchor_failure_count" -eq 0 ]]; then
+  phase_family_anchor_ready=true
 fi
 
 terminal_pass_marker_present=false
@@ -383,6 +454,7 @@ if [[ "$preflight_exists" == true \
   && "$syntax_ok" == true \
   && "$marker_count_budget_ok" == true \
   && "$phase_family_budget_ready" == true \
+  && "$phase_family_anchor_ready" == true \
   && "$terminal_pass_marker_present" == true \
   && "$native_release_skip_branches_present" == true \
   && "$final_status_checks_ready" == true \
@@ -431,9 +503,33 @@ phase_family_failures_json="$(
           })
       '
 )"
+phase_family_anchor_records_json="$(
+  printf '%s\n' "${phase_family_anchor_records[@]}" \
+    | jq -R -s '
+        split("\n")
+        | map(select(length > 0))
+        | map(split("|") | {
+            family_id: .[0],
+            marker: .[1],
+            ready: (.[2] == "true"),
+            blocked: true
+          })
+      '
+)"
+phase_family_anchor_failures_json="$(
+  printf '%s\n' "${phase_family_anchor_failures[@]}" \
+    | jq -R -s '
+        split("\n")
+        | map(select(length > 0))
+        | map(split("|") | {
+            family_id: .[0],
+            marker: .[1]
+          })
+      '
+)"
 
 inventory_hash_sha256="$(
-  sha256_text "$marker_count:$present_required_marker_count:$MIN_MARKER_COUNT:$phase_family_budget_ready:${phase_family_records[*]}:$terminal_pass_marker_present:$native_release_skip_branches_present:$final_status_checks_ready:${required_marker_lines[*]}"
+  sha256_text "$marker_count:$present_required_marker_count:$MIN_MARKER_COUNT:$phase_family_budget_ready:${phase_family_records[*]}:$phase_family_anchor_ready:${phase_family_anchor_records[*]}:$terminal_pass_marker_present:$native_release_skip_branches_present:$final_status_checks_ready:${required_marker_lines[*]}"
 )"
 policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage:static-inventory:no-run:no-write:no-restart")"
 side_effect_hash_sha256="$(sha256_text "filesystem_written=false;runtime_mutation=false;service_restarted=false;external_send=false;secret_read=false")"
@@ -461,6 +557,10 @@ jq -n \
   --argjson phase_family_ready_count "$phase_family_ready_count" \
   --argjson phase_family_budget_failure_count "$phase_family_budget_failure_count" \
   --argjson phase_family_budget_ready "$phase_family_budget_ready" \
+  --argjson phase_family_anchor_count "$phase_family_anchor_count" \
+  --argjson phase_family_anchor_ready_count "$phase_family_anchor_ready_count" \
+  --argjson phase_family_anchor_failure_count "$phase_family_anchor_failure_count" \
+  --argjson phase_family_anchor_ready "$phase_family_anchor_ready" \
   --argjson required_marker_count "${#required_markers[@]}" \
   --argjson present_required_marker_count "$present_required_marker_count" \
   --argjson ordered_markers "$ordered_markers" \
@@ -485,6 +585,8 @@ jq -n \
   --argjson required_marker_lines "$required_marker_lines_json" \
   --argjson phase_family_records "$phase_family_records_json" \
   --argjson phase_family_failures "$phase_family_failures_json" \
+  --argjson phase_family_anchor_records "$phase_family_anchor_records_json" \
+  --argjson phase_family_anchor_failures "$phase_family_anchor_failures_json" \
   '{
     product: $product,
     runtime: $runtime,
@@ -505,6 +607,10 @@ jq -n \
     phase_family_ready_count: $phase_family_ready_count,
     phase_family_budget_failure_count: $phase_family_budget_failure_count,
     phase_family_budget_ready: $phase_family_budget_ready,
+    phase_family_anchor_count: $phase_family_anchor_count,
+    phase_family_anchor_ready_count: $phase_family_anchor_ready_count,
+    phase_family_anchor_failure_count: $phase_family_anchor_failure_count,
+    phase_family_anchor_ready: $phase_family_anchor_ready,
     required_marker_count: $required_marker_count,
     present_required_marker_count: $present_required_marker_count,
     missing_required_marker_count: ($missing_markers | length),
@@ -531,6 +637,8 @@ jq -n \
     out_of_order_required_markers: $out_of_order_markers,
     phase_family_coverage: $phase_family_records,
     phase_family_budget_failures: $phase_family_failures,
+    phase_family_anchors: $phase_family_anchor_records,
+    phase_family_anchor_failures: $phase_family_anchor_failures,
     preflight_markers: $preflight_markers,
     inventory_hash_sha256: $inventory_hash_sha256,
     policy_hash_sha256: $policy_hash_sha256,
@@ -559,6 +667,16 @@ jq -n \
         failure_count: $phase_family_budget_failure_count,
         failures: $phase_family_failures,
         reason: "large preflight phase families must not collapse to one representative marker"
+      },
+      {
+        id: "phase-family-anchor-contract",
+        ready: $phase_family_anchor_ready,
+        blocked: true,
+        ready_count: $phase_family_anchor_ready_count,
+        required_count: $phase_family_anchor_count,
+        failure_count: $phase_family_anchor_failure_count,
+        failures: $phase_family_anchor_failures,
+        reason: "each large preflight phase family must retain named anchor markers, not only count filler"
       },
       {
         id: "required-terminal-marker-order",

@@ -23,6 +23,8 @@ The gate checks:
   migration closure, KG prompt-preview readiness, live-mutation denial,
   upstream Codex absorption/activation, terminal governance/release, Core
   activation tail, JSON/terminal coverage, and latest regression/test families;
+- each phase-family budget retains named anchor markers, so a family cannot
+  stay green by replacing real gate anchors with generic count filler;
 - critical markers are present exactly once and in order;
 - early spine markers for fmt/check, adapters, name/repository closure, active
   dependency isolation, legacy entrypoint migration, and memory/intelligence
@@ -45,6 +47,8 @@ passes and negative fixtures fail closed for:
 - out-of-order required marker;
 - marker count budget shrinkage;
 - phase-family budget shrinkage with all required markers still present;
+- missing phase-family anchor with all required markers and count budgets still
+  present;
 - missing terminal pass marker;
 - missing native/release skip branches.
 - missing final workspace diff check;
