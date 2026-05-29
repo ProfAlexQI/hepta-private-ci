@@ -527,9 +527,45 @@ phase_family_anchor_failures_json="$(
           })
       '
 )"
+phase_family_ids_json="$(printf '%s\n' "${phase_family_ids[@]}" | json_lines)"
+phase_family_anchor_family_coverage_json="$(
+  jq -n \
+    --argjson family_ids "$phase_family_ids_json" \
+    --argjson anchor_records "$phase_family_anchor_records_json" \
+    '
+      $family_ids
+      | map(. as $family_id
+        | ($anchor_records | map(select(.family_id == $family_id))) as $family_anchors
+        | {
+            id: $family_id,
+            required_anchor_count: ($family_anchors | length),
+            ready_anchor_count: ($family_anchors | map(select(.ready == true)) | length),
+            missing_anchor_count: ($family_anchors | map(select(.ready != true)) | length),
+            ready: (
+              ($family_anchors | length) > 0
+              and (($family_anchors | map(select(.ready == true)) | length) == ($family_anchors | length))
+            ),
+            blocked: true,
+            anchors: $family_anchors,
+            missing_anchors: ($family_anchors | map(select(.ready != true) | .marker))
+          }
+      )
+    '
+)"
+phase_family_anchor_family_count="${#phase_family_ids[@]}"
+phase_family_anchor_family_ready_count="$(
+  jq '[.[] | select(.ready == true)] | length' <<<"$phase_family_anchor_family_coverage_json"
+)"
+phase_family_anchor_family_failure_count="$(
+  jq '[.[] | select(.ready != true)] | length' <<<"$phase_family_anchor_family_coverage_json"
+)"
+phase_family_anchor_family_ready=false
+if [[ "$phase_family_anchor_family_failure_count" -eq 0 ]]; then
+  phase_family_anchor_family_ready=true
+fi
 
 inventory_hash_sha256="$(
-  sha256_text "$marker_count:$present_required_marker_count:$MIN_MARKER_COUNT:$phase_family_budget_ready:${phase_family_records[*]}:$phase_family_anchor_ready:${phase_family_anchor_records[*]}:$terminal_pass_marker_present:$native_release_skip_branches_present:$final_status_checks_ready:${required_marker_lines[*]}"
+  sha256_text "$marker_count:$present_required_marker_count:$MIN_MARKER_COUNT:$phase_family_budget_ready:${phase_family_records[*]}:$phase_family_anchor_ready:${phase_family_anchor_records[*]}:$phase_family_anchor_family_ready:$phase_family_anchor_family_ready_count:$terminal_pass_marker_present:$native_release_skip_branches_present:$final_status_checks_ready:${required_marker_lines[*]}"
 )"
 policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage:static-inventory:no-run:no-write:no-restart")"
 side_effect_hash_sha256="$(sha256_text "filesystem_written=false;runtime_mutation=false;service_restarted=false;external_send=false;secret_read=false")"
@@ -561,6 +597,10 @@ jq -n \
   --argjson phase_family_anchor_ready_count "$phase_family_anchor_ready_count" \
   --argjson phase_family_anchor_failure_count "$phase_family_anchor_failure_count" \
   --argjson phase_family_anchor_ready "$phase_family_anchor_ready" \
+  --argjson phase_family_anchor_family_count "$phase_family_anchor_family_count" \
+  --argjson phase_family_anchor_family_ready_count "$phase_family_anchor_family_ready_count" \
+  --argjson phase_family_anchor_family_failure_count "$phase_family_anchor_family_failure_count" \
+  --argjson phase_family_anchor_family_ready "$phase_family_anchor_family_ready" \
   --argjson required_marker_count "${#required_markers[@]}" \
   --argjson present_required_marker_count "$present_required_marker_count" \
   --argjson ordered_markers "$ordered_markers" \
@@ -587,6 +627,7 @@ jq -n \
   --argjson phase_family_failures "$phase_family_failures_json" \
   --argjson phase_family_anchor_records "$phase_family_anchor_records_json" \
   --argjson phase_family_anchor_failures "$phase_family_anchor_failures_json" \
+  --argjson phase_family_anchor_family_coverage "$phase_family_anchor_family_coverage_json" \
   '{
     product: $product,
     runtime: $runtime,
@@ -611,6 +652,10 @@ jq -n \
     phase_family_anchor_ready_count: $phase_family_anchor_ready_count,
     phase_family_anchor_failure_count: $phase_family_anchor_failure_count,
     phase_family_anchor_ready: $phase_family_anchor_ready,
+    phase_family_anchor_family_count: $phase_family_anchor_family_count,
+    phase_family_anchor_family_ready_count: $phase_family_anchor_family_ready_count,
+    phase_family_anchor_family_failure_count: $phase_family_anchor_family_failure_count,
+    phase_family_anchor_family_ready: $phase_family_anchor_family_ready,
     required_marker_count: $required_marker_count,
     present_required_marker_count: $present_required_marker_count,
     missing_required_marker_count: ($missing_markers | length),
@@ -639,6 +684,7 @@ jq -n \
     phase_family_budget_failures: $phase_family_failures,
     phase_family_anchors: $phase_family_anchor_records,
     phase_family_anchor_failures: $phase_family_anchor_failures,
+    phase_family_anchor_family_coverage: $phase_family_anchor_family_coverage,
     preflight_markers: $preflight_markers,
     inventory_hash_sha256: $inventory_hash_sha256,
     policy_hash_sha256: $policy_hash_sha256,
@@ -675,7 +721,11 @@ jq -n \
         ready_count: $phase_family_anchor_ready_count,
         required_count: $phase_family_anchor_count,
         failure_count: $phase_family_anchor_failure_count,
+        family_ready_count: $phase_family_anchor_family_ready_count,
+        family_required_count: $phase_family_anchor_family_count,
+        family_failure_count: $phase_family_anchor_family_failure_count,
         failures: $phase_family_anchor_failures,
+        family_coverage: $phase_family_anchor_family_coverage,
         reason: "each large preflight phase family must retain named anchor markers, not only count filler"
       },
       {

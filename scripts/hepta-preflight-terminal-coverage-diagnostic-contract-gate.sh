@@ -290,6 +290,7 @@ missing_git_status_check_fixture_ok=false
 out_of_order_final_status_checks_fixture_ok=false
 missing_phase_family_budget_fixture_ok=false
 missing_phase_family_anchor_fixture_ok=false
+phase_family_anchor_family_evidence_ok=false
 
 if [[ "$good_rc" -eq 0 ]] \
   && jq -e '
@@ -310,6 +311,10 @@ if [[ "$good_rc" -eq 0 ]] \
     and .phase_family_anchor_ready_count == 29
     and .phase_family_anchor_failure_count == 0
     and .phase_family_anchor_ready == true
+    and .phase_family_anchor_family_count == 10
+    and .phase_family_anchor_family_ready_count == 10
+    and .phase_family_anchor_family_failure_count == 0
+    and .phase_family_anchor_family_ready == true
     and .terminal_pass_marker_present == true
     and .native_release_skip_branches_present == true
     and .final_workspace_diff_check_present == true
@@ -480,8 +485,38 @@ if [[ "$missing_phase_family_anchor_rc" -eq 1 ]] \
   missing_phase_family_anchor_fixture_ok=true
 fi
 
+if jq -e '
+    .phase_family_anchor_family_count == 10
+    and .phase_family_anchor_family_ready_count == 10
+    and .phase_family_anchor_family_failure_count == 0
+    and .phase_family_anchor_family_ready == true
+    and (.phase_family_anchor_family_coverage[] | select(
+      .id == "kg-prompt-preview-readiness"
+      and .required_anchor_count == 3
+      and .ready_anchor_count == 3
+      and .missing_anchor_count == 0
+      and .ready == true
+    ))
+  ' >/dev/null <<<"$good_report" \
+  && jq -e '
+    .phase_family_anchor_family_count == 10
+    and .phase_family_anchor_family_ready_count == 9
+    and .phase_family_anchor_family_failure_count == 1
+    and .phase_family_anchor_family_ready == false
+    and (.phase_family_anchor_family_coverage[] | select(
+      .id == "kg-prompt-preview-readiness"
+      and .required_anchor_count == 3
+      and .ready_anchor_count == 2
+      and .missing_anchor_count == 1
+      and .ready == false
+      and (.missing_anchors | index("KG prompt-preview operator approval checklist schema gate") != null)
+    ))
+  ' >/dev/null <<<"$missing_phase_family_anchor_report"; then
+  phase_family_anchor_family_evidence_ok=true
+fi
+
 contract_hash_sha256="$(
-  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$missing_spine_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok:$missing_workspace_diff_check_fixture_ok:$missing_cached_diff_check_fixture_ok:$missing_git_status_check_fixture_ok:$out_of_order_final_status_checks_fixture_ok:$missing_phase_family_budget_fixture_ok:$missing_phase_family_anchor_fixture_ok"
+  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$missing_spine_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok:$missing_workspace_diff_check_fixture_ok:$missing_cached_diff_check_fixture_ok:$missing_git_status_check_fixture_ok:$out_of_order_final_status_checks_fixture_ok:$missing_phase_family_budget_fixture_ok:$missing_phase_family_anchor_fixture_ok:$phase_family_anchor_family_evidence_ok"
 )"
 policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage-diagnostic:synthetic-fixtures:no-child-gate-execution:no-workspace-write:no-release-build:no-native-gate")"
 side_effect_hash_sha256="$(sha256_text "preflight_fixture_text_only=true;workspace_written=false;release_build=false;native_gate=false;service_restart=false")"
@@ -504,6 +539,7 @@ jq -n -e \
   --argjson out_of_order_final_status_checks_fixture_ok "$out_of_order_final_status_checks_fixture_ok" \
   --argjson missing_phase_family_budget_fixture_ok "$missing_phase_family_budget_fixture_ok" \
   --argjson missing_phase_family_anchor_fixture_ok "$missing_phase_family_anchor_fixture_ok" \
+  --argjson phase_family_anchor_family_evidence_ok "$phase_family_anchor_family_evidence_ok" \
   '
     if (
       $good_fixture_ok == true
@@ -520,6 +556,7 @@ jq -n -e \
       and $out_of_order_final_status_checks_fixture_ok == true
       and $missing_phase_family_budget_fixture_ok == true
       and $missing_phase_family_anchor_fixture_ok == true
+      and $phase_family_anchor_family_evidence_ok == true
     ) then {
       product: "Hepta",
       runtime: "hepta",
@@ -545,6 +582,7 @@ jq -n -e \
       out_of_order_final_status_checks_fixture_ok: $out_of_order_final_status_checks_fixture_ok,
       missing_phase_family_budget_fixture_ok: $missing_phase_family_budget_fixture_ok,
       missing_phase_family_anchor_fixture_ok: $missing_phase_family_anchor_fixture_ok,
+      phase_family_anchor_family_evidence_ok: $phase_family_anchor_family_evidence_ok,
       good_fixture_ready_preserved: true,
       missing_required_marker_attention_exposed: true,
       missing_spine_marker_attention_exposed: true,
@@ -559,6 +597,7 @@ jq -n -e \
       final_status_check_order_attention_exposed: true,
       phase_family_budget_attention_exposed: true,
       phase_family_anchor_attention_exposed: true,
+      phase_family_anchor_family_evidence_exposed: true,
       contract_hash_sha256: $contract_hash_sha256,
       policy_hash_sha256: $policy_hash_sha256,
       side_effect_hash_sha256: $side_effect_hash_sha256,
