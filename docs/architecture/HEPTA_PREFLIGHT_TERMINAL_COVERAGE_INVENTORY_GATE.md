@@ -1,6 +1,8 @@
 # Hepta Preflight Terminal Coverage Inventory Gate
 
-The full light preflight is intentionally long. Its terminal coverage matters:
+The full light preflight is intentionally long. Its spine and terminal coverage
+matter: metadata/fmt/check, adapter replay, name/repository closure, active
+dependency isolation, legacy entrypoint migration, memory/intelligence closure,
 JSON report capture diagnostics, migration inventory, latest upstream safety and
 release-governance locks, operator briefing non-persistence, gateway/native
 tests, control-ui smoke, explicit native/release skip branches, and the final
@@ -18,6 +20,9 @@ The gate checks:
 - the canonical preflight script exists and parses with `bash -n`;
 - the marker count is at least the configured minimum;
 - critical markers are present exactly once and in order;
+- early spine markers for fmt/check, adapters, name/repository closure, active
+  dependency isolation, legacy entrypoint migration, and memory/intelligence
+  closure remain wired before KG prompt-preview gates;
 - JSON report capture diagnostic and inventory gates stay before latest
   upstream safety/governance/operator-briefing gates;
 - gateway/native/control-ui verification markers remain wired;
@@ -31,6 +36,7 @@ synthetic fixture contract for the inventory gate. It proves the good fixture
 passes and negative fixtures fail closed for:
 
 - missing required marker;
+- missing early spine marker;
 - duplicated required marker;
 - out-of-order required marker;
 - marker count budget shrinkage;

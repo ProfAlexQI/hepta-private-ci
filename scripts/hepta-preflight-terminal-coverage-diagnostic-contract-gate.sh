@@ -12,7 +12,23 @@ sha256_text() {
 
 required_markers=(
   "metadata"
+  "fmt"
   "cargo check"
+  "adapter behavior-equivalence gate"
+  "adapter shadow-replay gate"
+  "name/repository closure gate"
+  "active service dependency isolation gate"
+  "legacy preflight entrypoint migration gate"
+  "legacy watchdog entrypoint migration gate"
+  "legacy live gates entrypoint migration gate"
+  "legacy release/readiness entrypoint migration gate"
+  "legacy inventory entrypoint migration gate"
+  "memory-rem status closure gate"
+  "memory-tools catalog closure gate"
+  "native residual runtime status closure gate"
+  "plugin migration plan closure gate"
+  "skill workshop plan closure gate"
+  "memory/intelligence closure gate"
   "KG prompt-preview preflight gate"
   "KG prompt-preview terminal next-action activation denial summary gate"
   "readiness denial review acceptance closure summary gate"
@@ -50,6 +66,11 @@ emit_fixture_preflight() {
   for marker in "${required_markers[@]}"; do
     if [[ "$mode" == "missing-required-marker" \
       && "$marker" == "upstream Codex latest operator briefing non-persistence gate" ]]; then
+      continue
+    fi
+
+    if [[ "$mode" == "missing-spine-marker" \
+      && "$marker" == "active service dependency isolation gate" ]]; then
       continue
     fi
 
@@ -140,6 +161,7 @@ capture_fixture_report() {
 
 good_fixture="$(emit_fixture_preflight good)"
 missing_marker_fixture="$(emit_fixture_preflight missing-required-marker)"
+missing_spine_marker_fixture="$(emit_fixture_preflight missing-spine-marker)"
 duplicate_marker_fixture="$(emit_fixture_preflight duplicate-required-marker)"
 out_of_order_fixture="$(emit_fixture_preflight out-of-order-required-marker)"
 missing_pass_fixture="$(emit_fixture_preflight missing-terminal-pass-marker)"
@@ -156,6 +178,10 @@ good_rc="$fixture_rc"
 capture_fixture_report "$missing_marker_fixture" 0
 missing_marker_report="$fixture_report"
 missing_marker_rc="$fixture_rc"
+
+capture_fixture_report "$missing_spine_marker_fixture" 0
+missing_spine_marker_report="$fixture_report"
+missing_spine_marker_rc="$fixture_rc"
 
 capture_fixture_report "$duplicate_marker_fixture" 0
 duplicate_marker_report="$fixture_report"
@@ -195,6 +221,7 @@ out_of_order_final_status_rc="$fixture_rc"
 
 good_fixture_ok=false
 missing_required_marker_fixture_ok=false
+missing_spine_marker_fixture_ok=false
 duplicate_required_marker_fixture_ok=false
 out_of_order_required_marker_fixture_ok=false
 marker_count_budget_fixture_ok=false
@@ -210,8 +237,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 24
-    and .present_required_marker_count == 24
+    and .required_marker_count == 40
+    and .present_required_marker_count == 40
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
@@ -236,6 +263,16 @@ if [[ "$missing_marker_rc" -eq 1 ]] \
     and (.missing_required_markers | index("upstream Codex latest operator briefing non-persistence gate") != null)
   ' >/dev/null <<<"$missing_marker_report"; then
   missing_required_marker_fixture_ok=true
+fi
+
+if [[ "$missing_spine_marker_rc" -eq 1 ]] \
+  && jq -e '
+    .status == "attention"
+    and .preflight_terminal_coverage_inventory_ready == false
+    and .missing_required_marker_count == 1
+    and (.missing_required_markers | index("active service dependency isolation gate") != null)
+  ' >/dev/null <<<"$missing_spine_marker_report"; then
+  missing_spine_marker_fixture_ok=true
 fi
 
 if [[ "$duplicate_marker_rc" -eq 1 ]] \
@@ -341,7 +378,7 @@ if [[ "$out_of_order_final_status_rc" -eq 1 ]] \
 fi
 
 contract_hash_sha256="$(
-  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok:$missing_workspace_diff_check_fixture_ok:$missing_cached_diff_check_fixture_ok:$missing_git_status_check_fixture_ok:$out_of_order_final_status_checks_fixture_ok"
+  sha256_text "hepta-preflight-terminal-coverage-diagnostic:$good_fixture_ok:$missing_required_marker_fixture_ok:$missing_spine_marker_fixture_ok:$duplicate_required_marker_fixture_ok:$out_of_order_required_marker_fixture_ok:$marker_count_budget_fixture_ok:$missing_terminal_pass_marker_fixture_ok:$missing_native_release_skip_branches_fixture_ok:$missing_workspace_diff_check_fixture_ok:$missing_cached_diff_check_fixture_ok:$missing_git_status_check_fixture_ok:$out_of_order_final_status_checks_fixture_ok"
 )"
 policy_hash_sha256="$(sha256_text "hepta-preflight-terminal-coverage-diagnostic:synthetic-fixtures:no-child-gate-execution:no-workspace-write:no-release-build:no-native-gate")"
 side_effect_hash_sha256="$(sha256_text "preflight_fixture_text_only=true;workspace_written=false;release_build=false;native_gate=false;service_restart=false")"
@@ -352,6 +389,7 @@ jq -n -e \
   --arg side_effect_hash_sha256 "$side_effect_hash_sha256" \
   --argjson good_fixture_ok "$good_fixture_ok" \
   --argjson missing_required_marker_fixture_ok "$missing_required_marker_fixture_ok" \
+  --argjson missing_spine_marker_fixture_ok "$missing_spine_marker_fixture_ok" \
   --argjson duplicate_required_marker_fixture_ok "$duplicate_required_marker_fixture_ok" \
   --argjson out_of_order_required_marker_fixture_ok "$out_of_order_required_marker_fixture_ok" \
   --argjson marker_count_budget_fixture_ok "$marker_count_budget_fixture_ok" \
@@ -365,6 +403,7 @@ jq -n -e \
     if (
       $good_fixture_ok == true
       and $missing_required_marker_fixture_ok == true
+      and $missing_spine_marker_fixture_ok == true
       and $duplicate_required_marker_fixture_ok == true
       and $out_of_order_required_marker_fixture_ok == true
       and $marker_count_budget_fixture_ok == true
@@ -382,11 +421,12 @@ jq -n -e \
       preflight_terminal_coverage_diagnostic_contract_schema_version: "hepta_preflight_terminal_coverage_diagnostic_contract_v1",
       preflight_terminal_coverage_diagnostic_contract_ready: true,
       diagnostic_mode: "synthetic_inline_preflight_fixture_inventory_no_child_gate_execution",
-      diagnostic_decision: "preflight_terminal_coverage_inventory_passes_good_fixture_and_fails_closed_for_missing_duplicate_reordered_and_shrunken_terminal_coverage",
+      diagnostic_decision: "preflight_terminal_coverage_inventory_passes_good_fixture_and_fails_closed_for_missing_spine_terminal_duplicate_reordered_and_shrunken_coverage",
       inventory_gate_path: "scripts/hepta-preflight-terminal-coverage-inventory-gate.sh",
-      diagnostic_fixture_count: 11,
+      diagnostic_fixture_count: 12,
       good_fixture_ok: $good_fixture_ok,
       missing_required_marker_fixture_ok: $missing_required_marker_fixture_ok,
+      missing_spine_marker_fixture_ok: $missing_spine_marker_fixture_ok,
       duplicate_required_marker_fixture_ok: $duplicate_required_marker_fixture_ok,
       out_of_order_required_marker_fixture_ok: $out_of_order_required_marker_fixture_ok,
       marker_count_budget_fixture_ok: $marker_count_budget_fixture_ok,
@@ -398,6 +438,7 @@ jq -n -e \
       out_of_order_final_status_checks_fixture_ok: $out_of_order_final_status_checks_fixture_ok,
       good_fixture_ready_preserved: true,
       missing_required_marker_attention_exposed: true,
+      missing_spine_marker_attention_exposed: true,
       duplicate_required_marker_attention_exposed: true,
       out_of_order_required_marker_attention_exposed: true,
       marker_count_budget_attention_exposed: true,
