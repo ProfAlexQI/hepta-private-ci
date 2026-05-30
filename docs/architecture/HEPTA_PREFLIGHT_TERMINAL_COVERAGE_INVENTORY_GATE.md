@@ -29,14 +29,17 @@ The gate checks:
   closure gap evidence index, operator packet template gate, operator packet
   dry-run validator gate, authority replay matrix gate, trusted-record
   acceptance skeleton gate, and trusted-record acceptance negative-fixture
-  matrix gate, and trusted-record acceptance precondition scoreboard gate, so the blocked
+  matrix gate, trusted-record acceptance precondition scoreboard gate, and
+  trusted-record positive packet dry-run scaffold gate, so the blocked
   closure surface remains directly inspectable, mapped into a report-only packet
   entrance checklist, guarded against future packet shapes or replay routes
   being mistaken for approval, given a non-accepting trusted-record shape
   contract for future operator authority, and protected by negative fixtures
   for missing hashes, stale freshness, identity mismatch, receipt-ledger
   mismatch, and delivery-before-ack ordering, with the remaining 56 acceptance
-  preconditions summarized as an auditable blocked scoreboard;
+  preconditions summarized as an auditable blocked scoreboard and a future
+  shape-complete positive packet scaffold that still cannot authorize
+  acceptance by shape alone;
 - phase-family anchor evidence is summarized per family, including required,
   ready, and missing anchor counts plus missing anchor names, so operators can
   see which family lost which real gate anchor;
