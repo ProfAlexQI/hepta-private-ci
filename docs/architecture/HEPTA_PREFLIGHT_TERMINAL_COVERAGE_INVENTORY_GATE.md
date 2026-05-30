@@ -27,12 +27,15 @@ The gate checks:
   stay green by replacing real gate anchors with generic count filler;
 - the Core activation tail includes the terminal closure decision, terminal
   closure gap evidence index, operator packet template gate, operator packet
-  dry-run validator gate, authority replay matrix gate, and trusted-record
-  acceptance skeleton gate, so the blocked
+  dry-run validator gate, authority replay matrix gate, trusted-record
+  acceptance skeleton gate, and trusted-record acceptance negative-fixture
+  matrix gate, so the blocked
   closure surface remains directly inspectable, mapped into a report-only packet
   entrance checklist, guarded against future packet shapes or replay routes
-  being mistaken for approval, and given a non-accepting trusted-record shape
-  contract for future operator authority;
+  being mistaken for approval, given a non-accepting trusted-record shape
+  contract for future operator authority, and protected by negative fixtures
+  for missing hashes, stale freshness, identity mismatch, receipt-ledger
+  mismatch, and delivery-before-ack ordering;
 - phase-family anchor evidence is summarized per family, including required,
   ready, and missing anchor counts plus missing anchor names, so operators can
   see which family lost which real gate anchor;

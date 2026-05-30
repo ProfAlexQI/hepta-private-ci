@@ -488,6 +488,9 @@ scripts/hepta-core-activation-terminal-closure-operator-packet-authority-replay-
 echo "[hepta-preflight] core activation terminal closure operator packet trusted-record acceptance skeleton gate"
 scripts/hepta-core-activation-terminal-closure-operator-packet-trusted-record-acceptance-skeleton-gate.sh
 
+echo "[hepta-preflight] core activation terminal closure operator packet trusted-record acceptance negative-fixture matrix gate"
+scripts/hepta-core-activation-terminal-closure-operator-packet-trusted-record-acceptance-negative-fixture-matrix-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 

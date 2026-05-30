@@ -48,6 +48,7 @@ required_markers=(
   "core activation terminal closure operator packet dry-run validator gate"
   "core activation terminal closure operator packet authority replay matrix gate"
   "core activation terminal closure operator packet trusted-record acceptance skeleton gate"
+  "core activation terminal closure operator packet trusted-record acceptance negative-fixture matrix gate"
   "JSON report capture diagnostic contract gate"
   "JSON report capture migration inventory gate"
   "preflight terminal coverage inventory gate"
@@ -85,7 +86,7 @@ phase_family_min_counts=(
   1
   44
   11
-  16
+  17
   4
   12
 )
@@ -116,6 +117,7 @@ phase_family_anchor_specs=(
   "core-activation-tail|core activation terminal closure operator packet dry-run validator gate"
   "core-activation-tail|core activation terminal closure operator packet authority replay matrix gate"
   "core-activation-tail|core activation terminal closure operator packet trusted-record acceptance skeleton gate"
+  "core-activation-tail|core activation terminal closure operator packet trusted-record acceptance negative-fixture matrix gate"
   "json-terminal-coverage|JSON report capture diagnostic contract gate"
   "json-terminal-coverage|JSON report capture migration inventory gate"
   "json-terminal-coverage|preflight terminal coverage inventory gate"
