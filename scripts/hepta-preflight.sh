@@ -482,6 +482,9 @@ scripts/hepta-core-activation-terminal-closure-operator-packet-template-gate.sh
 echo "[hepta-preflight] core activation terminal closure operator packet dry-run validator gate"
 scripts/hepta-core-activation-terminal-closure-operator-packet-dry-run-validator-gate.sh
 
+echo "[hepta-preflight] core activation terminal closure operator packet authority replay matrix gate"
+scripts/hepta-core-activation-terminal-closure-operator-packet-authority-replay-matrix-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
