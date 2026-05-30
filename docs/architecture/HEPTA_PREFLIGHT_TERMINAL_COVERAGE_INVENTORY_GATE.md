@@ -30,7 +30,8 @@ The gate checks:
   dry-run validator gate, authority replay matrix gate, trusted-record
   acceptance skeleton gate, and trusted-record acceptance negative-fixture
   matrix gate, trusted-record acceptance precondition scoreboard gate, and
-  trusted-record positive packet dry-run scaffold gate, so the blocked
+  trusted-record positive packet dry-run scaffold gate, and trusted-record
+  positive packet authority replay denial matrix gate, so the blocked
   closure surface remains directly inspectable, mapped into a report-only packet
   entrance checklist, guarded against future packet shapes or replay routes
   being mistaken for approval, given a non-accepting trusted-record shape
@@ -39,7 +40,9 @@ The gate checks:
   mismatch, and delivery-before-ack ordering, with the remaining 56 acceptance
   preconditions summarized as an auditable blocked scoreboard and a future
   shape-complete positive packet scaffold that still cannot authorize
-  acceptance by shape alone;
+  acceptance by shape alone, then replayed through downstream authority
+  surfaces to prove shape-complete trusted-record packets still cannot become
+  terminal closure, receipt, ledger, delivery, activation, or release authority;
 - phase-family anchor evidence is summarized per family, including required,
   ready, and missing anchor counts plus missing anchor names, so operators can
   see which family lost which real gate anchor;
