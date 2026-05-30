@@ -26,9 +26,10 @@ The gate checks:
 - each phase-family budget retains named anchor markers, so a family cannot
   stay green by replacing real gate anchors with generic count filler;
 - the Core activation tail includes the terminal closure decision, terminal
-  closure gap evidence index, and operator packet template gate, so the blocked
-  closure surface remains directly inspectable and mapped into a report-only
-  packet entrance checklist;
+  closure gap evidence index, operator packet template gate, and operator packet
+  dry-run validator gate, so the blocked closure surface remains directly
+  inspectable, mapped into a report-only packet entrance checklist, and guarded
+  against future packet shapes being mistaken for approval;
 - phase-family anchor evidence is summarized per family, including required,
   ready, and missing anchor counts plus missing anchor names, so operators can
   see which family lost which real gate anchor;

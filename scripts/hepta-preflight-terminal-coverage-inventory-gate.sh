@@ -45,6 +45,7 @@ required_markers=(
   "core activation evidence receipt terminal closure decision gate"
   "core activation terminal closure gap evidence index gate"
   "core activation terminal closure operator packet template gate"
+  "core activation terminal closure operator packet dry-run validator gate"
   "JSON report capture diagnostic contract gate"
   "JSON report capture migration inventory gate"
   "preflight terminal coverage inventory gate"
@@ -82,7 +83,7 @@ phase_family_min_counts=(
   1
   44
   11
-  13
+  14
   4
   12
 )
@@ -110,6 +111,7 @@ phase_family_anchor_specs=(
   "core-activation-tail|core activation evidence receipt terminal closure decision gate"
   "core-activation-tail|core activation terminal closure gap evidence index gate"
   "core-activation-tail|core activation terminal closure operator packet template gate"
+  "core-activation-tail|core activation terminal closure operator packet dry-run validator gate"
   "json-terminal-coverage|JSON report capture diagnostic contract gate"
   "json-terminal-coverage|JSON report capture migration inventory gate"
   "json-terminal-coverage|preflight terminal coverage inventory gate"
