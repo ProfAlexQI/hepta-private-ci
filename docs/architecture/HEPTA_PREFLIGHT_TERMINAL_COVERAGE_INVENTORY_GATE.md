@@ -31,8 +31,9 @@ The gate checks:
   acceptance skeleton gate, and trusted-record acceptance negative-fixture
   matrix gate, trusted-record acceptance precondition scoreboard gate, and
   trusted-record positive packet dry-run scaffold gate, and trusted-record
-  positive packet authority replay denial matrix gate, and trusted-record
-  positive packet authority replay denial summary gate, so the blocked
+  positive packet authority replay denial matrix gate, trusted-record
+  positive packet authority replay denial summary gate, and trusted-record
+  positive packet authority replay denial summary index gate, so the blocked
   closure surface remains directly inspectable, mapped into a report-only packet
   entrance checklist, guarded against future packet shapes or replay routes
   being mistaken for approval, given a non-accepting trusted-record shape
@@ -45,7 +46,8 @@ The gate checks:
   surfaces to prove shape-complete trusted-record packets still cannot become
   terminal closure, receipt, ledger, delivery, activation, or release authority,
   with that denial matrix summarized into a compact non-authorizing terminal
-  report;
+  report and then indexed without allowing the summary itself to become
+  persisted, delivered, or promoted to authority;
 - phase-family anchor evidence is summarized per family, including required,
   ready, and missing anchor counts plus missing anchor names, so operators can
   see which family lost which real gate anchor;

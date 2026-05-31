@@ -47,6 +47,7 @@ required_markers=(
   "core activation terminal closure operator packet trusted-record positive packet dry-run scaffold gate"
   "core activation terminal closure operator packet trusted-record positive packet authority replay denial matrix gate"
   "core activation terminal closure operator packet trusted-record positive packet authority replay denial summary gate"
+  "core activation terminal closure operator packet trusted-record positive packet authority replay denial summary index gate"
   "JSON report capture diagnostic contract gate"
   "JSON report capture migration inventory gate"
   "preflight terminal coverage inventory gate"
@@ -307,8 +308,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 50
-    and .present_required_marker_count == 50
+    and .required_marker_count == 51
+    and .present_required_marker_count == 51
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
@@ -317,8 +318,8 @@ if [[ "$good_rc" -eq 0 ]] \
     and .phase_family_ready_count == 10
     and .phase_family_budget_failure_count == 0
     and .phase_family_budget_ready == true
-    and .phase_family_anchor_count == 39
-    and .phase_family_anchor_ready_count == 39
+    and .phase_family_anchor_count == 40
+    and .phase_family_anchor_ready_count == 40
     and .phase_family_anchor_failure_count == 0
     and .phase_family_anchor_ready == true
     and .phase_family_anchor_family_count == 10

@@ -503,6 +503,9 @@ scripts/hepta-core-activation-terminal-closure-operator-packet-trusted-record-po
 echo "[hepta-preflight] core activation terminal closure operator packet trusted-record positive packet authority replay denial summary gate"
 scripts/hepta-core-activation-terminal-closure-operator-packet-trusted-record-positive-packet-authority-replay-denial-summary-gate.sh
 
+echo "[hepta-preflight] core activation terminal closure operator packet trusted-record positive packet authority replay denial summary index gate"
+scripts/hepta-core-activation-terminal-closure-operator-packet-trusted-record-positive-packet-authority-replay-denial-summary-index-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
