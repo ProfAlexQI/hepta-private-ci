@@ -33,7 +33,8 @@ The gate checks:
   trusted-record positive packet dry-run scaffold gate, and trusted-record
   positive packet authority replay denial matrix gate, trusted-record
   positive packet authority replay denial summary gate, and trusted-record
-  positive packet authority replay denial summary index gate, so the blocked
+  positive packet authority replay denial summary index gate, and trusted-record
+  positive packet authority replay denial summary index manifest gate, so the blocked
   closure surface remains directly inspectable, mapped into a report-only packet
   entrance checklist, guarded against future packet shapes or replay routes
   being mistaken for approval, given a non-accepting trusted-record shape
@@ -47,7 +48,8 @@ The gate checks:
   terminal closure, receipt, ledger, delivery, activation, or release authority,
   with that denial matrix summarized into a compact non-authorizing terminal
   report and then indexed without allowing the summary itself to become
-  persisted, delivered, or promoted to authority;
+  persisted, delivered, or promoted to authority, and finally manifested as
+  witness material without letting the manifest become an authority record;
 - phase-family anchor evidence is summarized per family, including required,
   ready, and missing anchor counts plus missing anchor names, so operators can
   see which family lost which real gate anchor;
