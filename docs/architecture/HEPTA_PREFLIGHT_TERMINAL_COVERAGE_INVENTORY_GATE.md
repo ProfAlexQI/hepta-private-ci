@@ -36,7 +36,8 @@ The gate checks:
   positive packet authority replay denial summary index gate, trusted-record
   positive packet authority replay denial summary index manifest gate, and
   trusted-record positive packet authority replay denial summary index manifest
-  JSON-capture boundary gate, so the blocked
+  JSON-capture boundary gate, and trusted-record positive packet operator
+  approval gap ledger gate, so the blocked
   closure surface remains directly inspectable, mapped into a report-only packet
   entrance checklist, guarded against future packet shapes or replay routes
   being mistaken for approval, given a non-accepting trusted-record shape
@@ -53,7 +54,10 @@ The gate checks:
   persisted, delivered, or promoted to authority, manifested as witness material
   without letting the manifest become an authority record, and captured through
   the shared JSON helper without letting the capture become a persistence,
-  delivery, acceptance, terminal-closure, activation, or release boundary;
+  delivery, acceptance, terminal-closure, activation, or release boundary, then
+  compressed into an operator approval gap ledger without letting that ledger
+  become approval, persistence, delivery, acceptance, activation, or release
+  authority;
 - phase-family anchor evidence is summarized per family, including required,
   ready, and missing anchor counts plus missing anchor names, so operators can
   see which family lost which real gate anchor;
