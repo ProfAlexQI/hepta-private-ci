@@ -58,6 +58,6 @@ The report keeps the following actions blocked and records every side effect as 
 The allowed next work is deliberately narrow:
 
 - maintain the route-count-aware runtime readiness endpoint for this gate
-- turn memory live mutation from report-only to an operator-approved staging fixture
+- bind memory live mutation to an operator-approval-bound staging fixture shape without recording, persisting, materializing, or executing it
 - stage KG external adapter credentials and rollback receipts without live writes
 - only then accept a bounded prompt-preview/context-handoff activation packet

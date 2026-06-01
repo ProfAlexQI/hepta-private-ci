@@ -111,6 +111,9 @@ scripts/hepta-kg-prompt-preview-terminal-next-action-activation-denial-summary-g
 echo "[hepta-preflight] KG prompt-preview memory/intelligence full enablement activation readiness gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-activation-readiness-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement memory live mutation staging fixture gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-memory-live-mutation-staging-fixture-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 

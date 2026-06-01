@@ -50,6 +50,6 @@ The route reports all side effects as false:
 
 The next safe work remains bounded:
 
-- turn memory live mutation from report-only to an operator-approved staging fixture
+- bind memory live mutation to the report-only staging fixture gate and keep every fixture blocked by default
 - stage KG external adapter credentials and rollback receipts without live writes
 - accept bounded prompt-preview/context-handoff only after a scoped operator packet
