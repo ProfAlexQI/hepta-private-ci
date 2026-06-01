@@ -39,6 +39,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
+  "memory/intelligence full enablement runtime provider-router operator-facing summary non-persistence gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -319,8 +320,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 62
-    and .present_required_marker_count == 62
+    and .required_marker_count == 63
+    and .present_required_marker_count == 63
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
