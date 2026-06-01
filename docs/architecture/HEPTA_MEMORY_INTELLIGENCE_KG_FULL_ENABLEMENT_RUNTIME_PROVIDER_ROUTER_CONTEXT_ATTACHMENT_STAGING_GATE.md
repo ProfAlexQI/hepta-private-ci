@@ -66,6 +66,6 @@ The report keeps these actions false:
 - service restart or active binary mutation
 - public release or public GA claim
 
-## Next Slice
+## Follow-Up Slice
 
-The next safe slice is a runtime provider-router context attachment negative-fixture matrix. It should remain report-only: no router handoff persistence, no runtime mutation, no live context attachment, no model invocation, and no credential or auth-secret read.
+Runtime provider-router context attachment negative fixtures are covered by `HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_CONTEXT_ATTACHMENT_NEGATIVE_FIXTURE_MATRIX_GATE.md`. They remain report-only: no router handoff persistence, no runtime mutation, no live context attachment, no model invocation, and no credential or auth-secret read.
