@@ -135,6 +135,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-rec
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator-facing summary non-persistence gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-facing-summary-non-persistence-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator acknowledgement non-acceptance gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 
