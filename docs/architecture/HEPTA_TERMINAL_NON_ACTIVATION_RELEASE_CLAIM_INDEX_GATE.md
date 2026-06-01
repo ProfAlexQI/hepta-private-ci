@@ -34,7 +34,7 @@ conditions hold:
 
 - terminal denial index is ready, activation-blocking, and has 39 terminal
   denial reasons;
-- watchdog is `ok`, health is `ready`, route count is 69, binary SHA matches,
+- watchdog is `ok`, health is `ready`, route count is `>=69`, binary SHA matches,
   full fusion is complete, and Phase 4/Phase 5 remaining counts are zero;
 - public-GA readiness reports are synchronized, route gaps are zero, and no
   public GA claim has been made;

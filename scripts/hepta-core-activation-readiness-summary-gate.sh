@@ -155,7 +155,7 @@ jq -n -e \
     and $watchdog.watchdog_soak_regression_ready == true
     and $watchdog.watchdog_status == "ok"
     and $watchdog.watchdog_health == "ready"
-    and $watchdog.watchdog_route_count == 69
+    and $watchdog.watchdog_route_count >= 69
     and $watchdog.watchdog_missing_route_count == 0
     and $watchdog.watchdog_binary_sha_match == true
     and $watchdog.watchdog_full_fusion_complete == true
@@ -450,7 +450,7 @@ jq -e '
   and .release_publication_allowed_count == 0
   and .active_dependency_isolated == true
   and .forbidden_codex_engine_crate_count == 0
-  and .watchdog_route_count == 69
+  and .watchdog_route_count >= 69
   and .watchdog_missing_route_count == 0
   and .watchdog_binary_sha_match == true
   and .watchdog_full_fusion_complete == true

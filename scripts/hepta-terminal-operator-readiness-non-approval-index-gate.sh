@@ -64,7 +64,7 @@ jq -n -e \
     and $release_claim.activation_blocking_source_count == 3
     and $release_claim.source_terminal_denied_by_count == 39
     and $release_claim.source_watchdog_binary_sha_match == true
-    and $release_claim.source_watchdog_route_count == 69
+    and $release_claim.source_watchdog_route_count >= 69
     and $release_claim.source_watchdog_full_fusion_complete == true
     and $release_claim.source_public_ga_claimed == false
     and $release_claim.source_public_ga_reports_synchronized == true

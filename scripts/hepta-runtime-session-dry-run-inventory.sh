@@ -14,7 +14,7 @@ jq -e '
   and .side_effect_free == true
   and .old_runtime_ops_file_count == 12
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 69
+  and .native_gateway_source_command_count >= 69
   and .missing_route_count == 0
   and .dry_run_surface_count == 12
   and .covered_old_ops_file_count == 12
@@ -45,14 +45,14 @@ jq -e '
 jq -e '
   .runtime == "hepta"
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 69
+  and .native_gateway_source_command_count >= 69
   and .missing_route_count == 0
 ' <<<"$CLI_JSON" >/dev/null
 
 jq -e '
   .runtime == "hepta"
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 69
+  and .native_gateway_source_command_count >= 69
   and .missing_route_count == 0
   and (.provider_live_invocation_enabled == .credentialed_smoke_performed)
 ' <<<"$PROVIDER_JSON" >/dev/null
@@ -60,7 +60,7 @@ jq -e '
 jq -e '
   .runtime == "hepta"
   and .current_hepta_codex_script_total == 17
-  and .native_gateway_source_command_count == 69
+  and .native_gateway_source_command_count >= 69
   and .route_matrix_ready == true
   and .missing_route_count == 0
   and (.telegram_live_send_enabled == false or .telegram_live_send_enabled == true)

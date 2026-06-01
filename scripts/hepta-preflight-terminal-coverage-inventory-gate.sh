@@ -264,16 +264,23 @@ else
   fi
 fi
 
+preflight_markers=()
 if [[ "$inline_fixture_mode" == true ]]; then
-  mapfile -t preflight_markers < <(
+  while IFS= read -r marker; do
+    preflight_markers+=("$marker")
+  done < <(
     printf '%s\n' "$PREFLIGHT_TEXT" \
       | grep -E '^[[:space:]]*echo "\[hepta-preflight\] ' \
-      | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/'
+      | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/' \
+      || true
   )
 else
-  mapfile -t preflight_markers < <(
+  while IFS= read -r marker; do
+    preflight_markers+=("$marker")
+  done < <(
     grep -E '^[[:space:]]*echo "\[hepta-preflight\] ' "$PREFLIGHT_PATH" \
-      | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/'
+      | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/' \
+      || true
   )
 fi
 
@@ -448,15 +455,22 @@ ordered_markers=true
 present_required_marker_count=0
 
 for marker in "${required_markers[@]}"; do
+  lines=()
   if [[ "$inline_fixture_mode" == true ]]; then
-    mapfile -t lines < <(
+    while IFS= read -r line; do
+      lines+=("$line")
+    done < <(
       grep -nF "echo \"[hepta-preflight] $marker\"" <<<"$PREFLIGHT_TEXT" \
-        | cut -d: -f1
+        | cut -d: -f1 \
+        || true
     )
   else
-    mapfile -t lines < <(
+    while IFS= read -r line; do
+      lines+=("$line")
+    done < <(
       grep -nF "echo \"[hepta-preflight] $marker\"" "$PREFLIGHT_PATH" \
-        | cut -d: -f1
+        | cut -d: -f1 \
+        || true
     )
   fi
   line_count="${#lines[@]}"

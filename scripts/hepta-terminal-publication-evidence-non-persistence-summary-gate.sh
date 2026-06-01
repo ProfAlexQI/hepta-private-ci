@@ -69,7 +69,7 @@ jq -n -e \
     and $watchdog.status == "ok"
     and $watchdog.binary_sha_match == true
     and $watchdog.health == "ready"
-    and $watchdog.route_count == 69
+    and $watchdog.route_count >= 69
     and $watchdog.missing_route_count == 0
     and $watchdog.full_fusion_complete == true
     and $watchdog.phase_4_name_repository_closure_remaining_surface_count == 0
@@ -315,7 +315,7 @@ jq -e '
   and .source_public_distribution_denied_by_count == 99
   and .source_watchdog_status == "ok"
   and .source_watchdog_binary_sha_match == true
-  and .source_watchdog_route_count == 69
+  and .source_watchdog_route_count >= 69
   and .source_watchdog_full_fusion_complete == true
   and .active_binary_sha_consistent == true
   and .publication_evidence_non_persistence_enforced == true

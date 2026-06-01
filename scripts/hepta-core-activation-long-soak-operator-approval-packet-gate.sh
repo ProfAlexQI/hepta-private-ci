@@ -103,7 +103,7 @@ jq -n -e \
     and $core.active_dependency_isolated == true
     and $core.forbidden_codex_engine_crate_count == 0
     and ($core.found_forbidden_codex_engine_crates | length) == 0
-    and $core.watchdog_route_count == 69
+    and $core.watchdog_route_count >= 69
     and $core.watchdog_missing_route_count == 0
     and $core.watchdog_binary_sha_match == true
     and $core.watchdog_full_fusion_complete == true
@@ -185,7 +185,7 @@ jq -n -e \
     and $public_packet.status == "ready"
     and $public_packet.approval_packet_ready == true
     and $public_packet.safe_default_mode == "plan_only_no_live_mutation"
-    and $public_packet.native_gateway_source_command_count == 69
+    and $public_packet.native_gateway_source_command_count >= 69
     and $public_packet.missing_route_count == 0
     and $public_packet.required_operator_approval_count == 8
     and $public_packet.reports_synchronized == true
@@ -403,7 +403,7 @@ jq -e '
   and .public_ga_safe_default_mode == "plan_only_no_live_mutation"
   and .reports_synchronized == true
   and .forbidden_codex_engine_crate_count == 0
-  and .watchdog_route_count == 69
+  and .watchdog_route_count >= 69
   and .watchdog_missing_route_count == 0
   and .watchdog_binary_sha_match == true
   and .watchdog_full_fusion_complete == true

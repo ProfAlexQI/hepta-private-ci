@@ -23,7 +23,7 @@ The gate is ready only when all of these are true:
 - all five latest-delta families are ready and activation-blocking;
 - the active `hepta-cli --bin hepta` cargo tree contains zero tracked Codex
   engine crates;
-- watchdog evidence remains ready with route count `69`, no missing routes,
+- watchdog evidence remains ready with route count `>=69`, no missing routes,
   binary SHA match, and `full_fusion_complete=true`;
 - short soak passes as observational regression evidence only;
 - the short soak does not authorize live mutation, public release claims,

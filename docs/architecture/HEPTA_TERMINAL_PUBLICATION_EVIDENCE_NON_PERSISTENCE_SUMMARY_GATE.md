@@ -11,7 +11,7 @@ The gate captures and hashes two source reports:
 - `scripts/hepta-terminal-public-distribution-non-publication-lock-gate.sh`
 - `scripts/hepta-watchdog.sh`
 
-Both source reports must be ready. The public-distribution source must keep publication, public claims, artifact writes, operator approval recording, and lock persistence denied. The watchdog source must show active binary SHA parity, route count `69`, zero missing routes, `full_fusion_complete=true`, and zero remaining Phase 4/Phase 5 closure surfaces.
+Both source reports must be ready. The public-distribution source must keep publication, public claims, artifact writes, operator approval recording, and lock persistence denied. The watchdog source must show active binary SHA parity, route count `>=69`, zero missing routes, `full_fusion_complete=true`, and zero remaining Phase 4/Phase 5 closure surfaces.
 
 ## Output
 
@@ -22,7 +22,7 @@ The summary reports:
 - `publication_evidence_summary_decision=publication_evidence_summarized_without_claim_publication_artifact_write_or_runtime_mutation`
 - `source_public_distribution_denied_by_count=99`
 - `source_watchdog_status=ok`
-- `source_watchdog_route_count=69`
+- `source_watchdog_route_count>=69`
 - `source_watchdog_full_fusion_complete=true`
 - `publication_evidence_denied_by_count=111`
 

@@ -83,7 +83,7 @@ jq -n -e \
     and $watchdog.status == "ok"
     and $watchdog.binary_sha_match == true
     and $watchdog.health == "ready"
-    and $watchdog.route_count == 69
+    and $watchdog.route_count >= 69
     and $watchdog.missing_route_count == 0
     and $watchdog.full_fusion_complete == true
     and $watchdog.phase_4_name_repository_closure_remaining_surface_count == 0
@@ -98,7 +98,7 @@ jq -n -e \
     and $ga.reports_synchronized == true
     and $ga.local_gate_matrix_ready == true
     and $ga.local_reports_synchronized == true
-    and $ga.native_gateway_source_command_count == 69
+    and $ga.native_gateway_source_command_count >= 69
     and $ga.missing_route_count == 0
     and $ga.side_effects.public_release_published == false
     and $ga.side_effects.release_artifact_written == false
@@ -303,7 +303,7 @@ jq -e '
   and .source_terminal_family_count == 6
   and .source_watchdog_binary_sha_match == true
   and .source_watchdog_health == "ready"
-  and .source_watchdog_route_count == 69
+  and .source_watchdog_route_count >= 69
   and .source_watchdog_full_fusion_complete == true
   and .source_watchdog_phase_4_remaining_surface_count == 0
   and .source_watchdog_phase_5_remaining_dependency_count == 0

@@ -248,8 +248,8 @@ report="$(jq -n \
           permits_model_invocation:false
         },
         {
-          action:"wire_runtime_full_enablement_route_after_route_count_acceptance",
-          status:"allowed_source_change_only",
+          action:"maintain_runtime_full_enablement_route_after_route_count_acceptance",
+          status:"allowed_source_route_only",
           mutates_runtime:false,
           permits_live_memory_mutation:false,
           permits_kg_write:false,
@@ -257,7 +257,7 @@ report="$(jq -n \
         }
       ],
       next_slices:[
-        "wire a route-count-aware runtime readiness endpoint for this gate",
+        "maintain the route-count-aware runtime readiness endpoint for this gate",
         "turn memory live mutation from report-only to operator-approved staging fixture",
         "stage KG external adapter credential and rollback receipts without live writes",
         "only then accept a bounded prompt-preview/context-handoff activation packet"
@@ -380,7 +380,7 @@ jq -e '
   and (.blocked_activation_actions | index("credential_read") != null)
   and (.allowed_next_actions | any(.action == "run_full_light_preflight" and .status == "allowed_verification_only"))
   and (.allowed_next_actions | any(.action == "prepare_operator_activation_packet" and .status == "allowed_report_only"))
-  and (.allowed_next_actions | any(.action == "wire_runtime_full_enablement_route_after_route_count_acceptance" and .status == "allowed_source_change_only"))
+  and (.allowed_next_actions | any(.action == "maintain_runtime_full_enablement_route_after_route_count_acceptance" and .status == "allowed_source_route_only"))
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

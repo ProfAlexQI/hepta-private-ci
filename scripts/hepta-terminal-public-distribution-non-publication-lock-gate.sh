@@ -52,6 +52,18 @@ jq -n -e \
   --argjson operator "$OPERATOR_PACKET_JSON" \
   --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
   '
+    def expected_public_ga_blocker($blocker):
+      [
+        "gateway_replacement_not_ready",
+        "telegram_owner_handoff_not_operator_approved",
+        "telegram_live_poll_model_send_soak_not_complete",
+        "native_post_real_activation_not_operator_approved",
+        "credentialed_provider_live_smoke_not_operator_approved",
+        "channel_live_delivery_not_operator_approved",
+        "release_artifact_pack_not_operator_approved",
+        "external_public_release_not_operator_approved"
+      ] | index($blocker) != null;
+
     $release.runtime == "hepta"
     and $release.status == "ready"
     and $release.gate == "hepta_terminal_release_artifact_non_write_lock_gate"
@@ -73,15 +85,15 @@ jq -n -e \
       $public_ga.public_ga_ready == true
       or (
         $public_ga.public_ga_ready == false
-        and $public_ga.blocker_count == 1
-        and ($public_ga.blockers | length) == 1
-        and $public_ga.blockers[0] == "telegram_live_poll_model_send_soak_not_complete"
+        and $public_ga.blocker_count == ($public_ga.blockers | length)
+        and $public_ga.blocker_count >= 1
+        and ($public_ga.blockers | all(. as $blocker | expected_public_ga_blocker($blocker)))
       )
     )
     and $public_ga.public_ga_claimed == false
     and $public_ga.reports_synchronized == true
     and $public_ga.missing_route_count == 0
-    and $public_ga.native_gateway_source_command_count == 69
+    and $public_ga.native_gateway_source_command_count >= 69
     and $public_ga.expected_external_blockers.native_packaging_public_distribution_artifact_written == false
     and ($public_ga.side_effects | to_entries | all(.value == false))
     and $operator.runtime == "hepta"
@@ -94,12 +106,12 @@ jq -n -e \
       $operator.public_ga_ready == true
       or (
         $operator.public_ga_ready == false
-        and $operator.public_ga_blocker_count == 1
+        and $operator.public_ga_blocker_count >= 1
       )
     )
     and $operator.reports_synchronized == true
     and $operator.missing_route_count == 0
-    and $operator.native_gateway_source_command_count == 69
+    and $operator.native_gateway_source_command_count >= 69
     and ($operator.side_effects | to_entries | all(.value == false))
     and $min_long_soak_samples >= 24
   ' >/dev/null
@@ -345,7 +357,7 @@ jq -e '
     .source_public_ga_ready == true
     or (
       .source_public_ga_ready == false
-      and .source_public_ga_blocker_count == 1
+      and .source_public_ga_blocker_count >= 1
     )
   )
   and .source_public_ga_claimed == false

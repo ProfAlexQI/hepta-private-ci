@@ -19,7 +19,7 @@ Each source must be ready, side-effect-free, and compatible with the terminal no
 The active-state lock reports:
 
 - terminal governance closure readiness and `governance_closure_denied_by_count=65`
-- watchdog health with `binary_sha_match=true`, `route_count=69`, and `full_fusion_complete=true`
+- watchdog health with `binary_sha_match=true`, `route_count>=69`, and `full_fusion_complete=true`
 - active dependency isolation with zero forbidden Codex engine crates in the active `hepta-cli --bin hepta` tree
 - deterministic source hashes, active-state lock hash, policy hash, and side-effect hash
 - six ready and blocked lock families:

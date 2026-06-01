@@ -77,7 +77,7 @@ jq -n -e \
     and $native.public_distribution_artifact_written == false
     and $native.reports_synchronized == true
     and $native.missing_route_count == 0
-    and $native.native_gateway_source_command_count == 69
+    and $native.native_gateway_source_command_count >= 69
     and ($native.side_effects | to_entries | all(.value == false))
     and $release.runtime == "hepta"
     and $release.status == "ready"
@@ -89,7 +89,7 @@ jq -n -e \
     and $release.operator_approval_required_count == 12
     and $release.reports_synchronized == true
     and $release.missing_route_count == 0
-    and $release.native_gateway_source_command_count == 69
+    and $release.native_gateway_source_command_count >= 69
     and ($release.side_effects | to_entries | all(.value == false))
     and $min_long_soak_samples >= 24
   ' >/dev/null

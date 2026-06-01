@@ -24,7 +24,7 @@ The gate requires:
 
 - watchdog status `ok`
 - health status `ready`
-- route count `69`
+- route count `>=69` (`70` after the memory/Intelligence/KG full-enablement runtime-readiness source route)
 - missing route count `0`
 - release and installed binary SHA match
 - full fusion complete

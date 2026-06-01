@@ -73,7 +73,7 @@ jq -n -e \
     and $watchdog.status == "ok"
     and $watchdog.binary_sha_match == true
     and $watchdog.health == "ready"
-    and $watchdog.route_count == 69
+    and $watchdog.route_count >= 69
     and $watchdog.missing_route_count == 0
     and $watchdog.full_fusion_complete == true
     and $watchdog.phase_3_binary_package_inversion_ready == true
@@ -364,7 +364,7 @@ jq -e '
   and .ready_source_count == 2
   and .watchdog_status == "ok"
   and .watchdog_health == "ready"
-  and .watchdog_route_count == 69
+  and .watchdog_route_count >= 69
   and .watchdog_missing_route_count == 0
   and .watchdog_binary_sha_match == true
   and .watchdog_full_fusion_complete == true

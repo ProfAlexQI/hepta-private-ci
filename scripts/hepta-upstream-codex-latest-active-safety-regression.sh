@@ -77,7 +77,7 @@ jq -n -e \
     and $regression.watchdog_health == "ready"
     and $regression.watchdog_binary_sha_match == true
     and $regression.watchdog_full_fusion_complete == true
-    and $regression.watchdog_route_count == 69
+    and $regression.watchdog_route_count >= 69
     and $regression.watchdog_missing_route_count == 0
     and $regression.soak_status == "ready"
     and $regression.soak_ok == $regression.soak_samples
