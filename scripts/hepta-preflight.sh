@@ -114,6 +114,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-activation-readiness-gate.s
 echo "[hepta-preflight] memory/intelligence full enablement memory live mutation staging fixture gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-memory-live-mutation-staging-fixture-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement KG external adapter staging receipt gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-kg-external-adapter-staging-receipt-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 

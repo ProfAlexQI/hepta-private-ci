@@ -39,6 +39,7 @@ required_markers=(
   "KG prompt-preview terminal next-action activation denial summary gate"
   "KG prompt-preview memory/intelligence full enablement activation readiness gate"
   "memory/intelligence full enablement memory live mutation staging fixture gate"
+  "memory/intelligence full enablement KG external adapter staging receipt gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"

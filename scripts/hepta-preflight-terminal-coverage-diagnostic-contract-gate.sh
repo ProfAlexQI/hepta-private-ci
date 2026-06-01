@@ -33,6 +33,7 @@ required_markers=(
   "KG prompt-preview terminal next-action activation denial summary gate"
   "KG prompt-preview memory/intelligence full enablement activation readiness gate"
   "memory/intelligence full enablement memory live mutation staging fixture gate"
+  "memory/intelligence full enablement KG external adapter staging receipt gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -313,8 +314,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 56
-    and .present_required_marker_count == 56
+    and .required_marker_count == 57
+    and .present_required_marker_count == 57
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
