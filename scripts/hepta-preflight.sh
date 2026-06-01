@@ -129,6 +129,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-con
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-readback-receipt-skeleton-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router receipt observability denial gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-receipt-observability-denial-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 

@@ -44,6 +44,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router context attachment staging gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
+  "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
