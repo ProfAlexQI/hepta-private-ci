@@ -40,6 +40,7 @@ required_markers=(
   "KG prompt-preview memory/intelligence full enablement activation readiness gate"
   "memory/intelligence full enablement memory live mutation staging fixture gate"
   "memory/intelligence full enablement KG external adapter staging receipt gate"
+  "memory/intelligence full enablement bounded prompt-preview context handoff activation packet gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
