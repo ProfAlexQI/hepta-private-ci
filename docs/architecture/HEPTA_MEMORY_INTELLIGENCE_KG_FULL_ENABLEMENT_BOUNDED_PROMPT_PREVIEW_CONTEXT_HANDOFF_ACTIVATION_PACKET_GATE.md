@@ -55,6 +55,6 @@ The report keeps these actions false:
 - service restart or active binary mutation
 - public release or public GA claim
 
-## Next Slice
+## Follow-Up Slice
 
-The next safe slice is runtime provider-router context attachment staging. It should remain report-only: no live context attachment, no runtime mutation, no prompt rendering, no model invocation, and no KG write.
+Runtime provider-router context attachment staging is covered by `HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_CONTEXT_ATTACHMENT_STAGING_GATE.md`. It remains report-only: no live context attachment, no runtime mutation, no prompt rendering, no model invocation, and no KG write.
