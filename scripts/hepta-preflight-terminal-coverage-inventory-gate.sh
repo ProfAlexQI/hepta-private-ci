@@ -37,6 +37,7 @@ required_markers=(
   "memory/intelligence closure gate"
   "KG prompt-preview preflight gate"
   "KG prompt-preview terminal next-action activation denial summary gate"
+  "KG prompt-preview memory/intelligence full enablement activation readiness gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -89,7 +90,7 @@ phase_family_ids=(
 phase_family_min_counts=(
   7
   11
-  9
+  10
   54
   1
   44
