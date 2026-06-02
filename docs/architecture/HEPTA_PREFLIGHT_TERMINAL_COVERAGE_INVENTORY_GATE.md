@@ -57,7 +57,9 @@ The gate checks:
   delivery, acceptance, terminal-closure, activation, or release boundary, then
   compressed into an operator approval gap ledger without letting that ledger
   become approval, persistence, delivery, acceptance, activation, or release
-  authority;
+  authority, and summarized into an operator-facing briefing without letting
+  that summary or briefing become persisted, delivered, accepted, terminal
+  closure, activation, release, or channel authority;
 - phase-family anchor evidence is summarized per family, including required,
   ready, and missing anchor counts plus missing anchor names, so operators can
   see which family lost which real gate anchor;
