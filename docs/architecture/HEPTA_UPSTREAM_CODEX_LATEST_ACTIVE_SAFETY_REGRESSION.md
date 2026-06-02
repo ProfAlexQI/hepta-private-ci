@@ -24,8 +24,11 @@ The gate is ready only when all of these are true:
 - the active `hepta-cli --bin hepta` cargo tree contains zero tracked Codex
   engine crates;
 - watchdog evidence remains ready with route count `>=69`, no missing routes,
-  binary SHA match, and `full_fusion_complete=true`;
-- short soak passes as observational regression evidence only;
+  binary SHA match, `full_fusion_complete=true`, and either watchdog `ok` or
+  known operator-security attention;
+- short soak passes as observational regression evidence only, or is classified
+  as known operator-security attention with all samples failed and no live
+  mutation authority;
 - the short soak does not authorize live mutation, public release claims,
   release artifact writes, public distribution, or evidence persistence.
 

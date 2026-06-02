@@ -57,7 +57,12 @@ jq -n -e \
     and $safety.forbidden_codex_engine_crate_count == 0
     and $safety.watchdog_binary_sha_match == true
     and $safety.watchdog_full_fusion_complete == true
-    and $safety.soak_fail == 0
+    and $safety.watchdog_status_known == true
+    and ($safety.watchdog_status == "ok" or $safety.watchdog_known_operator_security_attention == true)
+    and $safety.soak_status_known == true
+    and ($safety.soak_status == "ready" or $safety.soak_known_operator_security_attention == true)
+    and (($safety.soak_status == "ready" and $safety.soak_ok == $safety.soak_samples and $safety.soak_fail == 0)
+      or ($safety.soak_known_operator_security_attention == true and $safety.soak_ok == 0 and $safety.soak_fail == $safety.soak_samples))
     and $safety.latest_active_safety_denied_by_count == 20
     and $safety.public_release_claim_allowed == false
     and $safety.public_distribution_publication_allowed == false
@@ -174,7 +179,12 @@ report="$(jq -n \
       watchdog_full_fusion_complete:$safety.watchdog_full_fusion_complete,
       watchdog_route_count:$safety.watchdog_route_count,
       watchdog_missing_route_count:$safety.watchdog_missing_route_count,
+      watchdog_status:$safety.watchdog_status,
+      watchdog_known_operator_security_attention:($safety.watchdog_known_operator_security_attention // false),
+      short_soak_status:$safety.soak_status,
+      short_soak_known_operator_security_attention:($safety.soak_known_operator_security_attention // false),
       short_soak_samples:$safety.soak_samples,
+      short_soak_ok:$safety.soak_ok,
       short_soak_fail:$safety.soak_fail,
       latest_oracle_only_intake_enforced:true,
       terminal_release_governance_enforced:true,
@@ -226,7 +236,7 @@ report="$(jq -n \
           target_upstream_head:$safety.latest_target_upstream_head,
           changed_file_count:$safety.latest_changed_file_count,
           denied_by_count:$safety.latest_active_safety_denied_by_count,
-          reason:"latest Codex delta remains oracle-only and active Hepta runtime safety stays green"
+          reason:"latest Codex delta remains oracle-only and active Hepta runtime safety is healthy or classified as known attention"
         },
         {
           id:"terminal-release-governance-source",

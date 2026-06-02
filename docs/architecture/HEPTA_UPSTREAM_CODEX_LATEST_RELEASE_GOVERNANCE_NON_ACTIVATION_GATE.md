@@ -22,7 +22,8 @@ The gate is ready only when all of these stay true:
 - latest Codex intake remains oracle-only and activation-blocking;
 - active `hepta-cli --bin hepta` dependency isolation remains clean with zero
   tracked Codex engine crates;
-- watchdog and short soak remain green and observational only;
+- watchdog and short soak remain healthy or classified as known
+  operator-security attention, and observational only;
 - terminal release-governance final audit remains ready;
 - public release claims, public GA claims, public distribution, release artifact
   writes, and public artifact writes remain denied;

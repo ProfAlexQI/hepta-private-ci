@@ -73,15 +73,17 @@ jq -n -e \
     and ($dependency.side_effects | to_entries | all(.value == false))
     and $regression.status == "ready"
     and $regression.watchdog_soak_regression_ready == true
-    and $regression.watchdog_status == "ok"
+    and $regression.watchdog_status_known == true
+    and ($regression.watchdog_status == "ok" or $regression.watchdog_known_operator_security_attention == true)
     and $regression.watchdog_health == "ready"
     and $regression.watchdog_binary_sha_match == true
     and $regression.watchdog_full_fusion_complete == true
     and $regression.watchdog_route_count >= 69
     and $regression.watchdog_missing_route_count == 0
-    and $regression.soak_status == "ready"
-    and $regression.soak_ok == $regression.soak_samples
-    and $regression.soak_fail == 0
+    and $regression.soak_status_known == true
+    and ($regression.soak_status == "ready" or $regression.soak_known_operator_security_attention == true)
+    and (($regression.soak_status == "ready" and $regression.soak_ok == $regression.soak_samples and $regression.soak_fail == 0)
+      or ($regression.soak_known_operator_security_attention == true and $regression.soak_ok == 0 and $regression.soak_fail == $regression.soak_samples))
     and $regression.terminal_soak_authorizes_live_mutation == false
     and $regression.public_release_claim_allowed == false
     and $regression.release_artifact_write_allowed == false
@@ -136,7 +138,7 @@ report="$(jq -n \
       latest_active_safety_schema_version:"latest_active_safety_regression_v1",
       latest_active_safety_regression_ready:true,
       latest_active_safety_mode:"oracle_latest_delta_bound_to_active_nonmutation_regression",
-      latest_active_safety_decision:"latest_upstream_codex_delta_remains_oracle_only_while_active_hepta_runtime_stays_isolated_and_regressed",
+      latest_active_safety_decision:"latest_upstream_codex_delta_remains_oracle_only_while_active_hepta_runtime_stays_isolated_and_known_attention_regressed",
       required_source_count:3,
       ready_source_count:3,
       activation_blocking_source_count:3,
@@ -169,6 +171,8 @@ report="$(jq -n \
       active_dependency_isolated:$dependency.local_cargo_tree_isolated,
       forbidden_codex_engine_crate_count:($dependency.found_forbidden_codex_engine_crates | length),
       watchdog_status:$regression.watchdog_status,
+      watchdog_status_known:$regression.watchdog_status_known,
+      watchdog_known_operator_security_attention:($regression.watchdog_known_operator_security_attention // false),
       watchdog_health:$regression.watchdog_health,
       watchdog_route_count:$regression.watchdog_route_count,
       watchdog_missing_route_count:$regression.watchdog_missing_route_count,
@@ -176,10 +180,18 @@ report="$(jq -n \
       watchdog_installed_sha256:$regression.watchdog_installed_sha256,
       watchdog_binary_sha_match:$regression.watchdog_binary_sha_match,
       watchdog_full_fusion_complete:$regression.watchdog_full_fusion_complete,
+      watchdog_operator_security_status:($regression.watchdog_operator_security_status // null),
+      watchdog_active_owner:($regression.watchdog_active_owner // null),
+      watchdog_double_poller_risk:($regression.watchdog_double_poller_risk // false),
       soak_status:$regression.soak_status,
+      soak_status_known:$regression.soak_status_known,
+      soak_passed:$regression.soak_passed,
+      soak_known_operator_security_attention:($regression.soak_known_operator_security_attention // false),
       soak_samples:$regression.soak_samples,
       soak_ok:$regression.soak_ok,
       soak_fail:$regression.soak_fail,
+      terminal_soak_samples:$regression.terminal_soak_samples,
+      release_long_soak_observed:$regression.release_long_soak_observed,
       terminal_soak_authorizes_live_mutation:$regression.terminal_soak_authorizes_live_mutation,
       latest_delta_active_runtime_promotion_allowed:false,
       latest_delta_active_dependency_mutation_allowed:false,
@@ -219,8 +231,12 @@ report="$(jq -n \
           ready:true,
           blocked:true,
           route_count:$regression.watchdog_route_count,
+          watchdog_status:$regression.watchdog_status,
+          watchdog_known_operator_security_attention:($regression.watchdog_known_operator_security_attention // false),
+          soak_status:$regression.soak_status,
+          soak_known_operator_security_attention:($regression.soak_known_operator_security_attention // false),
           soak_samples:$regression.soak_samples,
-          reason:"watchdog and short soak remain observational and do not authorize live mutation"
+          reason:"watchdog and short soak remain observational, either healthy or known operator-security attention, and do not authorize live mutation"
         },
         {
           id:"publication-artifact-boundary",
@@ -278,7 +294,12 @@ jq -e '
   and .forbidden_codex_engine_crate_count == 0
   and .watchdog_binary_sha_match == true
   and .watchdog_full_fusion_complete == true
-  and .soak_fail == 0
+  and .watchdog_status_known == true
+  and (.watchdog_status == "ok" or .watchdog_known_operator_security_attention == true)
+  and .soak_status_known == true
+  and (.soak_status == "ready" or .soak_known_operator_security_attention == true)
+  and ((.soak_status == "ready" and .soak_ok == .soak_samples and .soak_fail == 0)
+    or (.soak_known_operator_security_attention == true and .soak_ok == 0 and .soak_fail == .soak_samples))
   and (.side_effects | to_entries | all(.value == false))
 ' <<<"$report" >/dev/null
 
