@@ -29,6 +29,9 @@ The gate accepts these known states:
   states.
 - `legacy_owner_coexistence_attention`: operator security is intentionally
   attentioned because Telegram replacement has not been requested.
+- `known_conflict_risk_double_poller_observation`: `/api/telegram-owner-handoff`
+  reports `active_owner=conflict_risk` with `double_poller_risk=true`, while
+  `/api/telegram-poll-loop` remains only observed as `armed` or `gated`.
 
 Unexpected states fail the gate with a compact report, while known transient
 states remain visible before later watchdog gates make their own pass/fail
@@ -50,4 +53,7 @@ The report deliberately keeps these values false:
 
 This is a diagnostic gate only. It is not a recovery mechanism and does not
 authorize public release claims, artifact writes, runtime activation, or
-operator approval recording.
+operator approval recording. A known conflict-risk/double-poller observation is
+classified so preflight can report the blocker deterministically, but it still
+does not authorize owner handoff, Telegram reads or sends, service restart,
+launchd mutation, cursor writes, or evidence persistence.

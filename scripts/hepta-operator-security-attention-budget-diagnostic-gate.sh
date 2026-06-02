@@ -86,6 +86,22 @@ report="$(jq -n \
       or $operator_state == "legacy_owner_coexistence_attention"
     ) as $operator_state_known
     | (
+      if (($owner.double_poller_risk | bool_or(false)) == false)
+        and ($poll.status == "armed" or $poll.status == "gated")
+      then "owner_poll_loop_no_double_poller_risk"
+      elif $owner.status == "conflict_risk"
+        and $owner.active_owner == "conflict_risk"
+        and ($owner.double_poller_risk | bool_or(false)) == true
+        and ($poll.status == "armed" or $poll.status == "gated")
+      then "known_conflict_risk_double_poller_observation"
+      else "unexpected"
+      end
+    ) as $owner_poll_loop_state
+    | (
+      $owner_poll_loop_state == "owner_poll_loop_no_double_poller_risk"
+      or $owner_poll_loop_state == "known_conflict_risk_double_poller_observation"
+    ) as $owner_poll_loop_state_known
+    | (
       ($operator.raw_token_exposed // false) == false
       and ($operator.raw_update_payload_exposed // false) == false
       and ($operator.raw_prompt_text_exposed // false) == false
@@ -113,6 +129,7 @@ report="$(jq -n \
     | (
       $production_state_known
       and $operator_state_known
+      and $owner_poll_loop_state_known
       and $redaction_ok
       and $source_side_effect_boundaries_ok
     ) as $diagnostic_ready
@@ -136,13 +153,15 @@ report="$(jq -n \
         [
           $operator.status == "ready" or $operator.status == "attention",
           $production.status == "ready" or $production.status == "warming" or $production.status == "attention",
-          $owner.ready == true or $owner.status == "parallel_bot_ready" or $owner.status == "ready",
+          $owner.ready == true or $owner.status == "parallel_bot_ready" or $owner.status == "ready" or $owner.status == "conflict_risk",
           $poll.status == "armed" or $poll.status == "gated"
         ] | map(select(.)) | length
       ),
       classification_known:$diagnostic_ready,
       production_readiness_state:$production_state,
       operator_security_state:$operator_state,
+      owner_poll_loop_state:$owner_poll_loop_state,
+      owner_poll_loop_state_known:$owner_poll_loop_state_known,
       operator_security_status:$operator.status,
       operator_attention_reason:($operator.attention_reason // "none"),
       telegram_production_status:$production.status,
@@ -195,15 +214,13 @@ report="$(jq -n \
         },
         {
           id:"telegram-owner-poll-loop-boundary",
-          ready:(
-            ($owner.double_poller_risk | bool_or(true)) == false
-            and ($poll.external_network_read_by_status | bool_or(true)) == false
-            and ($poll.external_send_by_status | bool_or(true)) == false
-          ),
+          ready:$owner_poll_loop_state_known,
           blocked:true,
           active_owner:$owner.active_owner,
+          owner_poll_loop_state:$owner_poll_loop_state,
+          double_poller_risk:($owner.double_poller_risk // false),
           poll_loop_status:$poll.status,
-          reason:"observes owner and poll-loop status without live read, send, or owner handoff"
+          reason:"classifies ready owner/poll-loop state or known conflict-risk double-poller observation without live read, send, or owner handoff"
         },
         {
           id:"redaction-and-side-effect-boundary",
