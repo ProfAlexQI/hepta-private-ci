@@ -50,6 +50,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router activation request denial matrix gate"
   "memory/intelligence full enablement runtime provider-router activation command no-op handoff gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt no-persistence gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt replay idempotency denial gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
