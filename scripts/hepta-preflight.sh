@@ -141,6 +141,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-ope
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation request denial matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command no-op handoff gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 
