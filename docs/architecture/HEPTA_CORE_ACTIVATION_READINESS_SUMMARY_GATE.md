@@ -29,9 +29,12 @@ The summary requires:
 - active `hepta-cli` dependency isolation from tracked Codex engine crates
 - release artifact and public publication denial matrix ready
 - watchdog route coverage ready with full fusion complete
-- short soak healthy
+- short soak healthy, or classified as a known operator-security attention
+  failure from the watchdog/soak regression gate
 
-The short soak is regression evidence only. It is not release-long-soak evidence and cannot authorize activation.
+The short soak is regression evidence only. A known attention soak failure is a
+blocked observation, not a passed soak. Neither condition is release-long-soak
+evidence or activation authorization.
 
 ## Denied Outcomes
 

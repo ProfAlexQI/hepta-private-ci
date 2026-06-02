@@ -153,16 +153,18 @@ jq -n -e \
     and $watchdog.status == "ready"
     and $watchdog.gate == "hepta_terminal_watchdog_soak_regression_gate"
     and $watchdog.watchdog_soak_regression_ready == true
-    and $watchdog.watchdog_status == "ok"
+    and $watchdog.watchdog_status_known == true
+    and ($watchdog.watchdog_status == "ok" or $watchdog.watchdog_known_operator_security_attention == true)
     and $watchdog.watchdog_health == "ready"
     and $watchdog.watchdog_route_count >= 69
     and $watchdog.watchdog_missing_route_count == 0
     and $watchdog.watchdog_binary_sha_match == true
     and $watchdog.watchdog_full_fusion_complete == true
-    and $watchdog.soak_status == "ready"
+    and $watchdog.soak_status_known == true
+    and ($watchdog.soak_status == "ready" or $watchdog.soak_known_operator_security_attention == true)
     and $watchdog.soak_samples >= 3
-    and $watchdog.soak_ok == $watchdog.soak_samples
-    and $watchdog.soak_fail == 0
+    and (($watchdog.soak_status == "ready" and $watchdog.soak_ok == $watchdog.soak_samples and $watchdog.soak_fail == 0)
+      or ($watchdog.soak_known_operator_security_attention == true and $watchdog.soak_ok == 0 and $watchdog.soak_fail == $watchdog.soak_samples))
     and $watchdog.minimum_long_soak_required_samples >= 24
     and $watchdog.terminal_soak_authorizes_live_mutation == false
     and $watchdog.public_release_claim_allowed == false
@@ -278,11 +280,18 @@ report="$(jq -n \
       found_forbidden_codex_engine_crates:$dependency.found_forbidden_codex_engine_crates,
       dependency_isolation_live_check_status:$dependency.live_check_status,
       watchdog_route_count:$watchdog.watchdog_route_count,
+      watchdog_status:$watchdog.watchdog_status,
+      watchdog_status_known:$watchdog.watchdog_status_known,
+      watchdog_known_operator_security_attention:$watchdog.watchdog_known_operator_security_attention,
       watchdog_missing_route_count:$watchdog.watchdog_missing_route_count,
       watchdog_binary_sha_match:$watchdog.watchdog_binary_sha_match,
       watchdog_full_fusion_complete:$watchdog.watchdog_full_fusion_complete,
       watchdog_release_sha256:$watchdog.watchdog_release_sha256,
       watchdog_installed_sha256:$watchdog.watchdog_installed_sha256,
+      short_soak_status:$watchdog.soak_status,
+      short_soak_status_known:$watchdog.soak_status_known,
+      short_soak_known_operator_security_attention:$watchdog.soak_known_operator_security_attention,
+      short_soak_passed:$watchdog.soak_passed,
       short_soak_samples:$watchdog.soak_samples,
       short_soak_ok:$watchdog.soak_ok,
       short_soak_fail:$watchdog.soak_fail,
@@ -370,10 +379,15 @@ report="$(jq -n \
           id:"watchdog-short-soak",
           ready:true,
           blocked:true,
+          watchdog_status:$watchdog.watchdog_status,
+          watchdog_known_operator_security_attention:$watchdog.watchdog_known_operator_security_attention,
           route_count:$watchdog.watchdog_route_count,
+          short_soak_status:$watchdog.soak_status,
           short_soak_samples:$watchdog.soak_samples,
           short_soak_ok:$watchdog.soak_ok,
-          reason:"watchdog and short soak are healthy but do not authorize activation"
+          short_soak_fail:$watchdog.soak_fail,
+          short_soak_known_operator_security_attention:$watchdog.soak_known_operator_security_attention,
+          reason:"watchdog and short soak are healthy or classified as known operator-security attention, and do not authorize activation"
         },
         {
           id:"operator-approval-boundary",
@@ -450,13 +464,17 @@ jq -e '
   and .release_publication_allowed_count == 0
   and .active_dependency_isolated == true
   and .forbidden_codex_engine_crate_count == 0
+  and .watchdog_status_known == true
+  and (.watchdog_status == "ok" or .watchdog_known_operator_security_attention == true)
   and .watchdog_route_count >= 69
   and .watchdog_missing_route_count == 0
   and .watchdog_binary_sha_match == true
   and .watchdog_full_fusion_complete == true
+  and .short_soak_status_known == true
+  and (.short_soak_status == "ready" or .short_soak_known_operator_security_attention == true)
   and .short_soak_samples >= 3
-  and .short_soak_ok == .short_soak_samples
-  and .short_soak_fail == 0
+  and ((.short_soak_status == "ready" and .short_soak_ok == .short_soak_samples and .short_soak_fail == 0)
+    or (.short_soak_known_operator_security_attention == true and .short_soak_ok == 0 and .short_soak_fail == .short_soak_samples))
   and .short_soak_authorizes_live_mutation == false
   and .hepta_core_direct_memory_intelligence_dependency_count == 0
   and .memory_intelligence_consumed_by_active_stack == true
