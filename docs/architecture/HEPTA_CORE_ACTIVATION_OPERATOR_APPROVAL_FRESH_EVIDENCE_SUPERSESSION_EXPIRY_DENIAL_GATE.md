@@ -29,6 +29,10 @@ evidence record. The second source defines the operator approval packet schema
 and proves that no approval packet, activation request, or approval record has
 been recorded.
 
+When the long-soak observation source is blocked by known operator-security
+attention, the gate treats that as a denied observation input rather than fresh
+evidence. Supersession and expiry checks remain locked.
+
 ## Supersession And Expiry Contract
 
 The report is ready only when these policy edges remain denied:

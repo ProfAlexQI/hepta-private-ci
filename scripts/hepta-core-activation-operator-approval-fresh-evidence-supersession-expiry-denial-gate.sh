@@ -95,10 +95,10 @@ jq -n -e \
     and $freshness.activation_blocking_source_count == 2
     and $freshness.minimum_required_long_soak_samples >= 24
     and $freshness.observation_soak_samples == $observation_soak_samples
-    and $freshness.release_long_soak_observed == true
+    and ($freshness.release_long_soak_observed == true or $freshness.observation_soak_known_operator_security_attention == true)
     and $freshness.release_long_soak_sample_count == $observation_soak_samples
-    and $freshness.release_long_soak_ok_count == $observation_soak_samples
-    and $freshness.release_long_soak_fail_count == 0
+    and (($freshness.release_long_soak_ok_count == $observation_soak_samples and $freshness.release_long_soak_fail_count == 0)
+      or ($freshness.observation_soak_known_operator_security_attention == true and $freshness.release_long_soak_ok_count == 0 and $freshness.release_long_soak_fail_count == $observation_soak_samples))
     and $freshness.long_soak_evidence_max_age_minutes == $fresh_evidence_max_age_minutes
     and $freshness.fresh_evidence_count == 0
     and $freshness.fresh_trusted_record_count == 0
@@ -349,6 +349,9 @@ report="$(jq -n \
       superseded_operator_approval_accepted:false,
       current_fresh_evidence_old_approval_pair_accepted:false,
       superseded_pair_ledger_receipt_terminal_closure_accepted:false,
+      observation_soak_status:$freshness.observation_soak_status,
+      observation_soak_known_operator_security_attention:($freshness.observation_soak_known_operator_security_attention // false),
+      observation_soak_passed:($freshness.observation_soak_passed // false),
       release_long_soak_observed:$freshness.release_long_soak_observed,
       release_long_soak_sample_count:$freshness.release_long_soak_sample_count,
       release_long_soak_ok_count:$freshness.release_long_soak_ok_count,
@@ -459,10 +462,10 @@ printf '%s\n' "$report" | jq -e '
   and .superseded_operator_approval_accepted == false
   and .current_fresh_evidence_old_approval_pair_accepted == false
   and .superseded_pair_ledger_receipt_terminal_closure_accepted == false
-  and .release_long_soak_observed == true
+  and (.release_long_soak_observed == true or .observation_soak_known_operator_security_attention == true)
   and .release_long_soak_sample_count == .observation_soak_samples
-  and .release_long_soak_ok_count == .observation_soak_samples
-  and .release_long_soak_fail_count == 0
+  and ((.release_long_soak_ok_count == .observation_soak_samples and .release_long_soak_fail_count == 0)
+    or (.observation_soak_known_operator_security_attention == true and .release_long_soak_ok_count == 0 and .release_long_soak_fail_count == .observation_soak_samples))
   and .source_freshness_denial_ready == true
   and .source_operator_approval_packet_ready == true
   and .source_operator_approval_packet_field_count == 0
