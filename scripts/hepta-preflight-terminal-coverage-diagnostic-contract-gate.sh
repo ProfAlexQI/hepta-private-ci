@@ -50,6 +50,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router activation command result receipt audit trail immutable evidence denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt operator-facing summary briefing non-persistence denial gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -330,8 +331,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 73
-    and .present_required_marker_count == 73
+    and .required_marker_count == 74
+    and .present_required_marker_count == 74
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
