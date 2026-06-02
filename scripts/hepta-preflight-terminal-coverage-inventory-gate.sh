@@ -55,6 +55,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router activation command result receipt cancellation supersession denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt audit trail immutable evidence denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"

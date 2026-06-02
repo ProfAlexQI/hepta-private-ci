@@ -162,6 +162,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-act
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-retention-expiry-garbage-collection-denial-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-export-query-observability-denial-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 
