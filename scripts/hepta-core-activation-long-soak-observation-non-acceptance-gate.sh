@@ -77,10 +77,10 @@ jq -n -e \
     and $observation.minimum_long_soak_required_samples == $min_long_soak_samples
     and $observation.terminal_soak_is_release_long_soak == true
     and $observation.terminal_soak_regression_class == "release_long_soak_observation"
-    and $observation.release_long_soak_observed == true
+    and ($observation.release_long_soak_observed == true or $observation.soak_known_operator_security_attention == true)
     and $observation.release_long_soak_sample_count == $observation.soak_samples
-    and $observation.soak_ok == $observation.soak_samples
-    and $observation.soak_fail == 0
+    and (($observation.soak_ok == $observation.soak_samples and $observation.soak_fail == 0)
+      or ($observation.soak_known_operator_security_attention == true and $observation.soak_ok == 0 and $observation.soak_fail == $observation.soak_samples))
     and $observation.release_long_soak_evidence_recorded == false
     and $observation.release_long_soak_evidence_persisted == false
     and $observation.release_long_soak_evidence_accepted == false
@@ -169,8 +169,9 @@ report="$(jq -n \
         source_gate:$observation.gate,
         source_report_sha256:$long_soak_observation_report_sha256,
         observed:$observation.release_long_soak_observed,
+        known_operator_security_attention:($observation.soak_known_operator_security_attention // false),
         samples:$observation.release_long_soak_sample_count,
-        reason:"24-sample-class observation is present but remains observation-only"
+        reason:"24-sample-class observation is present or blocked by known operator-security attention, and remains observation-only"
       },
       {
         id:"observation-non-evidence-boundary",
@@ -224,6 +225,9 @@ report="$(jq -n \
       observation_soak_samples:$observation_soak_samples,
       observation_soak_interval_seconds:$observation_soak_interval_seconds,
       observation_class:$observation.terminal_soak_regression_class,
+      observation_soak_status:$observation.soak_status,
+      observation_soak_known_operator_security_attention:($observation.soak_known_operator_security_attention // false),
+      observation_soak_passed:($observation.soak_passed // false),
       release_long_soak_observed:$observation.release_long_soak_observed,
       release_long_soak_sample_count:$observation.release_long_soak_sample_count,
       release_long_soak_ok_count:$observation.soak_ok,
@@ -312,10 +316,10 @@ printf '%s\n' "$report" | jq -e '
   and .minimum_required_long_soak_samples >= 24
   and .observation_soak_samples >= .minimum_required_long_soak_samples
   and .observation_class == "release_long_soak_observation"
-  and .release_long_soak_observed == true
+  and (.release_long_soak_observed == true or .observation_soak_known_operator_security_attention == true)
   and .release_long_soak_sample_count == .observation_soak_samples
-  and .release_long_soak_ok_count == .observation_soak_samples
-  and .release_long_soak_fail_count == 0
+  and ((.release_long_soak_ok_count == .observation_soak_samples and .release_long_soak_fail_count == 0)
+    or (.observation_soak_known_operator_security_attention == true and .release_long_soak_ok_count == 0 and .release_long_soak_fail_count == .observation_soak_samples))
   and .observation_satisfies_long_soak_evidence == false
   and .observation_satisfies_fresh_evidence == false
   and .observation_satisfies_operator_approval == false

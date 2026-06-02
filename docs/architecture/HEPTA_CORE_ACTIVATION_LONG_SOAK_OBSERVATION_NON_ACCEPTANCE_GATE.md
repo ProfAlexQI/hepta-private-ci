@@ -28,6 +28,11 @@ A successful release-long-soak observation may set:
 - `release_long_soak_sample_count >= 24`
 - `terminal_soak_regression_class=release_long_soak_observation`
 
+When the observation path is blocked by known operator-security attention, the
+same source may instead set `observation_soak_known_operator_security_attention=true`
+and `release_long_soak_observed=false`. That is still a non-acceptance state,
+not evidence satisfaction.
+
 It must not set:
 
 - `release_long_soak_evidence_recorded`

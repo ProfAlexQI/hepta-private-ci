@@ -79,11 +79,11 @@ jq -n -e \
     and $non_acceptance.status == "ready"
     and $non_acceptance.gate == "hepta_core_activation_long_soak_observation_non_acceptance_gate"
     and $non_acceptance.long_soak_observation_non_acceptance_ready == true
-    and $non_acceptance.release_long_soak_observed == true
+    and ($non_acceptance.release_long_soak_observed == true or $non_acceptance.observation_soak_known_operator_security_attention == true)
     and $non_acceptance.release_long_soak_sample_count == $observation_soak_samples
     and $non_acceptance.release_long_soak_sample_count >= $min_long_soak_samples
-    and $non_acceptance.release_long_soak_ok_count == $observation_soak_samples
-    and $non_acceptance.release_long_soak_fail_count == 0
+    and (($non_acceptance.release_long_soak_ok_count == $observation_soak_samples and $non_acceptance.release_long_soak_fail_count == 0)
+      or ($non_acceptance.observation_soak_known_operator_security_attention == true and $non_acceptance.release_long_soak_ok_count == 0 and $non_acceptance.release_long_soak_fail_count == $observation_soak_samples))
     and $non_acceptance.observation_satisfies_long_soak_evidence == false
     and $non_acceptance.observation_satisfies_fresh_evidence == false
     and $non_acceptance.observation_satisfies_operator_approval == false
@@ -151,11 +151,12 @@ report="$(jq -n \
         id:"observation-without-trusted-record",
         fixture_kind:"observation_only_no_evidence_id",
         blocked:true,
-        long_soak_observed:true,
+        long_soak_observed:$non_acceptance.release_long_soak_observed,
+        known_operator_security_attention:($non_acceptance.observation_soak_known_operator_security_attention // false),
         evidence_recorded:false,
         evidence_fresh:false,
         activation_allowed:false,
-        reason:"24-sample observation has no trusted evidence id"
+        reason:"24-sample observation or known attention-blocked observation has no trusted evidence id"
       },
       {
         id:"stale-long-soak-evidence-record",
@@ -277,6 +278,9 @@ report="$(jq -n \
       observation_soak_samples:$observation_soak_samples,
       observation_soak_interval_seconds:$observation_soak_interval_seconds,
       long_soak_evidence_max_age_minutes:$long_soak_evidence_max_age_minutes,
+      observation_soak_status:$non_acceptance.observation_soak_status,
+      observation_soak_known_operator_security_attention:($non_acceptance.observation_soak_known_operator_security_attention // false),
+      observation_soak_passed:($non_acceptance.observation_soak_passed // false),
       release_long_soak_observed:$non_acceptance.release_long_soak_observed,
       release_long_soak_sample_count:$non_acceptance.release_long_soak_sample_count,
       release_long_soak_ok_count:$non_acceptance.release_long_soak_ok_count,
@@ -367,10 +371,10 @@ printf '%s\n' "$report" | jq -e '
   and .activation_blocking_source_count == 2
   and .minimum_required_long_soak_samples >= 24
   and .observation_soak_samples >= .minimum_required_long_soak_samples
-  and .release_long_soak_observed == true
+  and (.release_long_soak_observed == true or .observation_soak_known_operator_security_attention == true)
   and .release_long_soak_sample_count == .observation_soak_samples
-  and .release_long_soak_ok_count == .observation_soak_samples
-  and .release_long_soak_fail_count == 0
+  and ((.release_long_soak_ok_count == .observation_soak_samples and .release_long_soak_fail_count == 0)
+    or (.observation_soak_known_operator_security_attention == true and .release_long_soak_ok_count == 0 and .release_long_soak_fail_count == .observation_soak_samples))
   and .source_required_evidence_count == 8
   and .source_missing_evidence_count == 8
   and .source_fresh_evidence_count == 0

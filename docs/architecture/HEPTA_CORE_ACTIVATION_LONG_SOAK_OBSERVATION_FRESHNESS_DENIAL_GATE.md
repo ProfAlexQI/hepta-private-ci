@@ -26,6 +26,11 @@ A release-long-soak observation may report:
 - `release_long_soak_sample_count >= 24`
 - `release_long_soak_ok_count == release_long_soak_sample_count`
 
+When the source was blocked by known operator-security attention, it may instead
+report `observation_soak_known_operator_security_attention=true` with
+`release_long_soak_observed=false` and all samples failed. That remains a
+freshness-denial input, not fresh evidence.
+
 It still must not report:
 
 - `long_soak_observation_recorded_as_evidence`

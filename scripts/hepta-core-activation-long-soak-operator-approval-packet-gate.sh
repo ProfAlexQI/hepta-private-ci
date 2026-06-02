@@ -104,12 +104,16 @@ jq -n -e \
     and $core.forbidden_codex_engine_crate_count == 0
     and ($core.found_forbidden_codex_engine_crates | length) == 0
     and $core.watchdog_route_count >= 69
+    and $core.watchdog_status_known == true
+    and ($core.watchdog_status == "ok" or $core.watchdog_known_operator_security_attention == true)
     and $core.watchdog_missing_route_count == 0
     and $core.watchdog_binary_sha_match == true
     and $core.watchdog_full_fusion_complete == true
+    and $core.short_soak_status_known == true
+    and ($core.short_soak_status == "ready" or $core.short_soak_known_operator_security_attention == true)
     and $core.short_soak_samples >= 3
-    and $core.short_soak_ok == $core.short_soak_samples
-    and $core.short_soak_fail == 0
+    and (($core.short_soak_status == "ready" and $core.short_soak_ok == $core.short_soak_samples and $core.short_soak_fail == 0)
+      or ($core.short_soak_known_operator_security_attention == true and $core.short_soak_ok == 0 and $core.short_soak_fail == $core.short_soak_samples))
     and $core.short_soak_authorizes_live_mutation == false
     and $core.memory_intelligence_consumed_by_active_stack == true
     and $core.memory_intelligence_core_boundary_ready == true
@@ -312,9 +316,16 @@ report="$(jq -n \
       active_binary_target:$core.active_binary_target,
       forbidden_codex_engine_crate_count:$core.forbidden_codex_engine_crate_count,
       watchdog_route_count:$core.watchdog_route_count,
+      watchdog_status:$core.watchdog_status,
+      watchdog_status_known:$core.watchdog_status_known,
+      watchdog_known_operator_security_attention:$core.watchdog_known_operator_security_attention,
       watchdog_missing_route_count:$core.watchdog_missing_route_count,
       watchdog_binary_sha_match:$core.watchdog_binary_sha_match,
       watchdog_full_fusion_complete:$core.watchdog_full_fusion_complete,
+      short_soak_status:$core.short_soak_status,
+      short_soak_status_known:$core.short_soak_status_known,
+      short_soak_known_operator_security_attention:$core.short_soak_known_operator_security_attention,
+      short_soak_passed:$core.short_soak_passed,
       short_soak_samples:$core.short_soak_samples,
       short_soak_ok:$core.short_soak_ok,
       short_soak_fail:$core.short_soak_fail,
@@ -404,12 +415,16 @@ jq -e '
   and .reports_synchronized == true
   and .forbidden_codex_engine_crate_count == 0
   and .watchdog_route_count >= 69
+  and .watchdog_status_known == true
+  and (.watchdog_status == "ok" or .watchdog_known_operator_security_attention == true)
   and .watchdog_missing_route_count == 0
   and .watchdog_binary_sha_match == true
   and .watchdog_full_fusion_complete == true
+  and .short_soak_status_known == true
+  and (.short_soak_status == "ready" or .short_soak_known_operator_security_attention == true)
   and .short_soak_samples >= 3
-  and .short_soak_ok == .short_soak_samples
-  and .short_soak_fail == 0
+  and ((.short_soak_status == "ready" and .short_soak_ok == .short_soak_samples and .short_soak_fail == 0)
+    or (.short_soak_known_operator_security_attention == true and .short_soak_ok == 0 and .short_soak_fail == .short_soak_samples))
   and .short_soak_authorizes_live_mutation == false
   and .long_soak_evidence_recorded == false
   and .long_soak_evidence_fresh == false

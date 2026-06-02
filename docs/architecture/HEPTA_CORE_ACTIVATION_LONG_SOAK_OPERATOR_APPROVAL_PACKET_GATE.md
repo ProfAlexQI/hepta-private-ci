@@ -59,7 +59,7 @@ Current recorded packet field count is `0`.
 - Fresh trusted record count: `0`
 - Minimum long-soak sample count: `24`
 
-The short live soak used by watchdog regression remains operational evidence only. It does not authorize activation or memory mutation.
+The short live soak used by watchdog regression remains operational evidence only. If the source reports a known operator-security attention soak failure, the packet records that classification as blocked observation, not as a passed soak. It does not authorize activation or memory mutation.
 
 ## Denied Actions
 
