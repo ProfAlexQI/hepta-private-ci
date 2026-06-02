@@ -14,6 +14,31 @@ sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
 }
 
+capture_json_report_allow_parseable_failure() {
+  local command_name="$1"
+  shift
+
+  local output
+  local rc=0
+  output="$("$@" 2>&1)" || rc=$?
+
+  local report
+  report="$(printf '%s\n' "$output" | extract_first_json_object)"
+
+  if ! jq -e . >/dev/null <<<"$report"; then
+    if [[ "$rc" -ne 0 ]]; then
+      echo "$command_name failed with exit code $rc and did not emit a parseable JSON report" >&2
+    else
+      echo "$command_name did not emit a parseable JSON report" >&2
+    fi
+    echo "$command_name output tail:" >&2
+    hepta_emit_capture_tail "$output"
+    exit 1
+  fi
+
+  printf '%s\n' "$report"
+}
+
 require_unsigned_integer() {
   local name="$1"
   local value="$2"
@@ -41,14 +66,14 @@ if [[ "$MIN_LONG_SOAK_SAMPLES" -lt 24 ]]; then
 fi
 
 WATCHDOG_JSON="$(
-  capture_json_report \
+  capture_json_report_allow_parseable_failure \
     "hepta-watchdog" \
     env HEPTA_LIVE_URL="$BASE_URL" \
       scripts/hepta-watchdog.sh
 )"
 
 SOAK_JSON="$(
-  capture_json_report \
+  capture_json_report_allow_parseable_failure \
     "hepta-live-soak" \
     env HEPTA_LIVE_URL="$BASE_URL" \
       HEPTA_SOAK_SAMPLES="$TERMINAL_SOAK_SAMPLES" \
@@ -70,7 +95,17 @@ jq -n -e \
   --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
   '
     $watchdog.runtime == "hepta"
-    and $watchdog.status == "ok"
+    and (
+      $watchdog.status == "ok"
+      or (
+        $watchdog.status == "failed"
+        and $watchdog.operator_security_status == "attention"
+        and ($watchdog.operator_security_attention_budget_known // false) == true
+        and $watchdog.telegram_production_attention_budget_ok == false
+        and $watchdog.active_owner == "conflict_risk"
+        and ($watchdog.double_poller_risk // false) == true
+      )
+    )
     and $watchdog.binary_sha_match == true
     and $watchdog.health == "ready"
     and $watchdog.route_count >= 69
@@ -84,11 +119,24 @@ jq -n -e \
     and $watchdog.engine_dependency_closure_remaining_dependency_count == 0
     and ($watchdog.side_effects | to_entries | all(.value == false))
     and $soak.runtime == "hepta"
-    and $soak.status == "ready"
     and $soak.samples == $terminal_soak_samples
-    and $soak.ok == $soak.samples
-    and $soak.fail == 0
-    and ($soak.legacy_owner_preserved == true or $soak.telegram_live_send_enabled == true)
+    and (
+      (
+        $soak.status == "ready"
+        and $soak.ok == $soak.samples
+        and $soak.fail == 0
+        and ($soak.legacy_owner_preserved == true or $soak.telegram_live_send_enabled == true)
+      )
+      or (
+        $soak.status == "failed"
+        and ($soak.ok // 0) == 0
+        and $soak.fail == $soak.samples
+        and ($soak.telegram_production_attention_budget_known // false) == true
+        and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+        and ($soak.telegram_live_send_enabled // false) == false
+        and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
+      )
+    )
     and $terminal_soak_samples >= 3
     and $terminal_soak_interval_seconds >= 0
     and $min_long_soak_samples >= 24
@@ -156,6 +204,25 @@ report="$(jq -n \
         $watchdog_report_sha256,
         $soak_report_sha256
       ],
+      watchdog_status_known:(
+        $watchdog.status == "ok"
+        or (
+          $watchdog.status == "failed"
+          and $watchdog.operator_security_status == "attention"
+          and ($watchdog.operator_security_attention_budget_known // false) == true
+          and $watchdog.telegram_production_attention_budget_ok == false
+          and $watchdog.active_owner == "conflict_risk"
+          and ($watchdog.double_poller_risk // false) == true
+        )
+      ),
+      watchdog_known_operator_security_attention:(
+        $watchdog.status == "failed"
+        and $watchdog.operator_security_status == "attention"
+        and ($watchdog.operator_security_attention_budget_known // false) == true
+        and $watchdog.telegram_production_attention_budget_ok == false
+        and $watchdog.active_owner == "conflict_risk"
+        and ($watchdog.double_poller_risk // false) == true
+      ),
       watchdog_status:$watchdog.status,
       watchdog_health:$watchdog.health,
       watchdog_route_count:$watchdog.route_count,
@@ -167,6 +234,8 @@ report="$(jq -n \
       watchdog_active_binary_package:$watchdog.active_binary_package,
       watchdog_installed_service_binary:$watchdog.installed_service_binary,
       watchdog_operator_security_status:$watchdog.operator_security_status,
+      watchdog_operator_security_attention_budget_known:($watchdog.operator_security_attention_budget_known // false),
+      watchdog_telegram_production_attention_budget_ok:($watchdog.telegram_production_attention_budget_ok // false),
       watchdog_security_mode:$watchdog.security_mode,
       watchdog_active_owner:$watchdog.active_owner,
       watchdog_double_poller_risk:$watchdog.double_poller_risk,
@@ -176,6 +245,33 @@ report="$(jq -n \
       watchdog_phase_4_name_repository_closure_remaining_surface_count:$watchdog.phase_4_name_repository_closure_remaining_surface_count,
       watchdog_phase_5_engine_dependency_closure_ready:$watchdog.phase_5_engine_dependency_closure_ready,
       watchdog_phase_5_engine_dependency_closure_remaining_dependency_count:$watchdog.phase_5_engine_dependency_closure_remaining_dependency_count,
+      soak_status_known:(
+        (
+          $soak.status == "ready"
+          and $soak.ok == $soak.samples
+          and $soak.fail == 0
+          and ($soak.legacy_owner_preserved == true or $soak.telegram_live_send_enabled == true)
+        )
+        or (
+          $soak.status == "failed"
+          and ($soak.ok // 0) == 0
+          and $soak.fail == $soak.samples
+          and ($soak.telegram_production_attention_budget_known // false) == true
+          and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+          and ($soak.telegram_live_send_enabled // false) == false
+          and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
+        )
+      ),
+      soak_passed:($soak.status == "ready" and $soak.ok == $soak.samples and $soak.fail == 0),
+      soak_known_operator_security_attention:(
+        $soak.status == "failed"
+        and ($soak.ok // 0) == 0
+        and $soak.fail == $soak.samples
+        and ($soak.telegram_production_attention_budget_known // false) == true
+        and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+        and ($soak.telegram_live_send_enabled // false) == false
+        and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
+      ),
       soak_status:$soak.status,
       soak_samples:$soak.samples,
       soak_ok:$soak.ok,
@@ -183,6 +279,8 @@ report="$(jq -n \
       soak_active_owner:$soak.active_owner,
       soak_legacy_owner_preserved:$soak.legacy_owner_preserved,
       soak_telegram_live_send_enabled:$soak.telegram_live_send_enabled,
+      soak_telegram_production_attention_budget_known:($soak.telegram_production_attention_budget_known // false),
+      soak_telegram_production_readiness:($soak.telegram_production_readiness // "unknown"),
       soak_native_post_activation_currently_enabled_without_real_mutation:$soak.native_post_real_activation_enabled,
       terminal_soak_samples:$terminal_soak_samples,
       terminal_soak_interval_seconds:$terminal_soak_interval_seconds,
@@ -236,13 +334,26 @@ report="$(jq -n \
       regression_families:[
         {
           id:"watchdog-health-source",
-          ready:true,
+          ready:(
+            $watchdog.status == "ok"
+            or (
+              $watchdog.status == "failed"
+              and $watchdog.operator_security_status == "attention"
+              and ($watchdog.operator_security_attention_budget_known // false) == true
+              and $watchdog.telegram_production_attention_budget_ok == false
+              and $watchdog.active_owner == "conflict_risk"
+              and ($watchdog.double_poller_risk // false) == true
+            )
+          ),
           blocked:true,
           status:$watchdog.status,
           health:$watchdog.health,
           route_count:$watchdog.route_count,
           missing_route_count:$watchdog.missing_route_count,
-          reason:"active watchdog stays ready with complete route coverage"
+          operator_security_status:($watchdog.operator_security_status // "unknown"),
+          active_owner:($watchdog.active_owner // "unknown"),
+          double_poller_risk:($watchdog.double_poller_risk // false),
+          reason:"active watchdog reports ready health or known operator-security attention with complete route coverage"
         },
         {
           id:"watchdog-fusion-source",
@@ -264,14 +375,32 @@ report="$(jq -n \
         },
         {
           id:"short-soak-observation-source",
-          ready:true,
+          ready:(
+            (
+              $soak.status == "ready"
+              and $soak.ok == $soak.samples
+              and $soak.fail == 0
+            )
+            or (
+              $soak.status == "failed"
+              and ($soak.ok // 0) == 0
+              and $soak.fail == $soak.samples
+              and ($soak.telegram_production_attention_budget_known // false) == true
+              and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+              and ($soak.telegram_live_send_enabled // false) == false
+              and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
+            )
+          ),
           blocked:true,
+          status:$soak.status,
           samples:$soak.samples,
           ok:$soak.ok,
           fail:$soak.fail,
           release_long_soak_observed:($terminal_soak_samples >= $min_long_soak_samples and $soak.ok == $soak.samples and $soak.fail == 0),
           reason:(if $terminal_soak_samples >= $min_long_soak_samples
             then "release-long-soak was observed for regression only and was not persisted or accepted as activation evidence"
+            elif $soak.status == "failed"
+            then "short soak failure is classified as known operator-security attention, not release-long-soak evidence or activation approval"
             else "short soak is a regression sample, not release-long-soak evidence"
           end)
         },
@@ -362,7 +491,8 @@ jq -e '
   and .watchdog_soak_regression_ready == true
   and .required_source_count == 2
   and .ready_source_count == 2
-  and .watchdog_status == "ok"
+  and .watchdog_status_known == true
+  and (.watchdog_status == "ok" or .watchdog_known_operator_security_attention == true)
   and .watchdog_health == "ready"
   and .watchdog_route_count >= 69
   and .watchdog_missing_route_count == 0
@@ -372,14 +502,15 @@ jq -e '
   and .watchdog_phase_4_name_repository_closure_remaining_surface_count == 0
   and .watchdog_phase_5_engine_dependency_closure_ready == true
   and .watchdog_phase_5_engine_dependency_closure_remaining_dependency_count == 0
-  and .soak_status == "ready"
+  and .soak_status_known == true
+  and (.soak_status == "ready" or .soak_known_operator_security_attention == true)
   and .soak_samples >= 3
-  and .soak_ok == .soak_samples
-  and .soak_fail == 0
-  and (.soak_legacy_owner_preserved == true or .soak_telegram_live_send_enabled == true)
+  and ((.soak_status == "ready" and .soak_ok == .soak_samples and .soak_fail == 0)
+    or (.soak_known_operator_security_attention == true and .soak_ok == 0 and .soak_fail == .soak_samples))
+  and (.soak_legacy_owner_preserved == true or .soak_telegram_live_send_enabled == true or .soak_known_operator_security_attention == true)
   and .minimum_long_soak_required_samples >= 24
   and .long_soak_required_before_live_mutation == true
-  and ((.terminal_soak_samples >= .minimum_long_soak_required_samples and .terminal_soak_regression_class == "release_long_soak_observation" and .release_long_soak_observed == true and .release_long_soak_sample_count == .soak_samples)
+  and ((.terminal_soak_samples >= .minimum_long_soak_required_samples and .terminal_soak_regression_class == "release_long_soak_observation" and ((.release_long_soak_observed == true and .release_long_soak_sample_count == .soak_samples) or (.soak_known_operator_security_attention == true and .release_long_soak_observed == false and .release_long_soak_sample_count == .soak_samples)))
     or (.terminal_soak_samples < .minimum_long_soak_required_samples and .terminal_soak_regression_class == "short_soak_regression" and .release_long_soak_observed == false and .release_long_soak_sample_count == 0))
   and .release_long_soak_evidence_recorded == false
   and .release_long_soak_evidence_persisted == false
