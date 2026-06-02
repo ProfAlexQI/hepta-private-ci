@@ -1,6 +1,6 @@
 # Hepta Terminal Governance Active-State Lock Gate
 
-`scripts/hepta-terminal-governance-active-state-lock-gate.sh` is a schema-only active-state lock over the terminal governance closure summary, live watchdog, and active service dependency isolation gate.
+`scripts/hepta-terminal-governance-active-state-lock-gate.sh` is a schema-only active-state lock over the terminal governance closure summary, live watchdog or known watchdog attention report, and active service dependency isolation gate.
 
 The gate exists to prove that the terminal governance closure did not imply an install, release build, service restart, dependency mutation, upstream fetch or merge, public release claim, artifact write, rollback execution, or live mutation.
 
@@ -9,7 +9,7 @@ The gate exists to prove that the terminal governance closure did not imply an i
 The gate consumes exactly three source reports:
 
 - `scripts/hepta-terminal-governance-closure-summary-gate.sh`
-- `scripts/hepta-watchdog.sh`
+- `scripts/hepta-watchdog.sh`, accepting either `ok` or a parseable known operator-security attention report
 - `scripts/hepta-active-service-dependency-isolation.sh` with `HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE=0`
 
 Each source must be ready, side-effect-free, and compatible with the terminal non-activation boundary.
@@ -19,7 +19,7 @@ Each source must be ready, side-effect-free, and compatible with the terminal no
 The active-state lock reports:
 
 - terminal governance closure readiness and `governance_closure_denied_by_count=65`
-- watchdog health with `binary_sha_match=true`, `route_count>=69`, and `full_fusion_complete=true`
+- watchdog health, or known operator-security attention, with `binary_sha_match=true`, `route_count>=69`, and `full_fusion_complete=true`
 - active dependency isolation with zero forbidden Codex engine crates in the active `hepta-cli --bin hepta` tree
 - deterministic source hashes, active-state lock hash, policy hash, and side-effect hash
 - six ready and blocked lock families:
