@@ -587,6 +587,9 @@ scripts/hepta-core-activation-terminal-closure-operator-packet-trusted-record-po
 echo "[hepta-preflight] core activation operator approval gap ledger summary briefing non-persistence gate"
 scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-non-persistence-gate.sh
 
+echo "[hepta-preflight] core activation operator approval gap ledger summary briefing acknowledgement non-acceptance gate"
+scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-non-acceptance-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
