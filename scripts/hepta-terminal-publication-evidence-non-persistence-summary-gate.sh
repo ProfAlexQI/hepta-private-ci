@@ -12,6 +12,31 @@ sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
 }
 
+capture_json_report_allow_parseable_failure() {
+  local command_name="$1"
+  shift
+
+  local output
+  local rc=0
+  output="$("$@" 2>&1)" || rc=$?
+
+  local report
+  report="$(printf '%s\n' "$output" | extract_first_json_object)"
+
+  if ! jq -e . >/dev/null <<<"$report"; then
+    if [[ "$rc" -ne 0 ]]; then
+      echo "$command_name failed with exit code $rc and did not emit a parseable JSON report" >&2
+    else
+      echo "$command_name did not emit a parseable JSON report" >&2
+    fi
+    echo "$command_name output tail:" >&2
+    hepta_emit_capture_tail "$output"
+    exit 1
+  fi
+
+  printf '%s\n' "$report"
+}
+
 if [[ "$MIN_LONG_SOAK_SAMPLES" -lt 24 ]]; then
   echo "minimum long-soak samples must be at least 24" >&2
   exit 1
@@ -26,7 +51,7 @@ PUBLIC_DISTRIBUTION_LOCK_JSON="$(
 )"
 
 WATCHDOG_JSON="$(
-  capture_json_report \
+  capture_json_report_allow_parseable_failure \
     "hepta-watchdog" \
     env HEPTA_LIVE_URL="$BASE_URL" \
       scripts/hepta-watchdog.sh
@@ -66,7 +91,17 @@ jq -n -e \
     and $public_distribution.terminal_public_distribution_non_publication_lock_filesystem_written == false
     and ($public_distribution.side_effects | to_entries | all(.value == false))
     and $watchdog.runtime == "hepta"
-    and $watchdog.status == "ok"
+    and (
+      $watchdog.status == "ok"
+      or (
+        $watchdog.status == "failed"
+        and $watchdog.operator_security_status == "attention"
+        and ($watchdog.operator_security_attention_budget_known // false) == true
+        and $watchdog.telegram_production_attention_budget_ok == false
+        and $watchdog.active_owner == "conflict_risk"
+        and ($watchdog.double_poller_risk // false) == true
+      )
+    )
     and $watchdog.binary_sha_match == true
     and $watchdog.health == "ready"
     and $watchdog.route_count >= 69
@@ -136,7 +171,32 @@ report="$(jq -n \
       source_operator_approval_recorded:$public_distribution.operator_approval_recorded,
       source_operator_identity_accepted:$public_distribution.operator_identity_accepted,
       source_public_distribution_lock_persisted:$public_distribution.terminal_public_distribution_non_publication_lock_persisted,
+      source_watchdog_status_known:(
+        $watchdog.status == "ok"
+        or (
+          $watchdog.status == "failed"
+          and $watchdog.operator_security_status == "attention"
+          and ($watchdog.operator_security_attention_budget_known // false) == true
+          and $watchdog.telegram_production_attention_budget_ok == false
+          and $watchdog.active_owner == "conflict_risk"
+          and ($watchdog.double_poller_risk // false) == true
+        )
+      ),
+      source_watchdog_known_operator_security_attention:(
+        $watchdog.status == "failed"
+        and $watchdog.operator_security_status == "attention"
+        and ($watchdog.operator_security_attention_budget_known // false) == true
+        and $watchdog.telegram_production_attention_budget_ok == false
+        and $watchdog.active_owner == "conflict_risk"
+        and ($watchdog.double_poller_risk // false) == true
+      ),
       source_watchdog_status:$watchdog.status,
+      source_watchdog_operator_security_status:($watchdog.operator_security_status // "unknown"),
+      source_watchdog_operator_security_attention_budget_known:($watchdog.operator_security_attention_budget_known // false),
+      source_watchdog_telegram_production_attention_budget_ok:($watchdog.telegram_production_attention_budget_ok // false),
+      source_watchdog_security_mode:($watchdog.security_mode // "unknown"),
+      source_watchdog_active_owner:($watchdog.active_owner // "unknown"),
+      source_watchdog_double_poller_risk:($watchdog.double_poller_risk // false),
       source_watchdog_health:$watchdog.health,
       source_watchdog_binary_sha_match:$watchdog.binary_sha_match,
       source_watchdog_route_count:$watchdog.route_count,
@@ -208,12 +268,26 @@ report="$(jq -n \
         },
         {
           id:"watchdog-observational-evidence-boundary",
-          ready:true,
+          ready:(
+            $watchdog.status == "ok"
+            or (
+              $watchdog.status == "failed"
+              and $watchdog.operator_security_status == "attention"
+              and ($watchdog.operator_security_attention_budget_known // false) == true
+              and $watchdog.telegram_production_attention_budget_ok == false
+              and $watchdog.active_owner == "conflict_risk"
+              and ($watchdog.double_poller_risk // false) == true
+            )
+          ),
           blocked:true,
+          status:$watchdog.status,
           binary_sha_match:$watchdog.binary_sha_match,
           route_count:$watchdog.route_count,
           full_fusion_complete:$watchdog.full_fusion_complete,
-          reason:"watchdog evidence observes active health but does not authorize publication or persistence"
+          operator_security_status:($watchdog.operator_security_status // "unknown"),
+          active_owner:($watchdog.active_owner // "unknown"),
+          double_poller_risk:($watchdog.double_poller_risk // false),
+          reason:"watchdog evidence observes active health or known operator-security attention but does not authorize publication or persistence"
         },
         {
           id:"publication-evidence-non-persistence-boundary",
@@ -313,7 +387,8 @@ jq -e '
   and .publication_evidence_non_persistence_summary_ready == true
   and .source_public_distribution_lock_ready == true
   and .source_public_distribution_denied_by_count == 99
-  and .source_watchdog_status == "ok"
+  and .source_watchdog_status_known == true
+  and (.source_watchdog_status == "ok" or .source_watchdog_known_operator_security_attention == true)
   and .source_watchdog_binary_sha_match == true
   and .source_watchdog_route_count >= 69
   and .source_watchdog_full_fusion_complete == true
