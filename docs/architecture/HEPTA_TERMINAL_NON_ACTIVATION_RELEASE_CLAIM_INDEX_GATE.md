@@ -8,11 +8,12 @@ permission.
 
 ## Purpose
 
-Hepta can be operationally healthy while still refusing public release claims.
-This gate makes that distinction explicit. A green watchdog, synchronized local
-reports, and complete fusion readiness are evidence inputs only; they are not
-authorization to publish, write artifacts, activate upstream Codex runtime
-wiring, or persist release evidence.
+Hepta can be operationally healthy, or be in a known operator-security attention
+state, while still refusing public release claims. This gate makes that
+distinction explicit. A green watchdog, a parseable watchdog attention report,
+synchronized local reports, and complete fusion readiness are evidence inputs
+only; they are not authorization to publish, write artifacts, activate upstream
+Codex runtime wiring, or persist release evidence.
 
 ## Source Reports
 
@@ -34,8 +35,12 @@ conditions hold:
 
 - terminal denial index is ready, activation-blocking, and has 39 terminal
   denial reasons;
-- watchdog is `ok`, health is `ready`, route count is `>=69`, binary SHA matches,
-  full fusion is complete, and Phase 4/Phase 5 remaining counts are zero;
+- watchdog is either `ok` or a known operator-security attention report
+  (`operator_security_status=attention`, attention budget known, Telegram
+  production attention budget not OK, `active_owner=conflict_risk`, and
+  `double_poller_risk=true`), while health is `ready`, route count is `>=69`,
+  binary SHA matches, full fusion is complete, and Phase 4/Phase 5 remaining
+  counts are zero;
 - public-GA readiness reports are synchronized, route gaps are zero, and no
   public GA claim has been made;
 - public release claim, public GA claim, release artifact write, public artifact
