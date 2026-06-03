@@ -599,6 +599,9 @@ scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-ackn
 echo "[hepta-preflight] core activation operator approval gap ledger summary briefing acknowledgement activation command result receipt no-persistence gate"
 scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-no-persistence-gate.sh
 
+echo "[hepta-preflight] core activation operator approval gap ledger summary briefing acknowledgement activation command result receipt replay idempotency denial gate"
+scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
