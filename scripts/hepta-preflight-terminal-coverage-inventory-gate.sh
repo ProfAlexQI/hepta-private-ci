@@ -82,6 +82,7 @@ required_markers=(
   "core activation terminal closure operator packet trusted-record positive packet operator approval gap ledger gate"
   "core activation operator approval gap ledger summary briefing non-persistence gate"
   "core activation operator approval gap ledger summary briefing acknowledgement non-acceptance gate"
+  "core activation operator approval gap ledger summary briefing acknowledgement activation request denial matrix gate"
   "JSON report capture diagnostic contract gate"
   "JSON report capture migration inventory gate"
   "preflight terminal coverage inventory gate"
@@ -119,7 +120,7 @@ phase_family_min_counts=(
   1
   44
   11
-  24
+  25
   4
   12
 )
@@ -161,6 +162,7 @@ phase_family_anchor_specs=(
   "core-activation-tail|core activation terminal closure operator packet trusted-record positive packet operator approval gap ledger gate"
   "core-activation-tail|core activation operator approval gap ledger summary briefing non-persistence gate"
   "core-activation-tail|core activation operator approval gap ledger summary briefing acknowledgement non-acceptance gate"
+  "core-activation-tail|core activation operator approval gap ledger summary briefing acknowledgement activation request denial matrix gate"
   "json-terminal-coverage|JSON report capture diagnostic contract gate"
   "json-terminal-coverage|JSON report capture migration inventory gate"
   "json-terminal-coverage|preflight terminal coverage inventory gate"

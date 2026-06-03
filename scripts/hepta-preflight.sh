@@ -590,6 +590,9 @@ scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-non-
 echo "[hepta-preflight] core activation operator approval gap ledger summary briefing acknowledgement non-acceptance gate"
 scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-non-acceptance-gate.sh
 
+echo "[hepta-preflight] core activation operator approval gap ledger summary briefing acknowledgement activation request denial matrix gate"
+scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-request-denial-matrix-gate.sh
+
 echo "[hepta-preflight] JSON report capture diagnostic contract gate"
 scripts/hepta-json-report-capture-diagnostic-contract-gate.sh
 
