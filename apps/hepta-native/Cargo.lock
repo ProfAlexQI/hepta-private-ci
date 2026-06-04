@@ -2178,6 +2178,7 @@ name = "hepta-intelligence"
 version = "0.0.0"
 dependencies = [
  "hepta-core",
+ "hepta-kg",
  "serde",
 ]
 
@@ -2192,6 +2193,13 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "hepta-kg"
+version = "0.0.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
