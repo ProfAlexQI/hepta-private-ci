@@ -138,6 +138,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-explicit-operator-approved-
 echo "[hepta-preflight] memory/intelligence full enablement operator canary packet value fixture scoreboard gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-packet-value-fixture-scoreboard-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator canary arm plan dry-run gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-arm-plan-dry-run-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
