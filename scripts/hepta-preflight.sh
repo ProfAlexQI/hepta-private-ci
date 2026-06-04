@@ -135,6 +135,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-canary-live-harness-scaffol
 echo "[hepta-preflight] memory/intelligence full enablement explicit operator-approved canary packet record scaffold gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-explicit-operator-approved-canary-packet-record-scaffold-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator canary packet value fixture scoreboard gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-packet-value-fixture-scoreboard-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
