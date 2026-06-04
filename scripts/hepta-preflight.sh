@@ -129,6 +129,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-positive-activation-packet-
 echo "[hepta-preflight] memory/intelligence full enablement positive activation packet validator scoreboard gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-positive-activation-packet-validator-scoreboard-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement canary live harness scaffold gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-canary-live-harness-scaffold-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
