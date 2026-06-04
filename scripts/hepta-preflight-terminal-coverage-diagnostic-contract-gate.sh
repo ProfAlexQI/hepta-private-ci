@@ -39,6 +39,7 @@ required_markers=(
   "memory/intelligence full enablement positive activation packet dry-run scaffold gate"
   "memory/intelligence full enablement positive activation packet validator scoreboard gate"
   "memory/intelligence full enablement canary live harness scaffold gate"
+  "memory/intelligence full enablement explicit operator-approved canary packet record scaffold gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
@@ -345,8 +346,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 88
-    and .present_required_marker_count == 88
+    and .required_marker_count == 89
+    and .present_required_marker_count == 89
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
