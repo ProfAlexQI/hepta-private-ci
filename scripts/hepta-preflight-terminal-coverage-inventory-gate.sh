@@ -42,6 +42,7 @@ required_markers=(
   "memory/intelligence full enablement KG external adapter staging receipt gate"
   "memory/intelligence full enablement bounded prompt-preview context handoff activation packet gate"
   "memory/intelligence full enablement runtime provider-router context attachment staging gate"
+  "memory/intelligence full enablement positive activation packet dry-run scaffold gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
@@ -547,9 +548,21 @@ fi
 
 required_markers_json="$(printf '%s\n' "${required_markers[@]}" | json_lines)"
 preflight_markers_json="$(printf '%s\n' "${preflight_markers[@]}" | json_lines)"
-missing_markers_json="$(printf '%s\n' "${missing_markers[@]}" | json_lines)"
-duplicate_markers_json="$(printf '%s\n' "${duplicate_markers[@]}" | json_lines)"
-out_of_order_markers_json="$(printf '%s\n' "${out_of_order_markers[@]}" | json_lines)"
+if [[ "${#missing_markers[@]}" -eq 0 ]]; then
+  missing_markers_json="$(jq -n '[]')"
+else
+  missing_markers_json="$(printf '%s\n' "${missing_markers[@]}" | json_lines)"
+fi
+if [[ "${#duplicate_markers[@]}" -eq 0 ]]; then
+  duplicate_markers_json="$(jq -n '[]')"
+else
+  duplicate_markers_json="$(printf '%s\n' "${duplicate_markers[@]}" | json_lines)"
+fi
+if [[ "${#out_of_order_markers[@]}" -eq 0 ]]; then
+  out_of_order_markers_json="$(jq -n '[]')"
+else
+  out_of_order_markers_json="$(printf '%s\n' "${out_of_order_markers[@]}" | json_lines)"
+fi
 required_marker_lines_json="$(
   printf '%s\n' "${required_marker_lines[@]}" \
     | jq -R -s '
@@ -572,18 +585,22 @@ phase_family_records_json="$(
           })
       '
 )"
-phase_family_failures_json="$(
-  printf '%s\n' "${phase_family_failures[@]}" \
-    | jq -R -s '
-        split("\n")
-        | map(select(length > 0))
-        | map(split("|") | {
-            id: .[0],
-            current_count: (.[1] | tonumber),
-            minimum_count: (.[2] | tonumber)
-          })
-      '
-)"
+if [[ "${#phase_family_failures[@]}" -eq 0 ]]; then
+  phase_family_failures_json="$(jq -n '[]')"
+else
+  phase_family_failures_json="$(
+    printf '%s\n' "${phase_family_failures[@]}" \
+      | jq -R -s '
+          split("\n")
+          | map(select(length > 0))
+          | map(split("|") | {
+              id: .[0],
+              current_count: (.[1] | tonumber),
+              minimum_count: (.[2] | tonumber)
+            })
+        '
+  )"
+fi
 phase_family_anchor_records_json="$(
   printf '%s\n' "${phase_family_anchor_records[@]}" \
     | jq -R -s '
@@ -597,17 +614,21 @@ phase_family_anchor_records_json="$(
           })
       '
 )"
-phase_family_anchor_failures_json="$(
-  printf '%s\n' "${phase_family_anchor_failures[@]}" \
-    | jq -R -s '
-        split("\n")
-        | map(select(length > 0))
-        | map(split("|") | {
-            family_id: .[0],
-            marker: .[1]
-          })
-      '
-)"
+if [[ "${#phase_family_anchor_failures[@]}" -eq 0 ]]; then
+  phase_family_anchor_failures_json="$(jq -n '[]')"
+else
+  phase_family_anchor_failures_json="$(
+    printf '%s\n' "${phase_family_anchor_failures[@]}" \
+      | jq -R -s '
+          split("\n")
+          | map(select(length > 0))
+          | map(split("|") | {
+              family_id: .[0],
+              marker: .[1]
+            })
+        '
+  )"
+fi
 phase_family_ids_json="$(printf '%s\n' "${phase_family_ids[@]}" | json_lines)"
 phase_family_anchor_family_coverage_json="$(
   jq -n \
