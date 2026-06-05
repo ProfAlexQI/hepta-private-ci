@@ -144,6 +144,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-arm-plan-dr
 echo "[hepta-preflight] memory/intelligence full enablement operator canary arm readiness scoreboard gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-arm-readiness-scoreboard-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator canary dispatch envelope preview gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-dispatch-envelope-preview-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
