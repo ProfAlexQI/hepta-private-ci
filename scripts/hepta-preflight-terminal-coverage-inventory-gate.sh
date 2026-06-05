@@ -50,6 +50,7 @@ required_markers=(
   "memory/intelligence full enablement operator canary arm plan dry-run gate"
   "memory/intelligence full enablement operator canary arm readiness scoreboard gate"
   "memory/intelligence full enablement operator canary dispatch envelope preview gate"
+  "memory/intelligence full enablement operator canary controlled request payload preview no-write sink gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
