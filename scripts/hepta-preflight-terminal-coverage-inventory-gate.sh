@@ -53,6 +53,7 @@ required_markers=(
   "memory/intelligence full enablement operator canary controlled request payload preview no-write sink gate"
   "memory/intelligence full enablement operator canary controlled request payload readback audit receipt preview gate"
   "memory/intelligence full enablement operator canary controlled request payload readback audit receipt acceptance packet dry-run scaffold gate"
+  "memory/intelligence full enablement operator canary controlled request payload readback audit receipt acceptance packet value scoreboard gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
