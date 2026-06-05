@@ -150,6 +150,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-dispatch-en
 echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request payload preview no-write sink gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-payload-preview-no-write-sink-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request payload readback audit receipt preview gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-payload-readback-audit-receipt-preview-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
