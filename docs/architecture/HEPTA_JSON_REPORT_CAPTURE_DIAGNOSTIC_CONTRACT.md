@@ -20,6 +20,9 @@ The helper contract is:
   additional JSON-shaped noise;
 - expose a bounded tail for malformed JSON-shaped output instead of collapsing
   into a silent parse failure;
+- optionally reuse successful reports from an ephemeral preflight cache when
+  `HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR` is set, so nested source gates are not
+  rerun repeatedly in one full preflight;
 - never write evidence, mutate the workspace, restart services, mutate launchd,
   read credentials, read secret files, invoke providers, or send externally.
 
@@ -28,7 +31,7 @@ services and does not perform recovery. It exists so future preflight failures
 point at the failing child report or output tail instead of collapsing into a
 generic parse error.
 
-The v2 diagnostic fixture matrix covers seven cases:
+The v3 diagnostic fixture matrix covers eight cases:
 
 - successful JSON with surrounding log lines;
 - child failure after a parseable JSON report;
@@ -37,3 +40,10 @@ The v2 diagnostic fixture matrix covers seven cases:
 - multiple JSON objects where only the first is the report;
 - malformed JSON-shaped output;
 - bounded diagnostic tail emission.
+- ephemeral cache hit reuse: two identical successful captures return the same
+  cached report while the synthetic child command runs only once.
+
+The cache is opt-in and intended for `scripts/hepta-preflight.sh`. It uses a
+temporary directory plus a per-run salt, and the preflight removes the directory
+on exit. Cached reports are an execution optimization only; they are not
+approval records, evidence persistence, operator delivery, or authority.

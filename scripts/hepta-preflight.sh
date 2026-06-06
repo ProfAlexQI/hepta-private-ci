@@ -11,6 +11,15 @@ RUN_RELEASE="${HEPTA_PREFLIGHT_RELEASE:-${HEPTA_CODEX_PREFLIGHT_RELEASE:-0}}"
 
 export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 
+HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR=0
+if [[ "${HEPTA_JSON_REPORT_CAPTURE_CACHE:-1}" != "0" \
+  && -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$(mktemp -d /tmp/hepta-json-report-capture.XXXXXX)"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT="hepta-preflight:$$:${HEPTA_RELEASE_BIN:-}:${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-}:${RUN_NATIVE}:${RUN_RELEASE}"
+  HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR=1
+  trap 'if [[ "${HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR:-0}" == "1" ]]; then rm -rf "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}"; fi' EXIT
+fi
+
 echo "[hepta-preflight] metadata"
 cargo metadata --offline --manifest-path "$MANIFEST" --no-deps --format-version 1 >/tmp/hepta-preflight-metadata.json
 

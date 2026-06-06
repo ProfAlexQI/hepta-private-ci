@@ -110,6 +110,54 @@ bounded_tail_diagnostic="$(
 bounded_tail_rc=$?
 set -e
 
+cache_fixture_dir="$(mktemp -d /tmp/hepta-json-report-capture-diagnostic.XXXXXX)"
+cache_counter_path="$cache_fixture_dir/counter"
+cached_first_report="$(
+  HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$cache_fixture_dir" \
+    HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT="diagnostic-cache-fixture" \
+    capture_json_report "cache-json-fixture" bash -c '
+      counter_file="$1"
+      run_count=0
+      if [[ -f "$counter_file" ]]; then
+        run_count="$(cat "$counter_file")"
+      fi
+      run_count=$((run_count + 1))
+      printf "%s\n" "$run_count" >"$counter_file"
+      printf "%s\n" \
+        "{" \
+        "  \"status\": \"ready\"," \
+        "  \"gate\": \"cache_json_fixture\"," \
+        "  \"run_count\": $run_count," \
+        "  \"side_effects\": {\"filesystem_written\": false}" \
+        "}"
+    ' bash "$cache_counter_path"
+)"
+cached_second_report="$(
+  HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$cache_fixture_dir" \
+    HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT="diagnostic-cache-fixture" \
+    capture_json_report "cache-json-fixture" bash -c '
+      counter_file="$1"
+      run_count=0
+      if [[ -f "$counter_file" ]]; then
+        run_count="$(cat "$counter_file")"
+      fi
+      run_count=$((run_count + 1))
+      printf "%s\n" "$run_count" >"$counter_file"
+      printf "%s\n" \
+        "{" \
+        "  \"status\": \"ready\"," \
+        "  \"gate\": \"cache_json_fixture\"," \
+        "  \"run_count\": $run_count," \
+        "  \"side_effects\": {\"filesystem_written\": false}" \
+        "}"
+    ' bash "$cache_counter_path"
+)"
+cache_counter_value=0
+if [[ -f "$cache_counter_path" ]]; then
+  cache_counter_value="$(cat "$cache_counter_path")"
+fi
+rm -rf "$cache_fixture_dir"
+
 success_fixture_ok=false
 failing_json_fixture_ok=false
 no_json_fixture_ok=false
@@ -117,6 +165,7 @@ stderr_json_fixture_ok=false
 multiple_json_fixture_ok=false
 malformed_json_fixture_ok=false
 bounded_tail_fixture_ok=false
+cache_fixture_ok=false
 
 if jq -e '
   .status == "ready"
@@ -171,11 +220,27 @@ if [[ "$bounded_tail_rc" -eq 1 ]] \
   bounded_tail_fixture_ok=true
 fi
 
+if jq -e '
+  .status == "ready"
+  and .gate == "cache_json_fixture"
+  and .run_count == 1
+  and .side_effects.filesystem_written == false
+' >/dev/null <<<"$cached_first_report" \
+  && jq -e '
+    .status == "ready"
+    and .gate == "cache_json_fixture"
+    and .run_count == 1
+    and .side_effects.filesystem_written == false
+  ' >/dev/null <<<"$cached_second_report" \
+  && [[ "$cache_counter_value" -eq 1 ]]; then
+  cache_fixture_ok=true
+fi
+
 contract_hash_sha256="$(
-  sha256_text "hepta-json-report-capture:contract:$success_fixture_ok:$failing_json_fixture_ok:$no_json_fixture_ok:$stderr_json_fixture_ok:$multiple_json_fixture_ok:$malformed_json_fixture_ok:$bounded_tail_fixture_ok"
+  sha256_text "hepta-json-report-capture:contract:$success_fixture_ok:$failing_json_fixture_ok:$no_json_fixture_ok:$stderr_json_fixture_ok:$multiple_json_fixture_ok:$malformed_json_fixture_ok:$bounded_tail_fixture_ok:$cache_fixture_ok"
 )"
-policy_hash_sha256="$(sha256_text "hepta-json-report-capture:policy:no-workspace-write:no-secret-read:no-external-send")"
-side_effect_hash_sha256="$(sha256_text "hepta-json-report-capture:side-effects:false:false:false")"
+policy_hash_sha256="$(sha256_text "hepta-json-report-capture:policy:no-workspace-write:no-secret-read:no-external-send:ephemeral-cache-only")"
+side_effect_hash_sha256="$(sha256_text "hepta-json-report-capture:side-effects:false:false:false:ephemeral-cache")"
 
 jq -n -e \
   --arg contract_hash_sha256 "$contract_hash_sha256" \
@@ -188,6 +253,7 @@ jq -n -e \
   --argjson multiple_json_fixture_ok "$multiple_json_fixture_ok" \
   --argjson malformed_json_fixture_ok "$malformed_json_fixture_ok" \
   --argjson bounded_tail_fixture_ok "$bounded_tail_fixture_ok" \
+  --argjson cache_fixture_ok "$cache_fixture_ok" \
   '
     if (
       $success_fixture_ok == true
@@ -197,17 +263,18 @@ jq -n -e \
       and $multiple_json_fixture_ok == true
       and $malformed_json_fixture_ok == true
       and $bounded_tail_fixture_ok == true
+      and $cache_fixture_ok == true
     ) then {
       product: "Hepta",
       runtime: "hepta",
       status: "ready",
       gate: "hepta_json_report_capture_diagnostic_contract_gate",
-      json_report_capture_diagnostic_contract_schema_version: "json_report_capture_diagnostic_contract_v2",
+      json_report_capture_diagnostic_contract_schema_version: "json_report_capture_diagnostic_contract_v3",
       json_report_capture_diagnostic_contract_ready: true,
-      diagnostic_mode: "synthetic_child_command_capture_no_workspace_write",
-      diagnostic_decision: "child_json_report_capture_preserves_success_reports_and_exposes_bounded_failure_diagnostics",
+      diagnostic_mode: "synthetic_child_command_capture_with_ephemeral_cache_no_workspace_write",
+      diagnostic_decision: "child_json_report_capture_preserves_success_reports_exposes_bounded_failure_diagnostics_and_reuses_success_reports_from_ephemeral_preflight_cache",
       helper_path: "scripts/lib/hepta-json-report-capture.sh",
-      diagnostic_fixture_count: 7,
+      diagnostic_fixture_count: 8,
       success_fixture_ok: $success_fixture_ok,
       failing_json_fixture_ok: $failing_json_fixture_ok,
       no_json_fixture_ok: $no_json_fixture_ok,
@@ -215,6 +282,7 @@ jq -n -e \
       multiple_json_fixture_ok: $multiple_json_fixture_ok,
       malformed_json_fixture_ok: $malformed_json_fixture_ok,
       bounded_tail_fixture_ok: $bounded_tail_fixture_ok,
+      cache_fixture_ok: $cache_fixture_ok,
       parseable_json_report_preserved: true,
       failing_child_exit_code_preserved: true,
       failing_child_json_report_exposed: true,
@@ -223,6 +291,8 @@ jq -n -e \
       first_json_object_preserved_when_multiple_json_objects_follow: true,
       malformed_json_output_tail_exposed: true,
       diagnostic_tail_line_budget_enforced: true,
+      ephemeral_cache_reuses_success_report_without_rerunning_child: true,
+      ephemeral_cache_persists_no_evidence: true,
       contract_hash_sha256: $contract_hash_sha256,
       policy_hash_sha256: $policy_hash_sha256,
       side_effect_hash_sha256: $side_effect_hash_sha256,
@@ -230,11 +300,13 @@ jq -n -e \
         "json_report_capture_workspace_write_denied",
         "json_report_capture_secret_read_denied",
         "json_report_capture_external_send_denied",
+        "json_report_capture_cache_evidence_persistence_denied",
         "json_report_capture_child_recovery_action_denied"
       ],
       side_effects: {
         filesystem_written: false,
         evidence_persisted: false,
+        ephemeral_capture_cache_written: true,
         service_restarted: false,
         launchd_mutated: false,
         gateway_mutation_performed: false,
