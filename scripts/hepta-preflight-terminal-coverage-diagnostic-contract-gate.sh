@@ -58,6 +58,7 @@ required_markers=(
   "memory/intelligence full enablement operator canary controlled request harness no-dispatch readback audit scoreboard gate"
   "memory/intelligence full enablement operator canary controlled request harness redacted payload preview no-materialization gate"
   "memory/intelligence full enablement operator canary controlled request harness readback/audit receipt hash preview acceptance skeleton gate"
+  "memory/intelligence full enablement operator canary controlled request harness single-budget dispatch dry-run no-op receipt gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
@@ -364,8 +365,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 107
-    and .present_required_marker_count == 107
+    and .required_marker_count == 108
+    and .present_required_marker_count == 108
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0

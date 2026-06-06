@@ -198,6 +198,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-
 echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request harness readback/audit receipt hash preview acceptance skeleton gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-readback-audit-receipt-hash-preview-acceptance-skeleton-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request harness single-budget dispatch dry-run no-op receipt gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
