@@ -210,6 +210,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-
 echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation request denial matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-request-denial-matrix-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command no-op handoff gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-noop-handoff-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 

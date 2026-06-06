@@ -62,6 +62,7 @@ required_markers=(
   "memory/intelligence full enablement operator canary controlled request harness operator review/readback index no-persistence gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement non-acceptance gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation request denial matrix gate"
+  "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command no-op handoff gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
@@ -127,10 +128,10 @@ required_markers=(
 emit_phase_family_budget_markers() {
   local mode="${1:-good}"
   local i
-  local live_marker_count=54
+  local live_marker_count=55
 
   if [[ "$mode" == "missing-phase-family-budget" ]]; then
-    live_marker_count=49
+    live_marker_count=50
   fi
 
   if [[ "$mode" != "missing-phase-family-anchor" ]]; then
@@ -368,8 +369,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 111
-    and .present_required_marker_count == 111
+    and .required_marker_count == 112
+    and .present_required_marker_count == 112
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
@@ -531,8 +532,8 @@ if [[ "$missing_phase_family_budget_rc" -eq 1 ]] \
     and .phase_family_budget_failure_count == 1
     and (.phase_family_budget_failures[] | select(
       .id == "live-mutation-denial"
-      and .current_count == 53
-      and .minimum_count == 54
+      and .current_count == 54
+      and .minimum_count == 55
     ))
   ' >/dev/null <<<"$missing_phase_family_budget_report"; then
   missing_phase_family_budget_fixture_ok=true
