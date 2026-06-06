@@ -73,6 +73,7 @@ required_markers=(
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt replay idempotency denial gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt ordering monotonicity denial gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt cancellation supersession denial gate"
+  "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt audit trail immutable evidence denial gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
