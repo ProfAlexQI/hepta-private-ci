@@ -81,6 +81,7 @@ required_markers=(
   "memory/intelligence/KG full live activation operator readiness packet template non-acceptance authority replay denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template field validation denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template section completion non-acceptance gate"
+  "memory/intelligence/KG full live activation operator readiness packet template packet assembly non-acceptance gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
@@ -387,8 +388,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 130
-    and .present_required_marker_count == 130
+    and .required_marker_count == 131
+    and .present_required_marker_count == 131
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
