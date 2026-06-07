@@ -255,6 +255,9 @@ scripts/hepta-memory-intelligence-kg-full-live-activation-readiness-index-gate.s
 echo "[hepta-preflight] memory/intelligence/KG full live activation readiness index replay/idempotency denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-readiness-index-replay-idempotency-denial-gate.sh
 
+echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template gate"
+scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
