@@ -89,6 +89,12 @@ report="$(jq -n \
       if (($owner.double_poller_risk | bool_or(false)) == false)
         and ($poll.status == "armed" or $poll.status == "gated")
       then "owner_poll_loop_no_double_poller_risk"
+      elif $owner.status == "legacy_owner"
+        and $owner.active_owner == "legacy_openclaw"
+        and ($owner.double_poller_risk | bool_or(false)) == false
+        and ($owner.hepta_poll_loop_armed | bool_or(false)) == false
+        and $poll.status == "disabled"
+      then "known_legacy_owner_poll_loop_disabled_observation"
       elif $owner.status == "conflict_risk"
         and $owner.active_owner == "conflict_risk"
         and ($owner.double_poller_risk | bool_or(false)) == true
@@ -99,6 +105,7 @@ report="$(jq -n \
     ) as $owner_poll_loop_state
     | (
       $owner_poll_loop_state == "owner_poll_loop_no_double_poller_risk"
+      or $owner_poll_loop_state == "known_legacy_owner_poll_loop_disabled_observation"
       or $owner_poll_loop_state == "known_conflict_risk_double_poller_observation"
     ) as $owner_poll_loop_state_known
     | (
@@ -220,7 +227,7 @@ report="$(jq -n \
           owner_poll_loop_state:$owner_poll_loop_state,
           double_poller_risk:($owner.double_poller_risk // false),
           poll_loop_status:$poll.status,
-          reason:"classifies ready owner/poll-loop state or known conflict-risk double-poller observation without live read, send, or owner handoff"
+          reason:"classifies ready owner/poll-loop state, legacy-owner disabled poll-loop observation, or known conflict-risk double-poller observation without live read, send, or owner handoff"
         },
         {
           id:"redaction-and-side-effect-boundary",

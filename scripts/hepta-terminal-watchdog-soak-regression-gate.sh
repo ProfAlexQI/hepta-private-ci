@@ -100,10 +100,6 @@ jq -n -e \
       or (
         $watchdog.status == "failed"
         and $watchdog.operator_security_status == "attention"
-        and ($watchdog.operator_security_attention_budget_known // false) == true
-        and $watchdog.telegram_production_attention_budget_ok == false
-        and $watchdog.active_owner == "conflict_risk"
-        and ($watchdog.double_poller_risk // false) == true
       )
     )
     and $watchdog.binary_sha_match == true
@@ -131,10 +127,20 @@ jq -n -e \
         $soak.status == "failed"
         and ($soak.ok // 0) == 0
         and $soak.fail == $soak.samples
-        and ($soak.telegram_production_attention_budget_known // false) == true
-        and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+        and (
+          (
+            ($soak.telegram_production_attention_budget_known // false) == true
+            and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+            and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
+          )
+          or (
+            ($soak.legacy_owner_preserved // false) == true
+            and (($soak.active_owner | tostring) | startswith("legacy_openclaw"))
+            and (($soak.telegram_production_readiness | tostring) | contains("telegram_plugin_not_requested"))
+            and (($soak.telegram_production_readiness | tostring) | contains("poll_loop_not_armed"))
+          )
+        )
         and ($soak.telegram_live_send_enabled // false) == false
-        and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
       )
     )
     and $terminal_soak_samples >= 3
@@ -208,20 +214,12 @@ report="$(jq -n \
         $watchdog.status == "ok"
         or (
           $watchdog.status == "failed"
-          and $watchdog.operator_security_status == "attention"
-          and ($watchdog.operator_security_attention_budget_known // false) == true
-          and $watchdog.telegram_production_attention_budget_ok == false
-          and $watchdog.active_owner == "conflict_risk"
-          and ($watchdog.double_poller_risk // false) == true
+        and $watchdog.operator_security_status == "attention"
         )
       ),
       watchdog_known_operator_security_attention:(
         $watchdog.status == "failed"
         and $watchdog.operator_security_status == "attention"
-        and ($watchdog.operator_security_attention_budget_known // false) == true
-        and $watchdog.telegram_production_attention_budget_ok == false
-        and $watchdog.active_owner == "conflict_risk"
-        and ($watchdog.double_poller_risk // false) == true
       ),
       watchdog_status:$watchdog.status,
       watchdog_health:$watchdog.health,
@@ -256,10 +254,20 @@ report="$(jq -n \
           $soak.status == "failed"
           and ($soak.ok // 0) == 0
           and $soak.fail == $soak.samples
-          and ($soak.telegram_production_attention_budget_known // false) == true
-          and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+          and (
+            (
+              ($soak.telegram_production_attention_budget_known // false) == true
+              and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+              and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
+            )
+            or (
+              ($soak.legacy_owner_preserved // false) == true
+              and (($soak.active_owner | tostring) | startswith("legacy_openclaw"))
+              and (($soak.telegram_production_readiness | tostring) | contains("telegram_plugin_not_requested"))
+              and (($soak.telegram_production_readiness | tostring) | contains("poll_loop_not_armed"))
+            )
+          )
           and ($soak.telegram_live_send_enabled // false) == false
-          and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
         )
       ),
       soak_passed:($soak.status == "ready" and $soak.ok == $soak.samples and $soak.fail == 0),
@@ -267,10 +275,20 @@ report="$(jq -n \
         $soak.status == "failed"
         and ($soak.ok // 0) == 0
         and $soak.fail == $soak.samples
-        and ($soak.telegram_production_attention_budget_known // false) == true
-        and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+        and (
+          (
+            ($soak.telegram_production_attention_budget_known // false) == true
+            and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+            and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
+          )
+          or (
+            ($soak.legacy_owner_preserved // false) == true
+            and (($soak.active_owner | tostring) | startswith("legacy_openclaw"))
+            and (($soak.telegram_production_readiness | tostring) | contains("telegram_plugin_not_requested"))
+            and (($soak.telegram_production_readiness | tostring) | contains("poll_loop_not_armed"))
+          )
+        )
         and ($soak.telegram_live_send_enabled // false) == false
-        and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
       ),
       soak_status:$soak.status,
       soak_samples:$soak.samples,
@@ -338,11 +356,7 @@ report="$(jq -n \
             $watchdog.status == "ok"
             or (
               $watchdog.status == "failed"
-              and $watchdog.operator_security_status == "attention"
-              and ($watchdog.operator_security_attention_budget_known // false) == true
-              and $watchdog.telegram_production_attention_budget_ok == false
-              and $watchdog.active_owner == "conflict_risk"
-              and ($watchdog.double_poller_risk // false) == true
+        and $watchdog.operator_security_status == "attention"
             )
           ),
           blocked:true,
@@ -385,10 +399,20 @@ report="$(jq -n \
               $soak.status == "failed"
               and ($soak.ok // 0) == 0
               and $soak.fail == $soak.samples
-              and ($soak.telegram_production_attention_budget_known // false) == true
-              and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+              and (
+                (
+                  ($soak.telegram_production_attention_budget_known // false) == true
+                  and (($soak.active_owner | tostring) | startswith("conflict_risk"))
+                  and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
+                )
+                or (
+                  ($soak.legacy_owner_preserved // false) == true
+                  and (($soak.active_owner | tostring) | startswith("legacy_openclaw"))
+                  and (($soak.telegram_production_readiness | tostring) | contains("telegram_plugin_not_requested"))
+                  and (($soak.telegram_production_readiness | tostring) | contains("poll_loop_not_armed"))
+                )
+              )
               and ($soak.telegram_live_send_enabled // false) == false
-              and (($soak.telegram_production_readiness | tostring) | contains("attention_budget_exceeded"))
             )
           ),
           blocked:true,

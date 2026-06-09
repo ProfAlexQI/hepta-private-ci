@@ -11,7 +11,7 @@ The gate captures and hashes two source reports:
 - `scripts/hepta-terminal-public-distribution-non-publication-lock-gate.sh`
 - `scripts/hepta-watchdog.sh`
 
-Both source reports must be ready. The public-distribution source must keep publication, public claims, artifact writes, operator approval recording, and lock persistence denied. The watchdog source must either be `ok` or be a known operator-security attention report (`operator_security_status=attention`, attention budget known, Telegram production attention budget not OK, `active_owner=conflict_risk`, and `double_poller_risk=true`) while still showing active binary SHA parity, route count `>=69`, zero missing routes, `full_fusion_complete=true`, and zero remaining Phase 4/Phase 5 closure surfaces.
+Both source reports must be ready. The public-distribution source must keep publication, public claims, artifact writes, operator approval recording, and lock persistence denied. The watchdog source must either be `ok` or be a known operator-security attention report while still showing active binary SHA parity, route count `>=69`, zero missing routes, `full_fusion_complete=true`, and zero remaining Phase 4/Phase 5 closure surfaces.
 
 ## Output
 

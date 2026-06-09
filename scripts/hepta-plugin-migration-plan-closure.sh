@@ -31,8 +31,8 @@ jq -e '
   and (.status == "attention" or .status == "ready")
   and .metadata_inventory_ready == true
   and .provider_adapter_count == 15
-  and .provider_live_invocation_enabled == true
-  and .credentialed_smoke_performed == true
+  and .provider_live_invocation_enabled == false
+  and .credentialed_smoke_performed == false
   and (.provider_adapters[]
       | select(.name == "provider-registration")
       | .migration_status == "partially_absorbed_as_registry_metadata"
@@ -66,6 +66,8 @@ report="$(jq -n \
     live_mutation_enabled_count:$memory.live_mutation_enabled_count,
     plugin_registry_mutation_enabled:$memory.plugin_registry_mutation_enabled,
     provider_adapter_count:$provider.provider_adapter_count,
+    provider_live_invocation_enabled:$provider.provider_live_invocation_enabled,
+    credentialed_smoke_performed:$provider.credentialed_smoke_performed,
     next_slices:[],
     side_effects:{
       memory:$memory.side_effects,

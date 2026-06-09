@@ -35,12 +35,9 @@ conditions hold:
 
 - terminal denial index is ready, activation-blocking, and has 39 terminal
   denial reasons;
-- watchdog is either `ok` or a known operator-security attention report
-  (`operator_security_status=attention`, attention budget known, Telegram
-  production attention budget not OK, `active_owner=conflict_risk`, and
-  `double_poller_risk=true`), while health is `ready`, route count is `>=69`,
-  binary SHA matches, full fusion is complete, and Phase 4/Phase 5 remaining
-  counts are zero;
+- watchdog is either `ok` or a known operator-security attention report while
+  health is `ready`, route count is `>=69`, binary SHA matches, full fusion is
+  complete, and Phase 4/Phase 5 remaining counts are zero;
 - public-GA readiness reports are synchronized, route gaps are zero, and no
   public GA claim has been made;
 - public release claim, public GA claim, release artifact write, public artifact

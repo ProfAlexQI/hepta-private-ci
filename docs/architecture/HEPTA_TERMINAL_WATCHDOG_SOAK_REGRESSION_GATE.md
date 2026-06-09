@@ -7,13 +7,16 @@ The gate runs two existing observational checks:
 - `scripts/hepta-watchdog.sh`
 - `scripts/hepta-live-soak.sh`
 
-The watchdog source may be `ok` or a parseable known operator-security attention
-report (`operator_security_status=attention`, attention budget known, Telegram
-production attention budget not OK, `active_owner=conflict_risk`, and
-`double_poller_risk=true`). Both states are observational inputs only.
+The watchdog source may be `ok` or a parseable operator-security attention
+report, provided binary SHA parity, health, route coverage, full-fusion closure,
+and side-effect boundaries remain intact. The companion attention-budget
+diagnostic classifies the concrete owner/poll-loop shape, including legacy-owner
+disabled-poll-loop observations. Both states are observational inputs only.
 
-The soak source may also emit a parseable failed report under the same known
-operator-security attention boundary. In that case the gate reports
+The soak source may also emit a parseable failed report under a known
+operator-security attention boundary: either bounded production attention, or a
+legacy-owner observation where Hepta Telegram ownership was not requested and
+the poll loop is disabled. In that case the gate reports
 `soak_known_operator_security_attention=true`; it does not treat the failed soak
 as a passed soak or accepted long-soak evidence.
 
@@ -46,7 +49,8 @@ The gate requires:
 - phase 4 name/repository closure remaining surface count `0`
 - phase 5 engine dependency closure remaining dependency count `0`
 - short soak status `ready` with failures `0`, or
-  `soak_known_operator_security_attention=true`
+  `soak_known_operator_security_attention=true` for a bounded attention or
+  legacy-owner disabled-poll-loop observation
 - at least 3 terminal soak samples
 - minimum long-soak policy of at least 24 samples
 

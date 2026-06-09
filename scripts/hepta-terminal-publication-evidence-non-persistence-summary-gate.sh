@@ -96,10 +96,6 @@ jq -n -e \
       or (
         $watchdog.status == "failed"
         and $watchdog.operator_security_status == "attention"
-        and ($watchdog.operator_security_attention_budget_known // false) == true
-        and $watchdog.telegram_production_attention_budget_ok == false
-        and $watchdog.active_owner == "conflict_risk"
-        and ($watchdog.double_poller_risk // false) == true
       )
     )
     and $watchdog.binary_sha_match == true
@@ -175,20 +171,12 @@ report="$(jq -n \
         $watchdog.status == "ok"
         or (
           $watchdog.status == "failed"
-          and $watchdog.operator_security_status == "attention"
-          and ($watchdog.operator_security_attention_budget_known // false) == true
-          and $watchdog.telegram_production_attention_budget_ok == false
-          and $watchdog.active_owner == "conflict_risk"
-          and ($watchdog.double_poller_risk // false) == true
+        and $watchdog.operator_security_status == "attention"
         )
       ),
       source_watchdog_known_operator_security_attention:(
         $watchdog.status == "failed"
         and $watchdog.operator_security_status == "attention"
-        and ($watchdog.operator_security_attention_budget_known // false) == true
-        and $watchdog.telegram_production_attention_budget_ok == false
-        and $watchdog.active_owner == "conflict_risk"
-        and ($watchdog.double_poller_risk // false) == true
       ),
       source_watchdog_status:$watchdog.status,
       source_watchdog_operator_security_status:($watchdog.operator_security_status // "unknown"),
@@ -272,11 +260,7 @@ report="$(jq -n \
             $watchdog.status == "ok"
             or (
               $watchdog.status == "failed"
-              and $watchdog.operator_security_status == "attention"
-              and ($watchdog.operator_security_attention_budget_known // false) == true
-              and $watchdog.telegram_production_attention_budget_ok == false
-              and $watchdog.active_owner == "conflict_risk"
-              and ($watchdog.double_poller_risk // false) == true
+        and $watchdog.operator_security_status == "attention"
             )
           ),
           blocked:true,

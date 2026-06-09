@@ -29,6 +29,10 @@ The gate accepts these known states:
   states.
 - `legacy_owner_coexistence_attention`: operator security is intentionally
   attentioned because Telegram replacement has not been requested.
+- `known_legacy_owner_poll_loop_disabled_observation`:
+  `/api/telegram-owner-handoff` reports `active_owner=legacy_openclaw` with no
+  double-poller risk, while `/api/telegram-poll-loop` remains disabled because
+  Hepta Telegram ownership was not requested.
 - `known_conflict_risk_double_poller_observation`: `/api/telegram-owner-handoff`
   reports `active_owner=conflict_risk` with `double_poller_risk=true`, while
   `/api/telegram-poll-loop` remains only observed as `armed` or `gated`.
