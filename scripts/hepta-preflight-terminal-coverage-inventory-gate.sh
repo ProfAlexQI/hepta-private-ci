@@ -46,6 +46,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution readiness route gate"
   "memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution controlled route gate"
   "memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution controlled readback receipt no-persistence gate"
+  "memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution controlled readback receipt authority-denial gate"
   "memory/intelligence full enablement positive activation packet dry-run scaffold gate"
   "memory/intelligence full enablement positive activation packet validator scoreboard gate"
   "memory/intelligence full enablement canary live harness scaffold gate"
