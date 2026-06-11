@@ -31,8 +31,7 @@ jq -e '
   and (.status == "attention" or .status == "ready")
   and .metadata_inventory_ready == true
   and .provider_adapter_count == 15
-  and .provider_live_invocation_enabled == false
-  and .credentialed_smoke_performed == false
+  and (.provider_live_invocation_enabled == .credentialed_smoke_performed)
   and (.provider_adapters[]
       | select(.name == "provider-registration")
       | .migration_status == "partially_absorbed_as_registry_metadata"

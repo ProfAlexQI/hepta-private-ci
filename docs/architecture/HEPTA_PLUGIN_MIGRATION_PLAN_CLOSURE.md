@@ -37,6 +37,12 @@ these operations disabled:
 - native POST mutation
 - external send
 
+The provider metadata inventory may report its own live-invocation readiness
+and credentialed-smoke readiness as synchronized booleans. This closure does
+not treat that readiness bit as a side effect; it still requires the provider
+adapter records and side-effect counters to show no provider invocation,
+credential read, model invocation, external network read, or external send.
+
 `skill-workshop` is now covered by
 `docs/architecture/HEPTA_SKILL_WORKSHOP_PLAN_CLOSURE.md`. Live mutation remains
 disabled until explicit operator approval.

@@ -3,11 +3,12 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hepta_runtime::{
-    ModelProviderInvocationHandoffInput, ModelProviderLocalInvocationInput, ModelProviderRouter,
-    ModelProviderStatus, ProcessStartExecutionInput, ProcessStartHandoffInput, ProcessSupervisor,
-    ReadbackEvidenceLedger, SchedulerJobInput, SchedulerScheduleKind, SchedulerStore,
-    SchedulerWakeHandoffInput, SchedulerWakeMaterializationInput, SupervisedProcessStatus,
-    live_adapter_activation_discipline_sample,
+    ModelProviderInvocationHandoffInput, ModelProviderLocalInvocationInput,
+    ModelProviderMemoryContextActivationExecutionInput, ModelProviderMemoryContextActivationInput,
+    ModelProviderRouter, ModelProviderStatus, ProcessStartExecutionInput, ProcessStartHandoffInput,
+    ProcessSupervisor, ReadbackEvidenceLedger, SchedulerJobInput, SchedulerScheduleKind,
+    SchedulerStore, SchedulerWakeHandoffInput, SchedulerWakeMaterializationInput,
+    SupervisedProcessStatus, live_adapter_activation_discipline_sample,
 };
 
 fn temp_path(label: &str) -> PathBuf {
@@ -191,6 +192,51 @@ fn confirmed_gated_adapters_execute_local_e2e_with_readback_without_external_eff
     assert_eq!(local_model.invocation.provider_id, "hepta-local");
     assert!(!local_model.invocation.response_preview.is_empty());
 
+    let memory_handoff = router
+        .record_memory_context_activation_handoff(
+            &ledger,
+            ModelProviderMemoryContextActivationInput {
+                feature_flag_id: "memory-context-provider-turn-v1".into(),
+                activation_contract: "hepta-intelligence-memory-provider-router-activation-gate-v1"
+                    .into(),
+                provider_router_id: "hepta-native-model-provider-router".into(),
+                selected_canary_stage_id: "shadow-canary-0ppm".into(),
+                traffic_percent_ppm: 0,
+                max_context_node_count: 5,
+                cutover_gate_ready: true,
+                operator_release_approved: true,
+                kill_switch_active: false,
+                fallback_no_memory_provider_turn_hash: "fallback-hash".into(),
+                policy_decision: "approved-memory-router-handoff".into(),
+                operator_confirmed: true,
+                idempotency_key: "e2e-memory-context-handoff".into(),
+            },
+        )
+        .unwrap();
+    let memory_activation = router
+        .execute_memory_context_activation_shadow(
+            &ledger,
+            ModelProviderMemoryContextActivationExecutionInput {
+                handoff_id: memory_handoff.handoff.handoff_id.clone(),
+                policy_decision: "approved-shadow-context-activation".into(),
+                operator_confirmed: true,
+                idempotency_key: "e2e-memory-context-shadow-execution".into(),
+                release_gate_ready: true,
+                operator_release_approved: true,
+                kill_switch_active: false,
+                canary_telemetry_ready: true,
+                rollback_kill_switch_armed: true,
+                post_activation_watchdog_soak_plan_ready: true,
+            },
+        )
+        .unwrap();
+    assert!(memory_activation.router_mutated_by_adapter);
+    assert!(memory_activation.context_attached_to_live_prompt);
+    assert!(!memory_activation.provider_invoked_by_adapter);
+    assert!(!memory_activation.auth_secret_read_by_adapter);
+    assert!(!memory_activation.external_network_call_performed);
+    assert!(!memory_activation.live_kg_write_performed);
+
     let ledger_report = ledger.report(None).unwrap();
     let subject_kinds = ledger_report
         .ledger
@@ -204,6 +250,8 @@ fn confirmed_gated_adapters_execute_local_e2e_with_readback_without_external_eff
     assert!(subject_kinds.contains(&"scheduler_wake_queue"));
     assert!(subject_kinds.contains(&"model_provider_invocation_handoff"));
     assert!(subject_kinds.contains(&"model_provider_local_invocation"));
+    assert!(subject_kinds.contains(&"model_provider_memory_context_activation_handoff"));
+    assert!(subject_kinds.contains(&"model_provider_memory_context_activation_shadow_execution"));
 
     let _ = fs::remove_file(ledger_path);
     let _ = fs::remove_file(process_path);

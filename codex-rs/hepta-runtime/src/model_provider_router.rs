@@ -38,6 +38,9 @@ pub struct ModelProviderRouterFile {
     #[serde(default)]
     pub memory_context_activation_handoffs: Vec<ModelProviderMemoryContextActivationRecord>,
     #[serde(default)]
+    pub memory_context_activation_executions:
+        Vec<ModelProviderMemoryContextActivationExecutionRecord>,
+    #[serde(default)]
     pub local_invocations: Vec<ModelProviderLocalInvocationRecord>,
     #[serde(default)]
     pub plugin_contracts: Vec<ModelProviderPluginContractRecord>,
@@ -176,6 +179,7 @@ pub struct ModelProviderRouterReport {
     pub degraded_count: usize,
     pub disabled_count: usize,
     pub memory_context_activation_handoff_count: usize,
+    pub memory_context_activation_execution_count: usize,
     pub local_invocation_count: usize,
     pub plugin_contract_count: usize,
     pub persisted: bool,
@@ -256,6 +260,75 @@ pub struct ModelProviderMemoryContextActivationReport {
     pub provider_invoked_by_adapter: bool,
     pub auth_secret_read_by_adapter: bool,
     pub usage_recorded_by_adapter: bool,
+    pub persisted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelProviderMemoryContextActivationExecutionRecord {
+    pub execution_id: String,
+    pub handoff_id: String,
+    pub provider_router_id: String,
+    pub feature_flag_id: String,
+    pub activation_contract: String,
+    pub selected_canary_stage_id: String,
+    pub traffic_percent_ppm: u32,
+    pub max_context_node_count: usize,
+    pub activation_mode: String,
+    pub fallback_no_memory_provider_turn_hash: String,
+    pub policy_decision: String,
+    pub operator_confirmed: bool,
+    pub idempotency_key: String,
+    pub readback_evidence_id: String,
+    pub created_at_unix_ms: u64,
+    pub release_gate_ready: bool,
+    pub operator_release_approved: bool,
+    pub canary_telemetry_ready: bool,
+    pub rollback_kill_switch_armed: bool,
+    pub post_activation_watchdog_soak_plan_ready: bool,
+    pub feature_flag_mutated_by_adapter: bool,
+    pub context_attached_to_live_prompt: bool,
+    pub provider_invoked_by_adapter: bool,
+    pub auth_secret_read_by_adapter: bool,
+    pub usage_recorded_by_adapter: bool,
+    pub external_network_call_performed: bool,
+    pub live_kg_write_performed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModelProviderMemoryContextActivationExecutionInput {
+    pub handoff_id: String,
+    pub policy_decision: String,
+    pub operator_confirmed: bool,
+    pub idempotency_key: String,
+    pub release_gate_ready: bool,
+    pub operator_release_approved: bool,
+    pub kill_switch_active: bool,
+    pub canary_telemetry_ready: bool,
+    pub rollback_kill_switch_armed: bool,
+    pub post_activation_watchdog_soak_plan_ready: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModelProviderMemoryContextActivationExecutionReport {
+    pub router_path: String,
+    pub evidence_ledger_path: String,
+    pub execution: ModelProviderMemoryContextActivationExecutionRecord,
+    pub duplicate_idempotency_key: bool,
+    pub router_mutated_by_adapter: bool,
+    pub release_gate_ready: bool,
+    pub operator_release_approved: bool,
+    pub kill_switch_active: bool,
+    pub canary_telemetry_ready: bool,
+    pub rollback_kill_switch_armed: bool,
+    pub post_activation_watchdog_soak_plan_ready: bool,
+    pub shadow_context_attachment_allowed: bool,
+    pub feature_flag_mutated_by_adapter: bool,
+    pub context_attached_to_live_prompt: bool,
+    pub provider_invoked_by_adapter: bool,
+    pub auth_secret_read_by_adapter: bool,
+    pub usage_recorded_by_adapter: bool,
+    pub external_network_call_performed: bool,
+    pub live_kg_write_performed: bool,
     pub persisted: bool,
 }
 
@@ -360,6 +433,9 @@ impl ModelProviderRouter {
             disabled_count: count_status(&router, ModelProviderStatus::Disabled),
             memory_context_activation_handoff_count: router
                 .memory_context_activation_handoffs
+                .len(),
+            memory_context_activation_execution_count: router
+                .memory_context_activation_executions
                 .len(),
             local_invocation_count: router.local_invocations.len(),
             plugin_contract_count: router.plugin_contracts.len(),
@@ -848,6 +924,213 @@ impl ModelProviderRouter {
         })
     }
 
+    pub fn execute_memory_context_activation_shadow(
+        &self,
+        evidence_ledger: &ReadbackEvidenceLedger,
+        input: ModelProviderMemoryContextActivationExecutionInput,
+    ) -> Result<ModelProviderMemoryContextActivationExecutionReport, HeptaError> {
+        let now = current_unix_ms()?;
+        let mut router = self.load_or_default(now)?;
+        let handoff_id = normalize_non_empty(&input.handoff_id, "handoff id")?;
+        let policy_decision = normalize_non_empty(&input.policy_decision, "policy decision")?;
+        let idempotency_key = normalize_non_empty(&input.idempotency_key, "idempotency key")?;
+        if !input.operator_confirmed {
+            return Err(HeptaError(format!(
+                "memory context activation execution for {handoff_id} requires explicit operator confirmation"
+            )));
+        }
+        if !policy_allows_handoff(&policy_decision) {
+            return Err(HeptaError(format!(
+                "memory context activation execution for {handoff_id} requires allow/approved policy decision"
+            )));
+        }
+        if !input.release_gate_ready {
+            return Err(HeptaError(format!(
+                "memory context activation execution for {handoff_id} requires a ready release gate"
+            )));
+        }
+        if !input.operator_release_approved {
+            return Err(HeptaError(format!(
+                "memory context activation execution for {handoff_id} requires operator release approval"
+            )));
+        }
+        if input.kill_switch_active {
+            return Err(HeptaError(format!(
+                "memory context activation execution for {handoff_id} is blocked by active kill switch"
+            )));
+        }
+        if !input.canary_telemetry_ready {
+            return Err(HeptaError(format!(
+                "memory context activation execution for {handoff_id} requires canary telemetry readiness"
+            )));
+        }
+        if !input.rollback_kill_switch_armed {
+            return Err(HeptaError(format!(
+                "memory context activation execution for {handoff_id} requires an armed rollback kill switch"
+            )));
+        }
+        if !input.post_activation_watchdog_soak_plan_ready {
+            return Err(HeptaError(format!(
+                "memory context activation execution for {handoff_id} requires post-activation watchdog/soak plan"
+            )));
+        }
+        if let Some(existing) = router
+            .memory_context_activation_executions
+            .iter()
+            .find(|execution| execution.idempotency_key == idempotency_key)
+            .cloned()
+        {
+            return Ok(ModelProviderMemoryContextActivationExecutionReport {
+                router_path: self.path_display(),
+                evidence_ledger_path: evidence_ledger.path_display(),
+                duplicate_idempotency_key: true,
+                router_mutated_by_adapter: false,
+                release_gate_ready: input.release_gate_ready,
+                operator_release_approved: input.operator_release_approved,
+                kill_switch_active: input.kill_switch_active,
+                canary_telemetry_ready: input.canary_telemetry_ready,
+                rollback_kill_switch_armed: input.rollback_kill_switch_armed,
+                post_activation_watchdog_soak_plan_ready: input
+                    .post_activation_watchdog_soak_plan_ready,
+                shadow_context_attachment_allowed: true,
+                feature_flag_mutated_by_adapter: existing.feature_flag_mutated_by_adapter,
+                context_attached_to_live_prompt: existing.context_attached_to_live_prompt,
+                provider_invoked_by_adapter: existing.provider_invoked_by_adapter,
+                auth_secret_read_by_adapter: existing.auth_secret_read_by_adapter,
+                usage_recorded_by_adapter: existing.usage_recorded_by_adapter,
+                external_network_call_performed: existing.external_network_call_performed,
+                live_kg_write_performed: existing.live_kg_write_performed,
+                persisted: self.path.exists(),
+                execution: existing,
+            });
+        }
+        let handoff_index = router
+            .memory_context_activation_handoffs
+            .iter()
+            .position(|handoff| handoff.handoff_id == handoff_id)
+            .ok_or_else(|| {
+                HeptaError(format!(
+                    "memory context activation handoff not found: {handoff_id}"
+                ))
+            })?;
+        if let Some(existing) = router
+            .memory_context_activation_executions
+            .iter()
+            .find(|execution| execution.handoff_id == handoff_id)
+        {
+            return Err(HeptaError(format!(
+                "memory context activation handoff {handoff_id} already executed by {}",
+                existing.execution_id
+            )));
+        }
+        let handoff = router.memory_context_activation_handoffs[handoff_index].clone();
+        if !handoff.operator_confirmed || !policy_allows_handoff(&handoff.policy_decision) {
+            return Err(HeptaError(format!(
+                "memory context activation handoff {handoff_id} is not approved for execution"
+            )));
+        }
+        if handoff.traffic_percent_ppm != 0 {
+            return Err(HeptaError(format!(
+                "memory context activation handoff {handoff_id} must remain shadow-only with 0 traffic ppm"
+            )));
+        }
+        if handoff.max_context_node_count == 0 || handoff.max_context_node_count > 128 {
+            return Err(HeptaError(format!(
+                "memory context activation handoff {handoff_id} has invalid context node budget"
+            )));
+        }
+        if handoff.provider_invoked_by_adapter || handoff.auth_secret_read_by_adapter {
+            return Err(HeptaError(format!(
+                "memory context activation handoff {handoff_id} has forbidden provider/auth side effects"
+            )));
+        }
+        let execution_id = format!(
+            "memoryctxactivate-{}-{}",
+            now,
+            router.memory_context_activation_executions.len() + 1
+        );
+        let evidence = evidence_ledger.append(
+            "model_provider_memory_context_activation_shadow_execution",
+            &execution_id,
+            "shadow_context_attached",
+            &format!(
+                "operator-approved memory context activation shadow execution recorded for feature_flag={}; router={}; stage={}; traffic_ppm=0; provider invocation/auth secret read/external network/KG write not performed",
+                handoff.feature_flag_id, handoff.provider_router_id, handoff.selected_canary_stage_id
+            ),
+        )?;
+        let execution = ModelProviderMemoryContextActivationExecutionRecord {
+            execution_id: execution_id.clone(),
+            handoff_id: handoff.handoff_id.clone(),
+            provider_router_id: handoff.provider_router_id.clone(),
+            feature_flag_id: handoff.feature_flag_id.clone(),
+            activation_contract: handoff.activation_contract.clone(),
+            selected_canary_stage_id: handoff.selected_canary_stage_id.clone(),
+            traffic_percent_ppm: handoff.traffic_percent_ppm,
+            max_context_node_count: handoff.max_context_node_count,
+            activation_mode: "operator_approved_shadow_context_attachment".into(),
+            fallback_no_memory_provider_turn_hash: handoff
+                .fallback_no_memory_provider_turn_hash
+                .clone(),
+            policy_decision,
+            operator_confirmed: input.operator_confirmed,
+            idempotency_key,
+            readback_evidence_id: evidence.entry.evidence_id,
+            created_at_unix_ms: now,
+            release_gate_ready: input.release_gate_ready,
+            operator_release_approved: input.operator_release_approved,
+            canary_telemetry_ready: input.canary_telemetry_ready,
+            rollback_kill_switch_armed: input.rollback_kill_switch_armed,
+            post_activation_watchdog_soak_plan_ready: input
+                .post_activation_watchdog_soak_plan_ready,
+            feature_flag_mutated_by_adapter: true,
+            context_attached_to_live_prompt: true,
+            provider_invoked_by_adapter: false,
+            auth_secret_read_by_adapter: false,
+            usage_recorded_by_adapter: false,
+            external_network_call_performed: false,
+            live_kg_write_performed: false,
+        };
+        router.memory_context_activation_handoffs[handoff_index].feature_flag_mutated_by_adapter =
+            true;
+        router.memory_context_activation_handoffs[handoff_index].context_attached_to_live_prompt =
+            true;
+        router
+            .memory_context_activation_executions
+            .push(execution.clone());
+        router.memory_context_activation_executions.truncate(1024);
+        push_event(
+            &mut router,
+            "memory_context_activation_shadow_executed",
+            &handoff.provider_router_id,
+            now,
+            "operator-approved shadow memory context attachment executed with readback evidence; provider/auth/KG/external effects remain disabled",
+        );
+        self.save(&mut router, now)?;
+        Ok(ModelProviderMemoryContextActivationExecutionReport {
+            router_path: self.path_display(),
+            evidence_ledger_path: evidence_ledger.path_display(),
+            execution,
+            duplicate_idempotency_key: false,
+            router_mutated_by_adapter: true,
+            release_gate_ready: input.release_gate_ready,
+            operator_release_approved: input.operator_release_approved,
+            kill_switch_active: input.kill_switch_active,
+            canary_telemetry_ready: input.canary_telemetry_ready,
+            rollback_kill_switch_armed: input.rollback_kill_switch_armed,
+            post_activation_watchdog_soak_plan_ready: input
+                .post_activation_watchdog_soak_plan_ready,
+            shadow_context_attachment_allowed: true,
+            feature_flag_mutated_by_adapter: true,
+            context_attached_to_live_prompt: true,
+            provider_invoked_by_adapter: false,
+            auth_secret_read_by_adapter: false,
+            usage_recorded_by_adapter: false,
+            external_network_call_performed: false,
+            live_kg_write_performed: false,
+            persisted: evidence.persisted,
+        })
+    }
+
     pub fn record_plugin_contract(
         &self,
         evidence_ledger: &ReadbackEvidenceLedger,
@@ -992,6 +1275,7 @@ impl ModelProviderRouter {
                 providers: Vec::new(),
                 invocation_handoffs: Vec::new(),
                 memory_context_activation_handoffs: Vec::new(),
+                memory_context_activation_executions: Vec::new(),
                 local_invocations: Vec::new(),
                 plugin_contracts: Vec::new(),
                 route_events: Vec::new(),
@@ -1019,6 +1303,7 @@ impl ModelProviderRouter {
         router.route_events.truncate(1024);
         router.invocation_handoffs.truncate(1024);
         router.memory_context_activation_handoffs.truncate(1024);
+        router.memory_context_activation_executions.truncate(1024);
         router.local_invocations.truncate(1024);
         router.plugin_contracts.truncate(1024);
         Ok(router)
@@ -1528,6 +1813,184 @@ mod tests {
         );
         assert!(!path.exists());
         assert!(!ledger_path.exists());
+    }
+
+    #[test]
+    fn model_provider_router_executes_operator_approved_memory_context_shadow_activation() {
+        let path = temp_file("memory-context-shadow-execution");
+        let ledger_path = temp_file("memory-context-shadow-execution-ledger");
+        let router = ModelProviderRouter::new(&path);
+        let ledger = ReadbackEvidenceLedger::new(&ledger_path);
+        let handoff = router
+            .record_memory_context_activation_handoff(
+                &ledger,
+                ModelProviderMemoryContextActivationInput {
+                    feature_flag_id: "memory-context-provider-turn-v1".into(),
+                    activation_contract:
+                        "hepta-intelligence-memory-provider-router-activation-gate-v1".into(),
+                    provider_router_id: "hepta-native-model-provider-router".into(),
+                    selected_canary_stage_id: "shadow-canary-0ppm".into(),
+                    traffic_percent_ppm: 0,
+                    max_context_node_count: 5,
+                    cutover_gate_ready: true,
+                    operator_release_approved: true,
+                    kill_switch_active: false,
+                    fallback_no_memory_provider_turn_hash: "fallback-hash".into(),
+                    policy_decision: "approved-memory-router-handoff".into(),
+                    operator_confirmed: true,
+                    idempotency_key: "memory-router-shadow-handoff".into(),
+                },
+            )
+            .expect("approved memory context activation handoff should record");
+        let execution_input = ModelProviderMemoryContextActivationExecutionInput {
+            handoff_id: handoff.handoff.handoff_id.clone(),
+            policy_decision: "approved-shadow-context-activation".into(),
+            operator_confirmed: true,
+            idempotency_key: "memory-router-shadow-execution".into(),
+            release_gate_ready: true,
+            operator_release_approved: true,
+            kill_switch_active: false,
+            canary_telemetry_ready: true,
+            rollback_kill_switch_armed: true,
+            post_activation_watchdog_soak_plan_ready: true,
+        };
+        let execution = router
+            .execute_memory_context_activation_shadow(&ledger, execution_input.clone())
+            .expect("operator-approved shadow activation should execute");
+        assert!(execution.router_mutated_by_adapter);
+        assert!(execution.shadow_context_attachment_allowed);
+        assert!(execution.feature_flag_mutated_by_adapter);
+        assert!(execution.context_attached_to_live_prompt);
+        assert!(!execution.provider_invoked_by_adapter);
+        assert!(!execution.auth_secret_read_by_adapter);
+        assert!(!execution.usage_recorded_by_adapter);
+        assert!(!execution.external_network_call_performed);
+        assert!(!execution.live_kg_write_performed);
+        assert!(execution.execution.readback_evidence_id.starts_with("rb-"));
+        assert_eq!(execution.execution.traffic_percent_ppm, 0);
+        assert_eq!(
+            execution.execution.activation_mode,
+            "operator_approved_shadow_context_attachment"
+        );
+
+        let duplicate = router
+            .execute_memory_context_activation_shadow(&ledger, execution_input)
+            .expect("duplicate shadow activation execution should be idempotent");
+        assert!(duplicate.duplicate_idempotency_key);
+        assert!(!duplicate.router_mutated_by_adapter);
+        assert!(duplicate.context_attached_to_live_prompt);
+
+        let router_report = router.report(None).unwrap();
+        assert_eq!(router_report.memory_context_activation_handoff_count, 1);
+        assert_eq!(router_report.memory_context_activation_execution_count, 1);
+        let stored_handoff = router_report
+            .router
+            .memory_context_activation_handoffs
+            .first()
+            .expect("stored handoff should exist");
+        assert!(stored_handoff.feature_flag_mutated_by_adapter);
+        assert!(stored_handoff.context_attached_to_live_prompt);
+        assert!(!stored_handoff.provider_invoked_by_adapter);
+        assert!(!stored_handoff.auth_secret_read_by_adapter);
+        assert!(router_report.router.route_events.iter().any(|event| {
+            event.event_type == "memory_context_activation_shadow_executed"
+                && event
+                    .summary
+                    .contains("provider/auth/KG/external effects remain disabled")
+        }));
+        let ledger_report = ledger.report(None).unwrap();
+        let subject_kinds = ledger_report
+            .ledger
+            .entries
+            .iter()
+            .map(|entry| entry.subject_kind.as_str())
+            .collect::<Vec<_>>();
+        assert!(subject_kinds.contains(&"model_provider_memory_context_activation_handoff"));
+        assert!(
+            subject_kinds.contains(&"model_provider_memory_context_activation_shadow_execution")
+        );
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(ledger_path);
+    }
+
+    #[test]
+    fn model_provider_router_blocks_shadow_activation_without_release_gate_or_kill_switch() {
+        let path = temp_file("memory-context-shadow-execution-blocked");
+        let ledger_path = temp_file("memory-context-shadow-execution-blocked-ledger");
+        let router = ModelProviderRouter::new(&path);
+        let ledger = ReadbackEvidenceLedger::new(&ledger_path);
+        let handoff = router
+            .record_memory_context_activation_handoff(
+                &ledger,
+                ModelProviderMemoryContextActivationInput {
+                    feature_flag_id: "memory-context-provider-turn-v1".into(),
+                    activation_contract:
+                        "hepta-intelligence-memory-provider-router-activation-gate-v1".into(),
+                    provider_router_id: "hepta-native-model-provider-router".into(),
+                    selected_canary_stage_id: "shadow-canary-0ppm".into(),
+                    traffic_percent_ppm: 0,
+                    max_context_node_count: 5,
+                    cutover_gate_ready: true,
+                    operator_release_approved: true,
+                    kill_switch_active: false,
+                    fallback_no_memory_provider_turn_hash: "fallback-hash".into(),
+                    policy_decision: "approved-memory-router-handoff".into(),
+                    operator_confirmed: true,
+                    idempotency_key: "memory-router-shadow-handoff-blocked".into(),
+                },
+            )
+            .expect("approved memory context activation handoff should record");
+        let base = ModelProviderMemoryContextActivationExecutionInput {
+            handoff_id: handoff.handoff.handoff_id.clone(),
+            policy_decision: "approved-shadow-context-activation".into(),
+            operator_confirmed: true,
+            idempotency_key: "memory-router-shadow-execution-blocked".into(),
+            release_gate_ready: true,
+            operator_release_approved: true,
+            kill_switch_active: false,
+            canary_telemetry_ready: true,
+            rollback_kill_switch_armed: true,
+            post_activation_watchdog_soak_plan_ready: true,
+        };
+        let mut missing_release_gate = base.clone();
+        missing_release_gate.release_gate_ready = false;
+        assert!(
+            router
+                .execute_memory_context_activation_shadow(&ledger, missing_release_gate)
+                .is_err()
+        );
+        let mut kill_switch = base.clone();
+        kill_switch.kill_switch_active = true;
+        assert!(
+            router
+                .execute_memory_context_activation_shadow(&ledger, kill_switch)
+                .is_err()
+        );
+        let mut no_telemetry = base.clone();
+        no_telemetry.canary_telemetry_ready = false;
+        assert!(
+            router
+                .execute_memory_context_activation_shadow(&ledger, no_telemetry)
+                .is_err()
+        );
+        let mut no_rollback = base.clone();
+        no_rollback.rollback_kill_switch_armed = false;
+        assert!(
+            router
+                .execute_memory_context_activation_shadow(&ledger, no_rollback)
+                .is_err()
+        );
+        let mut no_soak = base;
+        no_soak.post_activation_watchdog_soak_plan_ready = false;
+        assert!(
+            router
+                .execute_memory_context_activation_shadow(&ledger, no_soak)
+                .is_err()
+        );
+        let router_report = router.report(None).unwrap();
+        assert_eq!(router_report.memory_context_activation_execution_count, 0);
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(ledger_path);
     }
 
     #[test]
