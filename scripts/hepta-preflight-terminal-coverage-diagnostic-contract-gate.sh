@@ -42,6 +42,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution controlled readback receipt no-persistence gate"
   "memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution controlled readback receipt authority-denial gate"
   "memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution controlled readback receipt trusted operator packet separation gate"
+  "memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution controlled readback receipt trusted operator packet intake precondition gate"
   "memory/intelligence full enablement positive activation packet dry-run scaffold gate"
   "memory/intelligence full enablement positive activation packet validator scoreboard gate"
   "memory/intelligence full enablement canary live harness scaffold gate"
@@ -474,8 +475,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 217
-    and .present_required_marker_count == 217
+    and .required_marker_count == 218
+    and .present_required_marker_count == 218
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0

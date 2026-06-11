@@ -127,7 +127,7 @@ report="$(
       source_live_mutation_enabled_count:$readiness.live_mutation_enabled_count,
       source_current_live_enabled_lane_count:$readiness.current_live_enabled_lane_count,
       source_route_wired:true,
-      source_route_count_expected:75,
+      source_route_count_expected:76,
       source_route_tested_by_native_gateway_unit_test:true,
       controlled_shadow_execution_report_ready:true,
       runtime_owned_execution_surface_present:true,
@@ -239,7 +239,7 @@ report="$(
 jq -e '
   .status == "ready"
   and .source_route_wired == true
-  and .source_route_count_expected == 75
+  and .source_route_count_expected == 76
   and .source_route_tested_by_native_gateway_unit_test == true
   and .controlled_shadow_execution_report_ready == true
   and .runtime_owned_execution_surface_present == true

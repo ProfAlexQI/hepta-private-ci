@@ -132,7 +132,7 @@ report="$(
       live_controlled_route_status:$controlled.status,
       live_controlled_route_ready:$controlled.controlled_shadow_execution_report_ready,
       source_route_wired:true,
-      source_route_count_expected:75,
+      source_route_count_expected:76,
       source_route_tested_by_native_gateway_unit_test:true,
       controlled_route_ready:true,
       controlled_shadow_execution_report_ready:true,
@@ -241,7 +241,7 @@ report="$(
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 75
+  and .source_route_count_expected == 76
   and .controlled_route_ready == true
   and .readback_receipt_no_persistence_ready == true
   and .readback_receipt_recorded == false
