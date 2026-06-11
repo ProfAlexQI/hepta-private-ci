@@ -94,6 +94,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADO
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-no-persistence";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_AUTHORITY_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-authority-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -104,7 +106,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 74;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 75;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -288,6 +290,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-authority-denial --json",
         capability: "hepta-memory-intelligence-kg-runtime-provider-router-shadow-execution-controlled-readback-receipt-authority-denial",
         side_effect_boundary: "read-only controlled shadow execution readback receipt authority denial route; receipt cannot become trusted operator acceptance, activation authority, or public claim authority",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation --json",
+        capability: "hepta-memory-intelligence-kg-runtime-provider-router-shadow-execution-controlled-readback-receipt-trusted-operator-packet-separation",
+        side_effect_boundary: "read-only controlled shadow execution readback receipt trusted operator packet separation route; receipt cannot substitute, bind, refresh, replay, or materialize a trusted operator packet",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1034,6 +1043,16 @@ fn route_native_gateway_request_with_body(
                     ),
                 );
             }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_trusted_operator_packet_separation_report(),
+                    ),
+                );
+            }
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1499,6 +1518,7 @@ fn index_html(
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled</code> exposes the controlled shadow execution gate/readback contract while keeping live route execution, provider/model calls, credential reads, KG writes, and Memory writes disabled.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-no-persistence</code> reports that controlled readback receipts remain non-persistent and cannot become approval evidence, activation authority, public claims, or live writes.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-authority-denial</code> reports that controlled readback receipts cannot become trusted operator acceptance records, activation authority, activation commands, or public claims.</p>
+        <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation</code> reports that controlled readback receipts cannot substitute, bind, refresh, replay, or materialize a trusted operator packet.</p>
         <p><code>/api/hepta-release-hardening-status-gate</code> keeps remaining release, external-production, launchd, ops, and hardening script families visible as local-only status gates.</p>
         <p><code>/api/hepta-provider-channel-dry-run-plan</code> promotes provider, search, channel, and runtime/session gaps into deterministic dry-run plan contracts without credentials, external calls, delivery, or store mutation.</p>
         <p><code>/api/hepta-native-packaging-gate</code> tracks Hepta Native manifest, package metadata, app resources, and local smoke readiness before signing or public distribution.</p>
@@ -4866,6 +4886,114 @@ struct HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecuti
 }
 
 #[derive(Debug, Serialize)]
+struct HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketSeparationResponse
+{
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    endpoint: &'static str,
+    authority_denial_endpoint: &'static str,
+    authority_denial_doc: &'static str,
+    trusted_operator_packet_separation_doc: &'static str,
+    source_authority_denial_gate: &'static str,
+    source_trusted_operator_packet_separation_gate: &'static str,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    implemented_route_count: usize,
+    missing_route_count: usize,
+    route_count_cutover_floor: usize,
+    route_count_floor_preserved: bool,
+    route_count_source_command_accepted: bool,
+    source_route_wired: bool,
+    authority_denial_route_ready: bool,
+    authority_denial_route_status: &'static str,
+    readback_receipt_authority_denial_ready: bool,
+    trusted_operator_packet_separation_ready: bool,
+    readback_receipt_shape_observed: bool,
+    readback_receipt_shape_accepted: bool,
+    independent_trusted_operator_packet_required: bool,
+    independent_trusted_operator_packet_present: bool,
+    independent_trusted_operator_packet_accepted: bool,
+    readback_receipt_can_substitute_operator_packet: bool,
+    readback_receipt_can_bind_operator_packet: bool,
+    readback_receipt_can_extend_operator_packet: bool,
+    readback_receipt_can_refresh_operator_packet: bool,
+    readback_receipt_can_replay_operator_packet: bool,
+    readback_receipt_can_materialize_operator_packet: bool,
+    operator_packet_identity_required: bool,
+    operator_packet_intent_required: bool,
+    operator_packet_signature_required: bool,
+    operator_packet_session_required: bool,
+    operator_packet_freshness_required: bool,
+    operator_packet_scope_required: bool,
+    operator_identity_verified_from_packet: bool,
+    operator_intent_confirmed_from_packet: bool,
+    operator_approval_from_packet_accepted: bool,
+    activation_authority_from_packet_derived: bool,
+    activation_request_from_packet_allowed: bool,
+    activation_command_from_packet_exposed: bool,
+    live_mutation_from_packet_allowed: bool,
+    public_claim_from_packet_allowed: bool,
+    report_route_invokes_shadow_execution: bool,
+    report_route_exposes_activation_command: bool,
+    live_mutation_enabled_count: usize,
+    current_live_enabled_lane_count: usize,
+    packet_separation_fixture_count: usize,
+    blocked_packet_substitution_fixture_count: usize,
+    allowed_packet_substitution_fixture_count: usize,
+    blocked_packet_separation_actions: &'static [&'static str],
+    allowed_next_actions: &'static [&'static str],
+    side_effects:
+        HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketSeparationSideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketSeparationSideEffects
+{
+    report_route_invoked_runtime_execution: bool,
+    source_gate_invokes_isolated_fixture_execution: bool,
+    live_7373_router_mutated_by_report_route: bool,
+    readback_receipt_recorded: bool,
+    readback_receipt_persisted: bool,
+    trusted_operator_packet_recorded: bool,
+    trusted_operator_packet_persisted: bool,
+    trusted_operator_packet_materialized: bool,
+    trusted_operator_packet_accepted: bool,
+    receipt_substituted_operator_packet: bool,
+    receipt_bound_operator_packet: bool,
+    receipt_extended_operator_packet: bool,
+    receipt_refreshed_operator_packet: bool,
+    receipt_replayed_operator_packet: bool,
+    operator_identity_verified: bool,
+    operator_intent_confirmed: bool,
+    operator_approval_recorded: bool,
+    activation_authority_recorded: bool,
+    activation_request_enqueued: bool,
+    activation_command_exposed: bool,
+    public_claim_recorded: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    auth_secret_read: bool,
+    credential_read: bool,
+    external_network_call_performed: bool,
+    live_kg_write_performed: bool,
+    memory_store_mutated: bool,
+    channel_send_performed: bool,
+    external_send_performed: bool,
+    gateway_route_migration_performed: bool,
+    source_command_migration_performed: bool,
+    service_restarted: bool,
+    active_binary_mutated: bool,
+    release_artifact_written: bool,
+    public_release_claimed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct HeptaReleaseHardeningStatusGateResponse {
     product: &'static str,
     runtime: &'static str,
@@ -6680,6 +6808,38 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONT
     "keep receipt-derived authority inert until a separate trusted operator packet is accepted",
 ];
 
+const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_BLOCKED_ACTIONS:
+    &[&str] = &[
+    "substitute_readback_receipt_for_trusted_operator_packet",
+    "bind_readback_receipt_to_operator_packet",
+    "extend_operator_packet_from_readback_receipt",
+    "refresh_operator_packet_from_readback_receipt",
+    "replay_operator_packet_from_readback_receipt",
+    "materialize_trusted_operator_packet_from_readback_receipt",
+    "accept_operator_identity_from_receipt_payload",
+    "accept_operator_intent_from_receipt_payload",
+    "accept_operator_approval_from_receipt_payload",
+    "derive_activation_authority_from_receipt_payload",
+    "enqueue_activation_request_from_receipt_payload",
+    "expose_activation_command_from_receipt_payload",
+    "enable_live_mutation_from_receipt_payload",
+    "promote_public_claim_from_receipt_payload",
+    "invoke_shadow_execution_from_report_route",
+    "provider_model_invocation",
+    "auth_secret_or_credential_read",
+    "live_kg_or_memory_write",
+    "telegram_or_channel_delivery",
+    "service_restart_or_active_binary_mutation",
+    "release_or_public_claim",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_NEXT_ACTIONS:
+    &[&str] = &[
+    "run trusted-operator-packet-separation source gate against the authority-denial route",
+    "install read-only packet-separation route through controlled live catch-up only after full preflight",
+    "keep trusted operator packet acceptance on a separate explicit operator packet lane",
+];
+
 fn hepta_memory_intelligence_kg_full_enablement_runtime_readiness_report()
 -> HeptaMemoryIntelligenceKgFullEnablementRuntimeReadinessResponse {
     let route_matrix = control_ui_route_parity_report();
@@ -7280,6 +7440,158 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_e
                 readback_receipt_persisted: false,
                 trusted_operator_acceptance_recorded: false,
                 trusted_operator_acceptance_record_persisted: false,
+                operator_identity_verified: false,
+                operator_intent_confirmed: false,
+                operator_approval_recorded: false,
+                activation_authority_recorded: false,
+                activation_request_enqueued: false,
+                activation_command_exposed: false,
+                public_claim_recorded: false,
+                provider_invoked: false,
+                model_invoked: false,
+                auth_secret_read: false,
+                credential_read: false,
+                external_network_call_performed: false,
+                live_kg_write_performed: false,
+                memory_store_mutated: false,
+                channel_send_performed: false,
+                external_send_performed: false,
+                gateway_route_migration_performed: false,
+                source_command_migration_performed: false,
+                service_restarted: false,
+                active_binary_mutated: false,
+                release_artifact_written: false,
+                public_release_claimed: false,
+            },
+    }
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_trusted_operator_packet_separation_report()
+-> HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketSeparationResponse{
+    let route_matrix = control_ui_route_parity_report();
+    let authority_denial =
+        hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_authority_denial_report();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && authority_denial.status == "ready"
+        && authority_denial.readback_receipt_authority_denial_ready
+        && authority_denial.readback_receipt_shape_observed
+        && !authority_denial.readback_receipt_shape_accepted
+        && authority_denial.trusted_operator_acceptance_record_required
+        && !authority_denial.trusted_operator_acceptance_record_present
+        && !authority_denial.trusted_operator_acceptance_record_accepted
+        && !authority_denial.operator_identity_verified_from_receipt
+        && !authority_denial.operator_intent_confirmed_from_receipt
+        && !authority_denial.operator_approval_from_receipt_accepted
+        && !authority_denial.activation_authority_derived
+        && !authority_denial.activation_request_from_receipt_allowed
+        && !authority_denial.activation_command_from_receipt_exposed
+        && !authority_denial.live_mutation_from_receipt_allowed
+        && !authority_denial.public_claim_from_receipt_allowed
+        && !authority_denial.public_release_from_receipt_allowed
+        && !authority_denial.report_route_invokes_shadow_execution
+        && !authority_denial.report_route_exposes_activation_command
+        && authority_denial.live_mutation_enabled_count == 0
+        && authority_denial.current_live_enabled_lane_count == 0
+        && !authority_denial.side_effects.provider_invoked
+        && !authority_denial.side_effects.model_invoked
+        && !authority_denial.side_effects.auth_secret_read
+        && !authority_denial.side_effects.credential_read
+        && !authority_denial.side_effects.live_kg_write_performed
+        && !authority_denial.side_effects.memory_store_mutated
+        && !authority_denial.side_effects.channel_send_performed
+        && !authority_denial.side_effects.service_restarted
+        && !authority_denial.side_effects.active_binary_mutated
+        && !authority_denial.side_effects.public_release_claimed;
+
+    HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketSeparationResponse {
+        product: "Hepta",
+        runtime: "hepta",
+        status: if report_ready { "ready" } else { "blocked" },
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation --json",
+        native_route: true,
+        compatibility_mode:
+            "native_runtime_provider_router_shadow_context_activation_execution_controlled_readback_receipt_trusted_operator_packet_separation_route_source_only",
+        side_effect_free: true,
+        audit_date: "2026-06-12",
+        endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_ENDPOINT,
+        authority_denial_endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_AUTHORITY_DENIAL_ENDPOINT,
+        authority_denial_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_CONTROLLED_READBACK_RECEIPT_AUTHORITY_DENIAL_GATE.md",
+        trusted_operator_packet_separation_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_GATE.md",
+        source_authority_denial_gate: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-authority-denial-gate.sh",
+        source_trusted_operator_packet_separation_gate: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation-gate.sh",
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        implemented_route_count: route_matrix.implemented_route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        route_count_cutover_floor: NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+        route_count_floor_preserved,
+        route_count_source_command_accepted,
+        source_route_wired: true,
+        authority_denial_route_ready: authority_denial.readback_receipt_authority_denial_ready,
+        authority_denial_route_status: authority_denial.status,
+        readback_receipt_authority_denial_ready: authority_denial.readback_receipt_authority_denial_ready,
+        trusted_operator_packet_separation_ready: report_ready,
+        readback_receipt_shape_observed: authority_denial.readback_receipt_shape_observed,
+        readback_receipt_shape_accepted: false,
+        independent_trusted_operator_packet_required: true,
+        independent_trusted_operator_packet_present: false,
+        independent_trusted_operator_packet_accepted: false,
+        readback_receipt_can_substitute_operator_packet: false,
+        readback_receipt_can_bind_operator_packet: false,
+        readback_receipt_can_extend_operator_packet: false,
+        readback_receipt_can_refresh_operator_packet: false,
+        readback_receipt_can_replay_operator_packet: false,
+        readback_receipt_can_materialize_operator_packet: false,
+        operator_packet_identity_required: true,
+        operator_packet_intent_required: true,
+        operator_packet_signature_required: true,
+        operator_packet_session_required: true,
+        operator_packet_freshness_required: true,
+        operator_packet_scope_required: true,
+        operator_identity_verified_from_packet: false,
+        operator_intent_confirmed_from_packet: false,
+        operator_approval_from_packet_accepted: false,
+        activation_authority_from_packet_derived: false,
+        activation_request_from_packet_allowed: false,
+        activation_command_from_packet_exposed: false,
+        live_mutation_from_packet_allowed: false,
+        public_claim_from_packet_allowed: false,
+        report_route_invokes_shadow_execution: false,
+        report_route_exposes_activation_command: false,
+        live_mutation_enabled_count: authority_denial.live_mutation_enabled_count,
+        current_live_enabled_lane_count: authority_denial.current_live_enabled_lane_count,
+        packet_separation_fixture_count: 9,
+        blocked_packet_substitution_fixture_count: 9,
+        allowed_packet_substitution_fixture_count: 0,
+        blocked_packet_separation_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_BLOCKED_ACTIONS,
+        allowed_next_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_NEXT_ACTIONS,
+        side_effects:
+            HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketSeparationSideEffects {
+                report_route_invoked_runtime_execution: false,
+                source_gate_invokes_isolated_fixture_execution: true,
+                live_7373_router_mutated_by_report_route: false,
+                readback_receipt_recorded: false,
+                readback_receipt_persisted: false,
+                trusted_operator_packet_recorded: false,
+                trusted_operator_packet_persisted: false,
+                trusted_operator_packet_materialized: false,
+                trusted_operator_packet_accepted: false,
+                receipt_substituted_operator_packet: false,
+                receipt_bound_operator_packet: false,
+                receipt_extended_operator_packet: false,
+                receipt_refreshed_operator_packet: false,
+                receipt_replayed_operator_packet: false,
                 operator_identity_verified: false,
                 operator_intent_confirmed: false,
                 operator_approval_recorded: false,
@@ -11974,6 +12286,185 @@ mod tests {
         );
         assert_eq!(
             value["side_effects"]["trusted_operator_acceptance_record_persisted"],
+            false
+        );
+        assert_eq!(value["side_effects"]["operator_identity_verified"], false);
+        assert_eq!(value["side_effects"]["operator_intent_confirmed"], false);
+        assert_eq!(value["side_effects"]["operator_approval_recorded"], false);
+        assert_eq!(
+            value["side_effects"]["activation_authority_recorded"],
+            false
+        );
+        assert_eq!(value["side_effects"]["activation_request_enqueued"], false);
+        assert_eq!(value["side_effects"]["activation_command_exposed"], false);
+        assert_eq!(value["side_effects"]["public_claim_recorded"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["auth_secret_read"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(
+            value["side_effects"]["external_network_call_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["memory_store_mutated"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["release_artifact_written"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_trusted_operator_packet_separation_endpoint_is_report_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("controlled readback receipt trusted operator packet separation json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_runtime_provider_router_shadow_context_activation_execution_controlled_readback_receipt_trusted_operator_packet_separation_route_source_only"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_SEPARATION_ENDPOINT
+        );
+        assert_eq!(
+            value["authority_denial_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_AUTHORITY_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_route_wired"], true);
+        assert_eq!(value["authority_denial_route_ready"], true);
+        assert_eq!(value["authority_denial_route_status"], "ready");
+        assert_eq!(value["readback_receipt_authority_denial_ready"], true);
+        assert_eq!(value["trusted_operator_packet_separation_ready"], true);
+        assert_eq!(value["readback_receipt_shape_observed"], true);
+        assert_eq!(value["readback_receipt_shape_accepted"], false);
+        assert_eq!(value["independent_trusted_operator_packet_required"], true);
+        assert_eq!(value["independent_trusted_operator_packet_present"], false);
+        assert_eq!(value["independent_trusted_operator_packet_accepted"], false);
+        assert_eq!(
+            value["readback_receipt_can_substitute_operator_packet"],
+            false
+        );
+        assert_eq!(value["readback_receipt_can_bind_operator_packet"], false);
+        assert_eq!(value["readback_receipt_can_extend_operator_packet"], false);
+        assert_eq!(value["readback_receipt_can_refresh_operator_packet"], false);
+        assert_eq!(value["readback_receipt_can_replay_operator_packet"], false);
+        assert_eq!(
+            value["readback_receipt_can_materialize_operator_packet"],
+            false
+        );
+        assert_eq!(value["operator_packet_identity_required"], true);
+        assert_eq!(value["operator_packet_intent_required"], true);
+        assert_eq!(value["operator_packet_signature_required"], true);
+        assert_eq!(value["operator_packet_session_required"], true);
+        assert_eq!(value["operator_packet_freshness_required"], true);
+        assert_eq!(value["operator_packet_scope_required"], true);
+        assert_eq!(value["operator_identity_verified_from_packet"], false);
+        assert_eq!(value["operator_intent_confirmed_from_packet"], false);
+        assert_eq!(value["operator_approval_from_packet_accepted"], false);
+        assert_eq!(value["activation_authority_from_packet_derived"], false);
+        assert_eq!(value["activation_request_from_packet_allowed"], false);
+        assert_eq!(value["activation_command_from_packet_exposed"], false);
+        assert_eq!(value["live_mutation_from_packet_allowed"], false);
+        assert_eq!(value["public_claim_from_packet_allowed"], false);
+        assert_eq!(value["report_route_invokes_shadow_execution"], false);
+        assert_eq!(value["report_route_exposes_activation_command"], false);
+        assert_eq!(value["live_mutation_enabled_count"], 0);
+        assert_eq!(value["current_live_enabled_lane_count"], 0);
+        assert_eq!(value["packet_separation_fixture_count"], 9);
+        assert_eq!(value["blocked_packet_substitution_fixture_count"], 9);
+        assert_eq!(value["allowed_packet_substitution_fixture_count"], 0);
+        let blocked = value["blocked_packet_separation_actions"]
+            .as_array()
+            .expect("blocked packet separation actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blocked.contains(&"substitute_readback_receipt_for_trusted_operator_packet"));
+        assert!(blocked.contains(&"bind_readback_receipt_to_operator_packet"));
+        assert!(blocked.contains(&"materialize_trusted_operator_packet_from_readback_receipt"));
+        assert!(blocked.contains(&"derive_activation_authority_from_receipt_payload"));
+        assert!(blocked.contains(&"expose_activation_command_from_receipt_payload"));
+        assert!(blocked.contains(&"live_kg_or_memory_write"));
+        assert_eq!(
+            value["side_effects"]["report_route_invoked_runtime_execution"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["source_gate_invokes_isolated_fixture_execution"],
+            true
+        );
+        assert_eq!(
+            value["side_effects"]["live_7373_router_mutated_by_report_route"],
+            false
+        );
+        assert_eq!(value["side_effects"]["readback_receipt_recorded"], false);
+        assert_eq!(value["side_effects"]["readback_receipt_persisted"], false);
+        assert_eq!(
+            value["side_effects"]["trusted_operator_packet_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["trusted_operator_packet_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["trusted_operator_packet_materialized"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["trusted_operator_packet_accepted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["receipt_substituted_operator_packet"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["receipt_bound_operator_packet"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["receipt_extended_operator_packet"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["receipt_refreshed_operator_packet"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["receipt_replayed_operator_packet"],
             false
         );
         assert_eq!(value["side_effects"]["operator_identity_verified"], false);
