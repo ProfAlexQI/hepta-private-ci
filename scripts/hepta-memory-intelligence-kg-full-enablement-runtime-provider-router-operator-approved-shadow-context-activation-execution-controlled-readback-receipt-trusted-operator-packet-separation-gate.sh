@@ -122,7 +122,7 @@ report="$(
       live_authority_denial_route_status:$authority_denial.status,
       live_authority_denial_route_ready:$authority_denial.readback_receipt_authority_denial_ready,
       source_route_wired:true,
-      source_route_count_expected:76,
+      source_route_count_expected:77,
       source_route_tested_by_native_gateway_unit_test:true,
       readback_receipt_authority_denial_ready:true,
       trusted_operator_packet_separation_ready:true,
@@ -234,7 +234,7 @@ report="$(
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 76
+  and .source_route_count_expected == 77
   and .readback_receipt_authority_denial_ready == true
   and .trusted_operator_packet_separation_ready == true
   and .readback_receipt_shape_observed == true

@@ -98,6 +98,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADO
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_INTAKE_PRECONDITION_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-intake-precondition";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-partial-precondition-denial-matrix";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -108,7 +110,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 76;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 77;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -306,6 +308,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-intake-precondition --json",
         capability: "hepta-memory-intelligence-kg-runtime-provider-router-shadow-execution-controlled-readback-receipt-trusted-operator-packet-intake-precondition",
         side_effect_boundary: "read-only controlled shadow execution trusted operator packet intake precondition route; independent packets need identity, intent, signature, session, freshness, and scope before acceptance",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-partial-precondition-denial-matrix --json",
+        capability: "hepta-memory-intelligence-kg-runtime-provider-router-shadow-execution-controlled-readback-receipt-trusted-operator-packet-partial-precondition-denial-matrix",
+        side_effect_boundary: "read-only controlled shadow execution trusted operator packet partial precondition denial matrix; any packet missing identity, intent, signature, session, freshness, or scope is denied before acceptance",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1069,6 +1078,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_trusted_operator_packet_intake_precondition_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_trusted_operator_packet_partial_precondition_denial_matrix_report(),
                     ),
                 );
             }
@@ -5121,6 +5140,125 @@ struct HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecuti
 }
 
 #[derive(Debug, Serialize)]
+struct TrustedOperatorPacketPartialPreconditionDenialFixture {
+    fixture_id: &'static str,
+    missing_precondition: &'static str,
+    verified_field_count: usize,
+    missing_field_count: usize,
+    packet_recorded: bool,
+    packet_persisted: bool,
+    packet_accepted: bool,
+    operator_approval_recorded: bool,
+    activation_authority_derived: bool,
+    activation_request_allowed: bool,
+    activation_command_exposed: bool,
+    live_mutation_allowed: bool,
+    public_claim_allowed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketPartialPreconditionDenialMatrixResponse
+{
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    endpoint: &'static str,
+    intake_precondition_endpoint: &'static str,
+    intake_precondition_doc: &'static str,
+    partial_precondition_denial_matrix_doc: &'static str,
+    source_intake_precondition_gate: &'static str,
+    source_partial_precondition_denial_matrix_gate: &'static str,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    implemented_route_count: usize,
+    missing_route_count: usize,
+    route_count_cutover_floor: usize,
+    route_count_floor_preserved: bool,
+    route_count_source_command_accepted: bool,
+    source_route_wired: bool,
+    intake_precondition_route_ready: bool,
+    intake_precondition_route_status: &'static str,
+    trusted_operator_packet_intake_precondition_ready: bool,
+    trusted_operator_packet_partial_precondition_denial_matrix_ready: bool,
+    independent_trusted_operator_packet_required: bool,
+    independent_trusted_operator_packet_shape_declared: bool,
+    operator_packet_required_field_count: usize,
+    operator_packet_complete_verified_field_count_required: usize,
+    operator_packet_partial_fixture_count: usize,
+    blocked_operator_packet_partial_fixture_count: usize,
+    allowed_operator_packet_partial_fixture_count: usize,
+    partial_packet_max_verified_field_count: usize,
+    partial_packet_min_missing_field_count: usize,
+    partial_packet_acceptance_precondition_satisfied_count: usize,
+    partial_packet_recorded_count: usize,
+    partial_packet_persisted_count: usize,
+    partial_packet_accepted_count: usize,
+    partial_packet_activation_authority_count: usize,
+    partial_packet_activation_command_exposed_count: usize,
+    partial_packet_live_mutation_allowed_count: usize,
+    partial_packet_public_claim_allowed_count: usize,
+    missing_identity_fixture_blocked: bool,
+    missing_intent_fixture_blocked: bool,
+    missing_signature_fixture_blocked: bool,
+    missing_session_fixture_blocked: bool,
+    missing_freshness_fixture_blocked: bool,
+    missing_scope_fixture_blocked: bool,
+    report_route_invokes_shadow_execution: bool,
+    report_route_exposes_activation_command: bool,
+    live_mutation_enabled_count: usize,
+    current_live_enabled_lane_count: usize,
+    partial_precondition_denial_fixtures:
+        &'static [TrustedOperatorPacketPartialPreconditionDenialFixture],
+    blocked_operator_packet_partial_precondition_actions: &'static [&'static str],
+    allowed_next_actions: &'static [&'static str],
+    side_effects:
+        HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketPartialPreconditionDenialMatrixSideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketPartialPreconditionDenialMatrixSideEffects
+{
+    report_route_invoked_runtime_execution: bool,
+    source_gate_invokes_isolated_fixture_execution: bool,
+    live_7373_router_mutated_by_report_route: bool,
+    partial_operator_packet_recorded: bool,
+    partial_operator_packet_persisted: bool,
+    partial_operator_packet_materialized: bool,
+    partial_operator_packet_accepted: bool,
+    partial_operator_packet_identity_verified: bool,
+    partial_operator_packet_intent_confirmed: bool,
+    partial_operator_packet_signature_verified: bool,
+    partial_operator_packet_session_bound: bool,
+    partial_operator_packet_freshness_verified: bool,
+    partial_operator_packet_scope_validated: bool,
+    partial_operator_packet_activation_authority_recorded: bool,
+    partial_operator_packet_activation_request_enqueued: bool,
+    partial_operator_packet_activation_command_exposed: bool,
+    partial_operator_packet_live_mutation_performed: bool,
+    partial_operator_packet_public_claim_recorded: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    auth_secret_read: bool,
+    credential_read: bool,
+    external_network_call_performed: bool,
+    live_kg_write_performed: bool,
+    memory_store_mutated: bool,
+    channel_send_performed: bool,
+    external_send_performed: bool,
+    gateway_route_migration_performed: bool,
+    source_command_migration_performed: bool,
+    service_restarted: bool,
+    active_binary_mutated: bool,
+    release_artifact_written: bool,
+    public_release_claimed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct HeptaReleaseHardeningStatusGateResponse {
     product: &'static str,
     runtime: &'static str,
@@ -6999,6 +7137,132 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONT
     "accept no operator packet until identity, intent, signature, session, freshness, and scope all verify in a separate explicit lane",
 ];
 
+const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_FIXTURES:
+    &[TrustedOperatorPacketPartialPreconditionDenialFixture] = &[
+    TrustedOperatorPacketPartialPreconditionDenialFixture {
+        fixture_id: "partial_operator_packet_missing_identity",
+        missing_precondition: "identity",
+        verified_field_count: 5,
+        missing_field_count: 1,
+        packet_recorded: false,
+        packet_persisted: false,
+        packet_accepted: false,
+        operator_approval_recorded: false,
+        activation_authority_derived: false,
+        activation_request_allowed: false,
+        activation_command_exposed: false,
+        live_mutation_allowed: false,
+        public_claim_allowed: false,
+    },
+    TrustedOperatorPacketPartialPreconditionDenialFixture {
+        fixture_id: "partial_operator_packet_missing_intent",
+        missing_precondition: "intent",
+        verified_field_count: 5,
+        missing_field_count: 1,
+        packet_recorded: false,
+        packet_persisted: false,
+        packet_accepted: false,
+        operator_approval_recorded: false,
+        activation_authority_derived: false,
+        activation_request_allowed: false,
+        activation_command_exposed: false,
+        live_mutation_allowed: false,
+        public_claim_allowed: false,
+    },
+    TrustedOperatorPacketPartialPreconditionDenialFixture {
+        fixture_id: "partial_operator_packet_missing_signature",
+        missing_precondition: "signature",
+        verified_field_count: 5,
+        missing_field_count: 1,
+        packet_recorded: false,
+        packet_persisted: false,
+        packet_accepted: false,
+        operator_approval_recorded: false,
+        activation_authority_derived: false,
+        activation_request_allowed: false,
+        activation_command_exposed: false,
+        live_mutation_allowed: false,
+        public_claim_allowed: false,
+    },
+    TrustedOperatorPacketPartialPreconditionDenialFixture {
+        fixture_id: "partial_operator_packet_missing_session",
+        missing_precondition: "session",
+        verified_field_count: 5,
+        missing_field_count: 1,
+        packet_recorded: false,
+        packet_persisted: false,
+        packet_accepted: false,
+        operator_approval_recorded: false,
+        activation_authority_derived: false,
+        activation_request_allowed: false,
+        activation_command_exposed: false,
+        live_mutation_allowed: false,
+        public_claim_allowed: false,
+    },
+    TrustedOperatorPacketPartialPreconditionDenialFixture {
+        fixture_id: "partial_operator_packet_missing_freshness",
+        missing_precondition: "freshness",
+        verified_field_count: 5,
+        missing_field_count: 1,
+        packet_recorded: false,
+        packet_persisted: false,
+        packet_accepted: false,
+        operator_approval_recorded: false,
+        activation_authority_derived: false,
+        activation_request_allowed: false,
+        activation_command_exposed: false,
+        live_mutation_allowed: false,
+        public_claim_allowed: false,
+    },
+    TrustedOperatorPacketPartialPreconditionDenialFixture {
+        fixture_id: "partial_operator_packet_missing_scope",
+        missing_precondition: "scope",
+        verified_field_count: 5,
+        missing_field_count: 1,
+        packet_recorded: false,
+        packet_persisted: false,
+        packet_accepted: false,
+        operator_approval_recorded: false,
+        activation_authority_derived: false,
+        activation_request_allowed: false,
+        activation_command_exposed: false,
+        live_mutation_allowed: false,
+        public_claim_allowed: false,
+    },
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_BLOCKED_ACTIONS:
+    &[&str] = &[
+    "accept_partial_operator_packet_missing_identity",
+    "accept_partial_operator_packet_missing_intent",
+    "accept_partial_operator_packet_missing_signature",
+    "accept_partial_operator_packet_missing_session",
+    "accept_partial_operator_packet_missing_freshness",
+    "accept_partial_operator_packet_missing_scope",
+    "record_partial_operator_packet",
+    "persist_partial_operator_packet",
+    "derive_operator_approval_from_partial_operator_packet",
+    "derive_activation_authority_from_partial_operator_packet",
+    "enqueue_activation_request_from_partial_operator_packet",
+    "expose_activation_command_from_partial_operator_packet",
+    "enable_live_mutation_from_partial_operator_packet",
+    "promote_public_claim_from_partial_operator_packet",
+    "invoke_shadow_execution_from_report_route",
+    "provider_model_invocation",
+    "auth_secret_or_credential_read",
+    "live_kg_or_memory_write",
+    "telegram_or_channel_delivery",
+    "service_restart_or_active_binary_mutation",
+    "release_or_public_claim",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_NEXT_ACTIONS:
+    &[&str] = &[
+    "run trusted-operator-packet-partial-precondition-denial-matrix source gate against the intake-precondition route",
+    "install read-only partial-precondition denial matrix route through controlled live catch-up only after full preflight",
+    "only consider complete-packet fixture validation after all six packet preconditions remain explicit and side-effect-free",
+];
+
 fn hepta_memory_intelligence_kg_full_enablement_runtime_readiness_report()
 -> HeptaMemoryIntelligenceKgFullEnablementRuntimeReadinessResponse {
     let route_matrix = control_ui_route_parity_report();
@@ -7913,6 +8177,251 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_e
                 activation_request_enqueued: false,
                 activation_command_exposed: false,
                 public_claim_recorded: false,
+                provider_invoked: false,
+                model_invoked: false,
+                auth_secret_read: false,
+                credential_read: false,
+                external_network_call_performed: false,
+                live_kg_write_performed: false,
+                memory_store_mutated: false,
+                channel_send_performed: false,
+                external_send_performed: false,
+                gateway_route_migration_performed: false,
+                source_command_migration_performed: false,
+                service_restarted: false,
+                active_binary_mutated: false,
+                release_artifact_written: false,
+                public_release_claimed: false,
+            },
+    }
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_trusted_operator_packet_partial_precondition_denial_matrix_report()
+-> HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketPartialPreconditionDenialMatrixResponse{
+    let route_matrix = control_ui_route_parity_report();
+    let intake_precondition =
+        hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_trusted_operator_packet_intake_precondition_report();
+    let fixtures = HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_FIXTURES;
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let blocked_fixture_count = fixtures
+        .iter()
+        .filter(|fixture| {
+            fixture.verified_field_count < 6
+                && fixture.missing_field_count > 0
+                && !fixture.packet_recorded
+                && !fixture.packet_persisted
+                && !fixture.packet_accepted
+                && !fixture.operator_approval_recorded
+                && !fixture.activation_authority_derived
+                && !fixture.activation_request_allowed
+                && !fixture.activation_command_exposed
+                && !fixture.live_mutation_allowed
+                && !fixture.public_claim_allowed
+        })
+        .count();
+    let allowed_fixture_count = fixtures.len() - blocked_fixture_count;
+    let partial_packet_max_verified_field_count = fixtures
+        .iter()
+        .map(|fixture| fixture.verified_field_count)
+        .max()
+        .unwrap_or(0);
+    let partial_packet_min_missing_field_count = fixtures
+        .iter()
+        .map(|fixture| fixture.missing_field_count)
+        .min()
+        .unwrap_or(0);
+    let partial_packet_recorded_count = fixtures
+        .iter()
+        .filter(|fixture| fixture.packet_recorded)
+        .count();
+    let partial_packet_persisted_count = fixtures
+        .iter()
+        .filter(|fixture| fixture.packet_persisted)
+        .count();
+    let partial_packet_accepted_count = fixtures
+        .iter()
+        .filter(|fixture| fixture.packet_accepted)
+        .count();
+    let partial_packet_activation_authority_count = fixtures
+        .iter()
+        .filter(|fixture| fixture.activation_authority_derived)
+        .count();
+    let partial_packet_activation_command_exposed_count = fixtures
+        .iter()
+        .filter(|fixture| fixture.activation_command_exposed)
+        .count();
+    let partial_packet_live_mutation_allowed_count = fixtures
+        .iter()
+        .filter(|fixture| fixture.live_mutation_allowed)
+        .count();
+    let partial_packet_public_claim_allowed_count = fixtures
+        .iter()
+        .filter(|fixture| fixture.public_claim_allowed)
+        .count();
+    let partial_packet_acceptance_precondition_satisfied_count = fixtures
+        .iter()
+        .filter(|fixture| fixture.verified_field_count == 6 && fixture.missing_field_count == 0)
+        .count();
+    let missing_identity_fixture_blocked = fixtures
+        .iter()
+        .any(|fixture| fixture.missing_precondition == "identity" && !fixture.packet_accepted);
+    let missing_intent_fixture_blocked = fixtures
+        .iter()
+        .any(|fixture| fixture.missing_precondition == "intent" && !fixture.packet_accepted);
+    let missing_signature_fixture_blocked = fixtures
+        .iter()
+        .any(|fixture| fixture.missing_precondition == "signature" && !fixture.packet_accepted);
+    let missing_session_fixture_blocked = fixtures
+        .iter()
+        .any(|fixture| fixture.missing_precondition == "session" && !fixture.packet_accepted);
+    let missing_freshness_fixture_blocked = fixtures
+        .iter()
+        .any(|fixture| fixture.missing_precondition == "freshness" && !fixture.packet_accepted);
+    let missing_scope_fixture_blocked = fixtures
+        .iter()
+        .any(|fixture| fixture.missing_precondition == "scope" && !fixture.packet_accepted);
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && intake_precondition.status == "ready"
+        && intake_precondition.trusted_operator_packet_intake_precondition_ready
+        && intake_precondition.independent_trusted_operator_packet_required
+        && intake_precondition.independent_trusted_operator_packet_shape_declared
+        && intake_precondition.operator_packet_required_field_count == 6
+        && intake_precondition.operator_packet_verified_field_count == 0
+        && intake_precondition.operator_packet_missing_field_count == 6
+        && !intake_precondition.operator_packet_acceptance_precondition_satisfied
+        && !intake_precondition.operator_packet_recorded
+        && !intake_precondition.operator_packet_persisted
+        && !intake_precondition.operator_packet_accepted
+        && !intake_precondition.operator_approval_from_packet_accepted
+        && !intake_precondition.activation_authority_from_packet_derived
+        && !intake_precondition.activation_request_from_packet_allowed
+        && !intake_precondition.activation_command_from_packet_exposed
+        && !intake_precondition.live_mutation_from_packet_allowed
+        && !intake_precondition.public_claim_from_packet_allowed
+        && !intake_precondition.report_route_invokes_shadow_execution
+        && !intake_precondition.report_route_exposes_activation_command
+        && intake_precondition.live_mutation_enabled_count == 0
+        && intake_precondition.current_live_enabled_lane_count == 0
+        && fixtures.len() == 6
+        && blocked_fixture_count == 6
+        && allowed_fixture_count == 0
+        && partial_packet_max_verified_field_count == 5
+        && partial_packet_min_missing_field_count == 1
+        && partial_packet_acceptance_precondition_satisfied_count == 0
+        && partial_packet_recorded_count == 0
+        && partial_packet_persisted_count == 0
+        && partial_packet_accepted_count == 0
+        && partial_packet_activation_authority_count == 0
+        && partial_packet_activation_command_exposed_count == 0
+        && partial_packet_live_mutation_allowed_count == 0
+        && partial_packet_public_claim_allowed_count == 0
+        && missing_identity_fixture_blocked
+        && missing_intent_fixture_blocked
+        && missing_signature_fixture_blocked
+        && missing_session_fixture_blocked
+        && missing_freshness_fixture_blocked
+        && missing_scope_fixture_blocked
+        && !intake_precondition.side_effects.provider_invoked
+        && !intake_precondition.side_effects.model_invoked
+        && !intake_precondition.side_effects.auth_secret_read
+        && !intake_precondition.side_effects.credential_read
+        && !intake_precondition.side_effects.live_kg_write_performed
+        && !intake_precondition.side_effects.memory_store_mutated
+        && !intake_precondition.side_effects.channel_send_performed
+        && !intake_precondition.side_effects.service_restarted
+        && !intake_precondition.side_effects.active_binary_mutated
+        && !intake_precondition.side_effects.public_release_claimed;
+
+    HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketPartialPreconditionDenialMatrixResponse {
+        product: "Hepta",
+        runtime: "hepta",
+        status: if report_ready { "ready" } else { "blocked" },
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-partial-precondition-denial-matrix --json",
+        native_route: true,
+        compatibility_mode:
+            "native_runtime_provider_router_shadow_context_activation_execution_controlled_readback_receipt_trusted_operator_packet_partial_precondition_denial_matrix_route_source_only",
+        side_effect_free: true,
+        audit_date: "2026-06-12",
+        endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_ENDPOINT,
+        intake_precondition_endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_INTAKE_PRECONDITION_ENDPOINT,
+        intake_precondition_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_INTAKE_PRECONDITION_GATE.md",
+        partial_precondition_denial_matrix_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_GATE.md",
+        source_intake_precondition_gate: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-intake-precondition-gate.sh",
+        source_partial_precondition_denial_matrix_gate: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-partial-precondition-denial-matrix-gate.sh",
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        implemented_route_count: route_matrix.implemented_route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        route_count_cutover_floor: NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+        route_count_floor_preserved,
+        route_count_source_command_accepted,
+        source_route_wired: true,
+        intake_precondition_route_ready:
+            intake_precondition.trusted_operator_packet_intake_precondition_ready,
+        intake_precondition_route_status: intake_precondition.status,
+        trusted_operator_packet_intake_precondition_ready:
+            intake_precondition.trusted_operator_packet_intake_precondition_ready,
+        trusted_operator_packet_partial_precondition_denial_matrix_ready: report_ready,
+        independent_trusted_operator_packet_required: true,
+        independent_trusted_operator_packet_shape_declared: true,
+        operator_packet_required_field_count: 6,
+        operator_packet_complete_verified_field_count_required: 6,
+        operator_packet_partial_fixture_count: fixtures.len(),
+        blocked_operator_packet_partial_fixture_count: blocked_fixture_count,
+        allowed_operator_packet_partial_fixture_count: allowed_fixture_count,
+        partial_packet_max_verified_field_count,
+        partial_packet_min_missing_field_count,
+        partial_packet_acceptance_precondition_satisfied_count,
+        partial_packet_recorded_count,
+        partial_packet_persisted_count,
+        partial_packet_accepted_count,
+        partial_packet_activation_authority_count,
+        partial_packet_activation_command_exposed_count,
+        partial_packet_live_mutation_allowed_count,
+        partial_packet_public_claim_allowed_count,
+        missing_identity_fixture_blocked,
+        missing_intent_fixture_blocked,
+        missing_signature_fixture_blocked,
+        missing_session_fixture_blocked,
+        missing_freshness_fixture_blocked,
+        missing_scope_fixture_blocked,
+        report_route_invokes_shadow_execution: false,
+        report_route_exposes_activation_command: false,
+        live_mutation_enabled_count: intake_precondition.live_mutation_enabled_count,
+        current_live_enabled_lane_count: intake_precondition.current_live_enabled_lane_count,
+        partial_precondition_denial_fixtures: fixtures,
+        blocked_operator_packet_partial_precondition_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_BLOCKED_ACTIONS,
+        allowed_next_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_NEXT_ACTIONS,
+        side_effects:
+            HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionControlledReadbackReceiptTrustedOperatorPacketPartialPreconditionDenialMatrixSideEffects {
+                report_route_invoked_runtime_execution: false,
+                source_gate_invokes_isolated_fixture_execution: true,
+                live_7373_router_mutated_by_report_route: false,
+                partial_operator_packet_recorded: false,
+                partial_operator_packet_persisted: false,
+                partial_operator_packet_materialized: false,
+                partial_operator_packet_accepted: false,
+                partial_operator_packet_identity_verified: false,
+                partial_operator_packet_intent_confirmed: false,
+                partial_operator_packet_signature_verified: false,
+                partial_operator_packet_session_bound: false,
+                partial_operator_packet_freshness_verified: false,
+                partial_operator_packet_scope_validated: false,
+                partial_operator_packet_activation_authority_recorded: false,
+                partial_operator_packet_activation_request_enqueued: false,
+                partial_operator_packet_activation_command_exposed: false,
+                partial_operator_packet_live_mutation_performed: false,
+                partial_operator_packet_public_claim_recorded: false,
                 provider_invoked: false,
                 model_invoked: false,
                 auth_secret_read: false,
@@ -12958,6 +13467,222 @@ mod tests {
         );
         assert_eq!(value["side_effects"]["activation_request_enqueued"], false);
         assert_eq!(value["side_effects"]["activation_command_exposed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["auth_secret_read"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["memory_store_mutated"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["release_artifact_written"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_controlled_readback_receipt_trusted_operator_packet_partial_precondition_denial_matrix_endpoint_is_report_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("controlled readback receipt trusted operator packet partial precondition denial matrix json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-partial-precondition-denial-matrix --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_runtime_provider_router_shadow_context_activation_execution_controlled_readback_receipt_trusted_operator_packet_partial_precondition_denial_matrix_route_source_only"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_PARTIAL_PRECONDITION_DENIAL_MATRIX_ENDPOINT
+        );
+        assert_eq!(
+            value["intake_precondition_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_INTAKE_PRECONDITION_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_route_wired"], true);
+        assert_eq!(value["intake_precondition_route_ready"], true);
+        assert_eq!(value["intake_precondition_route_status"], "ready");
+        assert_eq!(
+            value["trusted_operator_packet_intake_precondition_ready"],
+            true
+        );
+        assert_eq!(
+            value["trusted_operator_packet_partial_precondition_denial_matrix_ready"],
+            true
+        );
+        assert_eq!(value["independent_trusted_operator_packet_required"], true);
+        assert_eq!(
+            value["independent_trusted_operator_packet_shape_declared"],
+            true
+        );
+        assert_eq!(value["operator_packet_required_field_count"], 6);
+        assert_eq!(
+            value["operator_packet_complete_verified_field_count_required"],
+            6
+        );
+        assert_eq!(value["operator_packet_partial_fixture_count"], 6);
+        assert_eq!(value["blocked_operator_packet_partial_fixture_count"], 6);
+        assert_eq!(value["allowed_operator_packet_partial_fixture_count"], 0);
+        assert_eq!(value["partial_packet_max_verified_field_count"], 5);
+        assert_eq!(value["partial_packet_min_missing_field_count"], 1);
+        assert_eq!(
+            value["partial_packet_acceptance_precondition_satisfied_count"],
+            0
+        );
+        assert_eq!(value["partial_packet_recorded_count"], 0);
+        assert_eq!(value["partial_packet_persisted_count"], 0);
+        assert_eq!(value["partial_packet_accepted_count"], 0);
+        assert_eq!(value["partial_packet_activation_authority_count"], 0);
+        assert_eq!(value["partial_packet_activation_command_exposed_count"], 0);
+        assert_eq!(value["partial_packet_live_mutation_allowed_count"], 0);
+        assert_eq!(value["partial_packet_public_claim_allowed_count"], 0);
+        assert_eq!(value["missing_identity_fixture_blocked"], true);
+        assert_eq!(value["missing_intent_fixture_blocked"], true);
+        assert_eq!(value["missing_signature_fixture_blocked"], true);
+        assert_eq!(value["missing_session_fixture_blocked"], true);
+        assert_eq!(value["missing_freshness_fixture_blocked"], true);
+        assert_eq!(value["missing_scope_fixture_blocked"], true);
+        assert_eq!(value["report_route_invokes_shadow_execution"], false);
+        assert_eq!(value["report_route_exposes_activation_command"], false);
+        assert_eq!(value["live_mutation_enabled_count"], 0);
+        assert_eq!(value["current_live_enabled_lane_count"], 0);
+
+        let fixtures = value["partial_precondition_denial_fixtures"]
+            .as_array()
+            .expect("partial precondition denial fixtures");
+        assert_eq!(fixtures.len(), 6);
+        let missing_preconditions = fixtures
+            .iter()
+            .filter_map(|fixture| fixture["missing_precondition"].as_str())
+            .collect::<Vec<_>>();
+        for missing in [
+            "identity",
+            "intent",
+            "signature",
+            "session",
+            "freshness",
+            "scope",
+        ] {
+            assert!(missing_preconditions.contains(&missing));
+        }
+        for fixture in fixtures {
+            assert_eq!(fixture["verified_field_count"], 5);
+            assert_eq!(fixture["missing_field_count"], 1);
+            assert_eq!(fixture["packet_recorded"], false);
+            assert_eq!(fixture["packet_persisted"], false);
+            assert_eq!(fixture["packet_accepted"], false);
+            assert_eq!(fixture["operator_approval_recorded"], false);
+            assert_eq!(fixture["activation_authority_derived"], false);
+            assert_eq!(fixture["activation_request_allowed"], false);
+            assert_eq!(fixture["activation_command_exposed"], false);
+            assert_eq!(fixture["live_mutation_allowed"], false);
+            assert_eq!(fixture["public_claim_allowed"], false);
+        }
+
+        let blocked = value["blocked_operator_packet_partial_precondition_actions"]
+            .as_array()
+            .expect("blocked partial packet actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blocked.contains(&"accept_partial_operator_packet_missing_identity"));
+        assert!(blocked.contains(&"accept_partial_operator_packet_missing_signature"));
+        assert!(blocked.contains(&"accept_partial_operator_packet_missing_freshness"));
+        assert!(blocked.contains(&"derive_activation_authority_from_partial_operator_packet"));
+        assert!(blocked.contains(&"expose_activation_command_from_partial_operator_packet"));
+        assert!(blocked.contains(&"live_kg_or_memory_write"));
+        assert_eq!(
+            value["side_effects"]["report_route_invoked_runtime_execution"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["source_gate_invokes_isolated_fixture_execution"],
+            true
+        );
+        assert_eq!(
+            value["side_effects"]["live_7373_router_mutated_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_materialized"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_accepted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_identity_verified"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_signature_verified"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_freshness_verified"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_scope_validated"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_activation_authority_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_activation_request_enqueued"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_activation_command_exposed"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_live_mutation_performed"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["partial_operator_packet_public_claim_recorded"],
+            false
+        );
         assert_eq!(value["side_effects"]["provider_invoked"], false);
         assert_eq!(value["side_effects"]["model_invoked"], false);
         assert_eq!(value["side_effects"]["auth_secret_read"], false);
