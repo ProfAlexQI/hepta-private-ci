@@ -86,6 +86,8 @@ const HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_ENDPOINT: &str =
     "/api/hepta-memory-capability-absorption-inventory";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_READINESS_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-readiness";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_READINESS_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -96,7 +98,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 70;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 71;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -252,6 +254,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-readiness --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-runtime-readiness",
         side_effect_boundary: "read-only full-enablement runtime readiness; source route only, no live activation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_READINESS_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness --json",
+        capability: "hepta-memory-intelligence-kg-runtime-provider-router-shadow-execution-readiness",
+        side_effect_boundary: "read-only shadow context activation execution readiness; reports source route only, no provider/model/KG/write execution",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -958,6 +967,16 @@ fn route_native_gateway_request_with_body(
                     ),
                 );
             }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_READINESS_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_readiness_report(),
+                    ),
+                );
+            }
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1419,6 +1438,7 @@ fn index_html(
         <p><code>/api/hepta-local-tooling-content-inventory</code> maps canvas, diffs, filesystem, process, local content, search, readability, wiki, and tool invocation surfaces as local plans only.</p>
         <p><code>/api/hepta-memory-capability-absorption-inventory</code> exposes memory, capability, plugin, coding-agent, search-provider, and skill-workshop gaps as read-only absorption status.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-readiness</code> binds the memory, Intelligence, and KG activation-readiness chain to a route-count-aware runtime surface without enabling live mutation or prompt/context execution.</p>
+        <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness</code> reports the operator-approved shadow context activation execution source surface without invoking providers, reading credentials, writing KG, or mutating live Memory.</p>
         <p><code>/api/hepta-release-hardening-status-gate</code> keeps remaining release, external-production, launchd, ops, and hardening script families visible as local-only status gates.</p>
         <p><code>/api/hepta-provider-channel-dry-run-plan</code> promotes provider, search, channel, and runtime/session gaps into deterministic dry-run plan contracts without credentials, external calls, delivery, or store mutation.</p>
         <p><code>/api/hepta-native-packaging-gate</code> tracks Hepta Native manifest, package metadata, app resources, and local smoke readiness before signing or public distribution.</p>
@@ -4410,6 +4430,91 @@ struct HeptaMemoryIntelligenceKgFullEnablementRuntimeReadinessSideEffects {
 }
 
 #[derive(Debug, Serialize)]
+struct HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionReadinessResponse
+{
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    endpoint: &'static str,
+    readiness_doc: &'static str,
+    source_execution_gate: &'static str,
+    source_runtime_readiness_endpoint: &'static str,
+    source_runtime_execution_surface: &'static str,
+    source_runtime_execution_method: &'static str,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    implemented_route_count: usize,
+    missing_route_count: usize,
+    route_count_cutover_floor: usize,
+    route_count_floor_preserved: bool,
+    route_count_source_command_accepted: bool,
+    source_route_wired: bool,
+    live_route_active_install_performed_by_this_gate: bool,
+    runtime_readiness_ready: bool,
+    runtime_readiness_status: &'static str,
+    operator_approved_shadow_context_activation_execution_report_ready: bool,
+    runtime_owned_execution_surface_present: bool,
+    release_gate_required: bool,
+    operator_release_approval_required: bool,
+    canary_telemetry_required: bool,
+    rollback_kill_switch_required: bool,
+    post_activation_watchdog_soak_plan_required: bool,
+    idempotency_required: bool,
+    traffic_percent_ppm_required: usize,
+    context_handoff_acceptance_required: bool,
+    shadow_context_attachment_supported_by_runtime: bool,
+    execution_invoked_by_report_route: bool,
+    live_route_exposes_activation_command: bool,
+    provider_invocation_allowed: bool,
+    provider_invocation_performed: bool,
+    model_invocation_allowed: bool,
+    model_invocation_performed: bool,
+    auth_secret_read_allowed: bool,
+    auth_secret_read_performed: bool,
+    credential_read_allowed: bool,
+    credential_read_performed: bool,
+    external_network_call_allowed: bool,
+    external_network_call_performed: bool,
+    live_kg_write_allowed: bool,
+    live_kg_write_performed: bool,
+    live_mutation_enabled_count: usize,
+    current_live_enabled_lane_count: usize,
+    blocked_execution_actions: &'static [&'static str],
+    allowed_next_actions: &'static [&'static str],
+    side_effects:
+        HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionSideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionSideEffects {
+    report_route_invoked_runtime_execution: bool,
+    runtime_router_shadow_handoff_mutated_by_report_route: bool,
+    live_7373_router_mutated_by_report_route: bool,
+    feature_flag_mutated_in_live_7373_by_report_route: bool,
+    context_attached_to_live_7373_prompt_by_report_route: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    auth_secret_read: bool,
+    credential_read: bool,
+    external_network_call_performed: bool,
+    live_kg_write_performed: bool,
+    memory_store_mutated: bool,
+    channel_send_performed: bool,
+    external_send_performed: bool,
+    gateway_route_migration_performed: bool,
+    source_command_migration_performed: bool,
+    service_restarted: bool,
+    active_binary_mutated: bool,
+    release_artifact_written: bool,
+    public_release_claimed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct HeptaReleaseHardeningStatusGateResponse {
     product: &'static str,
     runtime: &'static str,
@@ -6118,6 +6223,29 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_NEXT_SLICES: &[&str] = &[
     "accept bounded prompt-preview/context-handoff only after scoped operator packet",
 ];
 
+const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_BLOCKED_ACTIONS:
+    &[&str] = &[
+    "invoke_shadow_execution_from_report_route",
+    "enable_nonzero_traffic",
+    "provider_model_invocation",
+    "auth_secret_read",
+    "credential_read",
+    "external_network_call",
+    "live_kg_write",
+    "memory_store_write",
+    "telegram_or_channel_delivery",
+    "service_restart",
+    "active_binary_mutation",
+    "release_or_public_claim",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_NEXT_ACTIONS:
+    &[&str] = &[
+    "validate source route report on current-worktree native gateway",
+    "install route through a separate live catch-up only after full preflight",
+    "keep provider/model/KG/Memory effects disabled until an operator activation packet is accepted",
+];
+
 fn hepta_memory_intelligence_kg_full_enablement_runtime_readiness_report()
 -> HeptaMemoryIntelligenceKgFullEnablementRuntimeReadinessResponse {
     let route_matrix = control_ui_route_parity_report();
@@ -6231,6 +6359,115 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_readiness_report()
             public_release_claimed: false,
             public_ga_claimed: false,
         },
+    }
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_readiness_report()
+-> HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionReadinessResponse {
+    let route_matrix = control_ui_route_parity_report();
+    let runtime_readiness = hepta_memory_intelligence_kg_full_enablement_runtime_readiness_report();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && runtime_readiness.status == "ready"
+        && runtime_readiness.full_enablement_activation_readiness_ready
+        && runtime_readiness.live_mutation_enabled_count == 0
+        && runtime_readiness.current_live_enabled_lane_count == 0
+        && !runtime_readiness.side_effects.model_invoked
+        && !runtime_readiness.side_effects.provider_invoked
+        && !runtime_readiness.side_effects.credential_read
+        && !runtime_readiness.side_effects.live_kg_write_performed
+        && !runtime_readiness.side_effects.memory_store_mutated;
+
+    HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionReadinessResponse {
+        product: "Hepta",
+        runtime: "hepta",
+        status: if report_ready { "ready" } else { "blocked" },
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness --json",
+        native_route: true,
+        compatibility_mode:
+            "native_runtime_provider_router_shadow_context_activation_execution_readiness_route_source_only",
+        side_effect_free: true,
+        audit_date: "2026-06-11",
+        endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_READINESS_ENDPOINT,
+        readiness_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_READINESS_ROUTE.md",
+        source_execution_gate: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-gate.sh",
+        source_runtime_readiness_endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_READINESS_ENDPOINT,
+        source_runtime_execution_surface:
+            "hepta-runtime-model-provider-memory-context-shadow-activation-execution-v1",
+        source_runtime_execution_method: "execute_memory_context_activation_shadow",
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        implemented_route_count: route_matrix.implemented_route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        route_count_cutover_floor: NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+        route_count_floor_preserved,
+        route_count_source_command_accepted,
+        source_route_wired: true,
+        live_route_active_install_performed_by_this_gate: false,
+        runtime_readiness_ready: runtime_readiness.full_enablement_activation_readiness_ready,
+        runtime_readiness_status: runtime_readiness.status,
+        operator_approved_shadow_context_activation_execution_report_ready: report_ready,
+        runtime_owned_execution_surface_present: true,
+        release_gate_required: true,
+        operator_release_approval_required: true,
+        canary_telemetry_required: true,
+        rollback_kill_switch_required: true,
+        post_activation_watchdog_soak_plan_required: true,
+        idempotency_required: true,
+        traffic_percent_ppm_required: 0,
+        context_handoff_acceptance_required: true,
+        shadow_context_attachment_supported_by_runtime: true,
+        execution_invoked_by_report_route: false,
+        live_route_exposes_activation_command: false,
+        provider_invocation_allowed: false,
+        provider_invocation_performed: false,
+        model_invocation_allowed: false,
+        model_invocation_performed: false,
+        auth_secret_read_allowed: false,
+        auth_secret_read_performed: false,
+        credential_read_allowed: false,
+        credential_read_performed: false,
+        external_network_call_allowed: false,
+        external_network_call_performed: false,
+        live_kg_write_allowed: false,
+        live_kg_write_performed: false,
+        live_mutation_enabled_count: runtime_readiness.live_mutation_enabled_count,
+        current_live_enabled_lane_count: runtime_readiness.current_live_enabled_lane_count,
+        blocked_execution_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_BLOCKED_ACTIONS,
+        allowed_next_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_NEXT_ACTIONS,
+        side_effects:
+            HeptaMemoryIntelligenceKgFullEnablementRuntimeProviderRouterShadowExecutionSideEffects {
+                report_route_invoked_runtime_execution: false,
+                runtime_router_shadow_handoff_mutated_by_report_route: false,
+                live_7373_router_mutated_by_report_route: false,
+                feature_flag_mutated_in_live_7373_by_report_route: false,
+                context_attached_to_live_7373_prompt_by_report_route: false,
+                provider_invoked: false,
+                model_invoked: false,
+                auth_secret_read: false,
+                credential_read: false,
+                external_network_call_performed: false,
+                live_kg_write_performed: false,
+                memory_store_mutated: false,
+                channel_send_performed: false,
+                external_send_performed: false,
+                gateway_route_migration_performed: false,
+                source_command_migration_performed: false,
+                service_restarted: false,
+                active_binary_mutated: false,
+                release_artifact_written: false,
+                public_release_claimed: false,
+            },
     }
 }
 
@@ -8864,6 +9101,7 @@ mod tests {
         assert!(routes.contains(
             &"GET /api/hepta-memory-intelligence-kg-full-enablement-runtime-readiness".to_string()
         ));
+        assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness".to_string()));
         assert!(routes.contains(&"GET /api/hepta-release-hardening-status-gate".to_string()));
         assert!(routes.contains(&"GET /api/hepta-provider-channel-dry-run-plan".to_string()));
         assert!(routes.contains(&"GET /api/hepta-native-packaging-gate".to_string()));
@@ -10374,6 +10612,129 @@ mod tests {
         assert_eq!(value["side_effects"]["service_restart_performed"], false);
         assert_eq!(value["side_effects"]["release_artifact_written"], false);
         assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_execution_readiness_endpoint_is_source_route_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_READINESS_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("shadow execution readiness json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_runtime_provider_router_shadow_context_activation_execution_readiness_route_source_only"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_READINESS_ENDPOINT
+        );
+        assert_eq!(
+            value["source_runtime_readiness_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_READINESS_ENDPOINT
+        );
+        assert_eq!(
+            value["source_runtime_execution_method"],
+            "execute_memory_context_activation_shadow"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_cutover_floor"], 69);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_route_wired"], true);
+        assert_eq!(
+            value["live_route_active_install_performed_by_this_gate"],
+            false
+        );
+        assert_eq!(value["runtime_readiness_ready"], true);
+        assert_eq!(value["runtime_readiness_status"], "ready");
+        assert_eq!(
+            value["operator_approved_shadow_context_activation_execution_report_ready"],
+            true
+        );
+        assert_eq!(value["runtime_owned_execution_surface_present"], true);
+        assert_eq!(value["release_gate_required"], true);
+        assert_eq!(value["operator_release_approval_required"], true);
+        assert_eq!(value["canary_telemetry_required"], true);
+        assert_eq!(value["rollback_kill_switch_required"], true);
+        assert_eq!(value["post_activation_watchdog_soak_plan_required"], true);
+        assert_eq!(value["idempotency_required"], true);
+        assert_eq!(value["traffic_percent_ppm_required"], 0);
+        assert_eq!(value["context_handoff_acceptance_required"], true);
+        assert_eq!(
+            value["shadow_context_attachment_supported_by_runtime"],
+            true
+        );
+        assert_eq!(value["execution_invoked_by_report_route"], false);
+        assert_eq!(value["live_route_exposes_activation_command"], false);
+        assert_eq!(value["provider_invocation_allowed"], false);
+        assert_eq!(value["provider_invocation_performed"], false);
+        assert_eq!(value["model_invocation_allowed"], false);
+        assert_eq!(value["model_invocation_performed"], false);
+        assert_eq!(value["auth_secret_read_allowed"], false);
+        assert_eq!(value["auth_secret_read_performed"], false);
+        assert_eq!(value["credential_read_allowed"], false);
+        assert_eq!(value["credential_read_performed"], false);
+        assert_eq!(value["external_network_call_allowed"], false);
+        assert_eq!(value["external_network_call_performed"], false);
+        assert_eq!(value["live_kg_write_allowed"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["live_mutation_enabled_count"], 0);
+        assert_eq!(value["current_live_enabled_lane_count"], 0);
+        let blocked = value["blocked_execution_actions"]
+            .as_array()
+            .expect("blocked execution actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blocked.contains(&"invoke_shadow_execution_from_report_route"));
+        assert!(blocked.contains(&"provider_model_invocation"));
+        assert!(blocked.contains(&"credential_read"));
+        assert!(blocked.contains(&"live_kg_write"));
+        assert_eq!(
+            value["side_effects"]["report_route_invoked_runtime_execution"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["runtime_router_shadow_handoff_mutated_by_report_route"],
+            false
+        );
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["auth_secret_read"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(
+            value["side_effects"]["external_network_call_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["memory_store_mutated"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
     }
 
     #[test]

@@ -14,8 +14,8 @@ This route wires the full-enablement activation-readiness contract into the nati
 
 The route is source-wired and route-count-aware:
 
-- `native_gateway_source_command_count=70`
-- `route_count=70`
+- `native_gateway_source_command_count=71`
+- `route_count=71`
 - `route_count_cutover_floor=69`
 - `missing_route_count=0`
 - `route_count_source_command_accepted=true`
@@ -31,6 +31,7 @@ The runtime route composes existing local and live-readiness evidence:
 - `/api/hepta-core-fusion-readiness` remains fully fused on active package `hepta-cli` with zero remaining direct Codex dependency blockers
 - KG prompt-preview requirements remain blocked/report-only until future scoped approval
 - seven Rust contract references remain compile-checked by the normal preflight cargo gates
+- the shadow context activation execution readiness route is represented as source-wired report-only evidence
 
 ## Non-Activation Guarantees
 

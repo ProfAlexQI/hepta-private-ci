@@ -135,6 +135,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-con
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution readiness route gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement positive activation packet dry-run scaffold gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-positive-activation-packet-dry-run-scaffold-gate.sh
 
