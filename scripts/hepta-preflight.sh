@@ -162,6 +162,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-ope
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator-approved shadow context activation execution controlled readback receipt trusted operator packet complete precondition operator approval lane separation gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-complete-precondition-operator-approval-lane-separation-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator-approved memory live mutation durable lane gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-memory-live-mutation-durable-lane-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement positive activation packet dry-run scaffold gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-positive-activation-packet-dry-run-scaffold-gate.sh
 
