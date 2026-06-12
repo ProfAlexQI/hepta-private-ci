@@ -82,6 +82,8 @@ const HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT: &str =
     "/api/hepta-channel-adapter-status-inventory";
 const HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_ENDPOINT: &str =
     "/api/hepta-local-tooling-content-inventory";
+const HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENDPOINT: &str =
+    "/api/hepta-systems-tool-registry-inventory";
 const HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_ENDPOINT: &str =
     "/api/hepta-memory-capability-absorption-inventory";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_READINESS_ENDPOINT: &str =
@@ -108,6 +110,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_MEMORY_LIVE
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-memory-live-mutation-durable-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-intelligence-context-attachment-lane";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -118,7 +122,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 81;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 83;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -263,6 +267,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
     },
     ControlUiRouteSpec {
         method: "GET",
+        pattern: HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENDPOINT,
+        source_command: "/hepta-systems-tool-registry-inventory --json",
+        capability: "hepta-systems-tool-registry-inventory",
+        side_effect_boundary: "read-only plugin/tool/workflow ToolRegistry inventory without tool execution",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
         pattern: HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_ENDPOINT,
         source_command: "/hepta-memory-capability-absorption-inventory --json",
         capability: "hepta-memory-capability-absorption-inventory",
@@ -351,6 +362,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-intelligence-context-attachment-lane --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-intelligence-context-attachment-lane",
         side_effect_boundary: "read-only operator-approved Hepta Intelligence context attachment lane status; enables bounded context/preview lane authority without executing prompt injection, provider/model, KG, channel, or public-claim effects",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane",
+        side_effect_boundary: "read-only operator-approved KG prompt-preview adapter lane status; enables KG preview/read-only adapter lane authority without reading credentials, invoking adapters, writing KG, invoking providers/models, delivering channels, or claiming public release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1041,6 +1059,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(&hepta_local_tooling_content_inventory_report()),
                 );
             }
+            HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_systems_tool_registry_inventory_report()),
+                );
+            }
             HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1164,6 +1189,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_operator_approved_hepta_intelligence_context_attachment_lane_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_report(),
                     ),
                 );
             }
@@ -1626,6 +1661,7 @@ fn index_html(
         <p><code>/api/hepta-runtime-session-dry-run-inventory</code> covers runtime-event, task, session, gateway, diagnostics, and admin ops as local dry-run migration plans without mutating registries or enqueuing gateway events.</p>
         <p><code>/api/hepta-channel-adapter-status-inventory</code> keeps Discord, Feishu, iMessage, Telegram, voice, webhook, and file-transfer adapters visible only as disabled/live-gated status entries.</p>
         <p><code>/api/hepta-local-tooling-content-inventory</code> maps canvas, diffs, filesystem, process, local content, search, readability, wiki, and tool invocation surfaces as local plans only.</p>
+        <p><code>/api/hepta-systems-tool-registry-inventory</code> exposes built-in, MCP, dynamic, plugin, and connector tool registry metadata as a read-only report without invoking tools.</p>
         <p><code>/api/hepta-memory-capability-absorption-inventory</code> exposes memory, capability, plugin, coding-agent, search-provider, and skill-workshop gaps as read-only absorption status.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-readiness</code> binds the memory, Intelligence, and KG activation-readiness chain to a route-count-aware runtime surface without enabling live mutation or prompt/context execution.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness</code> reports the operator-approved shadow context activation execution source surface without invoking providers, reading credentials, writing KG, or mutating live Memory.</p>
@@ -4464,6 +4500,52 @@ struct HeptaLocalToolingContentInventorySideEffects {
 }
 
 #[derive(Debug, Serialize)]
+struct HeptaSystemsToolRegistryInventoryResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    endpoint: &'static str,
+    systems_plan_doc: &'static str,
+    canonical_matrix_doc: &'static str,
+    inventory_report_script: &'static str,
+    inventory_gate_script: &'static str,
+    current_hepta_codex_script_total: usize,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    missing_route_count: usize,
+    source_kind_count: usize,
+    source_kinds: &'static [&'static str],
+    inventory_entry_field_count: usize,
+    inventory_entry_fields: &'static [&'static str],
+    next_absorption_target: &'static str,
+    tool_registry_inventory_ready: bool,
+    tool_invocation_enabled: bool,
+    mcp_server_start_enabled: bool,
+    plugin_install_enabled: bool,
+    connector_install_enabled: bool,
+    side_effects: HeptaSystemsToolRegistryInventorySideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaSystemsToolRegistryInventorySideEffects {
+    tool_invoked: bool,
+    mcp_server_started: bool,
+    plugin_installed: bool,
+    connector_installed: bool,
+    credential_read: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    channel_send_performed: bool,
+    gateway_or_auth_mutated: bool,
+    native_post_mutation_performed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct HeptaMemoryCapabilityAbsorptionInventoryResponse {
     product: &'static str,
     runtime: &'static str,
@@ -5722,6 +5804,83 @@ struct HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedHeptaIntelligenceC
 }
 
 #[derive(Debug, Serialize)]
+struct HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedKgPromptPreviewReadOnlyAdapterLaneResponse
+{
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    endpoint: &'static str,
+    hepta_intelligence_context_attachment_lane_endpoint: &'static str,
+    hepta_intelligence_context_attachment_lane_doc: &'static str,
+    kg_prompt_preview_read_only_adapter_lane_doc: &'static str,
+    source_hepta_intelligence_context_attachment_lane_gate: &'static str,
+    source_kg_prompt_preview_read_only_adapter_lane_gate: &'static str,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    implemented_route_count: usize,
+    missing_route_count: usize,
+    route_count_cutover_floor: usize,
+    route_count_floor_preserved: bool,
+    route_count_source_command_accepted: bool,
+    source_route_wired: bool,
+    hepta_intelligence_context_attachment_lane_ready: bool,
+    hepta_intelligence_context_attachment_lane_status: &'static str,
+    operator_authorization_source: &'static str,
+    operator_authorization_scope: &'static str,
+    operator_authorization_received: bool,
+    operator_approved_activation_lane_present: bool,
+    operator_approved_activation_lane_effective: bool,
+    memory_durable_mutation_lane_enabled: bool,
+    memory_store_write_path_enabled: bool,
+    memory_store_mutation_enabled: bool,
+    live_memory_write_allowed_by_lane: bool,
+    live_memory_write_performed_by_report_route: bool,
+    hepta_intelligence_context_attachment_lane_enabled: bool,
+    hepta_intelligence_context_attachment_allowed_by_lane: bool,
+    hepta_intelligence_context_attached_by_report_route: bool,
+    bounded_prompt_preview_lane_enabled: bool,
+    bounded_prompt_preview_allowed_by_lane: bool,
+    prompt_preview_rendered_by_report_route: bool,
+    prompt_payload_materialized_by_report_route: bool,
+    prompt_preview_requires_explicit_command: bool,
+    kg_prompt_preview_lane_enabled: bool,
+    kg_prompt_preview_allowed_by_lane: bool,
+    kg_prompt_preview_rendered_by_report_route: bool,
+    kg_external_adapter_read_lane_enabled: bool,
+    kg_external_adapter_read_allowed_by_lane: bool,
+    kg_external_adapter_read_performed_by_report_route: bool,
+    kg_external_adapter_requires_explicit_command: bool,
+    kg_external_adapter_credential_reference_required: bool,
+    kg_external_adapter_credential_read_allowed_by_lane: bool,
+    kg_external_adapter_credential_read_performed_by_report_route: bool,
+    supported_kg_adapter_count: usize,
+    supported_kg_adapters: &'static [&'static str],
+    context_handoff_acceptance_required: bool,
+    context_attachment_requires_explicit_command: bool,
+    context_injection_allowed_by_lane: bool,
+    context_injection_performed_by_report_route: bool,
+    kg_live_write_lane_enabled: bool,
+    kg_live_write_allowed_by_lane: bool,
+    kg_live_write_performed_by_report_route: bool,
+    provider_model_invocation_lane_enabled: bool,
+    provider_model_invocation_allowed_by_lane: bool,
+    channel_delivery_lane_enabled: bool,
+    live_mutation_enabled_count: usize,
+    current_live_enabled_lane_count: usize,
+    enablement_lane_count: usize,
+    ready_enablement_lane_count: usize,
+    blocked_actions: &'static [&'static str],
+    allowed_next_actions: &'static [&'static str],
+    side_effects:
+        HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedMemoryLiveMutationDurableLaneSideEffects,
+}
+
+#[derive(Debug, Serialize)]
 struct HeptaReleaseHardeningStatusGateResponse {
     product: &'static str,
     runtime: &'static str,
@@ -6727,6 +6886,23 @@ const HEPTA_LOCAL_TOOLING_CONTENT_SURFACES: &[HeptaLocalToolingContentSurface] =
     },
 ];
 
+const HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_SOURCE_KINDS: &[&str] =
+    &["built_in", "mcp", "dynamic", "plugin", "connector"];
+
+const HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENTRY_FIELDS: &[&str] = &[
+    "id",
+    "name",
+    "description",
+    "source",
+    "owner",
+    "has_input_schema",
+    "has_output_schema",
+    "defer_loading",
+    "has_skills",
+    "mcp_server_names",
+    "app_connector_ids",
+];
+
 const HEPTA_MEMORY_CAPABILITY_ABSORPTION_SURFACES: &[HeptaMemoryCapabilityAbsorptionSurface] = &[
     HeptaMemoryCapabilityAbsorptionSurface {
         name: "capability-surface",
@@ -7331,6 +7507,51 @@ fn hepta_local_tooling_content_inventory_report() -> HeptaLocalToolingContentInv
     }
 }
 
+fn hepta_systems_tool_registry_inventory_report() -> HeptaSystemsToolRegistryInventoryResponse {
+    let route_matrix = control_ui_route_parity_report();
+    HeptaSystemsToolRegistryInventoryResponse {
+        product: "Hepta",
+        runtime: "hepta",
+        status: "ready",
+        source_command: "/hepta-systems-tool-registry-inventory --json",
+        native_route: true,
+        compatibility_mode: "native_systems_tool_registry_inventory_report",
+        side_effect_free: true,
+        audit_date: "2026-06-12",
+        endpoint: HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENDPOINT,
+        systems_plan_doc: "docs/architecture/HEPTA_SYSTEMS_PLUGINS_TOOLS_WORKFLOW_PLAN_2026-06-12.md",
+        canonical_matrix_doc: "docs/architecture/HEPTA_SYSTEMS_CANONICAL_GATE_MATRIX_2026-06-12.md",
+        inventory_report_script: "scripts/hepta-systems-tool-registry-inventory-report.sh",
+        inventory_gate_script: "scripts/hepta-systems-tool-registry-inventory-gate.sh",
+        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        source_kind_count: HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_SOURCE_KINDS.len(),
+        source_kinds: HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_SOURCE_KINDS,
+        inventory_entry_field_count: HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENTRY_FIELDS.len(),
+        inventory_entry_fields: HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENTRY_FIELDS,
+        next_absorption_target: "native_systems_cockpit_read_only_tool_registry_view",
+        tool_registry_inventory_ready: true,
+        tool_invocation_enabled: false,
+        mcp_server_start_enabled: false,
+        plugin_install_enabled: false,
+        connector_install_enabled: false,
+        side_effects: HeptaSystemsToolRegistryInventorySideEffects {
+            tool_invoked: false,
+            mcp_server_started: false,
+            plugin_installed: false,
+            connector_installed: false,
+            credential_read: false,
+            provider_invoked: false,
+            model_invoked: false,
+            channel_send_performed: false,
+            gateway_or_auth_mutated: false,
+            native_post_mutation_performed: false,
+        },
+    }
+}
+
 fn hepta_memory_capability_absorption_inventory_report()
 -> HeptaMemoryCapabilityAbsorptionInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
@@ -7854,6 +8075,33 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTEL
     "install Hepta Intelligence context attachment lane route through controlled live catch-up after full preflight",
     "slice KG prompt-preview/read-only adapter lane while keeping KG live write, provider/model invocation, and channel delivery disabled",
 ];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_BLOCKED_ACTIONS:
+    &[&str] = &[
+    "render_prompt_preview_from_report_route",
+    "materialize_prompt_payload_from_report_route",
+    "attach_or_inject_context_from_report_route",
+    "read_kg_adapter_from_report_route",
+    "construct_external_kg_adapter_client_from_report_route",
+    "capture_kg_adapter_endpoint_or_credential_value",
+    "read_auth_secret_or_credential",
+    "write_live_kg",
+    "write_memory_from_report_route",
+    "invoke_provider_or_model",
+    "telegram_or_channel_delivery",
+    "service_restart_or_active_binary_mutation",
+    "release_or_public_claim",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_NEXT_ACTIONS:
+    &[&str] = &[
+    "run operator-approved KG prompt-preview/read-only adapter lane source gate against the Hepta Intelligence context attachment lane route",
+    "install KG prompt-preview/read-only adapter lane route through controlled live catch-up after full preflight",
+    "slice explicit prompt-preview payload shape materialization while keeping provider/model invocation, KG live write, credential reads, and channel delivery disabled",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS: &[&str] =
+    &["graphiti", "neo4j", "cocoindex"];
 
 fn hepta_memory_intelligence_kg_full_enablement_runtime_readiness_report()
 -> HeptaMemoryIntelligenceKgFullEnablementRuntimeReadinessResponse {
@@ -9610,6 +9858,183 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_approved_hepta_intellig
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_BLOCKED_ACTIONS,
         allowed_next_actions:
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_NEXT_ACTIONS,
+        side_effects:
+            HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedMemoryLiveMutationDurableLaneSideEffects {
+                report_route_invoked_runtime_execution: false,
+                live_7373_router_mutated_by_report_route: false,
+                operator_approval_lane_recorded: false,
+                operator_approval_lane_persisted: false,
+                memory_store_write_path_enabled_by_report_route: false,
+                memory_store_mutated: false,
+                memory_store_write_performed: false,
+                memory_write_receipt_recorded: false,
+                memory_write_receipt_persisted: false,
+                rollback_kill_switch_mutated: false,
+                post_write_validation_performed: false,
+                hepta_intelligence_context_attached: false,
+                prompt_preview_rendered: false,
+                prompt_payload_materialized: false,
+                context_injection_performed: false,
+                provider_invoked: false,
+                model_invoked: false,
+                auth_secret_read: false,
+                credential_read: false,
+                external_network_call_performed: false,
+                external_kg_adapter_read_performed: false,
+                live_kg_write_performed: false,
+                channel_send_performed: false,
+                external_send_performed: false,
+                gateway_route_migration_performed: false,
+                source_command_migration_performed: false,
+                service_restarted: false,
+                active_binary_mutated: false,
+                release_artifact_written: false,
+                public_release_claimed: false,
+                public_ga_claimed: false,
+            },
+    }
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_report()
+-> HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedKgPromptPreviewReadOnlyAdapterLaneResponse
+{
+    let route_matrix = control_ui_route_parity_report();
+    let context_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_hepta_intelligence_context_attachment_lane_report();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && context_lane.status == "ready"
+        && context_lane.operator_approved_activation_lane_present
+        && context_lane.operator_approved_activation_lane_effective
+        && context_lane.memory_durable_mutation_lane_enabled
+        && context_lane.memory_store_write_path_enabled
+        && context_lane.memory_store_mutation_enabled
+        && context_lane.live_memory_write_allowed_by_lane
+        && !context_lane.live_memory_write_performed_by_report_route
+        && context_lane.hepta_intelligence_context_attachment_lane_enabled
+        && context_lane.hepta_intelligence_context_attachment_allowed_by_lane
+        && !context_lane.hepta_intelligence_context_attached_by_report_route
+        && context_lane.bounded_prompt_preview_lane_enabled
+        && context_lane.bounded_prompt_preview_allowed_by_lane
+        && !context_lane.prompt_preview_rendered_by_report_route
+        && !context_lane.prompt_payload_materialized_by_report_route
+        && !context_lane.context_injection_allowed_by_lane
+        && !context_lane.context_injection_performed_by_report_route
+        && !context_lane.kg_prompt_preview_lane_enabled
+        && !context_lane.kg_external_adapter_read_lane_enabled
+        && !context_lane.kg_live_write_lane_enabled
+        && !context_lane.provider_model_invocation_lane_enabled
+        && !context_lane.channel_delivery_lane_enabled
+        && context_lane.live_mutation_enabled_count == 1
+        && context_lane.current_live_enabled_lane_count == 2
+        && !context_lane.side_effects.memory_store_mutated
+        && !context_lane.side_effects.memory_store_write_performed
+        && !context_lane
+            .side_effects
+            .hepta_intelligence_context_attached
+        && !context_lane.side_effects.prompt_preview_rendered
+        && !context_lane.side_effects.prompt_payload_materialized
+        && !context_lane.side_effects.context_injection_performed
+        && !context_lane.side_effects.provider_invoked
+        && !context_lane.side_effects.model_invoked
+        && !context_lane.side_effects.auth_secret_read
+        && !context_lane.side_effects.credential_read
+        && !context_lane.side_effects.external_kg_adapter_read_performed
+        && !context_lane.side_effects.live_kg_write_performed
+        && !context_lane.side_effects.channel_send_performed
+        && !context_lane.side_effects.service_restarted
+        && !context_lane.side_effects.active_binary_mutated
+        && !context_lane.side_effects.public_release_claimed;
+
+    HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedKgPromptPreviewReadOnlyAdapterLaneResponse {
+        product: "Hepta",
+        runtime: "hepta",
+        status: if report_ready { "ready" } else { "blocked" },
+        source_command:
+            "/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane --json",
+        native_route: true,
+        compatibility_mode:
+            "native_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_status",
+        side_effect_free: true,
+        audit_date: "2026-06-12",
+        endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT,
+        hepta_intelligence_context_attachment_lane_endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_ENDPOINT,
+        hepta_intelligence_context_attachment_lane_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_GATE.md",
+        kg_prompt_preview_read_only_adapter_lane_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_GATE.md",
+        source_hepta_intelligence_context_attachment_lane_gate:
+            "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-intelligence-context-attachment-lane-gate.sh",
+        source_kg_prompt_preview_read_only_adapter_lane_gate:
+            "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane-gate.sh",
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        implemented_route_count: route_matrix.implemented_route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        route_count_cutover_floor: NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+        route_count_floor_preserved,
+        route_count_source_command_accepted,
+        source_route_wired: true,
+        hepta_intelligence_context_attachment_lane_ready:
+            context_lane.hepta_intelligence_context_attachment_lane_enabled,
+        hepta_intelligence_context_attachment_lane_status: context_lane.status,
+        operator_authorization_source: "telegram_direct_operator_authorization_2026_06_12_18_50_49_asia_shanghai",
+        operator_authorization_scope:
+            "kg_prompt_preview_read_only_adapter_lane_no_kg_live_write_provider_model_channel_or_public_release",
+        operator_authorization_received: true,
+        operator_approved_activation_lane_present: true,
+        operator_approved_activation_lane_effective: true,
+        memory_durable_mutation_lane_enabled: true,
+        memory_store_write_path_enabled: true,
+        memory_store_mutation_enabled: true,
+        live_memory_write_allowed_by_lane: true,
+        live_memory_write_performed_by_report_route: false,
+        hepta_intelligence_context_attachment_lane_enabled: true,
+        hepta_intelligence_context_attachment_allowed_by_lane: true,
+        hepta_intelligence_context_attached_by_report_route: false,
+        bounded_prompt_preview_lane_enabled: true,
+        bounded_prompt_preview_allowed_by_lane: true,
+        prompt_preview_rendered_by_report_route: false,
+        prompt_payload_materialized_by_report_route: false,
+        prompt_preview_requires_explicit_command: true,
+        kg_prompt_preview_lane_enabled: true,
+        kg_prompt_preview_allowed_by_lane: true,
+        kg_prompt_preview_rendered_by_report_route: false,
+        kg_external_adapter_read_lane_enabled: true,
+        kg_external_adapter_read_allowed_by_lane: true,
+        kg_external_adapter_read_performed_by_report_route: false,
+        kg_external_adapter_requires_explicit_command: true,
+        kg_external_adapter_credential_reference_required: true,
+        kg_external_adapter_credential_read_allowed_by_lane: false,
+        kg_external_adapter_credential_read_performed_by_report_route: false,
+        supported_kg_adapter_count:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS.len(),
+        supported_kg_adapters:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS,
+        context_handoff_acceptance_required: true,
+        context_attachment_requires_explicit_command: true,
+        context_injection_allowed_by_lane: false,
+        context_injection_performed_by_report_route: false,
+        kg_live_write_lane_enabled: false,
+        kg_live_write_allowed_by_lane: false,
+        kg_live_write_performed_by_report_route: false,
+        provider_model_invocation_lane_enabled: false,
+        provider_model_invocation_allowed_by_lane: false,
+        channel_delivery_lane_enabled: false,
+        live_mutation_enabled_count: 1,
+        current_live_enabled_lane_count: 3,
+        enablement_lane_count: 6,
+        ready_enablement_lane_count: 6,
+        blocked_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_BLOCKED_ACTIONS,
+        allowed_next_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_NEXT_ACTIONS,
         side_effects:
             HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedMemoryLiveMutationDurableLaneSideEffects {
                 report_route_invoked_runtime_execution: false,
@@ -12283,7 +12708,12 @@ mod tests {
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-authority-denial".to_string()));
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation".to_string()));
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-intake-precondition".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-partial-precondition-denial-matrix".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-complete-precondition-authority-denial".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-complete-precondition-operator-approval-lane-separation".to_string()));
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-memory-live-mutation-durable-lane".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-intelligence-context-attachment-lane".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane".to_string()));
         assert!(routes.contains(&"GET /api/hepta-release-hardening-status-gate".to_string()));
         assert!(routes.contains(&"GET /api/hepta-provider-channel-dry-run-plan".to_string()));
         assert!(routes.contains(&"GET /api/hepta-native-packaging-gate".to_string()));
@@ -13559,6 +13989,67 @@ mod tests {
         assert!(blockers.contains(&"process_execution_not_operator_approved"));
         assert!(blockers.contains(&"filesystem_write_not_operator_approved"));
         assert!(blockers.contains(&"tool_invocation_not_operator_approved"));
+    }
+
+    #[test]
+    fn hepta_systems_tool_registry_inventory_endpoint_is_read_only() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("tool registry inventory json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-systems-tool-registry-inventory --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_systems_tool_registry_inventory_report"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_SYSTEMS_TOOL_REGISTRY_INVENTORY_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["source_kind_count"], 5);
+        assert_eq!(value["inventory_entry_field_count"], 11);
+        assert_eq!(
+            value["next_absorption_target"],
+            "native_systems_cockpit_read_only_tool_registry_view"
+        );
+        assert_eq!(value["tool_registry_inventory_ready"], true);
+        assert_eq!(value["tool_invocation_enabled"], false);
+        assert_eq!(value["mcp_server_start_enabled"], false);
+        assert_eq!(value["plugin_install_enabled"], false);
+        assert_eq!(value["connector_install_enabled"], false);
+        assert_eq!(value["side_effects"]["tool_invoked"], false);
+        assert_eq!(value["side_effects"]["mcp_server_started"], false);
+        assert_eq!(value["side_effects"]["plugin_installed"], false);
+        assert_eq!(value["side_effects"]["connector_installed"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["gateway_or_auth_mutated"], false);
+        assert_eq!(
+            value["side_effects"]["native_post_mutation_performed"],
+            false
+        );
     }
 
     #[test]
@@ -15555,6 +16046,180 @@ mod tests {
         assert!(blocked.contains(&"invoke_provider_or_model"));
         assert!(blocked.contains(&"read_external_kg_adapter"));
         assert!(blocked.contains(&"write_live_kg"));
+        assert!(blocked.contains(&"telegram_or_channel_delivery"));
+        assert_eq!(
+            value["side_effects"]["report_route_invoked_runtime_execution"],
+            false
+        );
+        assert_eq!(value["side_effects"]["memory_store_mutated"], false);
+        assert_eq!(value["side_effects"]["memory_store_write_performed"], false);
+        assert_eq!(
+            value["side_effects"]["hepta_intelligence_context_attached"],
+            false
+        );
+        assert_eq!(value["side_effects"]["prompt_preview_rendered"], false);
+        assert_eq!(value["side_effects"]["prompt_payload_materialized"], false);
+        assert_eq!(value["side_effects"]["context_injection_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["auth_secret_read"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(
+            value["side_effects"]["external_kg_adapter_read_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
+        assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_endpoint_enables_preview_adapter_lane_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("operator-approved KG prompt preview read-only adapter lane json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_status"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["hepta_intelligence_context_attachment_lane_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_route_wired"], true);
+        assert_eq!(
+            value["hepta_intelligence_context_attachment_lane_ready"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_context_attachment_lane_status"],
+            "ready"
+        );
+        assert_eq!(value["operator_authorization_received"], true);
+        assert_eq!(
+            value["operator_authorization_scope"],
+            "kg_prompt_preview_read_only_adapter_lane_no_kg_live_write_provider_model_channel_or_public_release"
+        );
+        assert_eq!(value["operator_approved_activation_lane_present"], true);
+        assert_eq!(value["operator_approved_activation_lane_effective"], true);
+        assert_eq!(value["memory_durable_mutation_lane_enabled"], true);
+        assert_eq!(value["memory_store_write_path_enabled"], true);
+        assert_eq!(value["memory_store_mutation_enabled"], true);
+        assert_eq!(value["live_memory_write_allowed_by_lane"], true);
+        assert_eq!(value["live_memory_write_performed_by_report_route"], false);
+        assert_eq!(
+            value["hepta_intelligence_context_attachment_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_context_attachment_allowed_by_lane"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_context_attached_by_report_route"],
+            false
+        );
+        assert_eq!(value["bounded_prompt_preview_lane_enabled"], true);
+        assert_eq!(value["bounded_prompt_preview_allowed_by_lane"], true);
+        assert_eq!(value["prompt_preview_rendered_by_report_route"], false);
+        assert_eq!(value["prompt_payload_materialized_by_report_route"], false);
+        assert_eq!(value["prompt_preview_requires_explicit_command"], true);
+        assert_eq!(value["kg_prompt_preview_lane_enabled"], true);
+        assert_eq!(value["kg_prompt_preview_allowed_by_lane"], true);
+        assert_eq!(value["kg_prompt_preview_rendered_by_report_route"], false);
+        assert_eq!(value["kg_external_adapter_read_lane_enabled"], true);
+        assert_eq!(value["kg_external_adapter_read_allowed_by_lane"], true);
+        assert_eq!(
+            value["kg_external_adapter_read_performed_by_report_route"],
+            false
+        );
+        assert_eq!(value["kg_external_adapter_requires_explicit_command"], true);
+        assert_eq!(
+            value["kg_external_adapter_credential_reference_required"],
+            true
+        );
+        assert_eq!(
+            value["kg_external_adapter_credential_read_allowed_by_lane"],
+            false
+        );
+        assert_eq!(
+            value["kg_external_adapter_credential_read_performed_by_report_route"],
+            false
+        );
+        assert_eq!(value["supported_kg_adapter_count"], 3);
+        let adapters = value["supported_kg_adapters"]
+            .as_array()
+            .expect("supported KG adapters")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(adapters.contains(&"graphiti"));
+        assert!(adapters.contains(&"neo4j"));
+        assert!(adapters.contains(&"cocoindex"));
+        assert_eq!(value["context_handoff_acceptance_required"], true);
+        assert_eq!(value["context_attachment_requires_explicit_command"], true);
+        assert_eq!(value["context_injection_allowed_by_lane"], false);
+        assert_eq!(value["context_injection_performed_by_report_route"], false);
+        assert_eq!(value["kg_live_write_lane_enabled"], false);
+        assert_eq!(value["kg_live_write_allowed_by_lane"], false);
+        assert_eq!(value["kg_live_write_performed_by_report_route"], false);
+        assert_eq!(value["provider_model_invocation_lane_enabled"], false);
+        assert_eq!(value["provider_model_invocation_allowed_by_lane"], false);
+        assert_eq!(value["channel_delivery_lane_enabled"], false);
+        assert_eq!(value["live_mutation_enabled_count"], 1);
+        assert_eq!(value["current_live_enabled_lane_count"], 3);
+        assert_eq!(value["enablement_lane_count"], 6);
+        assert_eq!(value["ready_enablement_lane_count"], 6);
+
+        let blocked = value["blocked_actions"]
+            .as_array()
+            .expect("blocked KG prompt preview read-only adapter lane actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blocked.contains(&"render_prompt_preview_from_report_route"));
+        assert!(blocked.contains(&"read_kg_adapter_from_report_route"));
+        assert!(blocked.contains(&"capture_kg_adapter_endpoint_or_credential_value"));
+        assert!(blocked.contains(&"read_auth_secret_or_credential"));
+        assert!(blocked.contains(&"write_live_kg"));
+        assert!(blocked.contains(&"invoke_provider_or_model"));
         assert!(blocked.contains(&"telegram_or_channel_delivery"));
         assert_eq!(
             value["side_effects"]["report_route_invoked_runtime_execution"],
