@@ -171,6 +171,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-int
 echo "[hepta-preflight] memory/intelligence full enablement operator-approved KG prompt-preview read-only adapter lane gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator-approved KG prompt payload materialization lane gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement positive activation packet dry-run scaffold gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-positive-activation-packet-dry-run-scaffold-gate.sh
 

@@ -112,6 +112,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTEL
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-intelligence-context-attachment-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -122,7 +124,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 17;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 83;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 84;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -369,6 +371,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane",
         side_effect_boundary: "read-only operator-approved KG prompt-preview adapter lane status; enables KG preview/read-only adapter lane authority without reading credentials, invoking adapters, writing KG, invoking providers/models, delivering channels, or claiming public release",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane",
+        side_effect_boundary: "read-only operator-approved KG prompt payload materialization lane status; enables explicit bounded payload-shape authority without materializing payloads from report routes, reading credentials, invoking adapters/providers/models, writing KG, delivering channels, or claiming public release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1202,6 +1211,16 @@ fn route_native_gateway_request_with_body(
                     ),
                 );
             }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_payload_materialization_lane_report(),
+                    ),
+                );
+            }
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1669,6 +1688,7 @@ fn index_html(
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-no-persistence</code> reports that controlled readback receipts remain non-persistent and cannot become approval evidence, activation authority, public claims, or live writes.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-authority-denial</code> reports that controlled readback receipts cannot become trusted operator acceptance records, activation authority, activation commands, or public claims.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation</code> reports that controlled readback receipts cannot substitute, bind, refresh, replay, or materialize a trusted operator packet.</p>
+        <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane</code> reports that explicit KG prompt payload shape materialization is now lane-authorized while report routes still cannot materialize payloads, read credentials, invoke KG adapters/providers/models, write KG, deliver channels, or claim public release.</p>
         <p><code>/api/hepta-release-hardening-status-gate</code> keeps remaining release, external-production, launchd, ops, and hardening script families visible as local-only status gates.</p>
         <p><code>/api/hepta-provider-channel-dry-run-plan</code> promotes provider, search, channel, and runtime/session gaps into deterministic dry-run plan contracts without credentials, external calls, delivery, or store mutation.</p>
         <p><code>/api/hepta-native-packaging-gate</code> tracks Hepta Native manifest, package metadata, app resources, and local smoke readiness before signing or public distribution.</p>
@@ -5881,6 +5901,91 @@ struct HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedKgPromptPreviewRea
 }
 
 #[derive(Debug, Serialize)]
+struct HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedKgPromptPayloadMaterializationLaneResponse
+{
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    audit_date: &'static str,
+    endpoint: &'static str,
+    kg_prompt_preview_read_only_adapter_lane_endpoint: &'static str,
+    kg_prompt_preview_read_only_adapter_lane_doc: &'static str,
+    kg_prompt_payload_materialization_lane_doc: &'static str,
+    source_kg_prompt_preview_read_only_adapter_lane_gate: &'static str,
+    source_kg_prompt_payload_materialization_lane_gate: &'static str,
+    native_gateway_source_command_count: usize,
+    route_count: usize,
+    implemented_route_count: usize,
+    missing_route_count: usize,
+    route_count_cutover_floor: usize,
+    route_count_floor_preserved: bool,
+    route_count_source_command_accepted: bool,
+    source_route_wired: bool,
+    kg_prompt_preview_read_only_adapter_lane_ready: bool,
+    kg_prompt_preview_read_only_adapter_lane_status: &'static str,
+    operator_authorization_source: &'static str,
+    operator_authorization_scope: &'static str,
+    operator_authorization_received: bool,
+    operator_approved_activation_lane_present: bool,
+    operator_approved_activation_lane_effective: bool,
+    memory_durable_mutation_lane_enabled: bool,
+    memory_store_write_path_enabled: bool,
+    memory_store_mutation_enabled: bool,
+    live_memory_write_allowed_by_lane: bool,
+    live_memory_write_performed_by_report_route: bool,
+    hepta_intelligence_context_attachment_lane_enabled: bool,
+    hepta_intelligence_context_attachment_allowed_by_lane: bool,
+    hepta_intelligence_context_attached_by_report_route: bool,
+    bounded_prompt_preview_lane_enabled: bool,
+    bounded_prompt_preview_allowed_by_lane: bool,
+    prompt_preview_rendered_by_report_route: bool,
+    prompt_preview_requires_explicit_command: bool,
+    prompt_payload_materialized_by_report_route: bool,
+    kg_prompt_preview_lane_enabled: bool,
+    kg_prompt_preview_allowed_by_lane: bool,
+    kg_prompt_preview_rendered_by_report_route: bool,
+    kg_external_adapter_read_lane_enabled: bool,
+    kg_external_adapter_read_allowed_by_lane: bool,
+    kg_external_adapter_read_performed_by_report_route: bool,
+    kg_external_adapter_requires_explicit_command: bool,
+    kg_external_adapter_credential_reference_required: bool,
+    kg_external_adapter_credential_read_allowed_by_lane: bool,
+    kg_external_adapter_credential_read_performed_by_report_route: bool,
+    supported_kg_adapter_count: usize,
+    supported_kg_adapters: &'static [&'static str],
+    kg_prompt_payload_materialization_lane_enabled: bool,
+    kg_prompt_payload_materialization_allowed_by_lane: bool,
+    kg_prompt_payload_materialized_by_report_route: bool,
+    kg_prompt_payload_shape_requires_explicit_command: bool,
+    kg_prompt_payload_redaction_required: bool,
+    kg_prompt_payload_raw_text_exposed_by_report_route: bool,
+    kg_prompt_payload_hash_preview_allowed_by_lane: bool,
+    kg_prompt_payload_hash_preview_rendered_by_report_route: bool,
+    context_handoff_acceptance_required: bool,
+    context_attachment_requires_explicit_command: bool,
+    context_injection_allowed_by_lane: bool,
+    context_injection_performed_by_report_route: bool,
+    kg_live_write_lane_enabled: bool,
+    kg_live_write_allowed_by_lane: bool,
+    kg_live_write_performed_by_report_route: bool,
+    provider_model_invocation_lane_enabled: bool,
+    provider_model_invocation_allowed_by_lane: bool,
+    channel_delivery_lane_enabled: bool,
+    live_mutation_enabled_count: usize,
+    current_live_enabled_lane_count: usize,
+    enablement_lane_count: usize,
+    ready_enablement_lane_count: usize,
+    blocked_actions: &'static [&'static str],
+    allowed_next_actions: &'static [&'static str],
+    side_effects:
+        HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedMemoryLiveMutationDurableLaneSideEffects,
+}
+
+#[derive(Debug, Serialize)]
 struct HeptaReleaseHardeningStatusGateResponse {
     product: &'static str,
     runtime: &'static str,
@@ -8100,6 +8205,31 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_P
     "slice explicit prompt-preview payload shape materialization while keeping provider/model invocation, KG live write, credential reads, and channel delivery disabled",
 ];
 
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_BLOCKED_ACTIONS:
+    &[&str] = &[
+    "materialize_prompt_payload_from_report_route",
+    "expose_raw_prompt_payload_from_report_route",
+    "render_prompt_preview_from_report_route",
+    "attach_or_inject_context_from_report_route",
+    "read_kg_adapter_from_report_route",
+    "construct_external_kg_adapter_client_from_report_route",
+    "capture_kg_adapter_endpoint_or_credential_value",
+    "read_auth_secret_or_credential",
+    "write_live_kg",
+    "write_memory_from_report_route",
+    "invoke_provider_or_model",
+    "telegram_or_channel_delivery",
+    "service_restart_or_active_binary_mutation",
+    "release_or_public_claim",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_NEXT_ACTIONS:
+    &[&str] = &[
+    "run operator-approved KG prompt payload materialization lane source gate against the KG prompt-preview/read-only adapter lane route",
+    "install KG prompt payload materialization lane route through controlled live catch-up after full preflight",
+    "slice explicit redacted prompt payload acceptance receipt while keeping KG live write, provider/model invocation, credential reads, and channel delivery disabled",
+];
+
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS: &[&str] =
     &["graphiti", "neo4j", "cocoindex"];
 
@@ -10035,6 +10165,214 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_prev
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_BLOCKED_ACTIONS,
         allowed_next_actions:
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_NEXT_ACTIONS,
+        side_effects:
+            HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedMemoryLiveMutationDurableLaneSideEffects {
+                report_route_invoked_runtime_execution: false,
+                live_7373_router_mutated_by_report_route: false,
+                operator_approval_lane_recorded: false,
+                operator_approval_lane_persisted: false,
+                memory_store_write_path_enabled_by_report_route: false,
+                memory_store_mutated: false,
+                memory_store_write_performed: false,
+                memory_write_receipt_recorded: false,
+                memory_write_receipt_persisted: false,
+                rollback_kill_switch_mutated: false,
+                post_write_validation_performed: false,
+                hepta_intelligence_context_attached: false,
+                prompt_preview_rendered: false,
+                prompt_payload_materialized: false,
+                context_injection_performed: false,
+                provider_invoked: false,
+                model_invoked: false,
+                auth_secret_read: false,
+                credential_read: false,
+                external_network_call_performed: false,
+                external_kg_adapter_read_performed: false,
+                live_kg_write_performed: false,
+                channel_send_performed: false,
+                external_send_performed: false,
+                gateway_route_migration_performed: false,
+                source_command_migration_performed: false,
+                service_restarted: false,
+                active_binary_mutated: false,
+                release_artifact_written: false,
+                public_release_claimed: false,
+                public_ga_claimed: false,
+            },
+    }
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_payload_materialization_lane_report()
+-> HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedKgPromptPayloadMaterializationLaneResponse
+{
+    let route_matrix = control_ui_route_parity_report();
+    let preview_adapter_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_report();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && preview_adapter_lane.status == "ready"
+        && preview_adapter_lane.operator_approved_activation_lane_present
+        && preview_adapter_lane.operator_approved_activation_lane_effective
+        && preview_adapter_lane.memory_durable_mutation_lane_enabled
+        && preview_adapter_lane.memory_store_write_path_enabled
+        && preview_adapter_lane.memory_store_mutation_enabled
+        && preview_adapter_lane.live_memory_write_allowed_by_lane
+        && !preview_adapter_lane.live_memory_write_performed_by_report_route
+        && preview_adapter_lane.hepta_intelligence_context_attachment_lane_enabled
+        && preview_adapter_lane.hepta_intelligence_context_attachment_allowed_by_lane
+        && !preview_adapter_lane.hepta_intelligence_context_attached_by_report_route
+        && preview_adapter_lane.bounded_prompt_preview_lane_enabled
+        && preview_adapter_lane.bounded_prompt_preview_allowed_by_lane
+        && !preview_adapter_lane.prompt_preview_rendered_by_report_route
+        && !preview_adapter_lane.prompt_payload_materialized_by_report_route
+        && preview_adapter_lane.prompt_preview_requires_explicit_command
+        && preview_adapter_lane.kg_prompt_preview_lane_enabled
+        && preview_adapter_lane.kg_prompt_preview_allowed_by_lane
+        && !preview_adapter_lane.kg_prompt_preview_rendered_by_report_route
+        && preview_adapter_lane.kg_external_adapter_read_lane_enabled
+        && preview_adapter_lane.kg_external_adapter_read_allowed_by_lane
+        && !preview_adapter_lane.kg_external_adapter_read_performed_by_report_route
+        && preview_adapter_lane.kg_external_adapter_requires_explicit_command
+        && preview_adapter_lane.kg_external_adapter_credential_reference_required
+        && !preview_adapter_lane.kg_external_adapter_credential_read_allowed_by_lane
+        && !preview_adapter_lane.kg_external_adapter_credential_read_performed_by_report_route
+        && preview_adapter_lane.context_handoff_acceptance_required
+        && preview_adapter_lane.context_attachment_requires_explicit_command
+        && !preview_adapter_lane.context_injection_allowed_by_lane
+        && !preview_adapter_lane.context_injection_performed_by_report_route
+        && !preview_adapter_lane.kg_live_write_lane_enabled
+        && !preview_adapter_lane.kg_live_write_allowed_by_lane
+        && !preview_adapter_lane.kg_live_write_performed_by_report_route
+        && !preview_adapter_lane.provider_model_invocation_lane_enabled
+        && !preview_adapter_lane.provider_model_invocation_allowed_by_lane
+        && !preview_adapter_lane.channel_delivery_lane_enabled
+        && preview_adapter_lane.live_mutation_enabled_count == 1
+        && preview_adapter_lane.current_live_enabled_lane_count == 3
+        && !preview_adapter_lane.side_effects.memory_store_mutated
+        && !preview_adapter_lane
+            .side_effects
+            .memory_store_write_performed
+        && !preview_adapter_lane
+            .side_effects
+            .hepta_intelligence_context_attached
+        && !preview_adapter_lane.side_effects.prompt_preview_rendered
+        && !preview_adapter_lane
+            .side_effects
+            .prompt_payload_materialized
+        && !preview_adapter_lane
+            .side_effects
+            .context_injection_performed
+        && !preview_adapter_lane.side_effects.provider_invoked
+        && !preview_adapter_lane.side_effects.model_invoked
+        && !preview_adapter_lane.side_effects.auth_secret_read
+        && !preview_adapter_lane.side_effects.credential_read
+        && !preview_adapter_lane
+            .side_effects
+            .external_kg_adapter_read_performed
+        && !preview_adapter_lane.side_effects.live_kg_write_performed
+        && !preview_adapter_lane.side_effects.channel_send_performed
+        && !preview_adapter_lane.side_effects.service_restarted
+        && !preview_adapter_lane.side_effects.active_binary_mutated
+        && !preview_adapter_lane.side_effects.public_release_claimed;
+
+    HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedKgPromptPayloadMaterializationLaneResponse {
+        product: "Hepta",
+        runtime: "hepta",
+        status: if report_ready { "ready" } else { "blocked" },
+        source_command:
+            "/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane --json",
+        native_route: true,
+        compatibility_mode:
+            "native_full_enablement_operator_approved_kg_prompt_payload_materialization_lane_status",
+        side_effect_free: true,
+        audit_date: "2026-06-12",
+        endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT,
+        kg_prompt_preview_read_only_adapter_lane_endpoint:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT,
+        kg_prompt_preview_read_only_adapter_lane_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_GATE.md",
+        kg_prompt_payload_materialization_lane_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_GATE.md",
+        source_kg_prompt_preview_read_only_adapter_lane_gate:
+            "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane-gate.sh",
+        source_kg_prompt_payload_materialization_lane_gate:
+            "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane-gate.sh",
+        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        route_count: route_matrix.route_count,
+        implemented_route_count: route_matrix.implemented_route_count,
+        missing_route_count: route_matrix.missing_route_count,
+        route_count_cutover_floor: NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+        route_count_floor_preserved,
+        route_count_source_command_accepted,
+        source_route_wired: true,
+        kg_prompt_preview_read_only_adapter_lane_ready:
+            preview_adapter_lane.kg_prompt_preview_lane_enabled
+                && preview_adapter_lane.kg_external_adapter_read_lane_enabled,
+        kg_prompt_preview_read_only_adapter_lane_status: preview_adapter_lane.status,
+        operator_authorization_source: "telegram_direct_operator_authorization_2026_06_12_18_50_49_asia_shanghai",
+        operator_authorization_scope:
+            "kg_prompt_payload_materialization_lane_no_report_payload_no_kg_live_write_provider_model_channel_or_public_release",
+        operator_authorization_received: true,
+        operator_approved_activation_lane_present: true,
+        operator_approved_activation_lane_effective: true,
+        memory_durable_mutation_lane_enabled: true,
+        memory_store_write_path_enabled: true,
+        memory_store_mutation_enabled: true,
+        live_memory_write_allowed_by_lane: true,
+        live_memory_write_performed_by_report_route: false,
+        hepta_intelligence_context_attachment_lane_enabled: true,
+        hepta_intelligence_context_attachment_allowed_by_lane: true,
+        hepta_intelligence_context_attached_by_report_route: false,
+        bounded_prompt_preview_lane_enabled: true,
+        bounded_prompt_preview_allowed_by_lane: true,
+        prompt_preview_rendered_by_report_route: false,
+        prompt_preview_requires_explicit_command: true,
+        prompt_payload_materialized_by_report_route: false,
+        kg_prompt_preview_lane_enabled: true,
+        kg_prompt_preview_allowed_by_lane: true,
+        kg_prompt_preview_rendered_by_report_route: false,
+        kg_external_adapter_read_lane_enabled: true,
+        kg_external_adapter_read_allowed_by_lane: true,
+        kg_external_adapter_read_performed_by_report_route: false,
+        kg_external_adapter_requires_explicit_command: true,
+        kg_external_adapter_credential_reference_required: true,
+        kg_external_adapter_credential_read_allowed_by_lane: false,
+        kg_external_adapter_credential_read_performed_by_report_route: false,
+        supported_kg_adapter_count:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS.len(),
+        supported_kg_adapters:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS,
+        kg_prompt_payload_materialization_lane_enabled: true,
+        kg_prompt_payload_materialization_allowed_by_lane: true,
+        kg_prompt_payload_materialized_by_report_route: false,
+        kg_prompt_payload_shape_requires_explicit_command: true,
+        kg_prompt_payload_redaction_required: true,
+        kg_prompt_payload_raw_text_exposed_by_report_route: false,
+        kg_prompt_payload_hash_preview_allowed_by_lane: true,
+        kg_prompt_payload_hash_preview_rendered_by_report_route: false,
+        context_handoff_acceptance_required: true,
+        context_attachment_requires_explicit_command: true,
+        context_injection_allowed_by_lane: false,
+        context_injection_performed_by_report_route: false,
+        kg_live_write_lane_enabled: false,
+        kg_live_write_allowed_by_lane: false,
+        kg_live_write_performed_by_report_route: false,
+        provider_model_invocation_lane_enabled: false,
+        provider_model_invocation_allowed_by_lane: false,
+        channel_delivery_lane_enabled: false,
+        live_mutation_enabled_count: 1,
+        current_live_enabled_lane_count: 4,
+        enablement_lane_count: 7,
+        ready_enablement_lane_count: 7,
+        blocked_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_BLOCKED_ACTIONS,
+        allowed_next_actions:
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_NEXT_ACTIONS,
         side_effects:
             HeptaMemoryIntelligenceKgFullEnablementOperatorApprovedMemoryLiveMutationDurableLaneSideEffects {
                 report_route_invoked_runtime_execution: false,
@@ -12714,6 +13052,7 @@ mod tests {
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-memory-live-mutation-durable-lane".to_string()));
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-intelligence-context-attachment-lane".to_string()));
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane".to_string()));
         assert!(routes.contains(&"GET /api/hepta-release-hardening-status-gate".to_string()));
         assert!(routes.contains(&"GET /api/hepta-provider-channel-dry-run-plan".to_string()));
         assert!(routes.contains(&"GET /api/hepta-native-packaging-gate".to_string()));
@@ -16217,6 +16556,200 @@ mod tests {
         assert!(blocked.contains(&"render_prompt_preview_from_report_route"));
         assert!(blocked.contains(&"read_kg_adapter_from_report_route"));
         assert!(blocked.contains(&"capture_kg_adapter_endpoint_or_credential_value"));
+        assert!(blocked.contains(&"read_auth_secret_or_credential"));
+        assert!(blocked.contains(&"write_live_kg"));
+        assert!(blocked.contains(&"invoke_provider_or_model"));
+        assert!(blocked.contains(&"telegram_or_channel_delivery"));
+        assert_eq!(
+            value["side_effects"]["report_route_invoked_runtime_execution"],
+            false
+        );
+        assert_eq!(value["side_effects"]["memory_store_mutated"], false);
+        assert_eq!(value["side_effects"]["memory_store_write_performed"], false);
+        assert_eq!(
+            value["side_effects"]["hepta_intelligence_context_attached"],
+            false
+        );
+        assert_eq!(value["side_effects"]["prompt_preview_rendered"], false);
+        assert_eq!(value["side_effects"]["prompt_payload_materialized"], false);
+        assert_eq!(value["side_effects"]["context_injection_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["auth_secret_read"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(
+            value["side_effects"]["external_kg_adapter_read_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
+        assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_payload_materialization_lane_endpoint_enables_payload_shape_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("operator-approved KG prompt payload materialization lane json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_full_enablement_operator_approved_kg_prompt_payload_materialization_lane_status"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["kg_prompt_preview_read_only_adapter_lane_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_route_wired"], true);
+        assert_eq!(
+            value["kg_prompt_preview_read_only_adapter_lane_ready"],
+            true
+        );
+        assert_eq!(
+            value["kg_prompt_preview_read_only_adapter_lane_status"],
+            "ready"
+        );
+        assert_eq!(value["operator_authorization_received"], true);
+        assert_eq!(
+            value["operator_authorization_scope"],
+            "kg_prompt_payload_materialization_lane_no_report_payload_no_kg_live_write_provider_model_channel_or_public_release"
+        );
+        assert_eq!(value["operator_approved_activation_lane_present"], true);
+        assert_eq!(value["operator_approved_activation_lane_effective"], true);
+        assert_eq!(value["memory_durable_mutation_lane_enabled"], true);
+        assert_eq!(value["memory_store_write_path_enabled"], true);
+        assert_eq!(value["memory_store_mutation_enabled"], true);
+        assert_eq!(value["live_memory_write_allowed_by_lane"], true);
+        assert_eq!(value["live_memory_write_performed_by_report_route"], false);
+        assert_eq!(
+            value["hepta_intelligence_context_attachment_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_context_attachment_allowed_by_lane"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_context_attached_by_report_route"],
+            false
+        );
+        assert_eq!(value["bounded_prompt_preview_lane_enabled"], true);
+        assert_eq!(value["bounded_prompt_preview_allowed_by_lane"], true);
+        assert_eq!(value["prompt_preview_rendered_by_report_route"], false);
+        assert_eq!(value["prompt_preview_requires_explicit_command"], true);
+        assert_eq!(value["prompt_payload_materialized_by_report_route"], false);
+        assert_eq!(value["kg_prompt_preview_lane_enabled"], true);
+        assert_eq!(value["kg_prompt_preview_allowed_by_lane"], true);
+        assert_eq!(value["kg_prompt_preview_rendered_by_report_route"], false);
+        assert_eq!(value["kg_external_adapter_read_lane_enabled"], true);
+        assert_eq!(value["kg_external_adapter_read_allowed_by_lane"], true);
+        assert_eq!(
+            value["kg_external_adapter_read_performed_by_report_route"],
+            false
+        );
+        assert_eq!(value["kg_external_adapter_requires_explicit_command"], true);
+        assert_eq!(
+            value["kg_external_adapter_credential_reference_required"],
+            true
+        );
+        assert_eq!(
+            value["kg_external_adapter_credential_read_allowed_by_lane"],
+            false
+        );
+        assert_eq!(
+            value["kg_external_adapter_credential_read_performed_by_report_route"],
+            false
+        );
+        assert_eq!(value["supported_kg_adapter_count"], 3);
+        assert_eq!(
+            value["kg_prompt_payload_materialization_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["kg_prompt_payload_materialization_allowed_by_lane"],
+            true
+        );
+        assert_eq!(
+            value["kg_prompt_payload_materialized_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["kg_prompt_payload_shape_requires_explicit_command"],
+            true
+        );
+        assert_eq!(value["kg_prompt_payload_redaction_required"], true);
+        assert_eq!(
+            value["kg_prompt_payload_raw_text_exposed_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["kg_prompt_payload_hash_preview_allowed_by_lane"],
+            true
+        );
+        assert_eq!(
+            value["kg_prompt_payload_hash_preview_rendered_by_report_route"],
+            false
+        );
+        assert_eq!(value["context_handoff_acceptance_required"], true);
+        assert_eq!(value["context_attachment_requires_explicit_command"], true);
+        assert_eq!(value["context_injection_allowed_by_lane"], false);
+        assert_eq!(value["context_injection_performed_by_report_route"], false);
+        assert_eq!(value["kg_live_write_lane_enabled"], false);
+        assert_eq!(value["kg_live_write_allowed_by_lane"], false);
+        assert_eq!(value["kg_live_write_performed_by_report_route"], false);
+        assert_eq!(value["provider_model_invocation_lane_enabled"], false);
+        assert_eq!(value["provider_model_invocation_allowed_by_lane"], false);
+        assert_eq!(value["channel_delivery_lane_enabled"], false);
+        assert_eq!(value["live_mutation_enabled_count"], 1);
+        assert_eq!(value["current_live_enabled_lane_count"], 4);
+        assert_eq!(value["enablement_lane_count"], 7);
+        assert_eq!(value["ready_enablement_lane_count"], 7);
+
+        let blocked = value["blocked_actions"]
+            .as_array()
+            .expect("blocked KG prompt payload materialization lane actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blocked.contains(&"materialize_prompt_payload_from_report_route"));
+        assert!(blocked.contains(&"expose_raw_prompt_payload_from_report_route"));
+        assert!(blocked.contains(&"read_kg_adapter_from_report_route"));
         assert!(blocked.contains(&"read_auth_secret_or_credential"));
         assert!(blocked.contains(&"write_live_kg"));
         assert!(blocked.contains(&"invoke_provider_or_model"));
