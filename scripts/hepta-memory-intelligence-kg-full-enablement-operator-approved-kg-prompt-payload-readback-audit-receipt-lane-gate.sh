@@ -58,8 +58,8 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 87;' \
-  "native gateway route/source command count includes KG payload readback audit receipt lane and preserved systems routes"
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 88;' \
+  "native gateway route/source command count includes context handoff acceptance lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
   "native gateway systems tool registry inventory route preserved"
@@ -75,6 +75,9 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane --json' \
   "native gateway operator-approved KG prompt payload readback audit receipt lane source command"
+require_source_text "$NATIVE_GATEWAY_SOURCE" \
+  '/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane' \
+  "native gateway operator-approved context handoff acceptance lane route preserved"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_payload_readback_audit_receipt_lane_report' \
   "native gateway operator-approved KG prompt payload readback audit receipt lane report function"
@@ -140,7 +143,7 @@ report="$(
       live_kg_prompt_payload_acceptance_receipt_lane_status:$kg_acceptance_receipt_lane.status,
       live_kg_prompt_payload_acceptance_receipt_lane_ready:($kg_acceptance_receipt_lane.kg_prompt_payload_acceptance_receipt_lane_enabled and $kg_acceptance_receipt_lane.kg_prompt_payload_acceptance_receipt_allowed_by_lane),
       source_route_wired:true,
-      source_route_count_expected:87,
+      source_route_count_expected:88,
       source_route_tested_by_native_gateway_unit_test:true,
       preserved_shared_systems_tool_registry_route:true,
       preserved_shared_systems_workflow_definition_route:true,
@@ -249,7 +252,7 @@ printf '%s\n' "$report"
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 87
+  and .source_route_count_expected == 88
   and .preserved_shared_systems_tool_registry_route == true
   and .preserved_shared_systems_workflow_definition_route == true
   and .live_kg_prompt_payload_acceptance_receipt_lane_ready == true

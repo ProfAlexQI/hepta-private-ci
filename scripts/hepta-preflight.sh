@@ -180,6 +180,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt
 echo "[hepta-preflight] memory/intelligence full enablement operator-approved KG prompt payload readback audit receipt lane gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator-approved context handoff acceptance lane gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement positive activation packet dry-run scaffold gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-positive-activation-packet-dry-run-scaffold-gate.sh
 
