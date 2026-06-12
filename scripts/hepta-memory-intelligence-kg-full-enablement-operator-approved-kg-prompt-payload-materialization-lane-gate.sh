@@ -72,14 +72,17 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 86;' \
-  "native gateway route/source command count includes KG payload acceptance receipt lane and preserved systems routes"
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 87;' \
+  "native gateway route/source command count includes KG payload readback audit receipt lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
   "native gateway systems tool registry inventory route preserved"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-workflow-definition-registry' \
   "native gateway systems workflow definition registry route preserved"
+require_source_text "$NATIVE_GATEWAY_SOURCE" \
+  '/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane' \
+  "native gateway operator-approved KG prompt payload readback audit receipt lane route preserved"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT' \
   "native gateway operator-approved KG prompt payload materialization lane endpoint constant"
@@ -148,7 +151,7 @@ report="$(
       live_kg_prompt_preview_read_only_adapter_lane_status:$kg_preview_adapter_lane.status,
       live_kg_prompt_preview_read_only_adapter_lane_ready:($kg_preview_adapter_lane.kg_prompt_preview_lane_enabled and $kg_preview_adapter_lane.kg_external_adapter_read_lane_enabled),
       source_route_wired:true,
-      source_route_count_expected:86,
+      source_route_count_expected:87,
       source_route_tested_by_native_gateway_unit_test:true,
       preserved_shared_systems_tool_registry_route:true,
       operator_authorization_source:"telegram_direct_operator_authorization_2026_06_12_18_50_49_asia_shanghai",
@@ -272,7 +275,7 @@ report="$(
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 86
+  and .source_route_count_expected == 87
   and .preserved_shared_systems_tool_registry_route == true
   and .operator_authorization_received == true
   and .operator_approved_activation_lane_present == true

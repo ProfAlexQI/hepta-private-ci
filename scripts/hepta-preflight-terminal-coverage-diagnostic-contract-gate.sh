@@ -51,6 +51,7 @@ required_markers=(
   "memory/intelligence full enablement operator-approved KG prompt-preview read-only adapter lane gate"
   "memory/intelligence full enablement operator-approved KG prompt payload materialization lane gate"
   "memory/intelligence full enablement operator-approved KG prompt payload acceptance receipt lane gate"
+  "memory/intelligence full enablement operator-approved KG prompt payload readback audit receipt lane gate"
   "memory/intelligence full enablement positive activation packet dry-run scaffold gate"
   "memory/intelligence full enablement positive activation packet validator scoreboard gate"
   "memory/intelligence full enablement canary live harness scaffold gate"
@@ -483,8 +484,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 226
-    and .present_required_marker_count == 226
+    and .required_marker_count == 227
+    and .present_required_marker_count == 227
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0

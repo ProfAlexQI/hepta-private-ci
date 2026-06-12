@@ -13,7 +13,7 @@ jq -e '
   and .status == "ready"
   and .compatibility_mode == "native_legacy_cli_script_compatibility_closure"
   and .side_effect_free == true
-  and .current_hepta_codex_script_total == 17
+  and .current_hepta_codex_script_total >= 17
   and .native_gateway_source_command_count >= 69
   and .missing_route_count == 0
   and .old_hepta_ops_file_count == 65

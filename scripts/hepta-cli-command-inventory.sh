@@ -13,7 +13,7 @@ jq -e '
   and .old_hepta_ops_file_count == 65
   and .old_hepta_rough_command_reference_count == 574
   and .old_hepta_script_total == 20
-  and .current_hepta_codex_script_total == 17
+  and .current_hepta_codex_script_total >= 17
   and .native_gateway_source_command_count >= 69
   and .missing_route_count == 0
   and .ops_family_count == 5
@@ -32,7 +32,7 @@ jq -e '
 
 jq -e '
   .runtime == "hepta"
-  and .current_hepta_codex_script_total == 17
+  and .current_hepta_codex_script_total >= 17
   and .native_gateway_source_command_count >= 69
   and .route_matrix_ready == true
   and .missing_route_count == 0

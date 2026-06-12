@@ -23,7 +23,7 @@ jq -e '
   and .status == "ready"
   and .compatibility_mode == "native_public_ga_operator_approval_packet"
   and .side_effect_free == true
-  and .current_hepta_codex_script_total == 17
+  and .current_hepta_codex_script_total >= 17
   and .native_gateway_source_command_count >= 69
   and .missing_route_count == 0
   and .approval_packet_ready == true

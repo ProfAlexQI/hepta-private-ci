@@ -57,6 +57,7 @@ required_markers=(
   "memory/intelligence full enablement operator-approved KG prompt-preview read-only adapter lane gate"
   "memory/intelligence full enablement operator-approved KG prompt payload materialization lane gate"
   "memory/intelligence full enablement operator-approved KG prompt payload acceptance receipt lane gate"
+  "memory/intelligence full enablement operator-approved KG prompt payload readback audit receipt lane gate"
   "memory/intelligence full enablement positive activation packet dry-run scaffold gate"
   "memory/intelligence full enablement positive activation packet validator scoreboard gate"
   "memory/intelligence full enablement canary live harness scaffold gate"

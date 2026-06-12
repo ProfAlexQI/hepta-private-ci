@@ -82,14 +82,17 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 86;' \
-  "native gateway route/source command count includes KG payload acceptance receipt lane and preserved systems routes"
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 87;' \
+  "native gateway route/source command count includes KG payload readback audit receipt lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
   "native gateway systems tool registry inventory route preserved"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-workflow-definition-registry' \
   "native gateway systems workflow definition registry route preserved"
+require_source_text "$NATIVE_GATEWAY_SOURCE" \
+  '/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane' \
+  "native gateway operator-approved KG prompt payload readback audit receipt lane route preserved"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_ACCEPTANCE_RECEIPT_LANE_ENDPOINT' \
   "native gateway operator-approved KG prompt payload acceptance receipt lane endpoint constant"
@@ -161,7 +164,7 @@ report="$(
       live_kg_prompt_payload_materialization_lane_status:$kg_payload_lane.status,
       live_kg_prompt_payload_materialization_lane_ready:($kg_payload_lane.kg_prompt_payload_materialization_lane_enabled and $kg_payload_lane.kg_prompt_payload_materialization_allowed_by_lane),
       source_route_wired:true,
-      source_route_count_expected:86,
+      source_route_count_expected:87,
       source_route_tested_by_native_gateway_unit_test:true,
       preserved_shared_systems_tool_registry_route:true,
       operator_authorization_source:"telegram_direct_operator_authorization_2026_06_12_18_50_49_asia_shanghai",
@@ -306,7 +309,7 @@ printf '%s\n' "$report"
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 86
+  and .source_route_count_expected == 87
   and .preserved_shared_systems_tool_registry_route == true
   and .live_kg_prompt_payload_materialization_lane_ready == true
   and .kg_prompt_payload_acceptance_receipt_lane_enabled == true
