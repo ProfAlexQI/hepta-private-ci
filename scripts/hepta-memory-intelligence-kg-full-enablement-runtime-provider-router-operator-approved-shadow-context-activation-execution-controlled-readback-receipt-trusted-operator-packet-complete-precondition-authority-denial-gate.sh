@@ -123,7 +123,7 @@ report="$(
       live_partial_precondition_denial_matrix_route_status:$partial_matrix.status,
       live_partial_precondition_denial_matrix_route_ready:$partial_matrix.trusted_operator_packet_partial_precondition_denial_matrix_ready,
       source_route_wired:true,
-      source_route_count_expected:78,
+      source_route_count_expected:79,
       source_route_tested_by_native_gateway_unit_test:true,
       trusted_operator_packet_partial_precondition_denial_matrix_ready:true,
       trusted_operator_packet_complete_precondition_authority_denial_ready:true,
@@ -214,7 +214,7 @@ report="$(
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 78
+  and .source_route_count_expected == 79
   and .trusted_operator_packet_partial_precondition_denial_matrix_ready == true
   and .trusted_operator_packet_complete_precondition_authority_denial_ready == true
   and .operator_packet_required_field_count == 6

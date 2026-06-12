@@ -129,7 +129,7 @@ report="$(
       live_packet_separation_route_status:$packet_separation.status,
       live_packet_separation_route_ready:$packet_separation.trusted_operator_packet_separation_ready,
       source_route_wired:true,
-      source_route_count_expected:78,
+      source_route_count_expected:79,
       source_route_tested_by_native_gateway_unit_test:true,
       trusted_operator_packet_separation_ready:true,
       trusted_operator_packet_intake_precondition_ready:true,
@@ -241,7 +241,7 @@ report="$(
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 78
+  and .source_route_count_expected == 79
   and .trusted_operator_packet_separation_ready == true
   and .trusted_operator_packet_intake_precondition_ready == true
   and .independent_trusted_operator_packet_required == true
