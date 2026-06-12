@@ -118,7 +118,7 @@ report="$(
       live_complete_precondition_authority_denial_route_status:$complete_precondition.status,
       live_complete_precondition_authority_denial_route_ready:$complete_precondition.trusted_operator_packet_complete_precondition_authority_denial_ready,
       source_route_wired:true,
-      source_route_count_expected:80,
+      source_route_count_expected:81,
       source_route_tested_by_native_gateway_unit_test:true,
       trusted_operator_packet_complete_precondition_authority_denial_ready:true,
       trusted_operator_packet_complete_precondition_operator_approval_lane_separation_ready:true,
@@ -206,7 +206,7 @@ report="$(
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 80
+  and .source_route_count_expected == 81
   and .trusted_operator_packet_complete_precondition_authority_denial_ready == true
   and .trusted_operator_packet_complete_precondition_operator_approval_lane_separation_ready == true
   and .operator_packet_required_field_count == 6
