@@ -89,6 +89,7 @@ required_markers=(
   "memory/intelligence full enablement operator canary controlled request harness single-budget dispatch dry-run no-op receipt gate"
   "memory/intelligence full enablement operator canary controlled request harness single-budget dispatch dry-run no-op receipt route gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review/readback index no-persistence gate"
+  "memory/intelligence full enablement operator canary controlled request harness operator review/readback index no-persistence route gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement non-acceptance gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation request denial matrix gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command no-op handoff gate"
