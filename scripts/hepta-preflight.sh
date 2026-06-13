@@ -189,6 +189,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-h
 echo "[hepta-preflight] memory/intelligence full enablement operator-approved bounded provider-router injection precondition lane gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-precondition-lane-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator-approved bounded provider-router injection dry-run envelope lane gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement positive activation packet dry-run scaffold gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-positive-activation-packet-dry-run-scaffold-gate.sh
 

@@ -82,7 +82,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 90;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 91;' \
   "native gateway route/source command count includes context handoff acceptance lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
@@ -167,7 +167,7 @@ report="$(
       live_kg_prompt_payload_materialization_lane_status:$kg_payload_lane.status,
       live_kg_prompt_payload_materialization_lane_ready:($kg_payload_lane.kg_prompt_payload_materialization_lane_enabled and $kg_payload_lane.kg_prompt_payload_materialization_allowed_by_lane),
       source_route_wired:true,
-      source_route_count_expected:90,
+      source_route_count_expected:91,
       source_route_tested_by_native_gateway_unit_test:true,
       preserved_shared_systems_tool_registry_route:true,
       operator_authorization_source:"telegram_direct_operator_authorization_2026_06_12_18_50_49_asia_shanghai",
@@ -312,7 +312,7 @@ printf '%s\n' "$report"
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 90
+  and .source_route_count_expected == 91
   and .preserved_shared_systems_tool_registry_route == true
   and .live_kg_prompt_payload_materialization_lane_ready == true
   and .kg_prompt_payload_acceptance_receipt_lane_enabled == true

@@ -61,6 +61,7 @@ required_markers=(
   "memory/intelligence full enablement operator-approved context handoff acceptance lane gate"
   "memory/intelligence full enablement operator-approved context handoff receipt audit lane gate"
   "memory/intelligence full enablement operator-approved bounded provider-router injection precondition lane gate"
+  "memory/intelligence full enablement operator-approved bounded provider-router injection dry-run envelope lane gate"
   "memory/intelligence full enablement positive activation packet dry-run scaffold gate"
   "memory/intelligence full enablement positive activation packet validator scoreboard gate"
   "memory/intelligence full enablement canary live harness scaffold gate"

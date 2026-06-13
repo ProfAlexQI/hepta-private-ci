@@ -126,6 +126,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HAN
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_PRECONDITION_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-precondition-lane";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -136,7 +138,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 90;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 91;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -432,6 +434,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-precondition-lane --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-precondition-lane",
         side_effect_boundary: "read-only operator-approved bounded provider-router injection precondition lane status; enables bounded injection precondition shape authority without performing context injection, mutating provider prompts, writing KG, invoking providers/models, delivering channels, or claiming public release",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane",
+        side_effect_boundary: "read-only operator-approved bounded provider-router injection dry-run envelope lane status; enables dry-run envelope shape authority without constructing envelopes from report routes, performing context injection, mutating provider prompts, writing KG, invoking providers/models, delivering channels, or claiming public release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1332,6 +1341,16 @@ fn route_native_gateway_request_with_body(
                     ),
                 );
             }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_operator_approved_bounded_provider_router_injection_dry_run_envelope_lane_report(),
+                    ),
+                );
+            }
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1805,6 +1824,7 @@ fn index_html(
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane</code> reports that explicit redacted context handoff acceptance shape is now lane-authorized while report routes still cannot attach or inject context, record, persist, accept handoffs, write KG, invoke providers/models, deliver channels, or claim public release.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane</code> reports that explicit redacted context handoff receipt audit shape is now lane-authorized while report routes still cannot attach or inject context, render, record, persist, accept audit receipts, write KG, invoke providers/models, deliver channels, or claim public release.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-precondition-lane</code> reports that bounded provider-router injection preconditions are now lane-authorized while report routes still cannot inject context, mutate provider prompts, invoke providers/models, write KG, deliver channels, or claim public release.</p>
+        <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane</code> reports that bounded provider-router injection dry-run envelope shape is now lane-authorized while report routes still cannot construct, render, record, persist, accept, or execute envelopes, inject context, mutate provider prompts, invoke providers/models, write KG, deliver channels, or claim public release.</p>
         <p><code>/api/hepta-release-hardening-status-gate</code> keeps remaining release, external-production, launchd, ops, and hardening script families visible as local-only status gates.</p>
         <p><code>/api/hepta-provider-channel-dry-run-plan</code> promotes provider, search, channel, and runtime/session gaps into deterministic dry-run plan contracts without credentials, external calls, delivery, or store mutation.</p>
         <p><code>/api/hepta-native-packaging-gate</code> tracks Hepta Native manifest, package metadata, app resources, and local smoke readiness before signing or public distribution.</p>
@@ -8810,6 +8830,42 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PRO
     "slice a bounded provider-router injection dry-run envelope while keeping actual context injection, KG live write, provider/model invocation, credential reads, channel delivery, and public release disabled",
 ];
 
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_BLOCKED_ACTIONS:
+    &[&str] = &[
+    "attach_context_from_report_route",
+    "inject_context_into_provider_prompt",
+    "mutate_provider_router_prompt_from_report_route",
+    "materialize_raw_context_from_report_route",
+    "construct_provider_router_injection_dry_run_envelope_from_report_route",
+    "render_provider_router_injection_dry_run_envelope_from_report_route",
+    "record_provider_router_injection_dry_run_envelope_from_report_route",
+    "persist_provider_router_injection_dry_run_envelope_from_report_route",
+    "accept_provider_router_injection_dry_run_envelope_from_report_route",
+    "execute_provider_router_injection_dry_run_envelope_from_report_route",
+    "promote_provider_router_injection_dry_run_envelope_to_activation_authority",
+    "record_provider_router_injection_precondition_from_report_route",
+    "persist_provider_router_injection_precondition_from_report_route",
+    "accept_provider_router_injection_precondition_from_report_route",
+    "write_provider_router_injection_dry_run_envelope_filesystem_artifact",
+    "record_provider_router_injection_dry_run_envelope_ledger_entry",
+    "read_kg_adapter_from_report_route",
+    "construct_external_kg_adapter_client_from_report_route",
+    "capture_kg_adapter_endpoint_or_credential_value",
+    "read_auth_secret_or_credential",
+    "write_live_kg",
+    "invoke_provider_or_model",
+    "telegram_or_channel_delivery",
+    "service_restart_or_active_binary_mutation",
+    "release_or_public_claim",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_NEXT_ACTIONS:
+    &[&str] = &[
+    "run operator-approved bounded provider-router injection dry-run envelope lane source gate against the bounded provider-router injection precondition lane route",
+    "install bounded provider-router injection dry-run envelope lane route through controlled live catch-up after full preflight",
+    "slice a bounded provider-router injection dry-run envelope readback audit receipt while keeping actual context injection, KG live write, provider/model invocation, credential reads, channel delivery, and public release disabled",
+];
+
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS: &[&str] =
     &["graphiti", "neo4j", "cocoindex"];
 
@@ -11816,6 +11872,218 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_approved_bounded_provid
         );
         side_effects.insert(
             "bounded_provider_router_injection_precondition_ledger_recorded".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "provider_router_prompt_mutated".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "provider_router_context_packet_materialized".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert("context_injected".to_string(), serde_json::json!(false));
+    }
+    report
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_operator_approved_bounded_provider_router_injection_dry_run_envelope_lane_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let bounded_provider_router_injection_precondition_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_bounded_provider_router_injection_precondition_lane_report();
+    let precondition_bool = |key: &str| {
+        bounded_provider_router_injection_precondition_lane
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let precondition_u64 = |key: &str| {
+        bounded_provider_router_injection_precondition_lane
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let precondition_status = bounded_provider_router_injection_precondition_lane
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("blocked")
+        .to_string();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_bounded_provider_router_injection_precondition_lane_ready = precondition_status
+        .as_str()
+        == "ready"
+        && precondition_bool("bounded_provider_router_injection_precondition_lane_enabled")
+        && precondition_bool("bounded_provider_router_injection_precondition_allowed_by_lane")
+        && precondition_bool(
+            "bounded_provider_router_injection_precondition_requires_explicit_command",
+        )
+        && precondition_bool(
+            "bounded_provider_router_injection_precondition_requires_context_handoff_receipt_audit",
+        )
+        && precondition_bool("bounded_provider_router_injection_precondition_redaction_required")
+        && precondition_bool(
+            "bounded_provider_router_injection_precondition_redaction_proof_required",
+        )
+        && precondition_bool(
+            "bounded_provider_router_injection_precondition_scope_binding_required",
+        )
+        && precondition_bool(
+            "bounded_provider_router_injection_precondition_operator_identity_binding_required",
+        )
+        && precondition_bool(
+            "bounded_provider_router_injection_precondition_hash_binding_required",
+        )
+        && precondition_bool(
+            "bounded_provider_router_injection_precondition_provider_router_target_binding_required",
+        )
+        && precondition_bool(
+            "bounded_provider_router_injection_precondition_budget_binding_required",
+        )
+        && precondition_bool("bounded_provider_router_injection_precondition_dry_run_only")
+        && !precondition_bool("bounded_provider_router_injection_precondition_raw_context_allowed")
+        && !precondition_bool(
+            "bounded_provider_router_injection_precondition_rendered_by_report_route",
+        )
+        && !precondition_bool(
+            "bounded_provider_router_injection_precondition_recorded_by_report_route",
+        )
+        && !precondition_bool(
+            "bounded_provider_router_injection_precondition_persisted_by_report_route",
+        )
+        && !precondition_bool(
+            "bounded_provider_router_injection_precondition_accepted_by_report_route",
+        )
+        && !precondition_bool(
+            "bounded_provider_router_injection_precondition_filesystem_written_by_report_route",
+        )
+        && !precondition_bool(
+            "bounded_provider_router_injection_precondition_ledger_recorded_by_report_route",
+        )
+        && !precondition_bool(
+            "bounded_provider_router_injection_precondition_promotes_activation_authority",
+        )
+        && !precondition_bool("provider_router_prompt_mutated_by_report_route")
+        && !precondition_bool("provider_router_context_packet_materialized_by_report_route")
+        && !precondition_bool("context_attachment_performed_by_report_route")
+        && !precondition_bool("context_injection_allowed_by_lane")
+        && !precondition_bool("context_injection_performed_by_report_route")
+        && !precondition_bool("kg_live_write_lane_enabled")
+        && !precondition_bool("provider_model_invocation_lane_enabled")
+        && !precondition_bool("channel_delivery_lane_enabled")
+        && precondition_u64("live_mutation_enabled_count") == 1
+        && precondition_u64("current_live_enabled_lane_count") == 9
+        && precondition_u64("enablement_lane_count") == 12
+        && precondition_u64("ready_enablement_lane_count") == 12;
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && source_bounded_provider_router_injection_precondition_lane_ready;
+
+    let mut report = bounded_provider_router_injection_precondition_lane;
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "status": if report_ready { "ready" } else { "blocked" },
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane --json",
+            "compatibility_mode": "native_full_enablement_operator_approved_bounded_provider_router_injection_dry_run_envelope_lane_status",
+            "audit_date": "2026-06-13",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_ENDPOINT,
+            "bounded_provider_router_injection_precondition_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_PRECONDITION_LANE_ENDPOINT,
+            "bounded_provider_router_injection_precondition_lane_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_PRECONDITION_LANE_GATE.md",
+            "bounded_provider_router_injection_dry_run_envelope_lane_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_GATE.md",
+            "source_bounded_provider_router_injection_precondition_lane_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-precondition-lane-gate.sh",
+            "source_bounded_provider_router_injection_dry_run_envelope_lane_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane-gate.sh",
+            "bounded_provider_router_injection_precondition_lane_status": precondition_status,
+            "source_bounded_provider_router_injection_precondition_lane_ready": source_bounded_provider_router_injection_precondition_lane_ready,
+            "operator_authorization_source": "telegram_direct_operator_highest_authorization_2026_06_13_11_12_08_asia_shanghai",
+            "operator_authorization_scope": "bounded_provider_router_injection_dry_run_envelope_lane_no_report_envelope_construct_render_record_persist_accept_execute_no_context_inject_prompt_mutation_kg_live_write_provider_model_channel_or_public_release",
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "bounded_provider_router_injection_dry_run_envelope_lane_enabled": true,
+            "bounded_provider_router_injection_dry_run_envelope_allowed_by_lane": true,
+            "bounded_provider_router_injection_dry_run_envelope_requires_explicit_command": true,
+            "bounded_provider_router_injection_dry_run_envelope_requires_bounded_provider_router_injection_precondition": true,
+            "bounded_provider_router_injection_dry_run_envelope_redaction_required": true,
+            "bounded_provider_router_injection_dry_run_envelope_redaction_proof_required": true,
+            "bounded_provider_router_injection_dry_run_envelope_scope_binding_required": true,
+            "bounded_provider_router_injection_dry_run_envelope_operator_identity_binding_required": true,
+            "bounded_provider_router_injection_dry_run_envelope_hash_binding_required": true,
+            "bounded_provider_router_injection_dry_run_envelope_provider_router_target_binding_required": true,
+            "bounded_provider_router_injection_dry_run_envelope_budget_binding_required": true,
+            "bounded_provider_router_injection_dry_run_envelope_shape_locked": true,
+            "bounded_provider_router_injection_dry_run_envelope_dry_run_only": true,
+            "bounded_provider_router_injection_dry_run_envelope_raw_context_allowed": false,
+            "bounded_provider_router_injection_dry_run_envelope_constructed_by_report_route": false,
+            "bounded_provider_router_injection_dry_run_envelope_rendered_by_report_route": false,
+            "bounded_provider_router_injection_dry_run_envelope_recorded_by_report_route": false,
+            "bounded_provider_router_injection_dry_run_envelope_persisted_by_report_route": false,
+            "bounded_provider_router_injection_dry_run_envelope_accepted_by_report_route": false,
+            "bounded_provider_router_injection_dry_run_envelope_executed_by_report_route": false,
+            "bounded_provider_router_injection_dry_run_envelope_filesystem_written_by_report_route": false,
+            "bounded_provider_router_injection_dry_run_envelope_ledger_recorded_by_report_route": false,
+            "bounded_provider_router_injection_dry_run_envelope_promotes_activation_authority": false,
+            "provider_router_injection_execution_allowed_by_lane": false,
+            "provider_router_prompt_mutated_by_report_route": false,
+            "provider_router_context_packet_materialized_by_report_route": false,
+            "context_attachment_performed_by_report_route": false,
+            "context_injection_allowed_by_lane": false,
+            "context_injection_performed_by_report_route": false,
+            "kg_live_write_lane_enabled": false,
+            "kg_live_write_allowed_by_lane": false,
+            "kg_live_write_performed_by_report_route": false,
+            "provider_model_invocation_lane_enabled": false,
+            "provider_model_invocation_allowed_by_lane": false,
+            "channel_delivery_lane_enabled": false,
+            "live_mutation_enabled_count": 1,
+            "current_live_enabled_lane_count": 10,
+            "enablement_lane_count": 13,
+            "ready_enablement_lane_count": 13,
+            "blocked_actions": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_BLOCKED_ACTIONS,
+            "allowed_next_actions": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_NEXT_ACTIONS,
+        }),
+    );
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        side_effects.insert(
+            "bounded_provider_router_injection_dry_run_envelope_constructed".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "bounded_provider_router_injection_dry_run_envelope_rendered".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "bounded_provider_router_injection_dry_run_envelope_recorded".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "bounded_provider_router_injection_dry_run_envelope_persisted".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "bounded_provider_router_injection_dry_run_envelope_accepted".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "bounded_provider_router_injection_dry_run_envelope_executed".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "bounded_provider_router_injection_dry_run_envelope_filesystem_written".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "bounded_provider_router_injection_dry_run_envelope_ledger_recorded".to_string(),
             serde_json::json!(false),
         );
         side_effects.insert(
@@ -19308,6 +19576,275 @@ mod tests {
         );
         assert_eq!(
             value["side_effects"]["bounded_provider_router_injection_precondition_ledger_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["provider_router_prompt_mutated"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["provider_router_context_packet_materialized"],
+            false
+        );
+        assert_eq!(value["side_effects"]["context_injection_performed"], false);
+        assert_eq!(value["side_effects"]["context_injected"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["auth_secret_read"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(
+            value["side_effects"]["external_kg_adapter_read_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
+        assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_operator_approved_bounded_provider_router_injection_dry_run_envelope_lane_endpoint_enables_envelope_shape_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator-approved bounded provider-router injection dry-run envelope lane json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_full_enablement_operator_approved_bounded_provider_router_injection_dry_run_envelope_lane_status"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_precondition_lane_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_PRECONDITION_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_bounded_provider_router_injection_precondition_lane_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_authorization_source"],
+            "telegram_direct_operator_highest_authorization_2026_06_13_11_12_08_asia_shanghai"
+        );
+        assert_eq!(
+            value["operator_authorization_scope"],
+            "bounded_provider_router_injection_dry_run_envelope_lane_no_report_envelope_construct_render_record_persist_accept_execute_no_context_inject_prompt_mutation_kg_live_write_provider_model_channel_or_public_release"
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_precondition_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_precondition_allowed_by_lane"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_precondition_recorded_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_allowed_by_lane"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_requires_explicit_command"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_requires_bounded_provider_router_injection_precondition"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_redaction_required"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_redaction_proof_required"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_scope_binding_required"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_operator_identity_binding_required"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_hash_binding_required"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_provider_router_target_binding_required"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_budget_binding_required"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_shape_locked"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_dry_run_only"],
+            true
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_raw_context_allowed"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_constructed_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_rendered_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_recorded_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_persisted_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_accepted_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_executed_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_filesystem_written_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_ledger_recorded_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_promotes_activation_authority"],
+            false
+        );
+        assert_eq!(
+            value["provider_router_injection_execution_allowed_by_lane"],
+            false
+        );
+        assert_eq!(
+            value["provider_router_prompt_mutated_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["provider_router_context_packet_materialized_by_report_route"],
+            false
+        );
+        assert_eq!(value["context_attachment_performed_by_report_route"], false);
+        assert_eq!(value["context_injection_allowed_by_lane"], false);
+        assert_eq!(value["context_injection_performed_by_report_route"], false);
+        assert_eq!(value["kg_live_write_lane_enabled"], false);
+        assert_eq!(value["provider_model_invocation_lane_enabled"], false);
+        assert_eq!(value["channel_delivery_lane_enabled"], false);
+        assert_eq!(value["live_mutation_enabled_count"], 1);
+        assert_eq!(value["current_live_enabled_lane_count"], 10);
+        assert_eq!(value["enablement_lane_count"], 13);
+        assert_eq!(value["ready_enablement_lane_count"], 13);
+
+        let blocked = value["blocked_actions"]
+            .as_array()
+            .expect("blocked bounded provider-router injection dry-run envelope lane actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            blocked.contains(
+                &"construct_provider_router_injection_dry_run_envelope_from_report_route"
+            )
+        );
+        assert!(
+            blocked
+                .contains(&"execute_provider_router_injection_dry_run_envelope_from_report_route")
+        );
+        assert!(blocked.contains(&"inject_context_into_provider_prompt"));
+        assert!(blocked.contains(&"mutate_provider_router_prompt_from_report_route"));
+        assert!(blocked.contains(&"write_live_kg"));
+        assert!(blocked.contains(&"invoke_provider_or_model"));
+        assert!(blocked.contains(&"telegram_or_channel_delivery"));
+        assert_eq!(
+            value["side_effects"]["report_route_invoked_runtime_execution"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["bounded_provider_router_injection_dry_run_envelope_constructed"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["bounded_provider_router_injection_dry_run_envelope_rendered"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["bounded_provider_router_injection_dry_run_envelope_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["bounded_provider_router_injection_dry_run_envelope_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["bounded_provider_router_injection_dry_run_envelope_accepted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["bounded_provider_router_injection_dry_run_envelope_executed"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["bounded_provider_router_injection_dry_run_envelope_filesystem_written"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["bounded_provider_router_injection_dry_run_envelope_ledger_recorded"],
             false
         );
         assert_eq!(
