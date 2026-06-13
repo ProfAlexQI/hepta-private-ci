@@ -78,7 +78,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 102;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 103;' \
   "native gateway route/source command count includes bounded provider-router injection dry-run envelope lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
@@ -172,7 +172,7 @@ report="$(
       live_precondition_lane_status:$precondition_lane.status,
       live_precondition_lane_ready:($precondition_lane.bounded_provider_router_injection_precondition_lane_enabled and $precondition_lane.bounded_provider_router_injection_precondition_allowed_by_lane),
       source_route_wired:true,
-      source_route_count_expected:102,
+      source_route_count_expected:103,
       source_route_tested_by_native_gateway_unit_test:true,
       preserved_shared_systems_tool_registry_route:true,
       preserved_shared_systems_workflow_definition_route:true,
@@ -307,7 +307,7 @@ printf '%s\n' "$report"
 jq -e '
   .status == "ready"
   and .source_route_wired == true
-  and .source_route_count_expected == 102
+  and .source_route_count_expected == 103
   and .source_route_tested_by_native_gateway_unit_test == true
   and .live_precondition_lane_ready == true
   and .bounded_provider_router_injection_dry_run_envelope_lane_enabled == true
