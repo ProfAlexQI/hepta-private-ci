@@ -327,6 +327,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-
 echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt retention expiry garbage collection denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-retention-expiry-garbage-collection-denial-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt retention expiry garbage collection denial route gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-retention-expiry-garbage-collection-denial-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt export query observability denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-export-query-observability-denial-gate.sh
 

@@ -169,7 +169,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 103;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 104;' \
   "native gateway route/source command count includes activation command result receipt cancellation/supersession denial route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT' \
@@ -210,7 +210,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 103
+    and .route_count == 104
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .source_operator_review_acknowledgement_activation_command_result_receipt_ordering_monotonicity_route_ready == true
@@ -282,7 +282,7 @@ report="$(
       source_ordering_monotonicity_fixture_count:$cancellation_supersession.source_ordering_monotonicity_fixture_count,
       source_accepted_ordering_monotonicity_fixture_count:$cancellation_supersession.source_accepted_ordering_monotonicity_fixture_count,
       source_route_wired:true,
-      source_route_count_expected:103,
+      source_route_count_expected:104,
       source_route_tested_by_native_gateway_unit_test:true,
       native_gateway_source:$native_gateway_source,
       native_gateway_sha256:$native_gateway_sha256,
@@ -368,7 +368,7 @@ jq -e '
   and .source_activation_command_result_receipt_cancellation_supersession_denial_gate_ready == true
   and .source_activation_command_result_receipt_cancellation_supersession_denial_gate_status == "blocked"
   and .source_route_wired == true
-  and .source_route_count_expected == 103
+  and .source_route_count_expected == 104
   and .source_route_tested_by_native_gateway_unit_test == true
   and .operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_cancellation_supersession_denial_route_enabled == true
   and .cancellation_supersession_fixture_count == 10

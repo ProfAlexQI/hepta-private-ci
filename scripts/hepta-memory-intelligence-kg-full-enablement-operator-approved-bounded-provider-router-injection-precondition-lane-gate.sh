@@ -71,7 +71,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 103;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 104;' \
   "native gateway route/source command count includes bounded provider-router injection precondition lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
@@ -156,7 +156,7 @@ report="$(
       live_context_handoff_receipt_audit_lane_status:$context_handoff_receipt_audit_lane.status,
       live_context_handoff_receipt_audit_lane_ready:($context_handoff_receipt_audit_lane.context_handoff_receipt_audit_lane_enabled and $context_handoff_receipt_audit_lane.context_handoff_receipt_audit_allowed_by_lane),
       source_route_wired:true,
-      source_route_count_expected:103,
+      source_route_count_expected:104,
       source_route_tested_by_native_gateway_unit_test:true,
       preserved_shared_systems_tool_registry_route:true,
       preserved_shared_systems_workflow_definition_route:true,
@@ -279,7 +279,7 @@ printf '%s\n' "$report"
 jq -e '
   .status == "ready"
   and .source_route_wired == true
-  and .source_route_count_expected == 103
+  and .source_route_count_expected == 104
   and .source_route_tested_by_native_gateway_unit_test == true
   and .live_context_handoff_receipt_audit_lane_ready == true
   and .bounded_provider_router_injection_precondition_lane_enabled == true
