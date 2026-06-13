@@ -144,6 +144,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_RE
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-noop-handoff";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-no-persistence";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -154,7 +156,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 99;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 100;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -513,6 +515,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-no-persistence --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-no-persistence",
         side_effect_boundary: "read-only operator canary controlled-request harness operator-review acknowledgement activation-command result-receipt no-persistence status; proves no-op activation commands cannot register, record, persist, accept, export, query, observe, deliver, acknowledge, inject context, invoke providers/models, write Memory/KG, read credentials, mutate binaries, or claim public release from result receipts",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial",
+        side_effect_boundary: "read-only operator canary controlled-request harness operator-review acknowledgement activation-command result-receipt replay/idempotency denial status; proves denied result receipts cannot be replayed, duplicated, idempotency-recorded, persisted, scope-reused, nonce-accepted, acknowledged, activated, delivered, injected, invoke providers/models, write Memory/KG, read credentials, mutate binaries, or claim public release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1500,6 +1509,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_report(),
                     ),
                 );
             }
@@ -15309,6 +15328,602 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     report
 }
 
+fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_no_persistence =
+        hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_report();
+    let source_bool = |key: &str| {
+        source_no_persistence
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source_no_persistence
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_status = source_no_persistence
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("blocked");
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_no_persistence_ready = source_status == "ready"
+        && source_bool(
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_ready",
+        )
+        && source_bool(
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_route_enabled",
+        )
+        && source_u64("activation_command_result_receipt_fixture_count") == 10
+        && source_u64("blocked_activation_command_result_receipt_fixture_count") == 10
+        && source_u64("noop_activation_command_result_receipt_fixture_count") == 10
+        && source_u64("accepted_activation_command_result_receipt_fixture_count") == 0
+        && source_u64("activation_command_result_receipt_performed_count") == 0
+        && !source_bool("activation_command_result_receipt_recorded")
+        && !source_bool("activation_command_result_receipt_persisted")
+        && !source_bool("activation_command_result_receipt_accepted")
+        && !source_bool("activation_command_completion_ack_recorded")
+        && !source_bool("activation_command_completion_ack_accepted")
+        && !source_bool("operator_approval_from_receipt_accepted")
+        && !source_bool("activation_from_receipt_allowed")
+        && !source_bool("activation_command_enabled")
+        && !source_bool("activation_command_invoked")
+        && !source_bool("activation_command_dispatched")
+        && !source_bool("activation_request_accepted")
+        && !source_bool("activation_request_recorded")
+        && !source_bool("activation_request_executed")
+        && source_u64("dispatch_performed_count") == 0
+        && source_u64("execution_performed_count") == 0
+        && source_u64("context_injection_performed_count") == 0
+        && source_u64("provider_invoked_count") == 0
+        && source_u64("model_invoked_count") == 0
+        && source_u64("memory_store_write_performed_count") == 0
+        && source_u64("external_kg_adapter_read_performed_count") == 0
+        && source_u64("live_kg_write_performed_count") == 0
+        && source_u64("credential_read_count") == 0
+        && source_u64("secret_file_read_count") == 0
+        && source_u64("channel_send_performed_count") == 0
+        && source_u64("current_live_enabled_lane_count") == 18
+        && source_u64("enablement_lane_count") == 21
+        && source_u64("ready_enablement_lane_count") == 21
+        && !source_bool("canary_harness_armed")
+        && !source_bool("canary_harness_executable")
+        && !source_bool("canary_live_enabled");
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && source_no_persistence_ready;
+
+    let replay_fixture =
+        |fixture_id: &str, status: &str, denial_reason: &str, extra: serde_json::Value| {
+            let mut fixture = serde_json::Map::new();
+            fixture.insert(
+                "fixture_id".to_string(),
+                serde_json::Value::String(fixture_id.to_string()),
+            );
+            fixture.insert(
+                "replay_idempotency_status".to_string(),
+                serde_json::Value::String(status.to_string()),
+            );
+            fixture.insert(
+                "denial_reason".to_string(),
+                serde_json::Value::String(denial_reason.to_string()),
+            );
+            for key in [
+                "source_result_receipt_no_persistence_present",
+                "source_result_receipt_no_persistence_ready",
+                "replay_requested",
+                "canonical_blocked_noop_result_receipt_identity_required",
+                "receipt_noop_confirmed",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(true));
+            }
+            for key in [
+                "activation_command_result_receipt_replay_allowed",
+                "activation_command_result_receipt_replay_recorded",
+                "activation_command_result_receipt_replay_persisted",
+                "activation_command_result_receipt_replay_materialized",
+                "activation_command_result_receipt_replay_filesystem_written",
+                "activation_command_result_receipt_replay_performed",
+                "activation_command_result_receipt_duplicate_accepted",
+                "activation_command_result_receipt_duplicate_recorded",
+                "activation_command_result_receipt_duplicate_persisted",
+                "activation_command_result_receipt_idempotency_key_accepted",
+                "activation_command_result_receipt_idempotency_key_recorded",
+                "activation_command_result_receipt_idempotency_state_recorded",
+                "activation_command_result_receipt_idempotency_state_persisted",
+                "activation_command_result_receipt_idempotency_state_materialized",
+                "activation_command_result_receipt_idempotency_filesystem_written",
+                "activation_command_result_receipt_replay_nonce_accepted",
+                "activation_command_result_receipt_replay_nonce_recorded",
+                "activation_command_result_receipt_cross_scope_reuse_accepted",
+                "activation_command_result_receipt_status_upgrade_accepted",
+                "activation_command_result_receipt_completed_status_accepted",
+                "activation_command_result_receipt_ack_replay_accepted",
+                "activation_command_result_receipt_ledger_replay_accepted",
+                "activation_command_result_receipt_index_replay_accepted",
+                "activation_command_result_receipt_delivery_replay_accepted",
+                "activation_command_result_receipt_export_replay_accepted",
+                "activation_command_result_receipt_query_replay_accepted",
+                "activation_command_result_receipt_observability_replay_accepted",
+                "activation_command_result_receipt_recorded",
+                "activation_command_result_receipt_persisted",
+                "activation_command_result_receipt_accepted",
+                "activation_command_result_receipt_materialized",
+                "activation_command_result_receipt_filesystem_written",
+                "activation_command_result_receipt_ledger_written",
+                "activation_command_result_receipt_indexed",
+                "activation_command_result_receipt_enqueued",
+                "activation_command_result_receipt_delivered",
+                "activation_command_result_receipt_exported",
+                "activation_command_result_receipt_query_registered",
+                "activation_command_result_receipt_observability_recorded",
+                "activation_command_completion_ack_recorded",
+                "activation_command_completion_ack_persisted",
+                "activation_command_completion_ack_accepted",
+                "activation_command_completion_ack_delivered",
+                "operator_approval_from_replay_accepted",
+                "operator_approval_from_receipt_accepted",
+                "activation_from_replay_allowed",
+                "activation_from_receipt_allowed",
+                "activation_command_allowed",
+                "activation_command_accepted",
+                "activation_command_enabled",
+                "activation_command_invoked",
+                "activation_command_dispatched",
+                "activation_command_handoff_recorded",
+                "activation_command_handoff_persisted",
+                "activation_request_accepted",
+                "activation_request_recorded",
+                "activation_request_persisted",
+                "activation_request_executed",
+                "operator_approval_recorded",
+                "dispatch_performed",
+                "execution_performed",
+                "context_injection_performed",
+                "provider_invoked",
+                "model_invoked",
+                "memory_store_write_performed",
+                "external_kg_adapter_read_performed",
+                "live_kg_write_performed",
+                "credential_read",
+                "secret_file_read",
+                "channel_send_performed",
+                "external_send_performed",
+                "public_claim_performed",
+                "install_performed",
+                "service_restarted",
+                "active_binary_mutated",
+                "upstream_fetch_performed",
+                "upstream_merge_performed",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(false));
+            }
+            let mut fixture = serde_json::Value::Object(fixture);
+            extend_json_object(&mut fixture, extra);
+            fixture
+        };
+    let replay_idempotency_fixtures = serde_json::Value::Array(vec![
+        replay_fixture(
+            "missing-source-result-receipt-no-persistence-report",
+            "blocked_noop",
+            "source_result_receipt_no_persistence_report_required",
+            serde_json::json!({
+                "source_result_receipt_no_persistence_present": false,
+                "source_result_receipt_no_persistence_ready": false,
+            }),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-duplicate-identity-replay-attempt",
+            "blocked_duplicate_noop",
+            "duplicate_result_receipt_identity_replay_denied",
+            serde_json::json!({"duplicate_result_receipt_identity_requested": true}),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-replay-acceptance-attempt",
+            "blocked_replay_noop",
+            "result_receipt_replay_acceptance_denied",
+            serde_json::json!({"result_receipt_replay_acceptance_requested": true}),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-idempotency-key-recording-attempt",
+            "blocked_idempotency_key_noop",
+            "idempotency_key_recording_denied",
+            serde_json::json!({
+                "idempotency_key_acceptance_requested": true,
+                "idempotency_key_recording_requested": true,
+            }),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-idempotency-state-persistence-attempt",
+            "blocked_idempotency_state_noop",
+            "idempotency_state_persistence_materialization_denied",
+            serde_json::json!({
+                "idempotency_state_recording_requested": true,
+                "idempotency_state_persistence_requested": true,
+                "idempotency_state_materialization_requested": true,
+                "idempotency_filesystem_write_requested": true,
+            }),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-cross-scope-reuse-attempt",
+            "blocked_cross_scope_noop",
+            "cross_scope_result_receipt_reuse_denied",
+            serde_json::json!({"cross_scope_reuse_requested": true}),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-stale-nonce-out-of-order-replay-attempt",
+            "blocked_nonce_order_noop",
+            "stale_nonce_out_of_order_receipt_replay_denied",
+            serde_json::json!({
+                "stale_nonce_replay_requested": true,
+                "out_of_order_replay_requested": true,
+                "replay_nonce_acceptance_requested": true,
+            }),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-completion-ledger-delivery-replay-attempt",
+            "blocked_completion_ledger_delivery_noop",
+            "completion_ack_ledger_delivery_replay_denied",
+            serde_json::json!({
+                "completion_ack_replay_requested": true,
+                "ledger_replay_requested": true,
+                "index_replay_requested": true,
+                "delivery_replay_requested": true,
+            }),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-activation-provider-memory-kg-replay-attempt",
+            "blocked_activation_provider_memory_kg_noop",
+            "activation_provider_memory_kg_replay_denied",
+            serde_json::json!({
+                "result_receipt_status_upgrade_requested": true,
+                "completed_status_acceptance_requested": true,
+                "operator_approval_from_replay_requested": true,
+                "activation_from_replay_requested": true,
+                "context_injection_replay_requested": true,
+                "provider_replay_requested": true,
+                "model_replay_requested": true,
+                "memory_store_replay_requested": true,
+                "external_kg_replay_requested": true,
+                "live_kg_replay_requested": true,
+            }),
+        ),
+        replay_fixture(
+            "acknowledgement-activation-command-result-receipt-external-public-install-upstream-secret-replay-attempt",
+            "blocked_external_noop",
+            "external_public_install_restart_upstream_secret_replay_denied",
+            serde_json::json!({
+                "external_send_replay_requested": true,
+                "public_claim_replay_requested": true,
+                "release_artifact_replay_requested": true,
+                "install_replay_requested": true,
+                "launchd_restart_replay_requested": true,
+                "service_restart_replay_requested": true,
+                "active_binary_mutation_replay_requested": true,
+                "upstream_replay_requested": true,
+                "credential_replay_requested": true,
+                "secret_value_replay_requested": true,
+            }),
+        ),
+    ]);
+    let replay_idempotency_fixture_count = replay_idempotency_fixtures
+        .as_array()
+        .map(|fixtures| fixtures.len())
+        .unwrap_or(0);
+    let mut denials = source_no_persistence
+        .get("denied_by_operator_review_acknowledgement_activation_command_result_receipt_no_persistence")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for denial in [
+        "source_result_receipt_no_persistence_report_required",
+        "canonical_blocked_noop_result_receipt_identity_required",
+        "duplicate_result_receipt_identity_replay_denied",
+        "result_receipt_replay_acceptance_denied",
+        "idempotency_key_acceptance_denied",
+        "idempotency_key_recording_denied",
+        "idempotency_state_recording_denied",
+        "idempotency_state_persistence_denied",
+        "idempotency_state_materialization_denied",
+        "idempotency_filesystem_write_denied",
+        "cross_scope_result_receipt_reuse_denied",
+        "stale_nonce_replay_denied",
+        "out_of_order_receipt_replay_denied",
+        "completion_ack_replay_denied",
+        "ledger_index_delivery_replay_denied",
+        "export_query_observability_replay_denied",
+        "status_upgrade_replay_denied",
+        "completed_status_replay_denied",
+        "operator_approval_from_replay_denied",
+        "activation_from_replay_denied",
+        "context_injection_replay_denied",
+        "provider_model_replay_denied",
+        "memory_store_replay_denied",
+        "external_kg_replay_denied",
+        "live_kg_replay_denied",
+        "credential_secret_replay_denied",
+        "external_public_install_restart_replay_denied",
+        "active_binary_mutation_replay_denied",
+        "upstream_replay_denied",
+    ] {
+        denials.push(serde_json::Value::String(denial.to_string()));
+    }
+    let denied_count = denials.len();
+
+    let mut report = source_no_persistence.clone();
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "status": if report_ready { "ready" } else { "blocked" },
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial --json",
+            "native_route": true,
+            "compatibility_mode": "native_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_status",
+            "side_effect_free": true,
+            "audit_date": "2026-06-13",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT,
+            "source_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_route_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_ENDPOINT,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_GATE.md",
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_route_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ROUTE_GATE.md",
+            "source_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-no-persistence-route-gate.sh",
+            "source_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+            "source_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-route-gate.sh",
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_cutover_floor": NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+            "route_count_floor_preserved": route_count_floor_preserved,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+            "source_route_wired": true,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "source_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_route_status": source_status,
+            "source_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_route_ready": source_no_persistence_ready,
+            "operator_authorization_scope": "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_no_replay_no_duplicate_no_idempotency_record_no_persist_no_authority_no_context_memory_kg_provider_model_credential_channel_install_restart_binary_or_public_release",
+            "operator_authorization_received": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_route_enabled": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_ready": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_status": "blocked",
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_schema_version": "memory_intelligence_kg_operator_canary_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_v1",
+            "activation_command_result_receipt_replay_idempotency_mode": "native_route_stdout_only_duplicate_replay_and_idempotency_denial_no_record_no_persist_no_authority_no_live",
+            "activation_command_result_receipt_replay_idempotency_decision": "operator_review_acknowledgement_activation_command_result_receipt_cannot_be_replayed_duplicated_or_converted_into_idempotency_authority",
+            "source_activation_command_result_receipt_fixture_count": source_u64("activation_command_result_receipt_fixture_count"),
+            "source_blocked_activation_command_result_receipt_fixture_count": source_u64("blocked_activation_command_result_receipt_fixture_count"),
+            "source_noop_activation_command_result_receipt_fixture_count": source_u64("noop_activation_command_result_receipt_fixture_count"),
+            "source_accepted_activation_command_result_receipt_fixture_count": source_u64("accepted_activation_command_result_receipt_fixture_count"),
+            "source_activation_command_result_receipt_performed_count": source_u64("activation_command_result_receipt_performed_count"),
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "replay_idempotency_surface_count": 14,
+            "replay_idempotency_surface_ready_count": 14,
+            "replay_idempotency_side_effect_free_surface_count": 14,
+            "replay_idempotency_fixtures": replay_idempotency_fixtures,
+            "replay_idempotency_fixture_count": replay_idempotency_fixture_count,
+            "blocked_replay_idempotency_fixture_count": replay_idempotency_fixture_count,
+            "noop_replay_idempotency_fixture_count": replay_idempotency_fixture_count,
+            "allowed_replay_idempotency_fixture_count": 0,
+            "accepted_replay_idempotency_fixture_count": 0,
+            "duplicate_result_receipt_replay_fixture_count": 1,
+            "result_receipt_replay_acceptance_fixture_count": 1,
+            "idempotency_key_recording_fixture_count": 1,
+            "idempotency_state_persistence_fixture_count": 1,
+            "cross_scope_result_receipt_reuse_fixture_count": 1,
+            "stale_nonce_out_of_order_replay_fixture_count": 1,
+            "completion_ledger_delivery_replay_fixture_count": 1,
+            "activation_provider_memory_kg_replay_fixture_count": 1,
+            "external_public_install_upstream_secret_replay_fixture_count": 1,
+            "replay_idempotency_denied_count": replay_idempotency_fixture_count,
+            "replay_idempotency_performed_count": 0,
+            "duplicate_result_receipt_accepted_count": 0,
+            "idempotency_state_recorded_count": 0,
+            "idempotency_state_persisted_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "activation_command_result_receipt_replay_allowed": false,
+            "activation_command_result_receipt_replay_recorded": false,
+            "activation_command_result_receipt_replay_persisted": false,
+            "activation_command_result_receipt_replay_materialized": false,
+            "activation_command_result_receipt_replay_filesystem_written": false,
+            "activation_command_result_receipt_replay_performed": false,
+            "activation_command_result_receipt_duplicate_accepted": false,
+            "activation_command_result_receipt_duplicate_recorded": false,
+            "activation_command_result_receipt_duplicate_persisted": false,
+            "activation_command_result_receipt_idempotency_key_accepted": false,
+            "activation_command_result_receipt_idempotency_key_recorded": false,
+            "activation_command_result_receipt_idempotency_state_recorded": false,
+            "activation_command_result_receipt_idempotency_state_persisted": false,
+            "activation_command_result_receipt_idempotency_state_materialized": false,
+            "activation_command_result_receipt_idempotency_filesystem_written": false,
+            "activation_command_result_receipt_replay_nonce_accepted": false,
+            "activation_command_result_receipt_replay_nonce_recorded": false,
+            "activation_command_result_receipt_cross_scope_reuse_accepted": false,
+            "activation_command_result_receipt_status_upgrade_accepted": false,
+            "activation_command_result_receipt_completed_status_accepted": false,
+            "activation_command_result_receipt_ack_replay_accepted": false,
+            "activation_command_result_receipt_ledger_replay_accepted": false,
+            "activation_command_result_receipt_index_replay_accepted": false,
+            "activation_command_result_receipt_delivery_replay_accepted": false,
+            "activation_command_result_receipt_export_replay_accepted": false,
+            "activation_command_result_receipt_query_replay_accepted": false,
+            "activation_command_result_receipt_observability_replay_accepted": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "activation_command_result_receipt_recorded": false,
+            "activation_command_result_receipt_persisted": false,
+            "activation_command_result_receipt_accepted": false,
+            "activation_command_completion_ack_recorded": false,
+            "activation_command_completion_ack_persisted": false,
+            "activation_command_completion_ack_accepted": false,
+            "operator_approval_from_replay_accepted": false,
+            "operator_approval_from_receipt_accepted": false,
+            "activation_from_replay_allowed": false,
+            "activation_from_receipt_allowed": false,
+            "activation_command_allowed": false,
+            "activation_command_accepted": false,
+            "activation_command_enabled": false,
+            "activation_command_invoked": false,
+            "activation_command_dispatched": false,
+            "activation_command_handoff_recorded": false,
+            "activation_command_handoff_persisted": false,
+            "activation_request_accepted": false,
+            "activation_request_recorded": false,
+            "activation_request_persisted": false,
+            "activation_request_executed": false,
+            "operator_approval_recorded": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "dispatch_performed_count": 0,
+            "execution_performed_count": 0,
+            "context_injection_performed_count": 0,
+            "provider_invoked_count": 0,
+            "model_invoked_count": 0,
+            "memory_store_write_performed_count": 0,
+            "external_kg_adapter_read_performed_count": 0,
+            "live_kg_write_performed_count": 0,
+            "credential_read_count": 0,
+            "secret_file_read_count": 0,
+            "channel_send_performed_count": 0,
+            "install_performed_count": 0,
+            "service_restarted_count": 0,
+            "active_binary_mutated_count": 0,
+            "upstream_fetch_performed_count": 0,
+            "upstream_merge_performed_count": 0,
+            "canary_harness_armed": false,
+            "canary_harness_executable": false,
+            "canary_live_enabled": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "live_mutation_enabled_count": 1,
+            "current_live_enabled_lane_count": 19,
+            "enablement_lane_count": 22,
+            "ready_enablement_lane_count": 22,
+            "denied_by_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency": denials,
+            "denied_by_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_count": denied_count,
+            "allowed_next_actions": [
+                {
+                    "action": "review_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial",
+                    "status": "allowed_report_only",
+                    "accepts_duplicate_receipt": false,
+                    "records_idempotency": false,
+                    "persists_replay_state": false,
+                    "mutates_runtime": false,
+                    "invokes_model": false,
+                    "writes_memory_or_kg": false
+                },
+                {
+                    "action": "stage_operator_review_acknowledgement_activation_command_result_receipt_ordering_monotonicity_denial",
+                    "status": "allowed_report_only_next_slice",
+                    "accepts_out_of_order_receipt": false,
+                    "records_sequence_cursor": false,
+                    "persists_ordering_state": false,
+                    "mutates_runtime": false,
+                    "invokes_model": false,
+                    "writes_memory_or_kg": false
+                }
+            ],
+        }),
+    );
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "workspace_written",
+            "filesystem_written",
+            "activation_command_result_receipt_replay_recorded",
+            "activation_command_result_receipt_replay_persisted",
+            "activation_command_result_receipt_replay_performed",
+            "activation_command_result_receipt_duplicate_accepted",
+            "activation_command_result_receipt_duplicate_recorded",
+            "activation_command_result_receipt_duplicate_persisted",
+            "activation_command_result_receipt_idempotency_key_recorded",
+            "activation_command_result_receipt_idempotency_state_recorded",
+            "activation_command_result_receipt_idempotency_state_persisted",
+            "activation_command_result_receipt_idempotency_state_materialized",
+            "activation_command_result_receipt_idempotency_filesystem_written",
+            "activation_command_result_receipt_replay_nonce_recorded",
+            "activation_command_result_receipt_cross_scope_reuse_accepted",
+            "activation_command_result_receipt_status_upgrade_accepted",
+            "activation_command_result_receipt_completed_status_accepted",
+            "activation_command_result_receipt_ack_replay_accepted",
+            "activation_command_result_receipt_ledger_replay_accepted",
+            "activation_command_result_receipt_index_replay_accepted",
+            "activation_command_result_receipt_delivery_replay_accepted",
+            "activation_command_result_receipt_export_replay_accepted",
+            "activation_command_result_receipt_query_replay_accepted",
+            "activation_command_result_receipt_observability_replay_accepted",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_completion_ack_recorded",
+            "activation_command_completion_ack_persisted",
+            "activation_command_completion_ack_accepted",
+            "operator_approval_from_replay_accepted",
+            "activation_from_replay_allowed",
+            "activation_from_receipt_allowed",
+            "activation_command_enabled",
+            "activation_command_invoked",
+            "activation_command_dispatched",
+            "activation_command_handoff_recorded",
+            "activation_request_recorded",
+            "activation_request_persisted",
+            "activation_request_executed",
+            "operator_approval_recorded",
+            "dispatch_performed",
+            "execution_performed",
+            "context_injection_performed",
+            "provider_invoked",
+            "model_invoked",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "external_kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "credential_read",
+            "secret_file_read",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_performed",
+            "public_claim_performed",
+            "install_performed",
+            "service_restarted",
+            "active_binary_mutated",
+            "upstream_fetch_performed",
+            "upstream_merge_performed",
+            "public_release_claimed",
+            "public_ga_claimed",
+        ] {
+            side_effects.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -24885,6 +25500,301 @@ mod tests {
         assert_eq!(value["side_effects"]["upstream_merge_performed"], false);
         assert_eq!(value["side_effects"]["public_release_claimed"], false);
         assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_endpoint_blocks_replay()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator canary controlled request harness operator-review acknowledgement activation command result receipt replay idempotency denial json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial --json"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_route_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_operator_review_acknowledgement_activation_command_result_receipt_no_persistence_route_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_status"],
+            "blocked"
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_schema_version"],
+            "memory_intelligence_kg_operator_canary_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_denial_v1"
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["source_accepted_activation_command_result_receipt_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_performed_count"],
+            0
+        );
+        assert_eq!(value["replay_idempotency_surface_count"], 14);
+        assert_eq!(value["replay_idempotency_surface_ready_count"], 14);
+        assert_eq!(
+            value["replay_idempotency_side_effect_free_surface_count"],
+            14
+        );
+        assert_eq!(value["replay_idempotency_fixture_count"], 10);
+        assert_eq!(value["blocked_replay_idempotency_fixture_count"], 10);
+        assert_eq!(value["noop_replay_idempotency_fixture_count"], 10);
+        assert_eq!(value["allowed_replay_idempotency_fixture_count"], 0);
+        assert_eq!(value["accepted_replay_idempotency_fixture_count"], 0);
+        assert_eq!(value["replay_idempotency_denied_count"], 10);
+        assert_eq!(value["replay_idempotency_performed_count"], 0);
+        assert_eq!(value["duplicate_result_receipt_accepted_count"], 0);
+        assert_eq!(value["idempotency_state_recorded_count"], 0);
+        assert_eq!(
+            value["activation_command_result_receipt_replay_allowed"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_replay_recorded"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_replay_persisted"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_replay_performed"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_duplicate_accepted"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_idempotency_key_recorded"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_idempotency_state_recorded"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_idempotency_state_persisted"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_replay_nonce_accepted"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_cross_scope_reuse_accepted"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_status_upgrade_accepted"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_completed_status_accepted"],
+            false
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_ack_replay_accepted"],
+            false
+        );
+        assert_eq!(value["operator_approval_from_replay_accepted"], false);
+        assert_eq!(value["activation_from_replay_allowed"], false);
+        assert_eq!(value["activation_from_receipt_allowed"], false);
+        assert_eq!(value["activation_command_enabled"], false);
+        assert_eq!(value["activation_command_invoked"], false);
+        assert_eq!(value["activation_command_dispatched"], false);
+        assert_eq!(value["activation_request_accepted"], false);
+        assert_eq!(value["activation_request_recorded"], false);
+        assert_eq!(value["activation_request_executed"], false);
+        assert_eq!(value["dispatch_performed_count"], 0);
+        assert_eq!(value["execution_performed_count"], 0);
+        assert_eq!(value["context_injection_performed_count"], 0);
+        assert_eq!(value["provider_invoked_count"], 0);
+        assert_eq!(value["model_invoked_count"], 0);
+        assert_eq!(value["memory_store_write_performed_count"], 0);
+        assert_eq!(value["external_kg_adapter_read_performed_count"], 0);
+        assert_eq!(value["live_kg_write_performed_count"], 0);
+        assert_eq!(value["credential_read_count"], 0);
+        assert_eq!(value["secret_file_read_count"], 0);
+        assert_eq!(value["channel_send_performed_count"], 0);
+        assert_eq!(value["install_performed_count"], 0);
+        assert_eq!(value["service_restarted_count"], 0);
+        assert_eq!(value["active_binary_mutated_count"], 0);
+        assert_eq!(value["upstream_fetch_performed_count"], 0);
+        assert_eq!(value["upstream_merge_performed_count"], 0);
+        assert_eq!(value["canary_harness_armed"], false);
+        assert_eq!(value["canary_harness_executable"], false);
+        assert_eq!(value["canary_live_enabled"], false);
+        assert_eq!(value["current_live_enabled_lane_count"], 19);
+        assert_eq!(value["enablement_lane_count"], 22);
+        assert_eq!(value["ready_enablement_lane_count"], 22);
+
+        let fixtures = value["replay_idempotency_fixtures"]
+            .as_array()
+            .expect("activation command result receipt replay idempotency denial fixtures");
+        assert_eq!(fixtures.len(), 10);
+        for fixture in fixtures {
+            assert_eq!(
+                fixture["activation_command_result_receipt_replay_allowed"],
+                false
+            );
+            assert_eq!(
+                fixture["activation_command_result_receipt_replay_recorded"],
+                false
+            );
+            assert_eq!(
+                fixture["activation_command_result_receipt_replay_persisted"],
+                false
+            );
+            assert_eq!(
+                fixture["activation_command_result_receipt_duplicate_accepted"],
+                false
+            );
+            assert_eq!(
+                fixture["activation_command_result_receipt_idempotency_state_recorded"],
+                false
+            );
+            assert_eq!(
+                fixture["activation_command_result_receipt_cross_scope_reuse_accepted"],
+                false
+            );
+            assert_eq!(
+                fixture["activation_command_result_receipt_status_upgrade_accepted"],
+                false
+            );
+            assert_eq!(
+                fixture["activation_command_result_receipt_ack_replay_accepted"],
+                false
+            );
+            assert_eq!(fixture["operator_approval_from_replay_accepted"], false);
+            assert_eq!(fixture["activation_from_replay_allowed"], false);
+            assert_eq!(fixture["activation_command_enabled"], false);
+            assert_eq!(fixture["activation_command_invoked"], false);
+            assert_eq!(fixture["activation_command_dispatched"], false);
+            assert_eq!(fixture["activation_request_accepted"], false);
+            assert_eq!(fixture["activation_request_executed"], false);
+            assert_eq!(fixture["dispatch_performed"], false);
+            assert_eq!(fixture["execution_performed"], false);
+            assert_eq!(fixture["context_injection_performed"], false);
+            assert_eq!(fixture["provider_invoked"], false);
+            assert_eq!(fixture["model_invoked"], false);
+            assert_eq!(fixture["memory_store_write_performed"], false);
+            assert_eq!(fixture["external_kg_adapter_read_performed"], false);
+            assert_eq!(fixture["live_kg_write_performed"], false);
+            assert_eq!(fixture["credential_read"], false);
+            assert_eq!(fixture["secret_file_read"], false);
+            assert_eq!(fixture["channel_send_performed"], false);
+            assert_eq!(fixture["install_performed"], false);
+            assert_eq!(fixture["service_restarted"], false);
+            assert_eq!(fixture["active_binary_mutated"], false);
+            assert_eq!(fixture["upstream_fetch_performed"], false);
+            assert_eq!(fixture["upstream_merge_performed"], false);
+            assert_eq!(fixture["receipt_noop_confirmed"], true);
+        }
+
+        let denied = value
+            ["denied_by_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency"]
+            .as_array()
+            .expect("denied activation command result receipt replay idempotency actions");
+        assert!(denied.len() >= 120);
+        assert_eq!(
+            value["denied_by_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["side_effects"]["activation_command_result_receipt_replay_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["activation_command_result_receipt_replay_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["activation_command_result_receipt_duplicate_accepted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["activation_command_result_receipt_idempotency_state_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["activation_command_result_receipt_ack_replay_accepted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["activation_from_replay_allowed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["activation_command_enabled"], false);
+        assert_eq!(value["side_effects"]["activation_command_invoked"], false);
+        assert_eq!(
+            value["side_effects"]["activation_command_dispatched"],
+            false
+        );
+        assert_eq!(value["side_effects"]["activation_request_recorded"], false);
+        assert_eq!(value["side_effects"]["activation_request_executed"], false);
+        assert_eq!(value["side_effects"]["dispatch_performed"], false);
+        assert_eq!(value["side_effects"]["execution_performed"], false);
+        assert_eq!(value["side_effects"]["context_injection_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["memory_store_write_performed"], false);
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["secret_file_read"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["install_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["upstream_fetch_performed"], false);
+        assert_eq!(value["side_effects"]["upstream_merge_performed"], false);
     }
 
     #[test]
