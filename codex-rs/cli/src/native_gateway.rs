@@ -132,6 +132,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PRO
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-readback-audit-receipt-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_READBACK_AUDIT_RECEIPT_ACKNOWLEDGEMENT_NO_OP_HANDOFF_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-readback-audit-receipt-acknowledgement-no-op-handoff-lane";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -142,7 +144,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 93;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 94;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -459,6 +461,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-readback-audit-receipt-acknowledgement-no-op-handoff-lane --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-readback-audit-receipt-acknowledgement-no-op-handoff-lane",
         side_effect_boundary: "read-only operator-approved bounded provider-router injection dry-run envelope readback audit receipt acknowledgement no-op handoff lane status; enables acknowledgement and no-op handoff shape authority without acknowledging, handing off, recording, persisting, accepting, executing envelopes, performing context injection, mutating provider prompts, writing KG, invoking providers/models, delivering channels, or claiming public release from report routes",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt",
+        side_effect_boundary: "read-only operator canary controlled-request harness single-budget dispatch dry-run no-op receipt status; declares one dispatch/no-op receipt shape without accepting or consuming budget, dispatching, executing, recording, persisting, materializing payloads, injecting context, invoking providers/models, writing Memory/KG, reading credentials, delivering channels, or claiming public release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1386,6 +1395,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_operator_approved_bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_lane_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_report(),
                     ),
                 );
             }
@@ -8983,6 +9002,42 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PRO
     "slice a bounded provider-router injection dry-run envelope acknowledgement acceptance precondition while keeping actual acknowledgement, handoff, context injection, KG live write, provider/model invocation, credential reads, channel delivery, and public release disabled",
 ];
 
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_BLOCKED_ACTIONS:
+    &[&str] = &[
+    "accept_operator_canary_controlled_request_dispatch_budget_from_report_route",
+    "consume_operator_canary_controlled_request_dispatch_budget_from_report_route",
+    "dispatch_operator_canary_controlled_request_from_report_route",
+    "execute_operator_canary_controlled_request_from_report_route",
+    "record_operator_canary_controlled_request_noop_receipt_from_report_route",
+    "persist_operator_canary_controlled_request_noop_receipt_from_report_route",
+    "deliver_operator_canary_controlled_request_noop_receipt_from_report_route",
+    "accept_operator_canary_controlled_request_noop_receipt_from_report_route",
+    "materialize_operator_canary_controlled_request_noop_receipt_from_report_route",
+    "materialize_operator_canary_controlled_request_payload_from_report_route",
+    "write_operator_canary_controlled_request_payload_file",
+    "inspect_operator_canary_controlled_request_raw_payload",
+    "attach_context_from_report_route",
+    "inject_context_into_provider_prompt",
+    "mutate_provider_router_prompt_from_report_route",
+    "read_kg_adapter_from_report_route",
+    "construct_external_kg_adapter_client_from_report_route",
+    "capture_kg_adapter_endpoint_or_credential_value",
+    "read_auth_secret_or_credential",
+    "write_memory_store",
+    "write_live_kg",
+    "invoke_provider_or_model",
+    "telegram_or_channel_delivery",
+    "service_restart_or_active_binary_mutation",
+    "release_or_public_claim",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_NEXT_ACTIONS:
+    &[&str] = &[
+    "run operator canary controlled-request harness single-budget dispatch dry-run no-op receipt route gate against the acknowledgement no-op handoff route",
+    "install canary controlled-request harness single-budget dispatch dry-run no-op receipt route through controlled live catch-up after full preflight",
+    "slice operator-review readback index non-persistence while keeping budget acceptance, dispatch, execution, receipt persistence, context injection, Memory/KG writes, provider/model invocation, credential reads, channel delivery, and public release disabled",
+];
+
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS: &[&str] =
     &["graphiti", "neo4j", "cocoindex"];
 
@@ -12644,6 +12699,272 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_approved_bounded_provid
             serde_json::json!(false),
         );
         side_effects.insert("context_injected".to_string(), serde_json::json!(false));
+    }
+    report
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_acknowledgement_no_op_handoff_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_lane_report();
+    let source_bool = |key: &str| {
+        source_acknowledgement_no_op_handoff_lane
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source_acknowledgement_no_op_handoff_lane
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_status = source_acknowledgement_no_op_handoff_lane
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("blocked")
+        .to_string();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_acknowledgement_no_op_handoff_lane_ready = source_status == "ready"
+        && source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_lane_enabled",
+        )
+        && source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_allowed_by_lane",
+        )
+        && source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_requires_explicit_command",
+        )
+        && source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_requires_readback_audit_receipt_lane",
+        )
+        && !source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_acknowledged_by_report_route",
+        )
+        && !source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_handoff_performed_by_report_route",
+        )
+        && !source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_recorded_by_report_route",
+        )
+        && !source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_persisted_by_report_route",
+        )
+        && !source_bool(
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_accepted_by_report_route",
+        )
+        && !source_bool("provider_router_injection_execution_allowed_by_lane")
+        && !source_bool("provider_router_prompt_mutated_by_report_route")
+        && !source_bool("provider_router_context_packet_materialized_by_report_route")
+        && !source_bool("context_attachment_performed_by_report_route")
+        && !source_bool("context_injection_allowed_by_lane")
+        && !source_bool("context_injection_performed_by_report_route")
+        && !source_bool("kg_live_write_lane_enabled")
+        && !source_bool("provider_model_invocation_lane_enabled")
+        && !source_bool("channel_delivery_lane_enabled")
+        && source_u64("live_mutation_enabled_count") == 1
+        && source_u64("current_live_enabled_lane_count") == 12
+        && source_u64("enablement_lane_count") == 15
+        && source_u64("ready_enablement_lane_count") == 15;
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && source_acknowledgement_no_op_handoff_lane_ready;
+
+    let mut report = source_acknowledgement_no_op_handoff_lane;
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "status": if report_ready { "ready" } else { "blocked" },
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt --json",
+            "native_route": true,
+            "compatibility_mode": "native_full_enablement_operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_status",
+            "side_effect_free": true,
+            "audit_date": "2026-06-13",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_ENDPOINT,
+            "bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_READBACK_AUDIT_RECEIPT_ACKNOWLEDGEMENT_NO_OP_HANDOFF_LANE_ENDPOINT,
+            "operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_GATE.md",
+            "operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_route_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_ROUTE_GATE.md",
+            "source_bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_lane_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-readback-audit-receipt-acknowledgement-no-op-handoff-lane-gate.sh",
+            "source_operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt-gate.sh",
+            "source_operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt-route-gate.sh",
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_cutover_floor": NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+            "route_count_floor_preserved": route_count_floor_preserved,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+            "source_route_wired": true,
+            "source_acknowledgement_no_op_handoff_lane_status": source_status,
+            "source_acknowledgement_no_op_handoff_lane_ready": source_acknowledgement_no_op_handoff_lane_ready,
+            "operator_authorization_source": "telegram_direct_operator_highest_authorization_2026_06_13_16_27_10_asia_shanghai",
+            "operator_authorization_scope": "operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_no_budget_accept_consume_no_dispatch_execute_no_receipt_record_persist_accept_no_payload_materialization_context_inject_memory_kg_write_provider_model_credential_channel_or_public_release",
+            "operator_authorization_received": true,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_route_enabled": true,
+            "operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_ready": true,
+            "operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_status": "blocked",
+            "dispatch_dry_run_noop_receipt_mode": "native_route_single_budget_dispatch_dry_run_noop_receipt_no_accept_no_consume_no_dispatch_no_execute_no_persist_no_live",
+            "dispatch_dry_run_noop_receipt_decision": "single_budget_dispatch_dry_run_and_noop_receipt_shapes_are_reported_without_accepting_consuming_dispatching_executing_recording_persisting_or_materializing",
+            "source_receipt_hash_preview_count": 2,
+            "source_receipt_hash_accepted_count": 0,
+            "source_receipt_recorded_count": 0,
+            "source_receipt_persisted_count": 0,
+            "source_receipt_delivered_count": 0,
+            "source_receipt_accepted_count": 0,
+            "source_receipt_materialized_count": 0,
+            "source_acceptance_skeleton_declared_count": 2,
+            "source_acceptance_skeleton_operator_input_required_count": 2,
+            "source_acceptance_skeleton_operator_input_supplied_count": 0,
+            "source_acceptance_skeleton_accepted_count": 0,
+            "source_controlled_request_dispatch_budget_declared": 1,
+            "source_controlled_request_dispatch_budget_accepted": false,
+            "source_controlled_request_dispatch_budget_consumed": 0,
+            "source_controlled_request_dispatch_budget_remaining": 0,
+            "dispatch_dry_run_noop_receipt_count": 1,
+            "dispatch_dry_run_shape_declared_count": 1,
+            "dispatch_intent_shape_declared_count": 1,
+            "single_budget_shape_declared_count": 1,
+            "single_budget_declared": 1,
+            "single_budget_accepted": false,
+            "single_budget_consumed": 0,
+            "single_budget_remaining": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "dispatch_authority_accepted_count": 0,
+            "dispatch_preconditions_satisfied_count": 0,
+            "controlled_request_dispatch_ready_count": 0,
+            "controlled_request_dispatch_allowed_count": 0,
+            "controlled_request_dispatched_count": 0,
+            "controlled_request_execution_allowed_count": 0,
+            "controlled_request_executed_count": 0,
+            "noop_receipt_shape_declared_count": 1,
+            "noop_receipt_hash_shape_declared_count": 1,
+            "noop_receipt_hash_bound_to_payload_preview_count": 1,
+            "noop_receipt_hash_bound_to_receipt_hash_preview_count": 1,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "noop_receipt_recorded_count": 0,
+            "noop_receipt_persisted_count": 0,
+            "noop_receipt_delivered_count": 0,
+            "noop_receipt_accepted_count": 0,
+            "noop_receipt_materialized_count": 0,
+            "readback_receipt_hash_preview_accepted_count": 0,
+            "audit_receipt_hash_preview_accepted_count": 0,
+            "acceptance_skeleton_accepted_count": 0,
+            "request_payload_materialized_count": 0,
+            "request_payload_file_written_count": 0,
+            "raw_payload_inspected_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "context_injection_performed_count": 0,
+            "provider_invoked_count": 0,
+            "model_invoked_count": 0,
+            "memory_store_write_performed_count": 0,
+            "external_kg_adapter_read_performed_count": 0,
+            "live_kg_write_performed_count": 0,
+            "credential_read_count": 0,
+            "secret_file_read_count": 0,
+            "channel_send_performed_count": 0,
+            "canary_harness_armed": false,
+            "canary_harness_executable": false,
+            "canary_live_enabled": false,
+            "dispatch_dry_run_noop_receipt_negative_fixture_count": 7,
+            "dispatch_dry_run_noop_receipt_blocked_negative_fixture_count": 7,
+            "dispatch_dry_run_noop_receipt_allowed_negative_fixture_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "denied_by_dispatch_dry_run_noop_receipt_count": 16,
+            "live_mutation_enabled_count": 1,
+            "current_live_enabled_lane_count": 13,
+            "enablement_lane_count": 16,
+            "ready_enablement_lane_count": 16,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "blocked_actions": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_BLOCKED_ACTIONS,
+            "allowed_next_actions": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_NEXT_ACTIONS,
+            "denied_by_dispatch_dry_run_noop_receipt": [
+                "single_budget_dispatch_dry_run_not_operator_approval",
+                "dispatch_budget_acceptance_denied",
+                "dispatch_budget_consumption_denied",
+                "dispatch_execution_denied",
+                "noop_receipt_recording_denied",
+                "noop_receipt_persistence_denied",
+                "noop_receipt_delivery_denied",
+                "noop_receipt_acceptance_denied",
+                "request_payload_materialization_denied",
+                "context_attachment_denied",
+                "provider_model_invocation_denied",
+                "memory_write_denied",
+                "external_kg_read_denied",
+                "live_kg_write_denied",
+                "credential_secret_read_denied",
+                "channel_delivery_denied"
+            ],
+        }),
+    );
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "workspace_written",
+            "filesystem_written",
+            "single_budget_accepted",
+            "single_budget_consumed",
+            "dispatch_performed",
+            "execution_performed",
+            "noop_receipt_recorded",
+            "noop_receipt_persisted",
+            "noop_receipt_delivered",
+            "noop_receipt_accepted",
+            "noop_receipt_materialized",
+            "request_payload_materialized",
+            "request_payload_file_written",
+            "raw_payload_inspected",
+            "context_injection_performed",
+            "provider_invoked",
+            "model_invoked",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "external_kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "credential_read",
+            "secret_file_read",
+            "channel_send_performed",
+            "service_restarted",
+            "active_binary_mutated",
+            "install_performed",
+            "upstream_fetch_performed",
+            "upstream_merge_performed",
+        ] {
+            side_effects.insert(key.to_string(), serde_json::json!(false));
+        }
     }
     report
 }
@@ -20934,6 +21255,182 @@ mod tests {
         assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
         assert_eq!(value["side_effects"]["channel_send_performed"], false);
         assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
+        assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_endpoint_reports_noop_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator canary controlled request harness single-budget dispatch dry-run no-op receipt json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_full_enablement_operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_status"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_ENDPOINT
+        );
+        assert_eq!(
+            value["bounded_provider_router_injection_dry_run_envelope_readback_audit_receipt_acknowledgement_no_op_handoff_lane_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_READBACK_AUDIT_RECEIPT_ACKNOWLEDGEMENT_NO_OP_HANDOFF_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_route_wired"], true);
+        assert_eq!(
+            value["source_acknowledgement_no_op_handoff_lane_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_authorization_source"],
+            "telegram_direct_operator_highest_authorization_2026_06_13_16_27_10_asia_shanghai"
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_status"],
+            "blocked"
+        );
+        assert_eq!(value["source_receipt_hash_preview_count"], 2);
+        assert_eq!(value["source_receipt_accepted_count"], 0);
+        assert_eq!(value["source_acceptance_skeleton_declared_count"], 2);
+        assert_eq!(
+            value["source_acceptance_skeleton_operator_input_supplied_count"],
+            0
+        );
+        assert_eq!(
+            value["source_controlled_request_dispatch_budget_declared"],
+            1
+        );
+        assert_eq!(
+            value["source_controlled_request_dispatch_budget_accepted"],
+            false
+        );
+        assert_eq!(
+            value["source_controlled_request_dispatch_budget_consumed"],
+            0
+        );
+        assert_eq!(value["dispatch_dry_run_noop_receipt_count"], 1);
+        assert_eq!(value["dispatch_dry_run_shape_declared_count"], 1);
+        assert_eq!(value["dispatch_intent_shape_declared_count"], 1);
+        assert_eq!(value["single_budget_shape_declared_count"], 1);
+        assert_eq!(value["single_budget_declared"], 1);
+        assert_eq!(value["single_budget_accepted"], false);
+        assert_eq!(value["single_budget_consumed"], 0);
+        assert_eq!(value["single_budget_remaining"], 0);
+        assert_eq!(value["dispatch_authority_accepted_count"], 0);
+        assert_eq!(value["dispatch_preconditions_satisfied_count"], 0);
+        assert_eq!(value["controlled_request_dispatch_ready_count"], 0);
+        assert_eq!(value["controlled_request_dispatch_allowed_count"], 0);
+        assert_eq!(value["controlled_request_dispatched_count"], 0);
+        assert_eq!(value["controlled_request_execution_allowed_count"], 0);
+        assert_eq!(value["controlled_request_executed_count"], 0);
+        assert_eq!(value["noop_receipt_shape_declared_count"], 1);
+        assert_eq!(value["noop_receipt_recorded_count"], 0);
+        assert_eq!(value["noop_receipt_persisted_count"], 0);
+        assert_eq!(value["noop_receipt_delivered_count"], 0);
+        assert_eq!(value["noop_receipt_accepted_count"], 0);
+        assert_eq!(value["noop_receipt_materialized_count"], 0);
+        assert_eq!(value["request_payload_materialized_count"], 0);
+        assert_eq!(value["request_payload_file_written_count"], 0);
+        assert_eq!(value["raw_payload_inspected_count"], 0);
+        assert_eq!(value["context_injection_performed_count"], 0);
+        assert_eq!(value["provider_invoked_count"], 0);
+        assert_eq!(value["model_invoked_count"], 0);
+        assert_eq!(value["memory_store_write_performed_count"], 0);
+        assert_eq!(value["external_kg_adapter_read_performed_count"], 0);
+        assert_eq!(value["live_kg_write_performed_count"], 0);
+        assert_eq!(value["credential_read_count"], 0);
+        assert_eq!(value["secret_file_read_count"], 0);
+        assert_eq!(value["channel_send_performed_count"], 0);
+        assert_eq!(value["canary_harness_armed"], false);
+        assert_eq!(value["canary_harness_executable"], false);
+        assert_eq!(value["canary_live_enabled"], false);
+        assert_eq!(
+            value["dispatch_dry_run_noop_receipt_negative_fixture_count"],
+            7
+        );
+        assert_eq!(
+            value["dispatch_dry_run_noop_receipt_blocked_negative_fixture_count"],
+            7
+        );
+        assert_eq!(
+            value["dispatch_dry_run_noop_receipt_allowed_negative_fixture_count"],
+            0
+        );
+        assert_eq!(value["denied_by_dispatch_dry_run_noop_receipt_count"], 16);
+        assert_eq!(value["live_mutation_enabled_count"], 1);
+        assert_eq!(value["current_live_enabled_lane_count"], 13);
+        assert_eq!(value["enablement_lane_count"], 16);
+        assert_eq!(value["ready_enablement_lane_count"], 16);
+
+        let blocked = value["blocked_actions"]
+            .as_array()
+            .expect("blocked canary single-budget dispatch dry-run actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blocked.contains(&"dispatch_operator_canary_controlled_request_from_report_route"));
+        assert!(blocked.contains(
+            &"persist_operator_canary_controlled_request_noop_receipt_from_report_route"
+        ));
+        assert!(blocked.contains(&"write_live_kg"));
+        assert!(blocked.contains(&"invoke_provider_or_model"));
+        assert!(blocked.contains(&"telegram_or_channel_delivery"));
+        assert_eq!(value["side_effects"]["single_budget_accepted"], false);
+        assert_eq!(value["side_effects"]["single_budget_consumed"], false);
+        assert_eq!(value["side_effects"]["dispatch_performed"], false);
+        assert_eq!(value["side_effects"]["execution_performed"], false);
+        assert_eq!(value["side_effects"]["noop_receipt_recorded"], false);
+        assert_eq!(value["side_effects"]["noop_receipt_persisted"], false);
+        assert_eq!(value["side_effects"]["noop_receipt_accepted"], false);
+        assert_eq!(value["side_effects"]["request_payload_materialized"], false);
+        assert_eq!(value["side_effects"]["raw_payload_inspected"], false);
+        assert_eq!(value["side_effects"]["context_injection_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["secret_file_read"], false);
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
         assert_eq!(value["side_effects"]["service_restarted"], false);
         assert_eq!(value["side_effects"]["active_binary_mutated"], false);
         assert_eq!(value["side_effects"]["public_release_claimed"], false);
