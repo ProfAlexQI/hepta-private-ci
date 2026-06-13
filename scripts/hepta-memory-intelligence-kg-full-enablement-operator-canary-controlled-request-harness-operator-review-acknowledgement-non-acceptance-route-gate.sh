@@ -162,7 +162,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 101;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 102;' \
   "native gateway route/source command count includes operator-review acknowledgement non-acceptance route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT' \
@@ -227,7 +227,7 @@ report="$(
       source_operator_acknowledgement_gate_ready:$operator_ack.operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_ready,
       source_operator_acknowledgement_gate_status:$operator_ack.operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_status,
       source_route_wired:true,
-      source_route_count_expected:101,
+      source_route_count_expected:102,
       source_route_tested_by_native_gateway_unit_test:true,
       operator_authorization_source:"telegram_direct_operator_highest_authorization_2026_06_13_16_27_10_asia_shanghai",
       operator_authorization_received:true,
@@ -339,7 +339,7 @@ jq -e '
   and .source_operator_acknowledgement_gate_ready == true
   and .source_operator_acknowledgement_gate_status == "blocked"
   and .source_route_wired == true
-  and .source_route_count_expected == 101
+  and .source_route_count_expected == 102
   and .source_route_tested_by_native_gateway_unit_test == true
   and .operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_route_enabled == true
   and .operator_review_acknowledgement_fixture_count == 8
