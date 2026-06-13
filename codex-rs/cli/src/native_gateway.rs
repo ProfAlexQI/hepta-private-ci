@@ -122,6 +122,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_P
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_ACCEPTANCE_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -132,7 +134,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 88;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 89;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -414,6 +416,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane",
         side_effect_boundary: "read-only operator-approved context handoff acceptance lane status; enables explicit redacted context handoff acceptance shape authority without attaching or injecting context from report routes, recording, persisting, accepting handoff receipts, writing KG, invoking providers/models, delivering channels, or claiming public release",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane",
+        side_effect_boundary: "read-only operator-approved context handoff receipt audit lane status; enables explicit redacted handoff receipt audit shape authority without attaching or injecting context from report routes, recording, persisting, accepting audit receipts, writing KG, invoking providers/models, delivering channels, or claiming public release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1294,6 +1303,16 @@ fn route_native_gateway_request_with_body(
                     ),
                 );
             }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_operator_approved_context_handoff_receipt_audit_lane_report(),
+                    ),
+                );
+            }
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT => {
                 return (
                     "200 OK",
@@ -1765,6 +1784,7 @@ fn index_html(
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-acceptance-receipt-lane</code> reports that explicit redacted KG prompt payload acceptance receipt shape is now lane-authorized while report routes still cannot record, persist, accept, materialize, expose raw payloads, write KG, invoke providers/models, deliver channels, or claim public release.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane</code> reports that explicit redacted KG prompt payload readback audit receipt shape is now lane-authorized while report routes still cannot render, record, persist, accept, materialize, expose raw payloads, write KG, invoke providers/models, deliver channels, or claim public release.</p>
         <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane</code> reports that explicit redacted context handoff acceptance shape is now lane-authorized while report routes still cannot attach or inject context, record, persist, accept handoffs, write KG, invoke providers/models, deliver channels, or claim public release.</p>
+        <p><code>/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane</code> reports that explicit redacted context handoff receipt audit shape is now lane-authorized while report routes still cannot attach or inject context, render, record, persist, accept audit receipts, write KG, invoke providers/models, deliver channels, or claim public release.</p>
         <p><code>/api/hepta-release-hardening-status-gate</code> keeps remaining release, external-production, launchd, ops, and hardening script families visible as local-only status gates.</p>
         <p><code>/api/hepta-provider-channel-dry-run-plan</code> promotes provider, search, channel, and runtime/session gaps into deterministic dry-run plan contracts without credentials, external calls, delivery, or store mutation.</p>
         <p><code>/api/hepta-native-packaging-gate</code> tracks Hepta Native manifest, package metadata, app resources, and local smoke readiness before signing or public distribution.</p>
@@ -8701,6 +8721,41 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HAN
     "slice explicit context handoff receipt audit or bounded provider-router injection precondition while keeping actual context injection, KG live write, provider/model invocation, credential reads, channel delivery, and public release disabled",
 ];
 
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_BLOCKED_ACTIONS:
+    &[&str] = &[
+    "attach_context_from_report_route",
+    "inject_context_into_provider_prompt",
+    "render_context_handoff_receipt_audit_from_report_route",
+    "record_context_handoff_receipt_audit_from_report_route",
+    "persist_context_handoff_receipt_audit_from_report_route",
+    "accept_context_handoff_receipt_audit_from_report_route",
+    "write_context_handoff_receipt_audit_filesystem_artifact",
+    "record_context_handoff_receipt_audit_ledger_entry",
+    "record_context_handoff_acceptance_from_report_route",
+    "persist_context_handoff_acceptance_from_report_route",
+    "accept_context_handoff_from_report_route",
+    "render_prompt_preview_from_report_route",
+    "materialize_prompt_payload_from_report_route",
+    "expose_raw_context_or_prompt_payload_from_report_route",
+    "read_kg_adapter_from_report_route",
+    "construct_external_kg_adapter_client_from_report_route",
+    "capture_kg_adapter_endpoint_or_credential_value",
+    "read_auth_secret_or_credential",
+    "write_live_kg",
+    "promote_context_handoff_receipt_audit_to_activation_authority",
+    "invoke_provider_or_model",
+    "telegram_or_channel_delivery",
+    "service_restart_or_active_binary_mutation",
+    "release_or_public_claim",
+];
+
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_NEXT_ACTIONS:
+    &[&str] = &[
+    "run operator-approved context handoff receipt audit lane source gate against the context handoff acceptance lane route",
+    "install context handoff receipt audit lane route through controlled live catch-up after full preflight",
+    "slice bounded provider-router injection precondition while keeping actual context injection, KG live write, provider/model invocation, credential reads, channel delivery, and public release disabled",
+];
+
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_SUPPORTED_KG_ADAPTERS: &[&str] =
     &["graphiti", "neo4j", "cocoindex"];
 
@@ -11442,6 +11497,137 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_approved_context_handof
     report
 }
 
+fn hepta_memory_intelligence_kg_full_enablement_operator_approved_context_handoff_receipt_audit_lane_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let context_handoff_acceptance_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_context_handoff_acceptance_lane_report();
+    let context_bool = |key: &str| {
+        context_handoff_acceptance_lane
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let context_status = context_handoff_acceptance_lane
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("blocked")
+        .to_string();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_context_handoff_acceptance_lane_ready = context_status.as_str() == "ready"
+        && context_bool("context_handoff_acceptance_lane_enabled")
+        && context_bool("context_handoff_acceptance_allowed_by_lane")
+        && context_bool("context_handoff_acceptance_requires_explicit_command")
+        && context_bool("context_handoff_acceptance_requires_readback_audit_receipt")
+        && context_bool("context_handoff_acceptance_redaction_required")
+        && context_bool("context_handoff_acceptance_scope_binding_required")
+        && context_bool("context_handoff_acceptance_operator_identity_binding_required")
+        && !context_bool("context_handoff_acceptance_recorded_by_report_route")
+        && !context_bool("context_handoff_acceptance_persisted_by_report_route")
+        && !context_bool("context_handoff_acceptance_accepted_by_report_route")
+        && !context_bool("context_handoff_acceptance_filesystem_written_by_report_route")
+        && !context_bool("context_handoff_acceptance_ledger_recorded_by_report_route")
+        && !context_bool("context_handoff_acceptance_promotes_activation_authority")
+        && !context_bool("context_attachment_performed_by_report_route")
+        && !context_bool("context_injection_allowed_by_lane")
+        && !context_bool("context_injection_performed_by_report_route")
+        && !context_bool("kg_live_write_lane_enabled")
+        && !context_bool("provider_model_invocation_lane_enabled")
+        && !context_bool("channel_delivery_lane_enabled");
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && source_context_handoff_acceptance_lane_ready;
+
+    let mut report = context_handoff_acceptance_lane;
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "status": if report_ready { "ready" } else { "blocked" },
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane --json",
+            "compatibility_mode": "native_full_enablement_operator_approved_context_handoff_receipt_audit_lane_status",
+            "audit_date": "2026-06-13",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_ENDPOINT,
+            "context_handoff_acceptance_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_ACCEPTANCE_LANE_ENDPOINT,
+            "context_handoff_acceptance_lane_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_ACCEPTANCE_LANE_GATE.md",
+            "context_handoff_receipt_audit_lane_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_GATE.md",
+            "source_context_handoff_acceptance_lane_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane-gate.sh",
+            "source_context_handoff_receipt_audit_lane_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane-gate.sh",
+            "context_handoff_acceptance_lane_status": context_status,
+            "source_context_handoff_acceptance_lane_ready": source_context_handoff_acceptance_lane_ready,
+            "operator_authorization_source": "telegram_direct_operator_highest_authorization_2026_06_13_08_01_56_asia_shanghai",
+            "operator_authorization_scope": "context_handoff_receipt_audit_lane_no_report_context_attach_inject_render_record_persist_accept_no_kg_live_write_provider_model_channel_or_public_release",
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "context_handoff_receipt_audit_lane_enabled": true,
+            "context_handoff_receipt_audit_allowed_by_lane": true,
+            "context_handoff_receipt_audit_requires_explicit_command": true,
+            "context_handoff_receipt_audit_requires_context_handoff_acceptance": true,
+            "context_handoff_receipt_audit_redaction_required": true,
+            "context_handoff_receipt_audit_redaction_proof_required": true,
+            "context_handoff_receipt_audit_scope_binding_required": true,
+            "context_handoff_receipt_audit_operator_identity_binding_required": true,
+            "context_handoff_receipt_audit_hash_binding_required": true,
+            "context_handoff_receipt_audit_raw_context_allowed": false,
+            "context_handoff_receipt_audit_rendered_by_report_route": false,
+            "context_handoff_receipt_audit_recorded_by_report_route": false,
+            "context_handoff_receipt_audit_persisted_by_report_route": false,
+            "context_handoff_receipt_audit_accepted_by_report_route": false,
+            "context_handoff_receipt_audit_filesystem_written_by_report_route": false,
+            "context_handoff_receipt_audit_ledger_recorded_by_report_route": false,
+            "context_handoff_receipt_audit_promotes_activation_authority": false,
+            "context_attachment_performed_by_report_route": false,
+            "context_injection_allowed_by_lane": false,
+            "context_injection_performed_by_report_route": false,
+            "kg_live_write_lane_enabled": false,
+            "kg_live_write_allowed_by_lane": false,
+            "kg_live_write_performed_by_report_route": false,
+            "provider_model_invocation_lane_enabled": false,
+            "provider_model_invocation_allowed_by_lane": false,
+            "channel_delivery_lane_enabled": false,
+            "live_mutation_enabled_count": 1,
+            "current_live_enabled_lane_count": 8,
+            "enablement_lane_count": 11,
+            "ready_enablement_lane_count": 11,
+            "blocked_actions": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_BLOCKED_ACTIONS,
+            "allowed_next_actions": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_NEXT_ACTIONS,
+        }),
+    );
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        side_effects.insert(
+            "context_handoff_receipt_audit_rendered".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "context_handoff_receipt_audit_recorded".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "context_handoff_receipt_audit_persisted".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "context_handoff_receipt_audit_accepted".to_string(),
+            serde_json::json!(false),
+        );
+        side_effects.insert(
+            "context_handoff_receipt_audit_ledger_recorded".to_string(),
+            serde_json::json!(false),
+        );
+    }
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -14088,6 +14274,7 @@ mod tests {
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-acceptance-receipt-lane".to_string()));
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane".to_string()));
         assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane".to_string()));
+        assert!(routes.contains(&"GET /api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane".to_string()));
         assert!(routes.contains(&"GET /api/hepta-release-hardening-status-gate".to_string()));
         assert!(routes.contains(&"GET /api/hepta-provider-channel-dry-run-plan".to_string()));
         assert!(routes.contains(&"GET /api/hepta-native-packaging-gate".to_string()));
@@ -18477,6 +18664,207 @@ mod tests {
         );
         assert_eq!(
             value["side_effects"]["context_handoff_acceptance_accepted"],
+            false
+        );
+        assert_eq!(value["side_effects"]["context_injection_performed"], false);
+        assert_eq!(value["side_effects"]["context_injected"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["auth_secret_read"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(
+            value["side_effects"]["external_kg_adapter_read_performed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
+        assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_operator_approved_context_handoff_receipt_audit_lane_endpoint_enables_receipt_audit_shape_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("operator-approved context handoff receipt audit lane json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_full_enablement_operator_approved_context_handoff_receipt_audit_lane_status"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_RECEIPT_AUDIT_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["context_handoff_acceptance_lane_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_ACCEPTANCE_LANE_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_context_handoff_acceptance_lane_ready"], true);
+        assert_eq!(
+            value["operator_authorization_source"],
+            "telegram_direct_operator_highest_authorization_2026_06_13_08_01_56_asia_shanghai"
+        );
+        assert_eq!(
+            value["operator_authorization_scope"],
+            "context_handoff_receipt_audit_lane_no_report_context_attach_inject_render_record_persist_accept_no_kg_live_write_provider_model_channel_or_public_release"
+        );
+        assert_eq!(value["context_handoff_acceptance_lane_enabled"], true);
+        assert_eq!(value["context_handoff_acceptance_allowed_by_lane"], true);
+        assert_eq!(
+            value["context_handoff_acceptance_recorded_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_acceptance_persisted_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_acceptance_accepted_by_report_route"],
+            false
+        );
+        assert_eq!(value["context_handoff_receipt_audit_lane_enabled"], true);
+        assert_eq!(value["context_handoff_receipt_audit_allowed_by_lane"], true);
+        assert_eq!(
+            value["context_handoff_receipt_audit_requires_explicit_command"],
+            true
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_requires_context_handoff_acceptance"],
+            true
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_redaction_required"],
+            true
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_redaction_proof_required"],
+            true
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_scope_binding_required"],
+            true
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_operator_identity_binding_required"],
+            true
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_hash_binding_required"],
+            true
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_raw_context_allowed"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_rendered_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_recorded_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_persisted_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_accepted_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_filesystem_written_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_ledger_recorded_by_report_route"],
+            false
+        );
+        assert_eq!(
+            value["context_handoff_receipt_audit_promotes_activation_authority"],
+            false
+        );
+        assert_eq!(value["context_attachment_performed_by_report_route"], false);
+        assert_eq!(value["context_injection_allowed_by_lane"], false);
+        assert_eq!(value["context_injection_performed_by_report_route"], false);
+        assert_eq!(value["kg_live_write_lane_enabled"], false);
+        assert_eq!(value["provider_model_invocation_lane_enabled"], false);
+        assert_eq!(value["channel_delivery_lane_enabled"], false);
+        assert_eq!(value["live_mutation_enabled_count"], 1);
+        assert_eq!(value["current_live_enabled_lane_count"], 8);
+        assert_eq!(value["enablement_lane_count"], 11);
+        assert_eq!(value["ready_enablement_lane_count"], 11);
+
+        let blocked = value["blocked_actions"]
+            .as_array()
+            .expect("blocked context handoff receipt audit lane actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blocked.contains(&"render_context_handoff_receipt_audit_from_report_route"));
+        assert!(blocked.contains(&"record_context_handoff_receipt_audit_from_report_route"));
+        assert!(blocked.contains(&"persist_context_handoff_receipt_audit_from_report_route"));
+        assert!(blocked.contains(&"accept_context_handoff_receipt_audit_from_report_route"));
+        assert!(blocked.contains(&"promote_context_handoff_receipt_audit_to_activation_authority"));
+        assert!(blocked.contains(&"inject_context_into_provider_prompt"));
+        assert!(blocked.contains(&"write_live_kg"));
+        assert!(blocked.contains(&"invoke_provider_or_model"));
+        assert!(blocked.contains(&"telegram_or_channel_delivery"));
+        assert_eq!(
+            value["side_effects"]["report_route_invoked_runtime_execution"],
+            false
+        );
+        assert_eq!(value["side_effects"]["context_attached"], false);
+        assert_eq!(
+            value["side_effects"]["context_handoff_receipt_audit_rendered"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["context_handoff_receipt_audit_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["context_handoff_receipt_audit_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["context_handoff_receipt_audit_accepted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["context_handoff_receipt_audit_ledger_recorded"],
             false
         );
         assert_eq!(value["side_effects"]["context_injection_performed"], false);
