@@ -162,7 +162,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 97;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 98;' \
   "native gateway route/source command count includes operator-review acknowledgement activation request denial matrix route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_REQUEST_DENIAL_MATRIX_ENDPOINT' \
@@ -206,7 +206,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 97
+    and .route_count == 98
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_request_denial_matrix_route_enabled == true
@@ -264,7 +264,7 @@ report="$(
       live_endpoint_required:($live_route != null),
       live_endpoint_ready:(if $live_route == null then true else ($live_route.status == "ready") end),
       source_route_wired:true,
-      source_route_count_expected:97,
+      source_route_count_expected:98,
       source_route_tested_by_native_gateway_unit_test:true,
       operator_authorization_source:"telegram_direct_operator_highest_authorization_2026_06_13_19_36_01_asia_shanghai",
       operator_authorization_received:true,
@@ -389,7 +389,7 @@ jq -e '
   and .source_activation_request_denial_matrix_gate_status == "blocked"
   and .live_endpoint_ready == true
   and .source_route_wired == true
-  and .source_route_count_expected == 97
+  and .source_route_count_expected == 98
   and .source_route_tested_by_native_gateway_unit_test == true
   and .operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_request_denial_matrix_route_enabled == true
   and .activation_request_denial_fixture_count == 9
