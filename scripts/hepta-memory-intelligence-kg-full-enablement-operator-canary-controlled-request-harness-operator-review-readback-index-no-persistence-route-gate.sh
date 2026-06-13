@@ -108,7 +108,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 95;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 96;' \
   "native gateway route/source command count includes operator-review/readback index route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_READBACK_INDEX_NO_PERSISTENCE_ENDPOINT' \
@@ -176,7 +176,7 @@ report="$(
       source_operator_review_index_gate_ready:$operator_review_index.operator_canary_controlled_request_harness_operator_review_readback_index_no_persistence_ready,
       source_operator_review_index_gate_status:$operator_review_index.operator_canary_controlled_request_harness_operator_review_readback_index_no_persistence_status,
       source_route_wired:true,
-      source_route_count_expected:95,
+      source_route_count_expected:96,
       source_route_tested_by_native_gateway_unit_test:true,
       operator_authorization_source:"telegram_direct_operator_highest_authorization_2026_06_13_16_27_10_asia_shanghai",
       operator_authorization_received:true,
@@ -263,7 +263,7 @@ jq -e '
   and .source_operator_review_index_gate_ready == true
   and .source_operator_review_index_gate_status == "blocked"
   and .source_route_wired == true
-  and .source_route_count_expected == 95
+  and .source_route_count_expected == 96
   and .source_route_tested_by_native_gateway_unit_test == true
   and .operator_canary_controlled_request_harness_operator_review_readback_index_no_persistence_route_enabled == true
   and .operator_review_required_count == 8

@@ -136,6 +136,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_RE
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-single-budget-dispatch-dry-run-noop-receipt";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_READBACK_INDEX_NO_PERSISTENCE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-readback-index-no-persistence";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-non-acceptance";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -146,7 +148,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 95;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 96;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -477,6 +479,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-readback-index-no-persistence --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-readback-index-no-persistence",
         side_effect_boundary: "read-only operator canary controlled-request harness operator-review/readback index no-persistence status; declares review/index shape without accepting operator review, persisting or delivering an index, dispatching, executing, injecting context, invoking providers/models, writing Memory/KG, reading credentials, delivering channels, or claiming public release",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-non-acceptance --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-non-acceptance",
+        side_effect_boundary: "read-only operator canary controlled-request harness operator-review acknowledgement non-acceptance status; declares acknowledgement attempts as blocked/no-op without accepting, recording, persisting, materializing, delivering, dispatching, executing, injecting context, invoking providers/models, writing Memory/KG, reading credentials, delivering channels, or claiming public release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1424,6 +1433,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_readback_index_no_persistence_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_report(),
                     ),
                 );
             }
@@ -13255,6 +13274,542 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     report
 }
 
+fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_operator_review =
+        hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_readback_index_no_persistence_report();
+    let source_bool = |key: &str| {
+        source_operator_review
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source_operator_review
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_status = source_operator_review
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("blocked")
+        .to_string();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_operator_review_ready = source_status == "ready"
+        && source_bool(
+            "operator_canary_controlled_request_harness_operator_review_readback_index_no_persistence_route_enabled",
+        )
+        && source_bool(
+            "operator_canary_controlled_request_harness_operator_review_readback_index_no_persistence_ready",
+        )
+        && source_u64("operator_review_readback_index_section_count") == 8
+        && source_u64("operator_review_required_count") == 8
+        && source_u64("operator_review_supplied_count") == 0
+        && source_u64("operator_review_recorded_count") == 0
+        && source_u64("operator_review_persisted_count") == 0
+        && source_u64("operator_review_delivered_count") == 0
+        && source_u64("operator_review_accepted_count") == 0
+        && source_u64("readback_index_declared_count") == 1
+        && source_u64("readback_index_recorded_count") == 0
+        && source_u64("readback_index_persisted_count") == 0
+        && source_u64("readback_index_materialized_count") == 0
+        && source_u64("readback_index_filesystem_written_count") == 0
+        && source_u64("review_authorizes_dispatch_count") == 0
+        && source_u64("review_authorizes_execution_count") == 0
+        && source_u64("review_authorizes_live_count") == 0
+        && source_u64("dispatch_performed_count") == 0
+        && source_u64("execution_performed_count") == 0
+        && source_u64("context_injection_performed_count") == 0
+        && source_u64("provider_invoked_count") == 0
+        && source_u64("model_invoked_count") == 0
+        && source_u64("memory_store_write_performed_count") == 0
+        && source_u64("external_kg_adapter_read_performed_count") == 0
+        && source_u64("live_kg_write_performed_count") == 0
+        && source_u64("credential_read_count") == 0
+        && source_u64("secret_file_read_count") == 0
+        && source_u64("channel_send_performed_count") == 0
+        && !source_bool("canary_harness_armed")
+        && !source_bool("canary_live_enabled")
+        && source_u64("current_live_enabled_lane_count") == 14
+        && source_u64("enablement_lane_count") == 17
+        && source_u64("ready_enablement_lane_count") == 17;
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && source_operator_review_ready;
+    let source_operator_review_required_count = source_u64("operator_review_required_count");
+    let source_operator_review_accepted_count = source_u64("operator_review_accepted_count");
+    let source_readback_index_declared_count = source_u64("readback_index_declared_count");
+    let source_readback_index_persisted_count = source_u64("readback_index_persisted_count");
+    let source_review_authorizes_dispatch_count = source_u64("review_authorizes_dispatch_count");
+    let source_review_authorizes_execution_count = source_u64("review_authorizes_execution_count");
+    let source_review_authorizes_live_count = source_u64("review_authorizes_live_count");
+
+    let acknowledgement_fixtures = serde_json::json!([
+        {
+            "fixture_id": "seen-review-index-without-approval",
+            "fixture_kind": "seen_review_index_without_approval",
+            "acknowledgement_requested": true,
+            "acknowledgement_status": "blocked_noop",
+            "acknowledgement_performed": false,
+            "acknowledgement_accepted": false,
+            "acknowledgement_recorded": false,
+            "acknowledgement_persisted": false,
+            "acknowledgement_materialized": false,
+            "acknowledgement_filesystem_written": false,
+            "acknowledgement_delivered": false,
+            "identity_accepted": false,
+            "signature_accepted": false,
+            "operator_approval_recorded": false,
+            "review_index_persisted": false,
+            "readback_index_persisted": false,
+            "dispatch_allowed": false,
+            "dispatch_performed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "memory_store_write_performed": false,
+            "external_kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "channel_send_performed": false,
+        },
+        {
+            "fixture_id": "reviewed-readback-index-attempt",
+            "fixture_kind": "reviewed_readback_index_attempt",
+            "acknowledgement_requested": true,
+            "acknowledgement_status": "blocked_noop",
+            "acknowledgement_performed": false,
+            "acknowledgement_accepted": false,
+            "acknowledgement_recorded": false,
+            "acknowledgement_persisted": false,
+            "acknowledgement_materialized": false,
+            "acknowledgement_filesystem_written": false,
+            "acknowledgement_delivered": false,
+            "identity_accepted": false,
+            "signature_accepted": false,
+            "operator_approval_recorded": false,
+            "review_index_persisted": false,
+            "readback_index_persisted": false,
+            "dispatch_allowed": false,
+            "dispatch_performed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "memory_store_write_performed": false,
+            "external_kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "channel_send_performed": false,
+        },
+        {
+            "fixture_id": "acknowledged-noop-receipt-attempt",
+            "fixture_kind": "acknowledged_noop_receipt_attempt",
+            "acknowledgement_requested": true,
+            "acknowledgement_status": "blocked_noop",
+            "acknowledgement_performed": false,
+            "acknowledgement_accepted": false,
+            "acknowledgement_recorded": false,
+            "acknowledgement_persisted": false,
+            "acknowledgement_materialized": false,
+            "acknowledgement_filesystem_written": false,
+            "acknowledgement_delivered": false,
+            "identity_accepted": false,
+            "signature_accepted": false,
+            "operator_approval_recorded": false,
+            "review_index_persisted": false,
+            "readback_index_persisted": false,
+            "dispatch_allowed": false,
+            "dispatch_performed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "memory_store_write_performed": false,
+            "external_kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "channel_send_performed": false,
+        },
+        {
+            "fixture_id": "acknowledgement-recording-attempt",
+            "fixture_kind": "acknowledgement_recording_attempt",
+            "acknowledgement_requested": true,
+            "acknowledgement_status": "blocked_noop",
+            "acknowledgement_performed": false,
+            "acknowledgement_accepted": false,
+            "acknowledgement_recorded": false,
+            "acknowledgement_persisted": false,
+            "acknowledgement_materialized": false,
+            "acknowledgement_filesystem_written": false,
+            "acknowledgement_delivered": false,
+            "identity_accepted": false,
+            "signature_accepted": false,
+            "operator_approval_recorded": false,
+            "review_index_persisted": false,
+            "readback_index_persisted": false,
+            "dispatch_allowed": false,
+            "dispatch_performed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "memory_store_write_performed": false,
+            "external_kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "channel_send_performed": false,
+        },
+        {
+            "fixture_id": "acknowledgement-delivery-attempt",
+            "fixture_kind": "acknowledgement_delivery_attempt",
+            "acknowledgement_requested": true,
+            "acknowledgement_status": "blocked_noop",
+            "acknowledgement_performed": false,
+            "acknowledgement_accepted": false,
+            "acknowledgement_recorded": false,
+            "acknowledgement_persisted": false,
+            "acknowledgement_materialized": false,
+            "acknowledgement_filesystem_written": false,
+            "acknowledgement_delivered": false,
+            "identity_accepted": false,
+            "signature_accepted": false,
+            "operator_approval_recorded": false,
+            "review_index_persisted": false,
+            "readback_index_persisted": false,
+            "dispatch_allowed": false,
+            "dispatch_performed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "memory_store_write_performed": false,
+            "external_kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "channel_send_performed": false,
+        },
+        {
+            "fixture_id": "dispatch-from-acknowledgement-attempt",
+            "fixture_kind": "dispatch_from_acknowledgement_attempt",
+            "acknowledgement_requested": true,
+            "acknowledgement_status": "blocked_noop",
+            "acknowledgement_performed": false,
+            "acknowledgement_accepted": false,
+            "acknowledgement_recorded": false,
+            "acknowledgement_persisted": false,
+            "acknowledgement_materialized": false,
+            "acknowledgement_filesystem_written": false,
+            "acknowledgement_delivered": false,
+            "identity_accepted": false,
+            "signature_accepted": false,
+            "operator_approval_recorded": false,
+            "review_index_persisted": false,
+            "readback_index_persisted": false,
+            "dispatch_allowed": false,
+            "dispatch_performed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "memory_store_write_performed": false,
+            "external_kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "channel_send_performed": false,
+        },
+        {
+            "fixture_id": "provider-model-from-acknowledgement-attempt",
+            "fixture_kind": "provider_model_from_acknowledgement_attempt",
+            "acknowledgement_requested": true,
+            "acknowledgement_status": "blocked_noop",
+            "acknowledgement_performed": false,
+            "acknowledgement_accepted": false,
+            "acknowledgement_recorded": false,
+            "acknowledgement_persisted": false,
+            "acknowledgement_materialized": false,
+            "acknowledgement_filesystem_written": false,
+            "acknowledgement_delivered": false,
+            "identity_accepted": false,
+            "signature_accepted": false,
+            "operator_approval_recorded": false,
+            "review_index_persisted": false,
+            "readback_index_persisted": false,
+            "dispatch_allowed": false,
+            "dispatch_performed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "memory_store_write_performed": false,
+            "external_kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "channel_send_performed": false,
+        },
+        {
+            "fixture_id": "memory-kg-write-from-acknowledgement-attempt",
+            "fixture_kind": "memory_kg_write_from_acknowledgement_attempt",
+            "acknowledgement_requested": true,
+            "acknowledgement_status": "blocked_noop",
+            "acknowledgement_performed": false,
+            "acknowledgement_accepted": false,
+            "acknowledgement_recorded": false,
+            "acknowledgement_persisted": false,
+            "acknowledgement_materialized": false,
+            "acknowledgement_filesystem_written": false,
+            "acknowledgement_delivered": false,
+            "identity_accepted": false,
+            "signature_accepted": false,
+            "operator_approval_recorded": false,
+            "review_index_persisted": false,
+            "readback_index_persisted": false,
+            "dispatch_allowed": false,
+            "dispatch_performed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "memory_store_write_performed": false,
+            "external_kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "channel_send_performed": false,
+        },
+    ]);
+
+    let mut report = source_operator_review;
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "status": if report_ready { "ready" } else { "blocked" },
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-non-acceptance --json",
+            "native_route": true,
+            "compatibility_mode": "native_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_status",
+            "side_effect_free": true,
+            "audit_date": "2026-06-13",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT,
+            "source_operator_review_readback_index_no_persistence_route_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_READBACK_INDEX_NO_PERSISTENCE_ENDPOINT,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_GATE.md",
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_route_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ROUTE_GATE.md",
+            "source_operator_canary_controlled_request_harness_operator_review_readback_index_no_persistence_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-readback-index-no-persistence-route-gate.sh",
+            "source_operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-non-acceptance-gate.sh",
+            "source_operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-non-acceptance-route-gate.sh",
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_cutover_floor": NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+            "route_count_floor_preserved": route_count_floor_preserved,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+            "source_route_wired": true,
+            "source_operator_review_readback_index_no_persistence_route_status": source_status,
+            "source_operator_review_readback_index_no_persistence_route_ready": source_operator_review_ready,
+            "operator_authorization_source": "telegram_direct_operator_highest_authorization_2026_06_13_16_27_10_asia_shanghai",
+            "operator_authorization_scope": "operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_no_ack_accept_record_persist_materialize_deliver_no_operator_approval_identity_signature_no_dispatch_execute_context_inject_memory_kg_write_provider_model_credential_channel_or_public_release",
+            "operator_authorization_received": true,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_route_enabled": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_ready": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_status": "blocked",
+            "operator_review_acknowledgement_mode": "native_route_stdout_only_acknowledgement_shapes_no_acceptance_no_recording_no_persistence_no_dispatch_no_live",
+            "operator_review_acknowledgement_decision": "review_acknowledgement_attempts_remain_blocked_noop_and_do_not_promote_operator_review_or_readback_index_to_authority",
+            "source_operator_review_readback_index_status": "blocked",
+            "source_operator_review_required_count": source_operator_review_required_count,
+            "source_operator_review_accepted_count": source_operator_review_accepted_count,
+            "source_readback_index_declared_count": source_readback_index_declared_count,
+            "source_readback_index_persisted_count": source_readback_index_persisted_count,
+            "source_review_authorizes_dispatch_count": source_review_authorizes_dispatch_count,
+            "source_review_authorizes_execution_count": source_review_authorizes_execution_count,
+            "source_review_authorizes_live_count": source_review_authorizes_live_count,
+            "operator_review_acknowledgement_fixtures": acknowledgement_fixtures,
+            "operator_review_acknowledgement_fixture_count": 8,
+            "operator_review_acknowledgement_requested_fixture_count": 8,
+            "blocked_operator_review_acknowledgement_fixture_count": 8,
+            "noop_operator_review_acknowledgement_fixture_count": 8,
+            "allowed_operator_review_acknowledgement_fixture_count": 0,
+            "accepted_operator_review_acknowledgement_fixture_count": 0,
+            "operator_review_acknowledgement_performed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "operator_review_acknowledgement_allowed": false,
+            "operator_review_acknowledgement_accepted": false,
+            "operator_review_acknowledgement_recorded": false,
+            "operator_review_acknowledgement_persisted": false,
+            "operator_review_acknowledgement_materialized": false,
+            "operator_review_acknowledgement_filesystem_written": false,
+            "operator_review_acknowledgement_delivered": false,
+            "operator_review_acknowledgement_identity_accepted": false,
+            "operator_review_acknowledgement_signature_accepted": false,
+            "operator_review_acknowledgement_final_state_promoted": false,
+            "operator_review_acknowledgement_completion_promoted": false,
+            "operator_review_acknowledgement_authorizes_dispatch_count": 0,
+            "operator_review_acknowledgement_authorizes_execution_count": 0,
+            "operator_review_acknowledgement_authorizes_live_count": 0,
+            "operator_approval_recorded": false,
+            "operator_identity_accepted": false,
+            "readback_index_recorded_count": 0,
+            "readback_index_persisted_count": 0,
+            "readback_index_materialized_count": 0,
+            "readback_index_filesystem_written_count": 0,
+            "dispatch_allowed_count": 0,
+            "dispatch_performed_count": 0,
+            "execution_allowed_count": 0,
+            "execution_performed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "context_injection_performed_count": 0,
+            "provider_invoked_count": 0,
+            "model_invoked_count": 0,
+            "memory_store_write_performed_count": 0,
+            "external_kg_adapter_read_performed_count": 0,
+            "live_kg_write_performed_count": 0,
+            "credential_read_count": 0,
+            "secret_file_read_count": 0,
+            "channel_send_performed_count": 0,
+            "canary_harness_armed": false,
+            "canary_harness_executable": false,
+            "canary_live_enabled": false,
+            "denied_by_operator_review_acknowledgement_non_acceptance_count": 19,
+            "live_mutation_enabled_count": 1,
+            "current_live_enabled_lane_count": 15,
+            "enablement_lane_count": 18,
+            "ready_enablement_lane_count": 18,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "blocked_actions": [
+                "accept_operator_canary_controlled_request_harness_operator_review_acknowledgement_from_report_route",
+                "record_operator_canary_controlled_request_harness_operator_review_acknowledgement_from_report_route",
+                "persist_operator_canary_controlled_request_harness_operator_review_acknowledgement_from_report_route",
+                "materialize_operator_canary_controlled_request_harness_operator_review_acknowledgement_from_report_route",
+                "write_operator_canary_controlled_request_harness_operator_review_acknowledgement_file_from_report_route",
+                "deliver_operator_canary_controlled_request_harness_operator_review_acknowledgement_from_report_route",
+                "accept_operator_identity_from_operator_review_acknowledgement",
+                "accept_operator_signature_from_operator_review_acknowledgement",
+                "record_operator_approval_from_operator_review_acknowledgement",
+                "promote_operator_review_acknowledgement_to_final_state",
+                "promote_operator_review_acknowledgement_to_completion",
+                "dispatch_operator_canary_controlled_request_from_acknowledgement",
+                "execute_operator_canary_controlled_request_from_acknowledgement",
+                "attach_or_inject_context_from_operator_review_acknowledgement",
+                "write_memory_or_live_kg_from_operator_review_acknowledgement",
+                "invoke_provider_or_model_from_operator_review_acknowledgement",
+                "read_credential_or_secret_from_operator_review_acknowledgement",
+                "telegram_or_channel_delivery_from_operator_review_acknowledgement",
+                "release_or_public_claim_from_operator_review_acknowledgement"
+            ],
+            "allowed_next_actions": [
+                "run operator canary controlled-request harness operator-review acknowledgement non-acceptance route gate against the readback index route",
+                "install canary operator-review acknowledgement non-acceptance route through controlled live catch-up after full preflight",
+                "slice operator-review acknowledgement activation request denial matrix while keeping acknowledgement acceptance, dispatch, execution, persistence, context injection, Memory/KG writes, provider/model invocation, credential reads, channel delivery, and public release disabled"
+            ],
+            "denied_by_operator_review_acknowledgement_non_acceptance": [
+                "operator_review_acknowledgement_acceptance_denied",
+                "operator_review_acknowledgement_recording_denied",
+                "operator_review_acknowledgement_persistence_denied",
+                "operator_review_acknowledgement_materialization_denied",
+                "operator_review_acknowledgement_filesystem_write_denied",
+                "operator_review_acknowledgement_delivery_denied",
+                "operator_review_acknowledgement_identity_acceptance_denied",
+                "operator_review_acknowledgement_signature_acceptance_denied",
+                "operator_review_acknowledgement_cannot_promote_review_index",
+                "operator_review_acknowledgement_cannot_promote_readback_index",
+                "operator_review_acknowledgement_cannot_promote_dispatch_authority",
+                "operator_review_acknowledgement_cannot_promote_execution_authority",
+                "operator_review_acknowledgement_cannot_promote_live_authority",
+                "provider_model_invocation_denied",
+                "memory_write_denied",
+                "external_kg_read_denied",
+                "live_kg_write_denied",
+                "credential_secret_read_denied",
+                "channel_delivery_denied"
+            ],
+        }),
+    );
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "workspace_written",
+            "filesystem_written",
+            "operator_review_acknowledgement_performed",
+            "operator_review_acknowledgement_recorded",
+            "operator_review_acknowledgement_persisted",
+            "operator_review_acknowledgement_materialized",
+            "operator_review_acknowledgement_filesystem_written",
+            "operator_review_acknowledgement_delivered",
+            "operator_review_acknowledgement_accepted",
+            "operator_approval_recorded",
+            "operator_identity_accepted",
+            "readback_index_recorded",
+            "readback_index_persisted",
+            "readback_index_materialized",
+            "readback_index_filesystem_written",
+            "dispatch_performed",
+            "execution_performed",
+            "context_injection_performed",
+            "provider_invoked",
+            "model_invoked",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "external_kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "credential_read",
+            "secret_file_read",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "service_restarted",
+            "active_binary_mutated",
+            "install_performed",
+            "upstream_fetch_performed",
+            "upstream_merge_performed",
+            "public_release_claimed",
+            "public_ga_claimed",
+        ] {
+            side_effects.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -21887,6 +22442,230 @@ mod tests {
             value["side_effects"]["operator_review_index_materialized"],
             false
         );
+        assert_eq!(value["side_effects"]["readback_index_persisted"], false);
+        assert_eq!(value["side_effects"]["dispatch_performed"], false);
+        assert_eq!(value["side_effects"]["execution_performed"], false);
+        assert_eq!(value["side_effects"]["context_injection_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["secret_file_read"], false);
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
+        assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_endpoint_reports_noop_only()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator canary controlled request harness operator-review acknowledgement non-acceptance json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-non-acceptance --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_status"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT
+        );
+        assert_eq!(
+            value["source_operator_review_readback_index_no_persistence_route_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_READBACK_INDEX_NO_PERSISTENCE_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_operator_review_readback_index_no_persistence_route_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_status"],
+            "blocked"
+        );
+        assert_eq!(value["source_operator_review_required_count"], 8);
+        assert_eq!(value["source_operator_review_accepted_count"], 0);
+        assert_eq!(value["source_readback_index_declared_count"], 1);
+        assert_eq!(value["source_readback_index_persisted_count"], 0);
+        assert_eq!(value["source_review_authorizes_dispatch_count"], 0);
+        assert_eq!(value["source_review_authorizes_execution_count"], 0);
+        assert_eq!(value["source_review_authorizes_live_count"], 0);
+        assert_eq!(value["operator_review_acknowledgement_fixture_count"], 8);
+        assert_eq!(
+            value["operator_review_acknowledgement_requested_fixture_count"],
+            8
+        );
+        assert_eq!(
+            value["blocked_operator_review_acknowledgement_fixture_count"],
+            8
+        );
+        assert_eq!(
+            value["noop_operator_review_acknowledgement_fixture_count"],
+            8
+        );
+        assert_eq!(
+            value["allowed_operator_review_acknowledgement_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_operator_review_acknowledgement_fixture_count"],
+            0
+        );
+        assert_eq!(value["operator_review_acknowledgement_performed_count"], 0);
+        assert_eq!(value["operator_review_acknowledgement_allowed"], false);
+        assert_eq!(value["operator_review_acknowledgement_accepted"], false);
+        assert_eq!(value["operator_review_acknowledgement_recorded"], false);
+        assert_eq!(value["operator_review_acknowledgement_persisted"], false);
+        assert_eq!(value["operator_review_acknowledgement_materialized"], false);
+        assert_eq!(
+            value["operator_review_acknowledgement_filesystem_written"],
+            false
+        );
+        assert_eq!(value["operator_review_acknowledgement_delivered"], false);
+        assert_eq!(
+            value["operator_review_acknowledgement_identity_accepted"],
+            false
+        );
+        assert_eq!(
+            value["operator_review_acknowledgement_signature_accepted"],
+            false
+        );
+        assert_eq!(
+            value["operator_review_acknowledgement_final_state_promoted"],
+            false
+        );
+        assert_eq!(
+            value["operator_review_acknowledgement_completion_promoted"],
+            false
+        );
+        assert_eq!(
+            value["operator_review_acknowledgement_authorizes_dispatch_count"],
+            0
+        );
+        assert_eq!(
+            value["operator_review_acknowledgement_authorizes_execution_count"],
+            0
+        );
+        assert_eq!(
+            value["operator_review_acknowledgement_authorizes_live_count"],
+            0
+        );
+        assert_eq!(value["operator_approval_recorded"], false);
+        assert_eq!(value["operator_identity_accepted"], false);
+        assert_eq!(value["readback_index_recorded_count"], 0);
+        assert_eq!(value["readback_index_persisted_count"], 0);
+        assert_eq!(value["readback_index_materialized_count"], 0);
+        assert_eq!(value["readback_index_filesystem_written_count"], 0);
+        assert_eq!(value["dispatch_allowed_count"], 0);
+        assert_eq!(value["dispatch_performed_count"], 0);
+        assert_eq!(value["execution_allowed_count"], 0);
+        assert_eq!(value["execution_performed_count"], 0);
+        assert_eq!(value["context_injection_performed_count"], 0);
+        assert_eq!(value["provider_invoked_count"], 0);
+        assert_eq!(value["model_invoked_count"], 0);
+        assert_eq!(value["memory_store_write_performed_count"], 0);
+        assert_eq!(value["external_kg_adapter_read_performed_count"], 0);
+        assert_eq!(value["live_kg_write_performed_count"], 0);
+        assert_eq!(value["credential_read_count"], 0);
+        assert_eq!(value["secret_file_read_count"], 0);
+        assert_eq!(value["channel_send_performed_count"], 0);
+        assert_eq!(value["canary_harness_armed"], false);
+        assert_eq!(value["canary_harness_executable"], false);
+        assert_eq!(value["canary_live_enabled"], false);
+        assert_eq!(
+            value["denied_by_operator_review_acknowledgement_non_acceptance_count"],
+            19
+        );
+        assert_eq!(value["live_mutation_enabled_count"], 1);
+        assert_eq!(value["current_live_enabled_lane_count"], 15);
+        assert_eq!(value["enablement_lane_count"], 18);
+        assert_eq!(value["ready_enablement_lane_count"], 18);
+
+        let fixtures = value["operator_review_acknowledgement_fixtures"]
+            .as_array()
+            .expect("operator review acknowledgement fixtures");
+        assert_eq!(fixtures.len(), 8);
+        for fixture in fixtures {
+            assert_eq!(fixture["acknowledgement_requested"], true);
+            assert_eq!(fixture["acknowledgement_status"], "blocked_noop");
+            assert_eq!(fixture["acknowledgement_performed"], false);
+            assert_eq!(fixture["acknowledgement_accepted"], false);
+            assert_eq!(fixture["acknowledgement_recorded"], false);
+            assert_eq!(fixture["acknowledgement_persisted"], false);
+            assert_eq!(fixture["acknowledgement_materialized"], false);
+            assert_eq!(fixture["acknowledgement_filesystem_written"], false);
+            assert_eq!(fixture["acknowledgement_delivered"], false);
+            assert_eq!(fixture["dispatch_performed"], false);
+            assert_eq!(fixture["execution_performed"], false);
+            assert_eq!(fixture["provider_invoked"], false);
+            assert_eq!(fixture["model_invoked"], false);
+            assert_eq!(fixture["memory_store_write_performed"], false);
+            assert_eq!(fixture["live_kg_write_performed"], false);
+            assert_eq!(fixture["credential_read"], false);
+            assert_eq!(fixture["secret_file_read"], false);
+            assert_eq!(fixture["channel_send_performed"], false);
+        }
+
+        let denied = value["denied_by_operator_review_acknowledgement_non_acceptance"]
+            .as_array()
+            .expect("denied operator review acknowledgement actions");
+        assert_eq!(denied.len(), 19);
+        assert_eq!(
+            value["side_effects"]["operator_review_acknowledgement_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["operator_review_acknowledgement_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["operator_review_acknowledgement_delivered"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["operator_review_acknowledgement_accepted"],
+            false
+        );
+        assert_eq!(value["side_effects"]["operator_approval_recorded"], false);
+        assert_eq!(value["side_effects"]["operator_identity_accepted"], false);
         assert_eq!(value["side_effects"]["readback_index_persisted"], false);
         assert_eq!(value["side_effects"]["dispatch_performed"], false);
         assert_eq!(value["side_effects"]["execution_performed"], false);
