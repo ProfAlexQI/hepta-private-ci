@@ -72,7 +72,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 92;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 93;' \
   "native gateway route/source command count includes context handoff acceptance lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
@@ -154,7 +154,7 @@ report="$(
       live_kg_prompt_preview_read_only_adapter_lane_status:$kg_preview_adapter_lane.status,
       live_kg_prompt_preview_read_only_adapter_lane_ready:($kg_preview_adapter_lane.kg_prompt_preview_lane_enabled and $kg_preview_adapter_lane.kg_external_adapter_read_lane_enabled),
       source_route_wired:true,
-      source_route_count_expected:92,
+      source_route_count_expected:93,
       source_route_tested_by_native_gateway_unit_test:true,
       preserved_shared_systems_tool_registry_route:true,
       operator_authorization_source:"telegram_direct_operator_authorization_2026_06_12_18_50_49_asia_shanghai",
@@ -278,7 +278,7 @@ report="$(
 
 jq -e '
   .status == "ready"
-  and .source_route_count_expected == 92
+  and .source_route_count_expected == 93
   and .preserved_shared_systems_tool_registry_route == true
   and .operator_authorization_received == true
   and .operator_approved_activation_lane_present == true
