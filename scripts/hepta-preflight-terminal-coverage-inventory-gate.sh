@@ -124,6 +124,7 @@ required_markers=(
   "memory/intelligence/KG full live activation readiness index replay/idempotency denial gate"
   "memory/intelligence/KG full live activation readiness index replay/idempotency denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template gate"
+  "memory/intelligence/KG full live activation operator readiness packet template route gate"
   "memory/intelligence/KG full live activation operator readiness packet template non-acceptance authority replay denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template field validation denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template section completion non-acceptance gate"
