@@ -16,8 +16,8 @@ It verifies:
 - the native endpoint and source command are wired into route parity;
 - the 43-field matrix remains missing/denied with zero captured, recorded, validated, accepted, authority-derived, or live-executable fields;
 - the focused native unit test covers the endpoint contract;
-- optional live endpoint verification reports route count 114 and missing route count 0;
-- terminal coverage reaches 254/254 with no missing, duplicate, or out-of-order markers.
+- optional live endpoint verification reports route count 115 and missing route count 0;
+- terminal coverage reaches 255/255 with no missing, duplicate, or out-of-order markers.
 
 This route only prepares the next report-only slice:
 
