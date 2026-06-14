@@ -32,7 +32,7 @@ require_source_text() {
   local label="$3"
 
   if ! rg -Fq "$source_text" "$source_file"; then
-    echo "missing operator readiness packet template non-acceptance route source text: $label" >&2
+    echo "missing operator readiness packet template field-validation route source text: $label" >&2
     exit 1
   fi
 }
@@ -43,126 +43,134 @@ if [[ "$MIN_LONG_SOAK_SAMPLES" -lt 24 ]]; then
   exit 1
 fi
 
-NON_ACCEPTANCE_JSON="$(
+FIELD_VALIDATION_JSON="$(
   capture_json_report \
-    "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-non-acceptance-authority-replay-denial-gate" \
+    "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial-gate" \
     env HEPTA_LIVE_URL="$BASE_URL" \
       HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
-      scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-non-acceptance-authority-replay-denial-gate.sh
+      scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial-gate.sh
 )"
 
 jq -e '
   .runtime == "hepta"
   and .status == "ready"
-  and .gate == "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_gate"
-  and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_ready == true
-  and .source_operator_readiness_packet_template_ready == true
+  and .gate == "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_gate"
+  and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_ready == true
+  and .source_template_non_acceptance_ready == true
   and .source_operator_packet_section_count == 10
   and .source_operator_packet_required_field_count == 43
-  and .source_operator_packet_recorded_field_count == 0
-  and .source_operator_packet_accepted_field_count == 0
-  and .required_non_acceptance_surface_count == 12
-  and .ready_non_acceptance_surface_count == 12
-  and .side_effect_free_non_acceptance_surface_count == 12
-  and .required_non_acceptance_fixture_count == 10
-  and .non_acceptance_fixture_count == 10
-  and .blocked_non_acceptance_fixture_count == 10
-  and .allowed_non_acceptance_fixture_count == 0
-  and .accepted_non_acceptance_fixture_count == 0
-  and .template_view_is_acceptance == false
-  and .template_summary_is_acceptance == false
-  and .template_replay_allowed == false
-  and .template_replay_accepted == false
-  and .template_reference_registered == false
-  and .template_reference_persisted == false
-  and .template_cache_written == false
-  and .template_query_registered == false
-  and .template_export_recorded == false
-  and .template_observability_recorded == false
+  and .required_field_count == 43
+  and .field_validation_matrix_count == 43
+  and .missing_field_count == 43
+  and .present_field_count == 0
+  and .captured_field_value_count == 0
+  and .recorded_field_hash_count == 0
+  and .shape_validated_field_count == 0
+  and .accepted_field_count == 0
+  and .authority_derived_field_count == 0
+  and .live_execution_allowed_field_count == 0
+  and .section_validation_count == 10
+  and (.required_field_validation_matrix | all(
+    .field_required == true
+    and .field_missing == true
+    and .field_present == false
+    and .field_value_captured == false
+    and .field_value_hash_recorded == false
+    and .field_shape_validated == false
+    and .field_recorded == false
+    and .field_persisted == false
+    and .field_accepted == false
+    and .field_authority_derived == false
+    and .field_live_execution_allowed == false
+    and .validation_status == "missing_denied"
+  ))
+  and (.denied_by_field_validation | length) == 7
   and .operator_acceptance_recorded == false
   and .operator_approval_recorded == false
   and .activation_authority_derived == false
   and .activation_command_derived == false
   and .activation_allowed == false
   and .activation_performed == false
-  and (.non_acceptance_fixtures | all(
-    .operator_acceptance_recorded == false
-    and .operator_approval_recorded == false
-    and .activation_authority_derived == false
-    and .activation_command_derived == false
-    and .template_non_acceptance_noop_confirmed == true
-  ))
-  and (.denied_by_template_non_acceptance_authority_replay | length) == 10
   and (.side_effects | to_entries | all(.value == false))
-' >/dev/null <<<"$NON_ACCEPTANCE_JSON"
+' >/dev/null <<<"$FIELD_VALIDATION_JSON"
 
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 114;' \
-  "native gateway route/source command count includes operator readiness packet template non-acceptance route"
+  "native gateway route/source command count includes operator readiness packet template field-validation route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_NON_ACCEPTANCE_AUTHORITY_REPLAY_DENIAL_ENDPOINT' \
-  "native gateway operator readiness packet template non-acceptance endpoint constant"
+  'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_FIELD_VALIDATION_DENIAL_ENDPOINT' \
+  "native gateway operator readiness packet template field-validation endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  '/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-non-acceptance-authority-replay-denial' \
-  "native gateway operator readiness packet template non-acceptance endpoint path"
+  '/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial' \
+  "native gateway operator readiness packet template field-validation endpoint path"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  '/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-non-acceptance-authority-replay-denial --json' \
-  "native gateway operator readiness packet template non-acceptance source command"
+  '/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial --json' \
+  "native gateway operator readiness packet template field-validation source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_report' \
-  "native gateway operator readiness packet template non-acceptance report function"
+  'hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_report' \
+  "native gateway operator readiness packet template field-validation report function"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  '"memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_route_enabled": true' \
-  "operator readiness packet template non-acceptance route enabled"
+  '"memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_route_enabled": true' \
+  "operator readiness packet template field-validation route enabled"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  '"template_replay_allowed": false' \
-  "template replay denied"
+  '"field_validation_matrix_count": field_validation_matrix_count' \
+  "field validation matrix count emitted"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  '"operator_acceptance_recorded": false' \
-  "operator acceptance recording denied"
+  '"field_value_captured": false' \
+  "field value capture denied"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  '"activation_authority_derived": false' \
-  "activation authority derivation denied"
+  '"field_authority_derived": false' \
+  "field authority derivation denied"
 
-TEST_LOG="$(mktemp /tmp/hepta-operator-readiness-packet-template-non-acceptance-route-tests.XXXXXX)"
+TEST_LOG="$(mktemp /tmp/hepta-operator-readiness-packet-template-field-validation-route-tests.XXXXXX)"
 cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
-  hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_endpoint_blocks_replay_authority \
+  hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_endpoint_blocks_values_authority \
   -- --nocapture >"$TEST_LOG"
 
 if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   LIVE_ROUTE_JSON="$(
-    curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-non-acceptance-authority-replay-denial"
+    curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial"
   )"
   jq -e '
     .status == "ready"
     and .route_count == 114
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
-    and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_route_enabled == true
-    and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_ready == true
-    and .source_operator_readiness_packet_template_ready == true
+    and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_route_enabled == true
+    and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_ready == true
+    and .source_template_non_acceptance_ready == true
     and .source_operator_packet_section_count == 10
     and .source_operator_packet_required_field_count == 43
     and .source_operator_packet_recorded_field_count == 0
     and .source_operator_packet_accepted_field_count == 0
-    and .required_non_acceptance_surface_count == 12
-    and .ready_non_acceptance_surface_count == 12
-    and .required_non_acceptance_fixture_count == 10
-    and .non_acceptance_fixture_count == 10
-    and .blocked_non_acceptance_fixture_count == 10
-    and .allowed_non_acceptance_fixture_count == 0
-    and .accepted_non_acceptance_fixture_count == 0
-    and .template_view_is_acceptance == false
-    and .template_summary_is_acceptance == false
-    and .template_replay_allowed == false
-    and .template_replay_accepted == false
-    and .template_reference_registered == false
-    and .template_cache_written == false
-    and .template_query_registered == false
-    and .template_export_recorded == false
-    and .template_observability_recorded == false
+    and .required_field_count == 43
+    and .field_validation_matrix_count == 43
+    and .missing_field_count == 43
+    and .present_field_count == 0
+    and .captured_field_value_count == 0
+    and .recorded_field_hash_count == 0
+    and .shape_validated_field_count == 0
+    and .accepted_field_count == 0
+    and .authority_derived_field_count == 0
+    and .live_execution_allowed_field_count == 0
+    and .section_validation_count == 10
+    and (.required_field_validation_matrix | all(
+      .field_required == true
+      and .field_missing == true
+      and .field_present == false
+      and .field_value_captured == false
+      and .field_value_hash_recorded == false
+      and .field_shape_validated == false
+      and .field_recorded == false
+      and .field_persisted == false
+      and .field_accepted == false
+      and .field_authority_derived == false
+      and .field_live_execution_allowed == false
+      and .validation_status == "missing_denied"
+    ))
+    and (.denied_by_field_validation | length) == 7
     and .operator_acceptance_recorded == false
     and .operator_approval_recorded == false
     and .activation_authority_derived == false
@@ -205,7 +213,7 @@ jq -e '
 ' >/dev/null <<<"$TERMINAL_COVERAGE_JSON"
 
 native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
-source_non_acceptance_gate_sha256="$(printf '%s' "$NON_ACCEPTANCE_JSON" | shasum -a 256 | awk '{print $1}')"
+source_field_validation_gate_sha256="$(printf '%s' "$FIELD_VALIDATION_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 256 | awk '{print $1}')"
 
 jq -n \
@@ -213,14 +221,14 @@ jq -n \
   --arg runtime "hepta" \
   --arg status "ready" \
   --arg base_url "$BASE_URL" \
-  --arg gate "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_route_gate" \
-  --arg endpoint "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-non-acceptance-authority-replay-denial" \
-  --arg source_command "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-non-acceptance-authority-replay-denial --json" \
-  --arg source_non_acceptance_gate_sha256 "$source_non_acceptance_gate_sha256" \
+  --arg gate "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_route_gate" \
+  --arg endpoint "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial" \
+  --arg source_command "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial --json" \
+  --arg source_field_validation_gate_sha256 "$source_field_validation_gate_sha256" \
   --arg native_gateway_sha256 "$native_gateway_sha256" \
   --arg test_log "$TEST_LOG" \
   --arg terminal_coverage_sha256 "$terminal_coverage_sha256" \
-  --argjson source "$NON_ACCEPTANCE_JSON" \
+  --argjson source "$FIELD_VALIDATION_JSON" \
   --argjson terminal "$TERMINAL_COVERAGE_JSON" \
   --argjson live "$LIVE_ROUTE_JSON" \
   '{
@@ -231,10 +239,10 @@ jq -n \
     gate:$gate,
     endpoint:$endpoint,
     source_command:$source_command,
-    activation_mode:"full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_native_route_status",
-    source_non_acceptance_gate:$source.gate,
-    source_non_acceptance_gate_ready:$source.memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_non_acceptance_authority_replay_denial_ready,
-    source_non_acceptance_gate_sha256:$source_non_acceptance_gate_sha256,
+    activation_mode:"full_live_activation_operator_readiness_packet_template_field_validation_denial_native_route_status",
+    source_field_validation_gate:$source.gate,
+    source_field_validation_gate_ready:$source.memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_ready,
+    source_field_validation_gate_sha256:$source_field_validation_gate_sha256,
     source_route_wired:true,
     source_route_count_expected:114,
     native_gateway_source:"codex-rs/cli/src/native_gateway.rs",
@@ -244,11 +252,15 @@ jq -n \
     live_endpoint_ready:(if $live == null then false else ($live.status == "ready") end),
     source_operator_packet_section_count:$source.source_operator_packet_section_count,
     source_operator_packet_required_field_count:$source.source_operator_packet_required_field_count,
-    non_acceptance_fixture_count:$source.non_acceptance_fixture_count,
-    blocked_non_acceptance_fixture_count:$source.blocked_non_acceptance_fixture_count,
-    accepted_non_acceptance_fixture_count:$source.accepted_non_acceptance_fixture_count,
-    template_replay_allowed:false,
-    template_replay_accepted:false,
+    field_validation_matrix_count:$source.field_validation_matrix_count,
+    missing_field_count:$source.missing_field_count,
+    present_field_count:0,
+    captured_field_value_count:0,
+    recorded_field_hash_count:0,
+    shape_validated_field_count:0,
+    accepted_field_count:0,
+    authority_derived_field_count:0,
+    live_execution_allowed_field_count:0,
     operator_acceptance_recorded:false,
     operator_approval_recorded:false,
     activation_authority_derived:false,
@@ -262,7 +274,6 @@ jq -n \
     model_invoked:false,
     credential_read:false,
     install_executed:false,
-    service_restarted:false,
     active_binary_mutated:false,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     terminal_required_marker_count:$terminal.required_marker_count,
@@ -271,12 +282,15 @@ jq -n \
     terminal_duplicate_required_marker_count:$terminal.duplicate_required_marker_count,
     terminal_out_of_order_required_marker_count:$terminal.out_of_order_required_marker_count,
     side_effects:{
-      template_replay_performed:false,
-      template_reference_registered:false,
-      template_cache_written:false,
-      template_query_registered:false,
-      template_export_recorded:false,
-      template_observability_recorded:false,
+      field_value_captured:false,
+      field_value_hash_recorded:false,
+      field_shape_accepted:false,
+      field_value_persisted:false,
+      field_acceptance_recorded:false,
+      field_authority_derived:false,
+      field_live_execution_allowed:false,
+      packet_template_recorded:false,
+      packet_template_persisted:false,
       operator_acceptance_recorded:false,
       operator_approval_recorded:false,
       activation_authority_derived:false,
@@ -298,4 +312,4 @@ jq -n \
     }
   }'
 
-echo "Hepta Memory/Intelligence/KG full live activation operator readiness packet template non-acceptance authority replay denial route gate passed"
+echo "Hepta Memory/Intelligence/KG full live activation operator readiness packet template field validation denial route gate passed"
