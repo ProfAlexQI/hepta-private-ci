@@ -4,8 +4,8 @@ This route gate binds the existing operator-facing summary/briefing non-persiste
 
 - Endpoint: `/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial`
 - Source command: `/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial --json`
-- Route count: `106`
-- Terminal coverage markers: `246/246`
+- Route count: `107`
+- Terminal coverage markers: `247/247`
 
 The route is read-only. It proves that denied activation-command result receipts cannot become operator summaries, operator briefings, delivery artifacts, Telegram sends, readback evidence, activation authority, provider/model prompts, Memory/KG writes, credential reads, install/restart actions, active-binary mutation, upstream merge, public release, or GA claims.
 
