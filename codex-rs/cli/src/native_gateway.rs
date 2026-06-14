@@ -163,6 +163,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_RE
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -173,7 +175,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 108;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 109;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -595,6 +597,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial",
         side_effect_boundary: "read-only operator canary controlled-request harness operator-review acknowledgement activation-command result-receipt terminal operator decision public-claim non-promotion denial status; proves terminal operator decisions and public-claim attempts cannot be accepted, recorded, persisted, materialized, delivered, promoted into public claims, publish GA/release, write artifacts, activate runtime, invoke providers/models, write Memory/KG, read credentials, mutate binaries, install/restart, or send channels",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial",
+        side_effect_boundary: "read-only operator canary controlled-request harness operator-review acknowledgement activation-command result-receipt release artifact publication denial status; proves terminal decisions cannot write release/public artifacts, sign/notarize, enqueue publication, publish GA/release, distribute, install/restart, mutate binaries, activate runtime, invoke providers/models, write Memory/KG, read credentials, or send channels",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1672,6 +1681,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_report(),
                     ),
                 );
             }
@@ -20800,6 +20819,517 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     report
 }
 
+fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_terminal_decision = hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_report();
+    let source_ready = source_terminal_decision
+        .get("operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_ready")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let source_status = source_terminal_decision
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("blocked");
+    let source_report_sha256 = sha256_json_value(&source_terminal_decision);
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_u64 = |key: &str| -> u64 {
+        source_terminal_decision
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let report_ready = source_ready
+        && source_status == "ready"
+        && route_count_source_command_accepted
+        && source_u64(
+            "activation_command_result_receipt_terminal_operator_decision_public_claim_fixture_count",
+        ) == 10
+        && source_u64(
+            "blocked_activation_command_result_receipt_terminal_operator_decision_public_claim_fixture_count",
+        ) == 10
+        && source_u64(
+            "allowed_activation_command_result_receipt_terminal_operator_decision_public_claim_fixture_count",
+        ) == 0
+        && source_u64(
+            "activation_command_result_receipt_terminal_operator_decision_performed_count",
+        ) == 0
+        && source_u64("activation_command_result_receipt_public_claim_promotion_performed_count")
+            == 0;
+
+    let publication_fixture =
+        |id: &str, status: &str, reason: &str, extra: serde_json::Value| -> serde_json::Value {
+            let mut fixture = serde_json::Map::new();
+            fixture.insert("id".to_string(), serde_json::json!(id));
+            fixture.insert(
+                "release_artifact_publication_status".to_string(),
+                serde_json::json!(status),
+            );
+            fixture.insert(
+                "source_terminal_operator_decision_present".to_string(),
+                serde_json::json!(true),
+            );
+            fixture.insert(
+                "source_terminal_operator_decision_ready".to_string(),
+                serde_json::json!(true),
+            );
+            for key in [
+                "release_artifact_publication_requested",
+                "release_artifact_publication_allowed",
+                "release_artifact_publication_accepted",
+                "release_artifact_publication_recorded",
+                "release_artifact_publication_persisted",
+                "release_artifact_publication_materialized",
+                "release_artifact_filesystem_written",
+                "release_artifact_written",
+                "public_artifact_written",
+                "artifact_signature_accepted",
+                "artifact_notarization_accepted",
+                "publication_queue_enqueued",
+                "publication_manifest_written",
+                "public_distribution_performed",
+                "public_release_published",
+                "public_ga_claimed",
+                "public_claim_promoted",
+                "public_version_tag_created",
+                "release_notes_materialized",
+                "changelog_materialized",
+                "terminal_operator_decision_promoted_to_release_approval",
+                "telegram_send_performed",
+                "channel_send_performed",
+                "external_send_performed",
+                "receipt_recorded",
+                "receipt_persisted",
+                "receipt_accepted",
+                "receipt_materialized",
+                "completion_ack_recorded",
+                "activation_allowed",
+                "live_mutation_execution_performed",
+                "memory_write_execution_performed",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "rollback_executed",
+                "secret_material_read",
+                "credential_read",
+                "secret_file_read",
+                "provider_invoked",
+                "model_invoked",
+                "install_executed",
+                "launchd_mutated",
+                "service_restarted",
+                "active_binary_mutated",
+            ] {
+                fixture.insert(key.to_string(), serde_json::json!(false));
+            }
+            fixture.insert(
+                "release_artifact_publication_noop_confirmed".to_string(),
+                serde_json::json!(true),
+            );
+            fixture.insert("reason".to_string(), serde_json::json!(reason));
+            if let Some(extra_object) = extra.as_object() {
+                fixture.extend(extra_object.clone());
+            }
+            serde_json::Value::Object(fixture)
+        };
+
+    let release_artifact_publication_fixtures = serde_json::json!([
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-release-artifact-publication-missing-terminal-decision",
+            "blocked_noop",
+            "source_terminal_operator_decision_report_required",
+            serde_json::json!({
+                "source_terminal_operator_decision_present": false,
+                "source_terminal_operator_decision_ready": false,
+                "release_artifact_publication_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-release-artifact-write-request",
+            "blocked_artifact_noop",
+            "release_artifact_write_denied",
+            serde_json::json!({
+                "release_artifact_write_requested": true,
+                "release_artifact_publication_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-public-artifact-write-request",
+            "blocked_artifact_noop",
+            "public_artifact_write_denied",
+            serde_json::json!({
+                "public_artifact_write_requested": true,
+                "release_artifact_publication_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-artifact-signature-notarization-request",
+            "blocked_artifact_noop",
+            "artifact_signature_notarization_acceptance_denied",
+            serde_json::json!({
+                "artifact_signature_requested": true,
+                "artifact_notarization_requested": true,
+                "release_artifact_publication_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-publication-queue-request",
+            "blocked_publication_noop",
+            "publication_queue_enqueue_denied",
+            serde_json::json!({
+                "publication_queue_enqueue_requested": true,
+                "publication_manifest_write_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-distribution-channel-request",
+            "blocked_distribution_noop",
+            "public_distribution_channel_delivery_denied",
+            serde_json::json!({
+                "public_distribution_requested": true,
+                "telegram_delivery_requested": true,
+                "channel_delivery_requested": true,
+                "external_delivery_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-public-version-tag-request",
+            "blocked_release_noop",
+            "public_version_tag_release_promotion_denied",
+            serde_json::json!({
+                "public_version_tag_requested": true,
+                "public_release_publish_requested": true,
+                "public_ga_claim_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-release-notes-changelog-request",
+            "blocked_artifact_noop",
+            "release_notes_changelog_materialization_denied",
+            serde_json::json!({
+                "release_notes_materialization_requested": true,
+                "changelog_materialization_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-terminal-decision-as-release-approval",
+            "blocked_promotion_noop",
+            "terminal_operator_decision_is_not_release_approval",
+            serde_json::json!({
+                "terminal_operator_decision_release_approval_requested": true,
+                "release_artifact_publication_requested": true,
+            }),
+        ),
+        publication_fixture(
+            "operator-canary-controlled-request-harness-activation-result-receipt-release-publication-activation-memory-provider-install",
+            "blocked_promotion_noop",
+            "activation_memory_provider_install_restart_active_binary_publication_denied",
+            serde_json::json!({
+                "activation_from_release_publication_requested": true,
+                "memory_write_publication_requested": true,
+                "provider_prompt_publication_requested": true,
+                "install_publication_requested": true,
+                "service_restart_publication_requested": true,
+                "active_binary_publication_requested": true,
+            }),
+        ),
+    ]);
+    let release_artifact_publication_fixture_count = release_artifact_publication_fixtures
+        .as_array()
+        .map(|fixtures| fixtures.len())
+        .unwrap_or(0);
+    let fixtures_sha256 = sha256_json_value(&release_artifact_publication_fixtures);
+    let contract_hash_sha256 = sha256_text_value(&format!(
+        "hepta-canary-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial:v1:source={source_report_sha256}:fixtures={fixtures_sha256}:publication=0:artifact=0:release=0:install=0"
+    ));
+    let policy_hash_sha256 = sha256_text_value(
+        "memory-intelligence-kg-operator-canary-harness-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial:v1:no-release-artifact:no-public-artifact:no-publication:no-distribution:no-install:no-live",
+    );
+    let side_effect_hash_sha256 = sha256_text_value(
+        "release_artifact_publication=false;release_artifact=false;public_artifact=false;signature=false;notarization=false;publication_queue=false;public_release=false;public_ga=false;distribution=false;activation=false;provider=false;model=false;memory=false;kg=false;secret=false;install=false;restart=false;active_binary=false",
+    );
+
+    let mut denials = source_terminal_decision
+        .get("denied_by_activation_command_result_receipt_terminal_operator_decision_public_claim")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for denial in [
+        "source_terminal_operator_decision_report_required",
+        "release_artifact_write_denied",
+        "public_artifact_write_denied",
+        "artifact_signature_notarization_acceptance_denied",
+        "publication_queue_enqueue_denied",
+        "publication_manifest_write_denied",
+        "public_distribution_channel_delivery_denied",
+        "public_version_tag_release_promotion_denied",
+        "release_notes_changelog_materialization_denied",
+        "terminal_operator_decision_is_not_release_approval",
+        "activation_from_release_artifact_publication_denied",
+        "memory_write_publication_denied",
+        "provider_prompt_publication_denied",
+        "install_restart_active_binary_publication_denied",
+    ] {
+        denials.push(serde_json::Value::String(denial.to_string()));
+    }
+    let denied_count = denials.len();
+
+    let mut report = source_terminal_decision.clone();
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "gate": "hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_route",
+            "status": if report_ready { "ready" } else { "blocked" },
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial --json",
+            "native_route": true,
+            "compatibility_mode": "native_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_status",
+            "side_effect_free": true,
+            "audit_date": "2026-06-14",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT,
+            "source_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_route_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_route_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ROUTE_GATE.md",
+            "source_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-route-gate.sh",
+            "source_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial-gate.sh",
+            "source_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial-route-gate.sh",
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+            "source_route_wired": true,
+            "source_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_route_ready": source_ready,
+            "source_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_route_status": source_status,
+            "source_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_route_report_sha256": source_report_sha256,
+            "operator_authorization_scope": "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_no_artifact_no_publication_no_release_no_distribution_no_install_no_context_memory_kg_provider_model_credential_channel_restart_binary",
+            "operator_authorization_received": true,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_route_enabled": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_ready": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_status": "blocked",
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_ready": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_ready": true,
+            "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_ready": true,
+            "activation_command_result_receipt_release_artifact_publication_schema_version": "memory_intelligence_kg_operator_canary_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_v1",
+            "activation_command_result_receipt_release_artifact_publication_mode": "native_route_stdout_only_release_artifact_publication_denial_no_artifact_no_publication_no_release_no_distribution_no_install_no_live",
+            "activation_command_result_receipt_release_artifact_publication_decision": "blocked_noop_terminal_operator_decision_cannot_be_promoted_into_release_artifact_publication_authority",
+            "source_terminal_operator_decision_public_claim_fixture_count": source_u64("activation_command_result_receipt_terminal_operator_decision_public_claim_fixture_count"),
+            "source_blocked_terminal_operator_decision_public_claim_fixture_count": source_u64("blocked_activation_command_result_receipt_terminal_operator_decision_public_claim_fixture_count"),
+            "source_accepted_terminal_operator_decision_public_claim_fixture_count": source_u64("accepted_activation_command_result_receipt_terminal_operator_decision_public_claim_fixture_count"),
+            "source_terminal_operator_decision_performed_count": source_u64("activation_command_result_receipt_terminal_operator_decision_performed_count"),
+            "source_public_claim_promotion_performed_count": source_u64("activation_command_result_receipt_public_claim_promotion_performed_count"),
+            "release_artifact_publication_fixtures_sha256": fixtures_sha256,
+            "release_artifact_publication_contract_hash_sha256": contract_hash_sha256,
+            "release_artifact_publication_policy_hash_sha256": policy_hash_sha256,
+            "side_effect_hash_sha256": side_effect_hash_sha256,
+            "required_activation_command_result_receipt_release_artifact_publication_surface_count": 12,
+            "ready_activation_command_result_receipt_release_artifact_publication_surface_count": 12,
+            "side_effect_free_activation_command_result_receipt_release_artifact_publication_surface_count": 12,
+            "required_activation_command_result_receipt_release_artifact_publication_fixture_count": 10,
+            "activation_command_result_receipt_release_artifact_publication_fixtures": release_artifact_publication_fixtures,
+            "activation_command_result_receipt_release_artifact_publication_fixture_count": release_artifact_publication_fixture_count,
+            "blocked_activation_command_result_receipt_release_artifact_publication_fixture_count": release_artifact_publication_fixture_count,
+            "noop_activation_command_result_receipt_release_artifact_publication_fixture_count": release_artifact_publication_fixture_count,
+            "allowed_activation_command_result_receipt_release_artifact_publication_fixture_count": 0,
+            "accepted_activation_command_result_receipt_release_artifact_publication_fixture_count": 0,
+            "activation_command_result_receipt_release_artifact_publication_performed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "release_artifact_publication_allowed": false,
+            "release_artifact_publication_requested": false,
+            "release_artifact_publication_accepted": false,
+            "release_artifact_publication_recorded": false,
+            "release_artifact_publication_persisted": false,
+            "release_artifact_publication_materialized": false,
+            "release_artifact_filesystem_written": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false,
+            "artifact_signature_accepted": false,
+            "artifact_notarization_accepted": false,
+            "publication_queue_enqueued": false,
+            "publication_manifest_written": false,
+            "public_distribution_performed": false,
+            "public_release_published": false,
+            "public_ga_claimed": false,
+            "public_claim_promoted": false,
+            "public_version_tag_created": false,
+            "release_notes_materialized": false,
+            "changelog_materialized": false,
+            "terminal_operator_decision_promoted_to_release_approval": false,
+            "telegram_send_performed": false,
+            "channel_send_performed": false,
+            "external_send_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "activation_command_result_receipt_recorded": false,
+            "activation_command_result_receipt_persisted": false,
+            "activation_command_result_receipt_accepted": false,
+            "activation_command_result_receipt_materialized": false,
+            "activation_command_completion_ack_recorded": false,
+            "activation_allowed_by_release_artifact_publication": false,
+            "activation_allowed_by_terminal_operator_decision": false,
+            "activation_allowed_by_result_receipt": false,
+            "activation_allowed": false,
+            "activation_performed": false,
+            "live_mutation_execution_ready": false,
+            "live_mutation_execution_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_write_execution_allowed": false,
+            "memory_write_execution_ready": false,
+            "memory_write_execution_performed": false,
+            "memory_store_write_path_enabled": false,
+            "memory_store_write_allowed": false,
+            "memory_store_write_performed": false,
+            "memory_store_write_performed_count": 0,
+            "memory_store_mutation_allowed": false,
+            "memory_store_mutated": false,
+            "rollback_execution_allowed": false,
+            "rollback_executed": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "secret_material_read": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "provider_prompt_replay_enabled": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "install_executed": false,
+            "launchd_mutated": false,
+            "service_restarted": false,
+            "service_restart_performed": false,
+            "active_binary_mutated": false,
+            "activation_command_result_receipt_release_artifact_publication_surfaces": [
+                "source_terminal_operator_decision_report_required",
+                "release_artifact_write_denied",
+                "public_artifact_write_denied",
+                "artifact_signature_notarization_acceptance_denied",
+                "publication_queue_enqueue_denied",
+                "publication_manifest_write_denied",
+                "public_distribution_channel_delivery_denied",
+                "public_version_tag_release_promotion_denied",
+                "release_notes_changelog_materialization_denied",
+                "terminal_operator_decision_is_not_release_approval",
+                "activation_from_release_artifact_publication_denied",
+                "external_public_install_restart_active_binary_publication_denied"
+            ],
+            "denied_by_activation_command_result_receipt_release_artifact_publication": denials,
+            "denied_by_activation_command_result_receipt_release_artifact_publication_count": denied_count,
+            "current_live_enabled_lane_count": 28,
+            "enablement_lane_count": 31,
+            "ready_enablement_lane_count": 31,
+            "allowed_next_actions": [
+                {
+                    "action": "review_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial",
+                    "status": "allowed_report_only",
+                    "publishes_release_artifact": false,
+                    "claims_public_release": false,
+                    "writes_release_artifact": false,
+                    "installs_or_restarts": false,
+                    "activates_runtime": false,
+                    "invokes_model": false,
+                    "writes_memory_or_kg": false
+                },
+                {
+                    "action": "stage_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_result_receipt_no_persistence",
+                    "status": "allowed_report_only_next_slice",
+                    "records_publication_receipt": false,
+                    "persists_publication_receipt": false,
+                    "publishes_release_artifact": false,
+                    "claims_public_release": false,
+                    "activates_runtime": false,
+                    "invokes_model": false,
+                    "writes_memory_or_kg": false
+                }
+            ],
+        }),
+    );
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "release_artifact_publication_recorded",
+            "release_artifact_publication_persisted",
+            "release_artifact_publication_materialized",
+            "release_artifact_filesystem_written",
+            "release_artifact_written",
+            "public_artifact_written",
+            "artifact_signature_accepted",
+            "artifact_notarization_accepted",
+            "publication_queue_enqueued",
+            "publication_manifest_written",
+            "public_distribution_performed",
+            "public_release_published",
+            "public_release_claimed",
+            "public_ga_claimed",
+            "public_claim_promoted",
+            "public_version_tag_created",
+            "release_notes_materialized",
+            "changelog_materialized",
+            "terminal_operator_decision_promoted_to_release_approval",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "activation_command_result_receipt_terminal_operator_decision_recorded",
+            "activation_command_result_receipt_terminal_operator_decision_persisted",
+            "activation_command_result_receipt_public_claim_recorded",
+            "activation_command_result_receipt_public_claim_promoted",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_materialized",
+            "activation_command_completion_ack_recorded",
+            "activation_command_enabled",
+            "activation_command_invoked",
+            "activation_command_dispatched",
+            "activation_performed",
+            "live_mutation_execution_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "rollback_executed",
+            "raw_payload_plaintext_recorded",
+            "raw_payload_plaintext_persisted",
+            "secret_material_read",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "provider_prompt_replay_enabled",
+            "provider_invoked",
+            "model_invoked",
+            "provider_prompt_replayed",
+            "runtime_router_mutated",
+            "runtime_attachment_performed",
+            "live_context_attached",
+            "context_injection_performed",
+            "adapter_invoked",
+            "filesystem_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            side_effects.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -32901,6 +33431,279 @@ mod tests {
             value["side_effects"]["activation_command_result_receipt_public_artifact_written"],
             false
         );
+        assert_eq!(value["side_effects"]["telegram_send_performed"], false);
+        assert_eq!(value["side_effects"]["channel_send_performed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["memory_store_write_performed"], false);
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["secret_file_read"], false);
+        assert_eq!(value["side_effects"]["install_executed"], false);
+        assert_eq!(value["side_effects"]["service_restarted"], false);
+        assert_eq!(value["side_effects"]["active_binary_mutated"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_endpoint_blocks_release()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator canary controlled request harness operator-review acknowledgement activation command result receipt release artifact publication denial json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-release-artifact-publication-denial --json"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_route_endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_operator_review_acknowledgement_activation_command_result_receipt_terminal_operator_decision_public_claim_route_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_status"],
+            "blocked"
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_release_artifact_publication_schema_version"],
+            "memory_intelligence_kg_operator_canary_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_v1"
+        );
+        assert_eq!(
+            value["source_terminal_operator_decision_public_claim_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["source_accepted_terminal_operator_decision_public_claim_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["source_terminal_operator_decision_performed_count"],
+            0
+        );
+        assert_eq!(value["source_public_claim_promotion_performed_count"], 0);
+        assert_eq!(
+            value["required_activation_command_result_receipt_release_artifact_publication_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_activation_command_result_receipt_release_artifact_publication_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["side_effect_free_activation_command_result_receipt_release_artifact_publication_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_release_artifact_publication_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["blocked_activation_command_result_receipt_release_artifact_publication_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["noop_activation_command_result_receipt_release_artifact_publication_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["allowed_activation_command_result_receipt_release_artifact_publication_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_activation_command_result_receipt_release_artifact_publication_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_release_artifact_publication_performed_count"],
+            0
+        );
+        assert_eq!(value["release_artifact_publication_allowed"], false);
+        assert_eq!(value["release_artifact_publication_accepted"], false);
+        assert_eq!(value["release_artifact_publication_recorded"], false);
+        assert_eq!(value["release_artifact_publication_persisted"], false);
+        assert_eq!(value["release_artifact_publication_materialized"], false);
+        assert_eq!(value["release_artifact_filesystem_written"], false);
+        assert_eq!(value["release_artifact_written"], false);
+        assert_eq!(value["public_artifact_written"], false);
+        assert_eq!(value["artifact_signature_accepted"], false);
+        assert_eq!(value["artifact_notarization_accepted"], false);
+        assert_eq!(value["publication_queue_enqueued"], false);
+        assert_eq!(value["publication_manifest_written"], false);
+        assert_eq!(value["public_distribution_performed"], false);
+        assert_eq!(value["public_release_published"], false);
+        assert_eq!(value["public_ga_claimed"], false);
+        assert_eq!(value["public_claim_promoted"], false);
+        assert_eq!(value["public_version_tag_created"], false);
+        assert_eq!(value["release_notes_materialized"], false);
+        assert_eq!(value["changelog_materialized"], false);
+        assert_eq!(
+            value["terminal_operator_decision_promoted_to_release_approval"],
+            false
+        );
+        assert_eq!(value["telegram_send_performed"], false);
+        assert_eq!(value["channel_send_performed"], false);
+        assert_eq!(value["external_send_performed"], false);
+        assert_eq!(value["activation_command_result_receipt_recorded"], false);
+        assert_eq!(value["activation_command_result_receipt_persisted"], false);
+        assert_eq!(value["activation_command_result_receipt_accepted"], false);
+        assert_eq!(
+            value["activation_allowed_by_release_artifact_publication"],
+            false
+        );
+        assert_eq!(
+            value["activation_allowed_by_terminal_operator_decision"],
+            false
+        );
+        assert_eq!(value["activation_allowed"], false);
+        assert_eq!(value["activation_performed"], false);
+        assert_eq!(value["live_mutation_execution_performed"], false);
+        assert_eq!(value["memory_write_execution_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["memory_store_mutated"], false);
+        assert_eq!(value["rollback_executed"], false);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["secret_file_read"], false);
+        assert_eq!(value["install_executed"], false);
+        assert_eq!(value["launchd_mutated"], false);
+        assert_eq!(value["service_restarted"], false);
+        assert_eq!(value["active_binary_mutated"], false);
+        assert_eq!(value["current_live_enabled_lane_count"], 28);
+        assert_eq!(value["enablement_lane_count"], 31);
+        assert_eq!(value["ready_enablement_lane_count"], 31);
+
+        let fixtures =
+            value["activation_command_result_receipt_release_artifact_publication_fixtures"]
+                .as_array()
+                .expect("activation command result receipt release artifact publication fixtures");
+        assert_eq!(fixtures.len(), 10);
+        for fixture in fixtures {
+            assert!(
+                fixture["release_artifact_publication_status"]
+                    .as_str()
+                    .expect("release artifact publication fixture status")
+                    .starts_with("blocked")
+            );
+            assert_eq!(fixture["release_artifact_publication_accepted"], false);
+            assert_eq!(fixture["release_artifact_publication_recorded"], false);
+            assert_eq!(fixture["release_artifact_publication_persisted"], false);
+            assert_eq!(fixture["release_artifact_publication_materialized"], false);
+            assert_eq!(fixture["release_artifact_filesystem_written"], false);
+            assert_eq!(fixture["release_artifact_written"], false);
+            assert_eq!(fixture["public_artifact_written"], false);
+            assert_eq!(fixture["artifact_signature_accepted"], false);
+            assert_eq!(fixture["artifact_notarization_accepted"], false);
+            assert_eq!(fixture["publication_queue_enqueued"], false);
+            assert_eq!(fixture["publication_manifest_written"], false);
+            assert_eq!(fixture["public_distribution_performed"], false);
+            assert_eq!(fixture["public_release_published"], false);
+            assert_eq!(fixture["public_ga_claimed"], false);
+            assert_eq!(fixture["public_claim_promoted"], false);
+            assert_eq!(
+                fixture["terminal_operator_decision_promoted_to_release_approval"],
+                false
+            );
+            assert_eq!(fixture["telegram_send_performed"], false);
+            assert_eq!(fixture["channel_send_performed"], false);
+            assert_eq!(fixture["external_send_performed"], false);
+            assert_eq!(fixture["activation_allowed"], false);
+            assert_eq!(fixture["live_mutation_execution_performed"], false);
+            assert_eq!(fixture["memory_store_write_performed"], false);
+            assert_eq!(fixture["memory_store_mutated"], false);
+            assert_eq!(fixture["provider_invoked"], false);
+            assert_eq!(fixture["model_invoked"], false);
+            assert_eq!(fixture["install_executed"], false);
+            assert_eq!(fixture["service_restarted"], false);
+            assert_eq!(fixture["active_binary_mutated"], false);
+            assert_eq!(fixture["release_artifact_publication_noop_confirmed"], true);
+        }
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["source_terminal_operator_decision_present"] == false)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(
+                    |fixture| fixture["public_release_publish_requested"] == true
+                        && fixture["public_ga_claim_requested"] == true
+                )
+                .count(),
+            1
+        );
+
+        let denied =
+            value["denied_by_activation_command_result_receipt_release_artifact_publication"]
+                .as_array()
+                .expect(
+                    "denied activation command result receipt release artifact publication actions",
+                );
+        assert!(denied.len() >= 300);
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt_release_artifact_publication_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["side_effects"]["release_artifact_publication_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["release_artifact_publication_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["release_artifact_filesystem_written"],
+            false
+        );
+        assert_eq!(value["side_effects"]["release_artifact_written"], false);
+        assert_eq!(value["side_effects"]["public_artifact_written"], false);
+        assert_eq!(value["side_effects"]["public_release_published"], false);
+        assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+        assert_eq!(value["side_effects"]["publication_queue_enqueued"], false);
         assert_eq!(value["side_effects"]["telegram_send_performed"], false);
         assert_eq!(value["side_effects"]["channel_send_performed"], false);
         assert_eq!(value["side_effects"]["external_send_performed"], false);
