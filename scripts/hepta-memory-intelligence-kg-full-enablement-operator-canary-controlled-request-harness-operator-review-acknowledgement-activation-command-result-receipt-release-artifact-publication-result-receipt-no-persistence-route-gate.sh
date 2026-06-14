@@ -137,7 +137,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 112;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 113;' \
   "native gateway route/source command count includes release artifact publication result receipt route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_NO_PERSISTENCE_ENDPOINT' \
@@ -175,7 +175,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 112
+    and .route_count == 113
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .source_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_route_ready == true
@@ -233,8 +233,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 252
-  and .present_required_marker_count == 252
+  and .required_marker_count == 253
+  and .present_required_marker_count == 253
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -273,7 +273,7 @@ jq -n \
     source_activation_command_result_receipt_release_artifact_publication_result_receipt_gate_ready: $source.operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_result_receipt_no_persistence_ready,
     source_publication_result_receipt_gate_sha256: $source_publication_result_receipt_gate_sha256,
     source_route_wired: true,
-    source_route_count_expected:112,
+    source_route_count_expected:113,
     source_route_tested_by_native_gateway_unit_test: true,
     native_gateway_source: "codex-rs/cli/src/native_gateway.rs",
     native_gateway_sha256: $native_gateway_sha256,
