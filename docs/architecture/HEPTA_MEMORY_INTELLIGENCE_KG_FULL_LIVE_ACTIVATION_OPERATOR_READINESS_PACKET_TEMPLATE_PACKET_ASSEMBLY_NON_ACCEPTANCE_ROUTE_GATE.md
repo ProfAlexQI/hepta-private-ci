@@ -16,8 +16,8 @@ It verifies:
 - the native endpoint and source command are wired into route parity;
 - all four packet assembly attempts remain denied, unassembled, unaccepted, non-authoritative, and non-executable;
 - the focused native unit test covers the endpoint contract;
-- optional live endpoint verification reports route count 117 and missing route count 0;
-- terminal coverage reaches 257/257 with no missing, duplicate, or out-of-order markers.
+- optional live endpoint verification reports route count 118 and missing route count 0;
+- terminal coverage reaches 258/258 with no missing, duplicate, or out-of-order markers.
 
 This route only prepares the next report-only slice:
 

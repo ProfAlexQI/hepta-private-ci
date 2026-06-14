@@ -136,6 +136,7 @@ required_markers=(
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt non-persistence gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt non-persistence route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt replay/idempotency denial gate"
+  "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt replay/idempotency denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt ordering/monotonicity denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt cancellation/supersession denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt audit-trail/immutable-evidence denial gate"
