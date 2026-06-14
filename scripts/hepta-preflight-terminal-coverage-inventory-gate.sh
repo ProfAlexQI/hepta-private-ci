@@ -115,6 +115,7 @@ required_markers=(
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt final operator acknowledgement non-acceptance denial gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt final operator acknowledgement non-acceptance denial route gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt terminal operator decision public-claim non-promotion denial gate"
+  "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt terminal operator decision public-claim non-promotion denial route gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt release artifact publication denial gate"
   "memory/intelligence full enablement operator canary controlled request harness operator review acknowledgement activation command result receipt release artifact publication result receipt no-persistence gate"
   "memory/intelligence/KG full live activation readiness index gate"
