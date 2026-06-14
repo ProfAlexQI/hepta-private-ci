@@ -85,7 +85,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 105;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 106;' \
   "native gateway route/source command count includes bounded provider-router injection dry-run envelope readback audit receipt lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
