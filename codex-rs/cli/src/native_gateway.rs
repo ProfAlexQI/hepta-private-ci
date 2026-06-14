@@ -179,6 +179,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-section-completion-non-acceptance";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ASSEMBLY_NON_ACCEPTANCE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-assembly-non-acceptance";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_NON_PERSISTENCE_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-non-persistence";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -189,7 +191,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 116;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 117;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -667,6 +669,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-assembly-non-acceptance --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-assembly-non-acceptance",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-assembly non-acceptance status; models denied packet assembly attempts from incomplete sections while proving packet assembly, recording, persistence, acceptance, operator approval derivation, activation authority/command, live execution, providers/models, Memory/KG writes, credentials, installs/restarts, artifacts, and sends remain no-op",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_NON_PERSISTENCE_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-non-persistence --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-non-persistence",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt non-persistence status; models report-only receipt surfaces while proving receipt recording, persistence, materialization, indexing, query/export, observability, delivery, acceptance, operator approval derivation, activation authority/command, live execution, providers/models, Memory/KG writes, credentials, installs/restarts, artifacts, and sends remain no-op",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1824,6 +1833,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_assembly_non_acceptance_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_NON_PERSISTENCE_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_report(),
                     ),
                 );
             }
@@ -24033,6 +24052,287 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_assembly_non_acceptance_report();
+    let source_report_sha256 = sha256_json_value(&source);
+    let source_ready = source
+        .get("memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_assembly_non_acceptance_ready")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let source_packet_assembly_attempt_count = source
+        .get("packet_assembly_attempt_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_packet_assembled_count = source
+        .get("packet_assembled_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_packet_accepted_count = source
+        .get("packet_accepted_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_packet_activation_authority_derived_count = source
+        .get("packet_activation_authority_derived_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let receipt_surfaces = vec![
+        "packet_assembly_denial_receipt",
+        "packet_acceptance_attempt_receipt",
+        "operator_summary_receipt",
+        "packet_query_receipt",
+        "packet_export_receipt",
+        "packet_observability_receipt",
+        "packet_completion_ack_receipt",
+        "packet_authority_derivation_receipt",
+    ]
+    .into_iter()
+    .map(|receipt_surface| {
+        serde_json::json!({
+            "receipt_surface": receipt_surface,
+            "receipt_generated": true,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_materialized": false,
+            "receipt_indexed": false,
+            "receipt_queryable": false,
+            "receipt_exportable": false,
+            "receipt_observable": false,
+            "receipt_delivered": false,
+            "receipt_acceptance_recorded": false,
+            "receipt_operator_approval_derived": false,
+            "receipt_activation_authority_derived": false,
+            "receipt_activation_command_derived": false,
+            "receipt_live_execution_allowed": false,
+            "receipt_status": "non_persistent_report_only"
+        })
+    })
+    .collect::<Vec<_>>();
+    let receipt_surface_count = receipt_surfaces.len();
+    let receipt_contract_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-non-persistence:native:source={source_report_sha256}:receipts={receipt_surface_count}:route_count={}:recorded=0:persisted=0:accepted=0:authority=0:live=0",
+        route_matrix.route_count
+    ));
+    let denied_by_packet_acceptance_receipt = vec![
+        "operator_readiness_packet_template_packet_receipt_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_materialization_denied",
+        "operator_readiness_packet_template_packet_receipt_indexing_denied",
+        "operator_readiness_packet_template_packet_receipt_query_export_denied",
+        "operator_readiness_packet_template_packet_receipt_observability_denied",
+        "operator_readiness_packet_template_packet_receipt_delivery_denied",
+        "operator_readiness_packet_template_packet_receipt_acceptance_denied",
+        "operator_readiness_packet_template_packet_receipt_authority_derivation_denied",
+        "operator_readiness_packet_template_packet_receipt_live_execution_denied",
+    ];
+    let denied_by_packet_acceptance_receipt_count = denied_by_packet_acceptance_receipt.len();
+    let report_ready = source_ready
+        && source_packet_assembly_attempt_count == 4
+        && source_packet_assembled_count == 0
+        && source_packet_accepted_count == 0
+        && source_packet_activation_authority_derived_count == 0
+        && receipt_surface_count == 8
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_NON_PERSISTENCE_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-non-persistence --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-15",
+        "packet_acceptance_receipt_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_v1",
+        "packet_acceptance_receipt_mode": "native_route_denied_packet_assembly_receipts_are_report_only_no_persistence_no_acceptance_no_authority",
+        "source_packet_assembly_gate": source["gate"].clone(),
+        "source_packet_assembly_ready": source_ready,
+        "source_packet_assembly_report_sha256": source_report_sha256,
+        "receipt_contract_hash_sha256": receipt_contract_hash_sha256,
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_route_enabled": true,
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_ready": true,
+            "source_packet_assembly_attempt_count": source_packet_assembly_attempt_count,
+            "source_packet_assembled_count": source_packet_assembled_count,
+            "source_packet_accepted_count": source_packet_accepted_count,
+            "source_packet_activation_authority_derived_count": source_packet_activation_authority_derived_count,
+            "receipt_surface_count": receipt_surface_count,
+            "receipt_generated_count": receipt_surface_count,
+            "receipt_recorded_count": 0,
+            "receipt_persisted_count": 0,
+            "receipt_materialized_count": 0,
+            "receipt_indexed_count": 0,
+            "receipt_queryable_count": 0,
+            "receipt_exportable_count": 0,
+            "receipt_observable_count": 0,
+            "receipt_delivered_count": 0,
+            "receipt_acceptance_recorded_count": 0,
+            "receipt_operator_approval_derived_count": 0,
+            "receipt_activation_authority_derived_count": 0,
+            "receipt_activation_command_derived_count": 0,
+            "receipt_live_execution_allowed_count": 0,
+            "receipt_surfaces": receipt_surfaces,
+            "denied_by_packet_acceptance_receipt": denied_by_packet_acceptance_receipt,
+            "denied_by_packet_acceptance_receipt_count": denied_by_packet_acceptance_receipt_count,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_replay_idempotency_denial_gate",
+                    "status": "allowed_report_only_next_slice",
+                    "persists_receipt": false,
+                    "records_operator_acceptance": false,
+                    "derives_activation_authority": false,
+                    "activates_live": false,
+                    "mutates_memory_store": false,
+                    "writes_kg": false
+                }
+            ],
+            "packet_template_recorded": false,
+            "packet_template_persisted": false,
+            "packet_assembly_performed": false,
+            "packet_assembly_recorded": false,
+            "packet_assembly_persisted": false,
+            "packet_complete": false,
+            "packet_ready": false,
+            "packet_accepted": false,
+            "packet_acceptance_receipt_recorded": false,
+            "packet_acceptance_receipt_persisted": false,
+            "packet_acceptance_receipt_materialized": false,
+            "packet_acceptance_receipt_indexed": false,
+            "packet_acceptance_receipt_delivered": false,
+            "operator_acceptance_recorded": false,
+            "operator_approval_recorded": false,
+            "activation_authority_derived": false,
+            "activation_command_derived": false,
+            "activation_allowed": false,
+            "activation_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "hepta_intelligence_context_attached": false,
+            "prompt_preview_rendered": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "external_kg_adapter_read_performed": false,
+            "external_adapter_client_constructed": false,
+            "network_call_performed": false,
+            "external_db_write_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "install_executed": false,
+            "launchd_mutated": false,
+            "service_restarted": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false,
+            "public_ga_claimed": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false,
+            "external_send_performed": false,
+        }),
+    );
+
+    let mut side_effects = serde_json::json!({
+        "packet_acceptance_receipt_recorded": false,
+        "packet_acceptance_receipt_persisted": false,
+        "packet_acceptance_receipt_materialized": false,
+        "packet_acceptance_receipt_indexed": false,
+        "packet_acceptance_receipt_queryable": false,
+        "packet_acceptance_receipt_exportable": false,
+        "packet_acceptance_receipt_observable": false,
+        "packet_acceptance_receipt_delivered": false,
+        "packet_acceptance_receipt_acceptance_recorded": false,
+        "packet_acceptance_receipt_authority_derived": false,
+        "packet_acceptance_receipt_live_execution_allowed": false,
+        "packet_template_recorded": false,
+        "packet_template_persisted": false,
+        "packet_assembly_performed": false,
+        "packet_assembly_recorded": false,
+        "packet_assembly_persisted": false,
+        "packet_ready_promoted": false,
+        "packet_acceptance_recorded": false,
+        "operator_acceptance_recorded": false,
+        "operator_approval_recorded": false,
+        "activation_authority_derived": false,
+        "activation_command_derived": false,
+        "activation_allowed": false,
+        "activation_performed": false,
+    });
+    extend_json_object(
+        &mut side_effects,
+        serde_json::json!({
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "hepta_intelligence_context_attached": false,
+            "prompt_preview_rendered": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "external_kg_adapter_read_performed": false,
+            "external_adapter_client_constructed": false,
+            "network_call_performed": false,
+            "external_db_write_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut side_effects,
+        serde_json::json!({
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "install_executed": false,
+            "launchd_mutated": false,
+            "service_restarted": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false,
+            "public_ga_claimed": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false,
+            "external_send_performed": false,
+            "filesystem_written": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -37622,6 +37922,204 @@ mod tests {
             value["side_effects"]["packet_live_execution_allowed"],
             false
         );
+        assert_eq!(value["side_effects"]["activation_authority_derived"], false);
+        assert_eq!(value["side_effects"]["activation_performed"], false);
+        assert_eq!(value["side_effects"]["memory_store_write_performed"], false);
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["install_executed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["filesystem_written"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_endpoint_blocks_persistence()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_NON_PERSISTENCE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("operator readiness packet template packet acceptance receipt route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_NON_PERSISTENCE_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-non-persistence --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_ready"],
+            true
+        );
+        assert_eq!(value["source_packet_assembly_ready"], true);
+        assert_eq!(value["source_packet_assembly_attempt_count"], 4);
+        assert_eq!(value["source_packet_assembled_count"], 0);
+        assert_eq!(value["source_packet_accepted_count"], 0);
+        assert_eq!(value["source_packet_activation_authority_derived_count"], 0);
+        assert_eq!(value["receipt_surface_count"], 8);
+        assert_eq!(value["receipt_generated_count"], 8);
+        assert_eq!(value["receipt_recorded_count"], 0);
+        assert_eq!(value["receipt_persisted_count"], 0);
+        assert_eq!(value["receipt_materialized_count"], 0);
+        assert_eq!(value["receipt_indexed_count"], 0);
+        assert_eq!(value["receipt_queryable_count"], 0);
+        assert_eq!(value["receipt_exportable_count"], 0);
+        assert_eq!(value["receipt_observable_count"], 0);
+        assert_eq!(value["receipt_delivered_count"], 0);
+        assert_eq!(value["receipt_acceptance_recorded_count"], 0);
+        assert_eq!(value["receipt_operator_approval_derived_count"], 0);
+        assert_eq!(value["receipt_activation_authority_derived_count"], 0);
+        assert_eq!(value["receipt_activation_command_derived_count"], 0);
+        assert_eq!(value["receipt_live_execution_allowed_count"], 0);
+
+        let receipts = value["receipt_surfaces"]
+            .as_array()
+            .expect("operator readiness packet template packet acceptance receipt surfaces");
+        assert_eq!(receipts.len(), 8);
+        assert_eq!(
+            receipts[0]["receipt_surface"],
+            "packet_assembly_denial_receipt"
+        );
+        for receipt in receipts {
+            assert_eq!(receipt["receipt_generated"], true);
+            assert_eq!(receipt["receipt_recorded"], false);
+            assert_eq!(receipt["receipt_persisted"], false);
+            assert_eq!(receipt["receipt_materialized"], false);
+            assert_eq!(receipt["receipt_indexed"], false);
+            assert_eq!(receipt["receipt_queryable"], false);
+            assert_eq!(receipt["receipt_exportable"], false);
+            assert_eq!(receipt["receipt_observable"], false);
+            assert_eq!(receipt["receipt_delivered"], false);
+            assert_eq!(receipt["receipt_acceptance_recorded"], false);
+            assert_eq!(receipt["receipt_operator_approval_derived"], false);
+            assert_eq!(receipt["receipt_activation_authority_derived"], false);
+            assert_eq!(receipt["receipt_activation_command_derived"], false);
+            assert_eq!(receipt["receipt_live_execution_allowed"], false);
+            assert_eq!(receipt["receipt_status"], "non_persistent_report_only");
+        }
+
+        let denied = value["denied_by_packet_acceptance_receipt"]
+            .as_array()
+            .expect("packet acceptance receipt denials");
+        assert_eq!(denied.len(), 10);
+        assert_eq!(
+            value["denied_by_packet_acceptance_receipt_count"],
+            serde_json::json!(denied.len())
+        );
+        let next_actions = value["allowed_next_actions"]
+            .as_array()
+            .expect("packet acceptance receipt next actions");
+        assert_eq!(
+            next_actions[0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_replay_idempotency_denial_gate"
+        );
+        assert_eq!(next_actions[0]["status"], "allowed_report_only_next_slice");
+        assert_eq!(value["packet_template_recorded"], false);
+        assert_eq!(value["packet_template_persisted"], false);
+        assert_eq!(value["packet_assembly_performed"], false);
+        assert_eq!(value["packet_assembly_recorded"], false);
+        assert_eq!(value["packet_assembly_persisted"], false);
+        assert_eq!(value["packet_complete"], false);
+        assert_eq!(value["packet_ready"], false);
+        assert_eq!(value["packet_accepted"], false);
+        assert_eq!(value["packet_acceptance_receipt_recorded"], false);
+        assert_eq!(value["packet_acceptance_receipt_persisted"], false);
+        assert_eq!(value["packet_acceptance_receipt_materialized"], false);
+        assert_eq!(value["packet_acceptance_receipt_indexed"], false);
+        assert_eq!(value["packet_acceptance_receipt_delivered"], false);
+        assert_eq!(value["operator_acceptance_recorded"], false);
+        assert_eq!(value["operator_approval_recorded"], false);
+        assert_eq!(value["activation_authority_derived"], false);
+        assert_eq!(value["activation_command_derived"], false);
+        assert_eq!(value["activation_allowed"], false);
+        assert_eq!(value["activation_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["memory_store_mutated"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["install_executed"], false);
+        assert_eq!(value["service_restarted"], false);
+        assert_eq!(value["active_binary_mutated"], false);
+        assert_eq!(value["release_artifact_written"], false);
+        assert_eq!(value["external_send_performed"], false);
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_materialized"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_indexed"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_queryable"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_exportable"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_observable"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_delivered"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_acceptance_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_authority_derived"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_live_execution_allowed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["packet_assembly_performed"], false);
+        assert_eq!(value["side_effects"]["packet_assembly_persisted"], false);
+        assert_eq!(value["side_effects"]["packet_ready_promoted"], false);
+        assert_eq!(value["side_effects"]["packet_acceptance_recorded"], false);
         assert_eq!(value["side_effects"]["activation_authority_derived"], false);
         assert_eq!(value["side_effects"]["activation_performed"], false);
         assert_eq!(value["side_effects"]["memory_store_write_performed"], false);
