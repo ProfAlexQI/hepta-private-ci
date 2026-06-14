@@ -154,7 +154,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 104;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 105;' \
   "native gateway route/source command count includes activation command result receipt retention/expiry/garbage-collection denial route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT' \
@@ -195,7 +195,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 104
+    and .route_count == 105
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .source_operator_review_acknowledgement_activation_command_result_receipt_audit_trail_immutable_evidence_route_ready == true
@@ -242,8 +242,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 244
-  and .present_required_marker_count == 244
+  and .required_marker_count == 245
+  and .present_required_marker_count == 245
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -277,7 +277,7 @@ jq -n \
     source_audit_trail_immutable_evidence_fixture_count:$source.source_audit_trail_immutable_evidence_fixture_count,
     source_accepted_audit_trail_immutable_evidence_fixture_count:$source.source_accepted_audit_trail_immutable_evidence_fixture_count,
     source_route_wired:true,
-    source_route_count_expected:104,
+    source_route_count_expected:105,
     source_route_tested_by_native_gateway_unit_test:true,
     native_gateway_source:"codex-rs/cli/src/native_gateway.rs",
     native_gateway_sha256:$native_gateway_sha256,

@@ -32,4 +32,4 @@ The route is stdout/report only. It does not cancel, supersede, replace, tombsto
 
 ## Validation
 
-The route gate validates the source cancellation/supersession denial gate, native gateway route wiring, source command count `104`, the focused codex-cli native unit test, optional live endpoint parity, and terminal coverage through `scripts/hepta-preflight.sh`.
+The route gate validates the source cancellation/supersession denial gate, native gateway route wiring, source command count `105`, the focused codex-cli native unit test, optional live endpoint parity, and terminal coverage through `scripts/hepta-preflight.sh`.

@@ -120,7 +120,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 104;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 105;' \
   "native gateway route/source command count includes operator canary single-budget dispatch dry-run no-op receipt route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_SINGLE_BUDGET_DISPATCH_DRY_RUN_NOOP_RECEIPT_ENDPOINT' \
@@ -188,7 +188,7 @@ report="$(
       source_single_budget_gate_ready:$single_budget_gate.operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_ready,
       source_single_budget_gate_status:$single_budget_gate.operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_status,
       source_route_wired:true,
-      source_route_count_expected:104,
+      source_route_count_expected:105,
       source_route_tested_by_native_gateway_unit_test:true,
       operator_authorization_source:"telegram_direct_operator_highest_authorization_2026_06_13_16_27_10_asia_shanghai",
       operator_authorization_received:true,
@@ -286,7 +286,7 @@ jq -e '
   and .source_single_budget_gate_ready == true
   and .source_single_budget_gate_status == "blocked"
   and .source_route_wired == true
-  and .source_route_count_expected == 104
+  and .source_route_count_expected == 105
   and .source_route_tested_by_native_gateway_unit_test == true
   and .operator_canary_controlled_request_harness_single_budget_dispatch_dry_run_noop_receipt_route_enabled == true
   and .single_budget_declared == 1
