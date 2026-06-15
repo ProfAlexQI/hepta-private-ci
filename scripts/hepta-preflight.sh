@@ -426,6 +426,9 @@ scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-pac
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt cancellation/supersession denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial-gate.sh
 
+echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt cancellation/supersession denial route gate"
+scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt audit-trail/immutable-evidence denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-audit-trail-immutable-evidence-denial-gate.sh
 

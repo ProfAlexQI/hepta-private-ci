@@ -134,6 +134,7 @@ required_markers=(
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt ordering/monotonicity denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt ordering/monotonicity denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt cancellation/supersession denial gate"
+  "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt cancellation/supersession denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt audit-trail/immutable-evidence denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt retention/expiry/garbage-collection denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt export/query/observability denial gate"
@@ -516,8 +517,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 259
-    and .present_required_marker_count == 259
+    and .required_marker_count == 260
+    and .present_required_marker_count == 260
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
