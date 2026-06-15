@@ -152,6 +152,7 @@ required_markers=(
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt operator briefing non-persistence gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt operator briefing non-persistence route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt final acknowledgement non-acceptance gate"
+  "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt final acknowledgement non-acceptance route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt terminal decision/status promotion denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt no-persistence gate"

@@ -17,7 +17,7 @@ It verifies:
 - all ten replay/idempotency surfaces remain denied, non-persistent, non-authoritative, and non-executable;
 - the focused native unit test covers the endpoint contract;
 - optional live endpoint verification reports route count 119 and missing route count 0;
-- terminal coverage reaches 265/265 with no missing, duplicate, or out-of-order markers.
+- terminal coverage reaches 266/266 with no missing, duplicate, or out-of-order markers.
 
 This route only prepares the next report-only slice:
 

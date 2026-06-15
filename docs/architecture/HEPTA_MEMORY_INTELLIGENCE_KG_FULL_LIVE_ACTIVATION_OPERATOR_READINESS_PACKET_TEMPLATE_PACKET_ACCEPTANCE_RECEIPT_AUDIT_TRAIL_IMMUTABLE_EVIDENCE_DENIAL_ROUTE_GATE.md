@@ -13,7 +13,7 @@ The route asserts:
 
 - the native endpoint and source command are wired into route parity;
 - route/source coverage reaches 121/121;
-- terminal preflight coverage reaches 265/265;
+- terminal preflight coverage reaches 266/266;
 - all audit trail, immutable-evidence, hash-chain, Merkle, attestation, witness, notary, ledger/index/delivery/export/query/observability/readback, acceptance, operator approval, activation authority, activation command, and live execution counts remain zero;
 - the only next action is another report-only retention/expiry/garbage-collection denial slice;
 - no Memory/KG write, provider/model invocation, credential or secret read, install/restart, binary mutation, public release claim, artifact write, external send, or filesystem persistence is authorized.

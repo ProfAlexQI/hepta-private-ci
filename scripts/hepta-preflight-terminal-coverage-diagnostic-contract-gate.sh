@@ -146,6 +146,7 @@ required_markers=(
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt operator briefing non-persistence gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt operator briefing non-persistence route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt final acknowledgement non-acceptance gate"
+  "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt final acknowledgement non-acceptance route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt terminal decision/status promotion denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt no-persistence gate"
@@ -522,8 +523,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 265
-    and .present_required_marker_count == 265
+    and .required_marker_count == 266
+    and .present_required_marker_count == 266
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
