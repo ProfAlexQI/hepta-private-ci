@@ -183,6 +183,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-non-persistence";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -193,7 +195,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 118;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 119;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -685,6 +687,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt replay/idempotency denial status; models denied receipt replay and idempotency cache surfaces while proving replay recording, persistence, cache writes, query/export/observability snapshots, acceptance, operator approval derivation, activation authority/command, live execution, providers/models, Memory/KG writes, credentials, installs/restarts, artifacts, and sends remain no-op",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt ordering/monotonicity denial status; models denied sequence cursor, ordering, monotonicity, rollback, duplicate, stale, latest-wins, query/export/observability, acceptance, authority, and live execution surfaces while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -1862,6 +1871,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_replay_idempotency_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_denial_report(),
                     ),
                 );
             }
@@ -24662,6 +24681,406 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_replay_idempotency_denial_report();
+    let source_replay_report_sha256 = sha256_json_value(&source);
+    let source_ready = source
+        .get("memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_replay_idempotency_denial_ready")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let source_replay_surface_count = source
+        .get("replay_surface_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_replay_attempt_count = source
+        .get("replay_attempt_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_replay_recorded_count = source
+        .get("replay_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_replay_persisted_count = source
+        .get("replay_persisted_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_idempotency_key_registered_count = source
+        .get("idempotency_key_registered_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_idempotency_cache_written_count = source
+        .get("idempotency_cache_written_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_cache_hit_promoted_count = source
+        .get("cache_hit_promoted_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_replay_acceptance_recorded_count = source
+        .get("replay_acceptance_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_replay_activation_authority_derived_count = source
+        .get("replay_activation_authority_derived_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_replay_idempotency_contract_hash_sha256 = source
+        .get("replay_idempotency_contract_hash_sha256")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!(""));
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let ordering_surfaces = vec![
+        "packet_receipt_duplicate_sequence_claim",
+        "packet_receipt_stale_sequence_claim",
+        "packet_receipt_late_arrival_claim",
+        "packet_receipt_future_sequence_gap_claim",
+        "packet_receipt_timestamp_rollback_claim",
+        "packet_receipt_epoch_rollback_claim",
+        "packet_receipt_same_sequence_different_hash_claim",
+        "packet_receipt_latest_wins_overwrite_claim",
+        "packet_receipt_query_ordering_claim",
+        "packet_receipt_export_ordering_claim",
+        "packet_receipt_observability_ordering_claim",
+        "packet_receipt_completion_ack_ordering_claim",
+        "packet_receipt_authority_ordering_claim",
+        "packet_receipt_live_activation_ordering_claim",
+    ]
+    .into_iter()
+    .map(|ordering_surface| {
+        serde_json::json!({
+            "ordering_surface": ordering_surface,
+            "ordering_attempted": true,
+            "sequence_cursor_accepted": false,
+            "sequence_cursor_recorded": false,
+            "sequence_cursor_persisted": false,
+            "monotonicity_state_recorded": false,
+            "monotonicity_state_persisted": false,
+            "ordering_recorded": false,
+            "ordering_persisted": false,
+            "ordering_materialized": false,
+            "latest_wins_accepted": false,
+            "duplicate_accepted": false,
+            "stale_accepted": false,
+            "late_accepted": false,
+            "future_gap_accepted": false,
+            "timestamp_rollback_accepted": false,
+            "epoch_rollback_accepted": false,
+            "same_sequence_hash_override_accepted": false,
+            "acceptance_recorded": false,
+            "operator_approval_derived": false,
+            "activation_authority_derived": false,
+            "activation_command_derived": false,
+            "live_execution_allowed": false,
+            "ordering_status": "ordering_monotonicity_denied"
+        })
+    })
+    .collect::<Vec<_>>();
+    let ordering_surface_count = ordering_surfaces.len();
+    let ordering_monotonicity_contract_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial:native:source={source_replay_report_sha256}:surfaces={ordering_surface_count}:route_count={}:ordering=0:cursor=0:monotonicity=0:authority=0:live=0",
+        route_matrix.route_count
+    ));
+    let denied_by_packet_receipt_ordering_monotonicity = vec![
+        "operator_readiness_packet_template_packet_receipt_ordering_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_ordering_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_ordering_materialization_denied",
+        "operator_readiness_packet_template_packet_receipt_sequence_cursor_acceptance_denied",
+        "operator_readiness_packet_template_packet_receipt_sequence_cursor_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_sequence_cursor_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_monotonicity_state_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_monotonicity_state_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_duplicate_sequence_denied",
+        "operator_readiness_packet_template_packet_receipt_stale_sequence_denied",
+        "operator_readiness_packet_template_packet_receipt_late_arrival_denied",
+        "operator_readiness_packet_template_packet_receipt_future_sequence_gap_denied",
+        "operator_readiness_packet_template_packet_receipt_timestamp_rollback_denied",
+        "operator_readiness_packet_template_packet_receipt_epoch_rollback_denied",
+        "operator_readiness_packet_template_packet_receipt_same_sequence_hash_override_denied",
+        "operator_readiness_packet_template_packet_receipt_latest_wins_overwrite_denied",
+        "operator_readiness_packet_template_packet_receipt_query_ordering_denied",
+        "operator_readiness_packet_template_packet_receipt_export_ordering_denied",
+        "operator_readiness_packet_template_packet_receipt_observability_ordering_denied",
+        "operator_readiness_packet_template_packet_receipt_completion_ack_ordering_denied",
+        "operator_readiness_packet_template_packet_receipt_acceptance_from_ordering_denied",
+        "operator_readiness_packet_template_packet_receipt_authority_from_ordering_denied",
+        "operator_readiness_packet_template_packet_receipt_live_execution_from_ordering_denied",
+    ];
+    let denied_by_packet_receipt_ordering_monotonicity_count =
+        denied_by_packet_receipt_ordering_monotonicity.len();
+    let report_ready = source_ready
+        && source_replay_surface_count == 10
+        && source_replay_attempt_count == 10
+        && source_replay_recorded_count == 0
+        && source_replay_persisted_count == 0
+        && source_idempotency_key_registered_count == 0
+        && source_idempotency_cache_written_count == 0
+        && source_cache_hit_promoted_count == 0
+        && source_replay_acceptance_recorded_count == 0
+        && source_replay_activation_authority_derived_count == 0
+        && ordering_surface_count == 14
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-15",
+        "receipt_ordering_monotonicity_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_denial_v1",
+        "receipt_ordering_monotonicity_mode": "native_route_non_persistent_receipts_cannot_create_sequence_cursor_monotonicity_or_authority",
+        "source_packet_acceptance_receipt_replay_idempotency_gate": source["gate"].clone(),
+        "source_packet_acceptance_receipt_replay_idempotency_ready": source_ready,
+        "source_replay_report_sha256": source_replay_report_sha256,
+        "source_replay_idempotency_contract_hash_sha256": source_replay_idempotency_contract_hash_sha256,
+        "ordering_monotonicity_contract_hash_sha256": ordering_monotonicity_contract_hash_sha256,
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_denial_route_enabled": true,
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_denial_ready": true,
+            "source_replay_surface_count": source_replay_surface_count,
+            "source_replay_attempt_count": source_replay_attempt_count,
+            "source_replay_recorded_count": source_replay_recorded_count,
+            "source_replay_persisted_count": source_replay_persisted_count,
+            "source_idempotency_key_registered_count": source_idempotency_key_registered_count,
+            "source_idempotency_cache_written_count": source_idempotency_cache_written_count,
+            "source_cache_hit_promoted_count": source_cache_hit_promoted_count,
+            "source_replay_acceptance_recorded_count": source_replay_acceptance_recorded_count,
+            "source_replay_activation_authority_derived_count": source_replay_activation_authority_derived_count,
+            "ordering_surface_count": ordering_surface_count,
+            "ordering_attempt_count": ordering_surface_count,
+            "ordering_recorded_count": 0,
+            "ordering_persisted_count": 0,
+            "ordering_materialized_count": 0,
+            "sequence_cursor_accepted_count": 0,
+            "sequence_cursor_recorded_count": 0,
+            "sequence_cursor_persisted_count": 0,
+            "monotonicity_state_recorded_count": 0,
+            "monotonicity_state_persisted_count": 0,
+            "duplicate_sequence_accepted_count": 0,
+            "stale_sequence_accepted_count": 0,
+            "late_arrival_accepted_count": 0,
+            "future_sequence_gap_accepted_count": 0,
+            "timestamp_rollback_accepted_count": 0,
+            "epoch_rollback_accepted_count": 0,
+            "same_sequence_hash_override_accepted_count": 0,
+            "latest_wins_overwrite_accepted_count": 0,
+            "ordering_acceptance_recorded_count": 0,
+            "ordering_operator_approval_derived_count": 0,
+            "ordering_activation_authority_derived_count": 0,
+            "ordering_activation_command_derived_count": 0,
+            "ordering_live_execution_allowed_count": 0,
+            "ordering_surfaces": ordering_surfaces,
+            "denied_by_packet_receipt_ordering_monotonicity": denied_by_packet_receipt_ordering_monotonicity,
+            "denied_by_packet_receipt_ordering_monotonicity_count": denied_by_packet_receipt_ordering_monotonicity_count,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_cancellation_supersession_denial_gate",
+                    "status": "allowed_report_only_next_slice",
+                    "persists_receipt": false,
+                    "records_operator_acceptance": false,
+                    "derives_activation_authority": false,
+                    "accepts_cancellation": false,
+                    "accepts_supersession": false,
+                    "activates_live": false,
+                    "mutates_memory_store": false,
+                    "writes_kg": false
+                }
+            ],
+            "packet_template_recorded": false,
+            "packet_template_persisted": false,
+            "packet_assembly_performed": false,
+            "packet_assembly_recorded": false,
+            "packet_assembly_persisted": false,
+            "packet_complete": false,
+            "packet_ready": false,
+            "packet_accepted": false,
+            "packet_acceptance_receipt_recorded": false,
+            "packet_acceptance_receipt_persisted": false,
+            "packet_acceptance_receipt_replayed": false,
+            "packet_acceptance_receipt_idempotency_key_registered": false,
+            "packet_acceptance_receipt_idempotency_cache_written": false,
+            "packet_acceptance_receipt_cache_hit_promoted": false,
+            "packet_acceptance_receipt_ordering_recorded": false,
+            "packet_acceptance_receipt_ordering_persisted": false,
+            "packet_acceptance_receipt_sequence_cursor_accepted": false,
+            "packet_acceptance_receipt_sequence_cursor_recorded": false,
+            "packet_acceptance_receipt_sequence_cursor_persisted": false,
+            "packet_acceptance_receipt_monotonicity_state_recorded": false,
+            "packet_acceptance_receipt_monotonicity_state_persisted": false,
+            "packet_acceptance_receipt_duplicate_accepted": false,
+            "packet_acceptance_receipt_stale_accepted": false,
+            "packet_acceptance_receipt_late_accepted": false,
+            "packet_acceptance_receipt_future_gap_accepted": false,
+            "packet_acceptance_receipt_timestamp_rollback_accepted": false,
+            "packet_acceptance_receipt_epoch_rollback_accepted": false,
+            "packet_acceptance_receipt_same_sequence_hash_override_accepted": false,
+            "packet_acceptance_receipt_latest_wins_overwrite_accepted": false,
+            "operator_acceptance_recorded": false,
+            "operator_approval_recorded": false,
+            "activation_authority_derived": false,
+            "activation_command_derived": false,
+            "activation_allowed": false,
+            "activation_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "hepta_intelligence_context_attached": false,
+            "prompt_preview_rendered": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "external_kg_adapter_read_performed": false,
+            "external_adapter_client_constructed": false,
+            "network_call_performed": false,
+            "external_db_write_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "install_executed": false,
+            "launchd_mutated": false,
+            "service_restarted": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false,
+            "public_ga_claimed": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false,
+            "external_send_performed": false,
+        }),
+    );
+
+    let mut side_effects = serde_json::json!({
+        "packet_acceptance_receipt_ordering_recorded": false,
+        "packet_acceptance_receipt_ordering_persisted": false,
+        "packet_acceptance_receipt_ordering_materialized": false,
+        "packet_acceptance_receipt_sequence_cursor_accepted": false,
+        "packet_acceptance_receipt_sequence_cursor_recorded": false,
+        "packet_acceptance_receipt_sequence_cursor_persisted": false,
+        "packet_acceptance_receipt_monotonicity_state_recorded": false,
+        "packet_acceptance_receipt_monotonicity_state_persisted": false,
+        "packet_acceptance_receipt_duplicate_accepted": false,
+        "packet_acceptance_receipt_stale_accepted": false,
+        "packet_acceptance_receipt_late_accepted": false,
+        "packet_acceptance_receipt_future_gap_accepted": false,
+        "packet_acceptance_receipt_timestamp_rollback_accepted": false,
+        "packet_acceptance_receipt_epoch_rollback_accepted": false,
+        "packet_acceptance_receipt_same_sequence_hash_override_accepted": false,
+        "packet_acceptance_receipt_latest_wins_overwrite_accepted": false,
+        "packet_acceptance_receipt_acceptance_recorded": false,
+        "packet_acceptance_receipt_authority_derived": false,
+        "packet_acceptance_receipt_live_execution_allowed": false,
+    });
+    extend_json_object(
+        &mut side_effects,
+        serde_json::json!({
+        "packet_acceptance_receipt_replayed": false,
+        "packet_acceptance_receipt_replay_recorded": false,
+        "packet_acceptance_receipt_replay_persisted": false,
+        "packet_acceptance_receipt_idempotency_key_registered": false,
+        "packet_acceptance_receipt_idempotency_cache_written": false,
+        "packet_acceptance_receipt_cache_hit_promoted": false,
+        "packet_acceptance_receipt_recorded": false,
+        "packet_acceptance_receipt_persisted": false,
+        "packet_acceptance_receipt_materialized": false,
+        "packet_acceptance_receipt_indexed": false,
+        "packet_acceptance_receipt_delivered": false,
+        }),
+    );
+    extend_json_object(
+        &mut side_effects,
+        serde_json::json!({
+        "packet_template_recorded": false,
+        "packet_template_persisted": false,
+        "packet_assembly_performed": false,
+        "packet_assembly_recorded": false,
+        "packet_assembly_persisted": false,
+        "packet_ready_promoted": false,
+        "packet_acceptance_recorded": false,
+        "operator_acceptance_recorded": false,
+        "operator_approval_recorded": false,
+        "activation_authority_derived": false,
+        "activation_command_derived": false,
+        "activation_allowed": false,
+        "activation_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut side_effects,
+        serde_json::json!({
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "hepta_intelligence_context_attached": false,
+            "prompt_preview_rendered": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "external_kg_adapter_read_performed": false,
+            "external_adapter_client_constructed": false,
+            "network_call_performed": false,
+            "external_db_write_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut side_effects,
+        serde_json::json!({
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "install_executed": false,
+            "launchd_mutated": false,
+            "service_restarted": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false,
+            "public_ga_claimed": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false,
+            "external_send_performed": false,
+            "filesystem_written": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -38654,6 +39073,251 @@ mod tests {
         );
         assert_eq!(
             value["side_effects"]["packet_acceptance_receipt_authority_derived"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_live_execution_allowed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["activation_authority_derived"], false);
+        assert_eq!(value["side_effects"]["activation_performed"], false);
+        assert_eq!(value["side_effects"]["memory_store_write_performed"], false);
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["credential_read"], false);
+        assert_eq!(value["side_effects"]["install_executed"], false);
+        assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["filesystem_written"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_endpoint_blocks_ordering()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("operator readiness packet template packet acceptance receipt ordering monotonicity route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_ordering_monotonicity_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_packet_acceptance_receipt_replay_idempotency_ready"],
+            true
+        );
+        assert_eq!(value["source_replay_surface_count"], 10);
+        assert_eq!(value["source_replay_attempt_count"], 10);
+        assert_eq!(value["source_replay_recorded_count"], 0);
+        assert_eq!(value["source_replay_persisted_count"], 0);
+        assert_eq!(value["source_idempotency_key_registered_count"], 0);
+        assert_eq!(value["source_idempotency_cache_written_count"], 0);
+        assert_eq!(value["source_cache_hit_promoted_count"], 0);
+        assert_eq!(value["source_replay_acceptance_recorded_count"], 0);
+        assert_eq!(value["source_replay_activation_authority_derived_count"], 0);
+        assert_eq!(value["ordering_surface_count"], 14);
+        assert_eq!(value["ordering_attempt_count"], 14);
+        assert_eq!(value["ordering_recorded_count"], 0);
+        assert_eq!(value["ordering_persisted_count"], 0);
+        assert_eq!(value["ordering_materialized_count"], 0);
+        assert_eq!(value["sequence_cursor_accepted_count"], 0);
+        assert_eq!(value["sequence_cursor_recorded_count"], 0);
+        assert_eq!(value["sequence_cursor_persisted_count"], 0);
+        assert_eq!(value["monotonicity_state_recorded_count"], 0);
+        assert_eq!(value["monotonicity_state_persisted_count"], 0);
+        assert_eq!(value["duplicate_sequence_accepted_count"], 0);
+        assert_eq!(value["stale_sequence_accepted_count"], 0);
+        assert_eq!(value["late_arrival_accepted_count"], 0);
+        assert_eq!(value["future_sequence_gap_accepted_count"], 0);
+        assert_eq!(value["timestamp_rollback_accepted_count"], 0);
+        assert_eq!(value["epoch_rollback_accepted_count"], 0);
+        assert_eq!(value["same_sequence_hash_override_accepted_count"], 0);
+        assert_eq!(value["latest_wins_overwrite_accepted_count"], 0);
+        assert_eq!(value["ordering_acceptance_recorded_count"], 0);
+        assert_eq!(value["ordering_operator_approval_derived_count"], 0);
+        assert_eq!(value["ordering_activation_authority_derived_count"], 0);
+        assert_eq!(value["ordering_activation_command_derived_count"], 0);
+        assert_eq!(value["ordering_live_execution_allowed_count"], 0);
+
+        let surfaces = value["ordering_surfaces"].as_array().expect(
+            "operator readiness packet template packet acceptance receipt ordering surfaces",
+        );
+        assert_eq!(surfaces.len(), 14);
+        assert_eq!(
+            surfaces[0]["ordering_surface"],
+            "packet_receipt_duplicate_sequence_claim"
+        );
+        for surface in surfaces {
+            assert_eq!(surface["ordering_attempted"], true);
+            assert_eq!(surface["sequence_cursor_accepted"], false);
+            assert_eq!(surface["sequence_cursor_recorded"], false);
+            assert_eq!(surface["sequence_cursor_persisted"], false);
+            assert_eq!(surface["monotonicity_state_recorded"], false);
+            assert_eq!(surface["monotonicity_state_persisted"], false);
+            assert_eq!(surface["ordering_recorded"], false);
+            assert_eq!(surface["ordering_persisted"], false);
+            assert_eq!(surface["ordering_materialized"], false);
+            assert_eq!(surface["latest_wins_accepted"], false);
+            assert_eq!(surface["duplicate_accepted"], false);
+            assert_eq!(surface["stale_accepted"], false);
+            assert_eq!(surface["late_accepted"], false);
+            assert_eq!(surface["future_gap_accepted"], false);
+            assert_eq!(surface["timestamp_rollback_accepted"], false);
+            assert_eq!(surface["epoch_rollback_accepted"], false);
+            assert_eq!(surface["same_sequence_hash_override_accepted"], false);
+            assert_eq!(surface["acceptance_recorded"], false);
+            assert_eq!(surface["operator_approval_derived"], false);
+            assert_eq!(surface["activation_authority_derived"], false);
+            assert_eq!(surface["activation_command_derived"], false);
+            assert_eq!(surface["live_execution_allowed"], false);
+            assert_eq!(surface["ordering_status"], "ordering_monotonicity_denied");
+        }
+
+        let denied = value["denied_by_packet_receipt_ordering_monotonicity"]
+            .as_array()
+            .expect("packet acceptance receipt ordering monotonicity denials");
+        assert_eq!(denied.len(), 23);
+        assert_eq!(
+            value["denied_by_packet_receipt_ordering_monotonicity_count"],
+            serde_json::json!(denied.len())
+        );
+        let next_actions = value["allowed_next_actions"]
+            .as_array()
+            .expect("packet acceptance receipt ordering monotonicity next actions");
+        assert_eq!(
+            next_actions[0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_cancellation_supersession_denial_gate"
+        );
+        assert_eq!(next_actions[0]["status"], "allowed_report_only_next_slice");
+        assert_eq!(value["packet_acceptance_receipt_recorded"], false);
+        assert_eq!(value["packet_acceptance_receipt_persisted"], false);
+        assert_eq!(value["packet_acceptance_receipt_replayed"], false);
+        assert_eq!(
+            value["packet_acceptance_receipt_idempotency_key_registered"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_idempotency_cache_written"],
+            false
+        );
+        assert_eq!(value["packet_acceptance_receipt_ordering_recorded"], false);
+        assert_eq!(value["packet_acceptance_receipt_ordering_persisted"], false);
+        assert_eq!(
+            value["packet_acceptance_receipt_sequence_cursor_accepted"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_sequence_cursor_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_sequence_cursor_persisted"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_monotonicity_state_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_monotonicity_state_persisted"],
+            false
+        );
+        assert_eq!(value["packet_acceptance_receipt_duplicate_accepted"], false);
+        assert_eq!(value["packet_acceptance_receipt_stale_accepted"], false);
+        assert_eq!(value["packet_acceptance_receipt_late_accepted"], false);
+        assert_eq!(
+            value["packet_acceptance_receipt_future_gap_accepted"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_timestamp_rollback_accepted"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_epoch_rollback_accepted"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_same_sequence_hash_override_accepted"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_latest_wins_overwrite_accepted"],
+            false
+        );
+        assert_eq!(value["operator_acceptance_recorded"], false);
+        assert_eq!(value["operator_approval_recorded"], false);
+        assert_eq!(value["activation_authority_derived"], false);
+        assert_eq!(value["activation_command_derived"], false);
+        assert_eq!(value["activation_allowed"], false);
+        assert_eq!(value["activation_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["memory_store_mutated"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["install_executed"], false);
+        assert_eq!(value["service_restarted"], false);
+        assert_eq!(value["active_binary_mutated"], false);
+        assert_eq!(value["release_artifact_written"], false);
+        assert_eq!(value["external_send_performed"], false);
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_ordering_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_ordering_persisted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_sequence_cursor_accepted"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_monotonicity_state_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_latest_wins_overwrite_accepted"],
             false
         );
         assert_eq!(

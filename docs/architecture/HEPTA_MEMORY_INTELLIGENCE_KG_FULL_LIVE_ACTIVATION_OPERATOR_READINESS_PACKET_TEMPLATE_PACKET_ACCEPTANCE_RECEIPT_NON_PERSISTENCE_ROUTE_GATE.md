@@ -16,8 +16,8 @@ It verifies:
 - the native endpoint and source command are wired into route parity;
 - all eight receipt surfaces remain report-only, non-persistent, non-authoritative, and non-executable;
 - the focused native unit test covers the endpoint contract;
-- optional live endpoint verification reports route count 118 and missing route count 0;
-- terminal coverage reaches 258/258 with no missing, duplicate, or out-of-order markers.
+- optional live endpoint verification reports route count 119 and missing route count 0;
+- terminal coverage reaches 259/259 with no missing, duplicate, or out-of-order markers.
 
 This route only prepares the next report-only slice:
 
