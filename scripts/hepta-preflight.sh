@@ -456,6 +456,9 @@ scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-pac
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt operator briefing non-persistence gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-operator-briefing-non-persistence-gate.sh
 
+echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt operator briefing non-persistence route gate"
+scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-operator-briefing-non-persistence-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt final acknowledgement non-acceptance gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-final-acknowledgement-non-acceptance-gate.sh
 

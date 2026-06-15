@@ -12,10 +12,10 @@ The route requires the packet acceptance receipt export/query/observability deni
 The route asserts:
 
 - the native endpoint and source command are wired into route parity;
-- route/source coverage reaches 124/124;
-- terminal preflight coverage reaches 264/264;
+- route/source coverage reaches 125/125;
+- terminal preflight coverage reaches 265/265;
 - all redaction, privacy, payload inspection, plaintext materialization, hash-to-payload, acceptance, operator approval, activation authority, activation command, and live execution counts remain zero;
 - the only next action is another report-only operator briefing non-persistence slice;
 - no Memory/KG write, provider/model invocation, credential or secret read, install/restart, binary mutation, public release claim, artifact write, external send, or filesystem persistence is authorized.
 
-With `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`, the route gate also verifies the active gateway endpoint and requires route parity 124/124.
+With `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`, the route gate also verifies the active gateway endpoint and requires route parity 125/125.
