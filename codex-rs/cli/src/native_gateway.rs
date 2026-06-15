@@ -199,6 +199,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-operator-briefing-non-persistence";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_FINAL_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-final-acknowledgement-non-acceptance";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-terminal-decision-status-promotion-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -209,7 +211,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 126;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 127;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -757,6 +759,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-final-acknowledgement-non-acceptance --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-final-acknowledgement-non-acceptance",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt final acknowledgement non-acceptance status; models denied final acknowledgement, operator received/confirmed/read/seen, completion/status/briefing/readback acknowledgement, channel/external acknowledgement, acceptance, authority, and live execution surfaces while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-terminal-decision-status-promotion-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-terminal-decision-status-promotion-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt terminal decision/status promotion denial status; models denied terminal decision, ready/accepted/approved/authoritative/live status, final-state/completion promotion, public/release/dashboard status, acceptance, authority, and live execution surfaces while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2014,6 +2023,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_final_acknowledgement_non_acceptance_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_report(),
                     ),
                 );
             }
@@ -27926,6 +27945,411 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_final_acknowledgement_non_acceptance_report();
+    let source_view_report_sha256 = sha256_json_value(&source);
+    let source_ready = source
+        .get("memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_final_acknowledgement_non_acceptance_ready")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let source_final_acknowledgement_surface_count = source
+        .get("final_acknowledgement_surface_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_final_acknowledgement_accepted_count = source
+        .get("final_acknowledgement_accepted_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_final_acknowledgement_recorded_count = source
+        .get("final_acknowledgement_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_final_acknowledgement_persisted_count = source
+        .get("final_acknowledgement_persisted_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_final_acknowledgement_materialized_count = source
+        .get("final_acknowledgement_materialized_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_final_acknowledgement_delivered_count = source
+        .get("final_acknowledgement_delivered_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_operator_received_recorded_count = source
+        .get("operator_received_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_operator_confirmed_recorded_count = source
+        .get("operator_confirmed_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_operator_read_recorded_count = source
+        .get("operator_read_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_operator_seen_recorded_count = source
+        .get("operator_seen_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_completion_ack_recorded_count = source
+        .get("completion_ack_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_status_ack_recorded_count = source
+        .get("status_ack_recorded_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_external_ack_sent_count = source
+        .get("external_ack_sent_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_final_acknowledgement_activation_authority_derived_count = source
+        .get("final_acknowledgement_activation_authority_derived_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let source_final_acknowledgement_contract_hash_sha256 = source
+        .get("final_acknowledgement_contract_hash_sha256")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!(""));
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let terminal_decision_status_surfaces = vec![
+        "packet_receipt_terminal_decision_claim",
+        "packet_receipt_terminal_status_closed_claim",
+        "packet_receipt_final_state_promotion_claim",
+        "packet_receipt_completion_promotion_claim",
+        "packet_receipt_status_ready_claim",
+        "packet_receipt_status_accepted_claim",
+        "packet_receipt_status_approved_claim",
+        "packet_receipt_status_authoritative_claim",
+        "packet_receipt_status_live_claim",
+        "packet_receipt_operator_decision_claim",
+        "packet_receipt_public_status_claim",
+        "packet_receipt_release_status_claim",
+        "packet_receipt_dashboard_status_claim",
+        "packet_receipt_live_execution_decision_claim",
+    ]
+    .into_iter()
+    .map(|terminal_decision_surface| {
+        serde_json::json!({
+            "terminal_decision_surface": terminal_decision_surface,
+            "terminal_decision_attempted": true,
+            "terminal_decision_accepted": false,
+            "terminal_decision_recorded": false,
+            "terminal_decision_persisted": false,
+            "terminal_decision_materialized": false,
+            "terminal_decision_delivered": false,
+            "terminal_status_recorded": false,
+            "terminal_status_persisted": false,
+            "terminal_status_closed": false,
+            "terminal_status_ready": false,
+            "terminal_status_accepted": false,
+            "terminal_status_approved": false,
+            "terminal_status_authoritative": false,
+            "terminal_status_live": false,
+            "final_state_promoted": false,
+            "completion_promoted": false,
+            "operator_decision_recorded": false,
+            "public_status_claimed": false,
+            "release_status_claimed": false,
+            "dashboard_status_recorded": false,
+            "acceptance_recorded": false,
+            "operator_approval_derived": false,
+            "activation_authority_derived": false,
+            "activation_command_derived": false,
+            "live_execution_allowed": false,
+            "terminal_decision_status": "terminal_decision_status_promotion_denied"
+        })
+    })
+    .collect::<Vec<_>>();
+    let terminal_decision_status_surface_count = terminal_decision_status_surfaces.len();
+    let terminal_decision_contract_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-terminal-decision-status-promotion-denial:native:source={source_view_report_sha256}:surfaces={terminal_decision_status_surface_count}:route_count={}:terminal=0:status=0:authority=0:live=0",
+        route_matrix.route_count
+    ));
+    let denied_by_packet_receipt_terminal_decision_status = vec![
+        "operator_readiness_packet_template_packet_receipt_terminal_decision_acceptance_denied",
+        "operator_readiness_packet_template_packet_receipt_terminal_decision_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_terminal_decision_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_terminal_decision_materialization_denied",
+        "operator_readiness_packet_template_packet_receipt_terminal_status_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_terminal_status_closed_denied",
+        "operator_readiness_packet_template_packet_receipt_status_ready_denied",
+        "operator_readiness_packet_template_packet_receipt_status_accepted_denied",
+        "operator_readiness_packet_template_packet_receipt_status_approved_denied",
+        "operator_readiness_packet_template_packet_receipt_status_authoritative_denied",
+        "operator_readiness_packet_template_packet_receipt_status_live_denied",
+        "operator_readiness_packet_template_packet_receipt_final_state_promotion_denied",
+        "operator_readiness_packet_template_packet_receipt_completion_promotion_denied",
+        "operator_readiness_packet_template_packet_receipt_operator_decision_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_public_status_claim_denied",
+        "operator_readiness_packet_template_packet_receipt_release_status_claim_denied",
+        "operator_readiness_packet_template_packet_receipt_dashboard_status_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_acceptance_from_terminal_status_denied",
+        "operator_readiness_packet_template_packet_receipt_authority_from_terminal_status_denied",
+        "operator_readiness_packet_template_packet_receipt_live_execution_from_terminal_status_denied",
+    ];
+    let denied_by_packet_receipt_terminal_decision_status_count =
+        denied_by_packet_receipt_terminal_decision_status.len();
+    let report_ready = source_ready
+        && source_final_acknowledgement_surface_count == 14
+        && source_final_acknowledgement_accepted_count == 0
+        && source_final_acknowledgement_recorded_count == 0
+        && source_final_acknowledgement_persisted_count == 0
+        && source_final_acknowledgement_materialized_count == 0
+        && source_final_acknowledgement_delivered_count == 0
+        && source_operator_received_recorded_count == 0
+        && source_operator_confirmed_recorded_count == 0
+        && source_operator_read_recorded_count == 0
+        && source_operator_seen_recorded_count == 0
+        && source_completion_ack_recorded_count == 0
+        && source_status_ack_recorded_count == 0
+        && source_external_ack_sent_count == 0
+        && source_final_acknowledgement_activation_authority_derived_count == 0
+        && terminal_decision_status_surface_count == 14
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-terminal-decision-status-promotion-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-16",
+        "receipt_terminal_decision_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_v1",
+        "receipt_terminal_decision_mode": "native_route_final_acknowledgements_cannot_become_terminal_decisions_status_public_claims_or_authority",
+        "source_packet_acceptance_receipt_final_acknowledgement_route": source["gate"].clone(),
+        "source_packet_acceptance_receipt_final_acknowledgement_ready": source_ready,
+        "source_view_report_sha256": source_view_report_sha256,
+        "source_final_acknowledgement_contract_hash_sha256": source_final_acknowledgement_contract_hash_sha256,
+        "terminal_decision_contract_hash_sha256": terminal_decision_contract_hash_sha256,
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_route_enabled": true,
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_ready": report_ready,
+            "source_final_acknowledgement_surface_count": source_final_acknowledgement_surface_count,
+            "source_final_acknowledgement_accepted_count": source_final_acknowledgement_accepted_count,
+            "source_final_acknowledgement_recorded_count": source_final_acknowledgement_recorded_count,
+            "source_final_acknowledgement_persisted_count": source_final_acknowledgement_persisted_count,
+            "source_final_acknowledgement_materialized_count": source_final_acknowledgement_materialized_count,
+            "source_final_acknowledgement_delivered_count": source_final_acknowledgement_delivered_count,
+            "source_operator_received_recorded_count": source_operator_received_recorded_count,
+            "source_operator_confirmed_recorded_count": source_operator_confirmed_recorded_count,
+            "source_operator_read_recorded_count": source_operator_read_recorded_count,
+            "source_operator_seen_recorded_count": source_operator_seen_recorded_count,
+            "source_completion_ack_recorded_count": source_completion_ack_recorded_count,
+            "source_status_ack_recorded_count": source_status_ack_recorded_count,
+            "source_external_ack_sent_count": source_external_ack_sent_count,
+            "source_final_acknowledgement_activation_authority_derived_count": source_final_acknowledgement_activation_authority_derived_count,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "terminal_decision_status_surface_count": terminal_decision_status_surface_count,
+            "terminal_decision_status_attempt_count": terminal_decision_status_surface_count,
+            "terminal_decision_accepted_count": 0,
+            "terminal_decision_recorded_count": 0,
+            "terminal_decision_persisted_count": 0,
+            "terminal_decision_materialized_count": 0,
+            "terminal_decision_delivered_count": 0,
+            "terminal_status_recorded_count": 0,
+            "terminal_status_persisted_count": 0,
+            "terminal_status_closed_count": 0,
+            "terminal_status_ready_count": 0,
+            "terminal_status_accepted_count": 0,
+            "terminal_status_approved_count": 0,
+            "terminal_status_authoritative_count": 0,
+            "terminal_status_live_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "final_state_promoted_count": 0,
+            "completion_promoted_count": 0,
+            "operator_decision_recorded_count": 0,
+            "public_status_claimed_count": 0,
+            "release_status_claimed_count": 0,
+            "dashboard_status_recorded_count": 0,
+            "terminal_decision_acceptance_recorded_count": 0,
+            "terminal_decision_operator_approval_derived_count": 0,
+            "terminal_decision_activation_authority_derived_count": 0,
+            "terminal_decision_activation_command_derived_count": 0,
+            "terminal_decision_live_execution_allowed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "terminal_decision_status_surfaces": terminal_decision_status_surfaces,
+            "denied_by_packet_receipt_terminal_decision_status": denied_by_packet_receipt_terminal_decision_status,
+            "denied_by_packet_receipt_terminal_decision_status_count": denied_by_packet_receipt_terminal_decision_status_count,
+            "allowed_next_actions": [
+                {
+                    "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_denial_gate",
+                    "status": "allowed_report_only_next_slice",
+                    "records_terminal_decision": false,
+                    "promotes_status": false,
+                    "claims_public_status": false,
+                    "records_operator_acceptance": false,
+                    "derives_activation_authority": false,
+                    "activates_live": false,
+                    "mutates_memory_store": false,
+                    "writes_kg": false
+                }
+            ],
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "packet_acceptance_receipt_final_acknowledgement_accepted": false,
+            "packet_acceptance_receipt_final_acknowledgement_recorded": false,
+            "packet_acceptance_receipt_terminal_decision_accepted": false,
+            "packet_acceptance_receipt_terminal_decision_recorded": false,
+            "packet_acceptance_receipt_terminal_decision_persisted": false,
+            "packet_acceptance_receipt_terminal_decision_materialized": false,
+            "packet_acceptance_receipt_terminal_status_recorded": false,
+            "packet_acceptance_receipt_terminal_status_persisted": false,
+            "packet_acceptance_receipt_terminal_status_closed": false,
+            "packet_acceptance_receipt_status_ready": false,
+            "packet_acceptance_receipt_status_accepted": false,
+            "packet_acceptance_receipt_status_approved": false,
+            "packet_acceptance_receipt_status_authoritative": false,
+            "packet_acceptance_receipt_status_live": false,
+            "packet_acceptance_receipt_final_state_promoted": false,
+            "packet_acceptance_receipt_completion_promoted": false,
+            "packet_acceptance_receipt_operator_decision_recorded": false,
+            "packet_acceptance_receipt_public_status_claimed": false,
+            "packet_acceptance_receipt_release_status_claimed": false,
+            "packet_acceptance_receipt_dashboard_status_recorded": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "operator_acceptance_recorded": false,
+            "operator_approval_recorded": false,
+            "activation_authority_derived": false,
+            "activation_command_derived": false,
+            "activation_allowed": false,
+            "activation_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "hepta_intelligence_context_attached": false,
+            "prompt_preview_rendered": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "external_kg_adapter_read_performed": false,
+            "external_adapter_client_constructed": false,
+            "network_call_performed": false,
+            "external_db_write_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "install_executed": false,
+            "launchd_mutated": false,
+            "service_restarted": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false,
+            "public_ga_claimed": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false,
+            "external_send_performed": false,
+        }),
+    );
+
+    let mut side_effects = serde_json::json!({});
+    extend_json_object(
+        &mut side_effects,
+        serde_json::json!({
+            "packet_acceptance_receipt_terminal_decision_accepted": false,
+            "packet_acceptance_receipt_terminal_decision_recorded": false,
+            "packet_acceptance_receipt_terminal_decision_persisted": false,
+            "packet_acceptance_receipt_terminal_decision_materialized": false,
+            "packet_acceptance_receipt_terminal_status_recorded": false,
+            "packet_acceptance_receipt_terminal_status_persisted": false,
+            "packet_acceptance_receipt_terminal_status_closed": false,
+            "packet_acceptance_receipt_status_ready": false,
+            "packet_acceptance_receipt_status_accepted": false,
+            "packet_acceptance_receipt_status_approved": false,
+            "packet_acceptance_receipt_status_authoritative": false,
+            "packet_acceptance_receipt_status_live": false,
+            "packet_acceptance_receipt_final_state_promoted": false,
+            "packet_acceptance_receipt_completion_promoted": false,
+            "packet_acceptance_receipt_operator_decision_recorded": false,
+            "packet_acceptance_receipt_public_status_claimed": false,
+            "packet_acceptance_receipt_release_status_claimed": false,
+            "packet_acceptance_receipt_dashboard_status_recorded": false,
+            "packet_acceptance_receipt_acceptance_recorded": false,
+            "packet_acceptance_receipt_authority_derived": false,
+            "packet_acceptance_receipt_live_execution_allowed": false,
+        }),
+    );
+    extend_json_object(
+        &mut side_effects,
+        serde_json::json!({
+            "operator_acceptance_recorded": false,
+            "operator_approval_recorded": false,
+            "activation_authority_derived": false,
+            "activation_command_derived": false,
+            "activation_allowed": false,
+            "activation_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "hepta_intelligence_context_attached": false,
+            "prompt_preview_rendered": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "external_kg_adapter_read_performed": false,
+            "external_adapter_client_constructed": false,
+            "network_call_performed": false,
+            "external_db_write_performed": false,
+            "live_kg_write_performed": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "install_executed": false,
+            "launchd_mutated": false,
+            "service_restarted": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false,
+            "public_ga_claimed": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false,
+            "external_send_performed": false,
+            "filesystem_written": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -43871,6 +44295,220 @@ mod tests {
         assert_eq!(value["side_effects"]["credential_read"], false);
         assert_eq!(value["side_effects"]["install_executed"], false);
         assert_eq!(value["side_effects"]["external_send_performed"], false);
+        assert_eq!(value["side_effects"]["filesystem_written"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_endpoint_blocks_status_and_public_claim_promotion()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator readiness packet template packet acceptance receipt terminal decision status route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-terminal-decision-status-promotion-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_packet_acceptance_receipt_final_acknowledgement_ready"],
+            true
+        );
+        assert_eq!(value["source_final_acknowledgement_surface_count"], 14);
+        assert_eq!(value["source_final_acknowledgement_recorded_count"], 0);
+        assert_eq!(value["source_final_acknowledgement_persisted_count"], 0);
+        assert_eq!(
+            value["source_final_acknowledgement_activation_authority_derived_count"],
+            0
+        );
+        assert_eq!(value["terminal_decision_status_surface_count"], 14);
+        assert_eq!(value["terminal_decision_status_attempt_count"], 14);
+        assert_eq!(value["terminal_decision_accepted_count"], 0);
+        assert_eq!(value["terminal_decision_recorded_count"], 0);
+        assert_eq!(value["terminal_decision_persisted_count"], 0);
+        assert_eq!(value["terminal_decision_materialized_count"], 0);
+        assert_eq!(value["terminal_status_recorded_count"], 0);
+        assert_eq!(value["terminal_status_persisted_count"], 0);
+        assert_eq!(value["terminal_status_closed_count"], 0);
+        assert_eq!(value["terminal_status_ready_count"], 0);
+        assert_eq!(value["terminal_status_accepted_count"], 0);
+        assert_eq!(value["terminal_status_approved_count"], 0);
+        assert_eq!(value["terminal_status_authoritative_count"], 0);
+        assert_eq!(value["terminal_status_live_count"], 0);
+        assert_eq!(value["final_state_promoted_count"], 0);
+        assert_eq!(value["completion_promoted_count"], 0);
+        assert_eq!(value["operator_decision_recorded_count"], 0);
+        assert_eq!(value["public_status_claimed_count"], 0);
+        assert_eq!(value["release_status_claimed_count"], 0);
+        assert_eq!(value["dashboard_status_recorded_count"], 0);
+        assert_eq!(value["terminal_decision_acceptance_recorded_count"], 0);
+        assert_eq!(
+            value["terminal_decision_operator_approval_derived_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_decision_activation_authority_derived_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_decision_activation_command_derived_count"],
+            0
+        );
+        assert_eq!(value["terminal_decision_live_execution_allowed_count"], 0);
+
+        let surfaces = value["terminal_decision_status_surfaces"]
+            .as_array()
+            .expect("packet acceptance receipt terminal decision status surfaces");
+        assert_eq!(surfaces.len(), 14);
+        assert_eq!(
+            surfaces[0]["terminal_decision_surface"],
+            "packet_receipt_terminal_decision_claim"
+        );
+        for surface in surfaces {
+            assert_eq!(surface["terminal_decision_attempted"], true);
+            assert_eq!(surface["terminal_decision_accepted"], false);
+            assert_eq!(surface["terminal_decision_recorded"], false);
+            assert_eq!(surface["terminal_decision_persisted"], false);
+            assert_eq!(surface["terminal_status_recorded"], false);
+            assert_eq!(surface["terminal_status_closed"], false);
+            assert_eq!(surface["terminal_status_ready"], false);
+            assert_eq!(surface["terminal_status_accepted"], false);
+            assert_eq!(surface["terminal_status_approved"], false);
+            assert_eq!(surface["terminal_status_authoritative"], false);
+            assert_eq!(surface["terminal_status_live"], false);
+            assert_eq!(surface["final_state_promoted"], false);
+            assert_eq!(surface["completion_promoted"], false);
+            assert_eq!(surface["operator_decision_recorded"], false);
+            assert_eq!(surface["public_status_claimed"], false);
+            assert_eq!(surface["release_status_claimed"], false);
+            assert_eq!(surface["acceptance_recorded"], false);
+            assert_eq!(surface["operator_approval_derived"], false);
+            assert_eq!(surface["activation_authority_derived"], false);
+            assert_eq!(surface["activation_command_derived"], false);
+            assert_eq!(surface["live_execution_allowed"], false);
+            assert_eq!(
+                surface["terminal_decision_status"],
+                "terminal_decision_status_promotion_denied"
+            );
+        }
+
+        let denied = value["denied_by_packet_receipt_terminal_decision_status"]
+            .as_array()
+            .expect("packet acceptance receipt terminal decision status denials");
+        assert_eq!(denied.len(), 20);
+        assert_eq!(
+            value["denied_by_packet_receipt_terminal_decision_status_count"],
+            serde_json::json!(denied.len())
+        );
+        let next_actions = value["allowed_next_actions"]
+            .as_array()
+            .expect("packet acceptance receipt terminal decision next actions");
+        assert_eq!(
+            next_actions[0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_denial_gate"
+        );
+        assert_eq!(next_actions[0]["status"], "allowed_report_only_next_slice");
+        assert_eq!(
+            value["packet_acceptance_receipt_terminal_decision_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_terminal_status_recorded"],
+            false
+        );
+        assert_eq!(value["packet_acceptance_receipt_status_live"], false);
+        assert_eq!(
+            value["packet_acceptance_receipt_final_state_promoted"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_public_status_claimed"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_release_status_claimed"],
+            false
+        );
+        assert_eq!(value["operator_acceptance_recorded"], false);
+        assert_eq!(value["operator_approval_recorded"], false);
+        assert_eq!(value["activation_authority_derived"], false);
+        assert_eq!(value["activation_command_derived"], false);
+        assert_eq!(value["activation_allowed"], false);
+        assert_eq!(value["activation_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["secret_file_read"], false);
+        assert_eq!(value["install_executed"], false);
+        assert_eq!(value["service_restarted"], false);
+        assert_eq!(value["active_binary_mutated"], false);
+        assert_eq!(value["public_release_claimed"], false);
+        assert_eq!(value["public_ga_claimed"], false);
+        assert_eq!(value["release_artifact_written"], false);
+        assert_eq!(value["external_send_performed"], false);
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_terminal_decision_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_terminal_status_recorded"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_public_status_claimed"],
+            false
+        );
+        assert_eq!(
+            value["side_effects"]["packet_acceptance_receipt_live_execution_allowed"],
+            false
+        );
+        assert_eq!(value["side_effects"]["activation_authority_derived"], false);
+        assert_eq!(value["side_effects"]["activation_performed"], false);
+        assert_eq!(value["side_effects"]["memory_store_write_performed"], false);
+        assert_eq!(value["side_effects"]["live_kg_write_performed"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["public_release_claimed"], false);
         assert_eq!(value["side_effects"]["filesystem_written"], false);
     }
 

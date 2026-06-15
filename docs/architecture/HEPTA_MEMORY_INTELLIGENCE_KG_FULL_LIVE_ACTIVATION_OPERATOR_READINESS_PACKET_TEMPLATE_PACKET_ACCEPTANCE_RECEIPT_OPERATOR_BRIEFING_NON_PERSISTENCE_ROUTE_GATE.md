@@ -11,8 +11,8 @@ banner, timeline entry, notification, channel delivery, Telegram/external send,
 completion acknowledgement, acceptance, approval, activation authority, command,
 or live execution surface remains report-only.
 
-The route gate requires route/source parity `126/126` and terminal coverage
-`266/266`. It also runs the focused native gateway test for the endpoint and can
+The route gate requires route/source parity `127/127` and terminal coverage
+`267/267`. It also runs the focused native gateway test for the endpoint and can
 optionally require the installed live gateway endpoint with
 `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`.
 
