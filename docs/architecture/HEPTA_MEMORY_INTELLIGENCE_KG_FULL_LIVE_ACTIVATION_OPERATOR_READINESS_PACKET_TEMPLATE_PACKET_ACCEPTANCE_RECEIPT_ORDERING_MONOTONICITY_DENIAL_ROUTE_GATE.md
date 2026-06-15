@@ -17,7 +17,7 @@ It verifies:
 - all fourteen ordering/monotonicity surfaces remain denied, non-persistent, non-authoritative, and non-executable;
 - the focused native unit test covers the endpoint contract;
 - optional live endpoint verification reports route count 119 and missing route count 0;
-- terminal coverage reaches 262/262 with no missing, duplicate, or out-of-order markers.
+- terminal coverage reaches 263/263 with no missing, duplicate, or out-of-order markers.
 
 This route only prepares the next report-only slice:
 

@@ -12,10 +12,10 @@ The route requires the packet acceptance receipt audit-trail/immutable-evidence 
 The route asserts:
 
 - the native endpoint and source command are wired into route parity;
-- route/source coverage reaches 122/122;
-- terminal preflight coverage reaches 262/262;
+- route/source coverage reaches 123/123;
+- terminal preflight coverage reaches 263/263;
 - all retention policy/index, TTL, expiry scheduler/timer, garbage-collection scan/candidate/decision, delete, tombstone, sweep, archive, compaction, ledger/index/delivery retention, acceptance, operator approval, activation authority, activation command, and live execution counts remain zero;
 - the only next action is another report-only export/query/observability denial slice;
 - no Memory/KG write, provider/model invocation, credential or secret read, install/restart, binary mutation, public release claim, artifact write, external send, or filesystem persistence is authorized.
 
-With `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`, the route gate also verifies the active gateway endpoint and requires route parity 122/122.
+With `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`, the route gate also verifies the active gateway endpoint and requires route parity 123/123.
