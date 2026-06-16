@@ -37,7 +37,7 @@ live execution is accepted, recorded, persisted, materialized, delivered, or
 promoted.
 
 The route gate checks the source gate, verifies native route source text,
-requires route/source parity 128/128, requires terminal coverage 268/268, runs a
+requires route/source parity 129/129, requires terminal coverage 269/269, runs a
 focused Rust endpoint contract test, and optionally checks the live endpoint
 when `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`.
 
