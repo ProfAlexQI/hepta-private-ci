@@ -128,7 +128,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 134;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 135;' \
   "native gateway route/source command count includes packet acceptance receipt release publication route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_DENIAL_ENDPOINT' \
@@ -219,8 +219,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 274
-  and .present_required_marker_count == 274
+  and .required_marker_count == 275
+  and .present_required_marker_count == 275
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -262,8 +262,8 @@ jq -n \
     focused_test_log:$test_log,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_checked,
-    source_route_count_expected:134,
-    terminal_required_marker_count_expected:274,
+    source_route_count_expected:135,
+    terminal_required_marker_count_expected:275,
     source_packet_acceptance_receipt_terminal_decision_status_ready:$source.source_packet_acceptance_receipt_terminal_decision_status_ready,
     release_publication_surface_count:$source.release_publication_surface_count,
     release_publication_attempt_count:$source.release_publication_attempt_count,

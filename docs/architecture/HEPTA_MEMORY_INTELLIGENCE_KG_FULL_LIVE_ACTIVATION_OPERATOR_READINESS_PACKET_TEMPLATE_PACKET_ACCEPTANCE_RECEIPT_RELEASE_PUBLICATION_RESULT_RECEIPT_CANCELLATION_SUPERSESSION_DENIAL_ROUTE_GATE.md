@@ -37,8 +37,8 @@ authority, active-binary mutation, or live execution.
 `scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-cancellation-supersession-denial-route-gate.sh`
 
 The route gate replays the source cancellation/supersession denial gate, checks
-the native gateway route/source command registry at 134/134, verifies terminal
-coverage at 274/274, runs a focused Rust endpoint contract test, and optionally
+the native gateway route/source command registry at 135/135, verifies terminal
+coverage at 275/275, runs a focused Rust endpoint contract test, and optionally
 checks the live endpoint when `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`.
 
 The route gate is observational only. It does not write filesystem evidence,

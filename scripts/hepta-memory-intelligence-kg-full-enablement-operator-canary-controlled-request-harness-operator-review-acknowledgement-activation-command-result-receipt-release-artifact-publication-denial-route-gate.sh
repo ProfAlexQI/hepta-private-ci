@@ -153,7 +153,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 134;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 135;' \
   "native gateway route/source command count includes activation command result receipt release artifact publication route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT' \
@@ -247,8 +247,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 274
-  and .present_required_marker_count == 274
+  and .required_marker_count == 275
+  and .present_required_marker_count == 275
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -287,7 +287,7 @@ jq -n \
     source_activation_command_result_receipt_release_artifact_publication_gate_ready: $source.operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_release_artifact_publication_denial_ready,
     source_release_artifact_publication_gate_sha256: $source_release_artifact_publication_gate_sha256,
     source_route_wired: true,
-    source_route_count_expected:134,
+    source_route_count_expected:135,
     source_route_tested_by_native_gateway_unit_test: true,
     native_gateway_source: "codex-rs/cli/src/native_gateway.rs",
     native_gateway_sha256: $native_gateway_sha256,

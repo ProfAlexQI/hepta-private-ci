@@ -97,7 +97,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 134;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 135;' \
   "native gateway route/source command count includes operator readiness packet template field-validation route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_FIELD_VALIDATION_DENIAL_ENDPOINT' \
@@ -205,8 +205,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 274
-  and .present_required_marker_count == 274
+  and .required_marker_count == 275
+  and .present_required_marker_count == 275
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -244,7 +244,7 @@ jq -n \
     source_field_validation_gate_ready:$source.memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_field_validation_denial_ready,
     source_field_validation_gate_sha256:$source_field_validation_gate_sha256,
     source_route_wired:true,
-    source_route_count_expected:134,
+    source_route_count_expected:135,
     native_gateway_source:"codex-rs/cli/src/native_gateway.rs",
     native_gateway_sha256:$native_gateway_sha256,
     native_gateway_unit_test_log:$test_log,

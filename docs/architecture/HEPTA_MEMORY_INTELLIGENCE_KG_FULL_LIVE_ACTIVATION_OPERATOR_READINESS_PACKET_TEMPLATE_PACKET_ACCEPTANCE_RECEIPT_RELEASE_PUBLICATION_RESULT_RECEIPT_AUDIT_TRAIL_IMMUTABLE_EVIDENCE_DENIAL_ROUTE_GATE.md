@@ -11,4 +11,4 @@ The route requires the cancellation/supersession denial report to be ready first
 
 All surfaces keep audit-trail recording, immutable-evidence persistence, hash-chain/Merkle/attestation/witness/notary records, ledger/index/delivery/export/query/observability/readback evidence, publication completion acknowledgement, release/publication authority, activation authority, install/restart, active-binary mutation, provider/model invocation, KG writes, credentials, and external sends disabled.
 
-The route gate validates the source audit/evidence denial gate, native route wiring, route/source parity 134/134, terminal coverage 274/274, the focused `codex-cli` native unit test, and optional live endpoint parity.
+The route gate validates the source audit/evidence denial gate, native route wiring, route/source parity 135/135, terminal coverage 275/275, the focused `codex-cli` native unit test, and optional live endpoint parity.
