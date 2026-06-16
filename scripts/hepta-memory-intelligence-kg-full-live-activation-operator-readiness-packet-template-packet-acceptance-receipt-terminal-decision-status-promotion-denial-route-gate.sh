@@ -152,7 +152,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 129;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 130;' \
   "native gateway route/source command count includes packet acceptance receipt terminal decision route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT' \
@@ -191,8 +191,8 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 129
-    and .implemented_route_count == 129
+    and .route_count == 130
+    and .implemented_route_count == 130
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_terminal_decision_status_promotion_denial_route_enabled == true
@@ -264,8 +264,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 269
-  and .present_required_marker_count == 269
+  and .required_marker_count == 270
+  and .present_required_marker_count == 270
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -307,8 +307,8 @@ jq -n \
     focused_test_log:$test_log,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_checked,
-    source_route_count_expected:129,
-    terminal_required_marker_count_expected:269,
+    source_route_count_expected:130,
+    terminal_required_marker_count_expected:270,
     source_packet_acceptance_receipt_final_acknowledgement_ready:$source.source_packet_acceptance_receipt_final_acknowledgement_ready,
     terminal_decision_status_surface_count:$source.terminal_decision_status_surface_count,
     terminal_decision_status_attempt_count:$source.terminal_decision_status_attempt_count,
