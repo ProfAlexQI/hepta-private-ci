@@ -42,8 +42,8 @@ provider/model invocation, credential read, public artifact, public claim, or
 external send.
 
 The route gate checks the source replay/idempotency denial gate, verifies
-native route source text, requires route/source parity 130/130, requires
-terminal coverage 270/270, runs a focused Rust endpoint contract test, and
+native route source text, requires route/source parity 131/131, requires
+terminal coverage 271/271, runs a focused Rust endpoint contract test, and
 optionally checks the live endpoint when `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`.
 
 The gate does not mutate Memory/KG, attach Intelligence context, invoke
