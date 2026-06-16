@@ -211,6 +211,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-ordering-monotonicity-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-cancellation-supersession-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-audit-trail-immutable-evidence-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -221,7 +223,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 132;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 133;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -811,6 +813,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-cancellation-supersession-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-cancellation-supersession-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt cancellation/supersession denial status; models denied cancellation, revocation, withdrawal, supersession, replacement receipt, tombstone, delete marker, latest replacement, ack replacement, query/export/observability replacement, completion acknowledgement, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-audit-trail-immutable-evidence-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-audit-trail-immutable-evidence-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt audit-trail/immutable-evidence denial status; models denied audit trail, immutable evidence, hash-chain, Merkle, attestation, witness, notary, ledger/index/delivery/export/query/observability/readback evidence, completion acknowledgement, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2128,6 +2137,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_denial_report(),
                     ),
                 );
             }
@@ -30347,6 +30366,422 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_denial_report();
+    let source_report_sha256 = sha256_json_value(&source);
+    let source_ready = source
+        .get("memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_denial_ready")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let source_u64 = |key: &str| -> u64 {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let release_publication_result_receipt_audit_evidence_surfaces = vec![
+        "publication_result_receipt_audit_trail_append_claim",
+        "publication_result_receipt_immutable_evidence_claim",
+        "publication_result_receipt_hash_chain_claim",
+        "publication_result_receipt_merkle_root_claim",
+        "publication_result_receipt_attestation_claim",
+        "publication_result_receipt_witness_claim",
+        "publication_result_receipt_notary_claim",
+        "publication_result_receipt_ledger_evidence_claim",
+        "publication_result_receipt_index_evidence_claim",
+        "publication_result_receipt_delivery_evidence_claim",
+        "publication_result_receipt_export_evidence_claim",
+        "publication_result_receipt_query_evidence_claim",
+        "publication_result_receipt_observability_evidence_claim",
+        "publication_result_receipt_readback_evidence_claim",
+        "publication_result_receipt_release_publication_authority_evidence_claim",
+        "publication_result_receipt_activation_live_install_restart_active_binary_evidence_claim",
+    ]
+    .into_iter()
+    .map(
+        |release_publication_result_receipt_audit_evidence_surface| {
+            let mut surface = serde_json::Map::new();
+            surface.insert(
+                "release_publication_result_receipt_audit_evidence_surface".to_string(),
+                serde_json::json!(release_publication_result_receipt_audit_evidence_surface),
+            );
+            surface.insert(
+                "source_release_publication_result_receipt_cancellation_supersession_ready"
+                    .to_string(),
+                serde_json::json!(source_ready),
+            );
+            surface.insert(
+                "audit_or_evidence_attempted".to_string(),
+                serde_json::json!(true),
+            );
+            surface.insert(
+                "audit_evidence_noop_confirmed".to_string(),
+                serde_json::json!(true),
+            );
+            surface.insert(
+                "release_publication_result_receipt_audit_evidence_status".to_string(),
+                serde_json::json!(
+                    "release_publication_result_receipt_audit_trail_immutable_evidence_denied"
+                ),
+            );
+            for key in [
+                "audit_trail_accepted",
+                "audit_trail_recorded",
+                "audit_trail_persisted",
+                "audit_trail_materialized",
+                "immutable_evidence_accepted",
+                "immutable_evidence_recorded",
+                "immutable_evidence_persisted",
+                "immutable_evidence_materialized",
+                "hash_chain_recorded",
+                "hash_chain_persisted",
+                "merkle_root_recorded",
+                "merkle_root_persisted",
+                "attestation_recorded",
+                "attestation_persisted",
+                "witness_recorded",
+                "witness_persisted",
+                "notary_recorded",
+                "notary_persisted",
+                "ledger_evidence_recorded",
+                "ledger_evidence_persisted",
+                "index_evidence_recorded",
+                "index_evidence_persisted",
+                "delivery_evidence_recorded",
+                "delivery_evidence_persisted",
+                "export_evidence_recorded",
+                "query_evidence_registered",
+                "observability_evidence_recorded",
+                "readback_evidence_recorded",
+                "publication_completion_ack_recorded",
+                "cancellation_recorded",
+                "supersession_recorded",
+                "replacement_receipt_recorded",
+                "tombstone_recorded",
+                "result_receipt_ordering_recorded",
+                "result_receipt_replay_recorded",
+                "release_publication_recorded",
+                "release_artifact_written",
+                "public_artifact_written",
+                "public_distribution_performed",
+                "channel_delivery_performed",
+                "external_send_performed",
+                "public_release_claimed",
+                "public_ga_claimed",
+                "acceptance_recorded",
+                "operator_approval_derived",
+                "release_publication_authority_derived",
+                "activation_authority_derived",
+                "activation_command_derived",
+                "live_execution_allowed",
+                "activation_performed",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "provider_invoked",
+                "model_invoked",
+                "credential_read",
+                "secret_file_read",
+                "install_executed",
+                "launchd_mutated",
+                "service_restarted",
+                "active_binary_mutated",
+            ] {
+                surface.insert(key.to_string(), serde_json::json!(false));
+            }
+            serde_json::Value::Object(surface)
+        },
+    )
+    .collect::<Vec<_>>();
+    let release_publication_result_receipt_audit_evidence_surface_count =
+        release_publication_result_receipt_audit_evidence_surfaces.len();
+    let release_publication_result_receipt_audit_trail_immutable_evidence_contract_hash_sha256 =
+        sha256_text_value(&format!(
+            "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-audit-trail-immutable-evidence-denial:native:source={source_report_sha256}:surfaces={release_publication_result_receipt_audit_evidence_surface_count}:route_count={}:audit=0:evidence=0:hashchain=0:authority=0:live=0",
+            route_matrix.route_count
+        ));
+    let denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence = vec![
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_audit_trail_acceptance_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_audit_trail_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_audit_trail_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_audit_trail_materialization_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_immutable_evidence_acceptance_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_immutable_evidence_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_immutable_evidence_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_immutable_evidence_materialization_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_hash_chain_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_hash_chain_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_merkle_root_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_merkle_root_persistence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_attestation_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_witness_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_notary_recording_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_ledger_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_index_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_delivery_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_export_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_query_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_observability_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_readback_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_completion_ack_from_audit_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_result_receipt_acceptance_from_audit_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_release_publication_authority_from_audit_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_activation_live_from_audit_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_install_restart_active_binary_from_audit_evidence_denied",
+        "operator_readiness_packet_template_packet_receipt_memory_provider_external_send_from_audit_evidence_denied",
+    ];
+    let denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_count =
+        denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence
+            .len();
+    let report_ready = source_ready
+        && source_u64("release_publication_result_receipt_cancellation_supersession_surface_count")
+            == 14
+        && source_u64("release_publication_result_receipt_cancellation_supersession_attempt_count")
+            == 14
+        && source_u64("release_publication_result_receipt_cancellation_recorded_count") == 0
+        && source_u64("release_publication_result_receipt_supersession_recorded_count") == 0
+        && source_u64("release_publication_result_receipt_replacement_receipt_recorded_count") == 0
+        && source_u64("release_publication_result_receipt_tombstone_recorded_count") == 0
+        && source_u64("release_publication_result_receipt_latest_replacement_accepted_count") == 0
+        && source_u64(
+            "release_publication_result_receipt_cancellation_supersession_release_publication_authority_derived_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_cancellation_supersession_activation_authority_derived_count",
+        ) == 0
+        && release_publication_result_receipt_audit_evidence_surface_count == 16
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-audit-trail-immutable-evidence-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-16",
+        "receipt_release_publication_result_receipt_audit_trail_immutable_evidence_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_denial_v1",
+        "receipt_release_publication_result_receipt_audit_trail_immutable_evidence_mode": "native_route_denied_release_publication_result_receipt_cannot_become_audit_trail_immutable_evidence_or_authority",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_gate": source["gate"].clone(),
+        "source_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_ready": source_ready,
+        "source_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_report_sha256": source_report_sha256,
+        "source_release_publication_result_receipt_cancellation_supersession_contract_hash_sha256": source["release_publication_result_receipt_cancellation_supersession_contract_hash_sha256"].clone(),
+        "release_publication_result_receipt_audit_trail_immutable_evidence_contract_hash_sha256": release_publication_result_receipt_audit_trail_immutable_evidence_contract_hash_sha256,
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_denial_route_enabled": true,
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_denial_ready": report_ready,
+            "source_release_publication_result_receipt_cancellation_supersession_surface_count": source_u64("release_publication_result_receipt_cancellation_supersession_surface_count"),
+            "source_release_publication_result_receipt_cancellation_supersession_attempt_count": source_u64("release_publication_result_receipt_cancellation_supersession_attempt_count"),
+            "source_release_publication_result_receipt_cancellation_recorded_count": source_u64("release_publication_result_receipt_cancellation_recorded_count"),
+            "source_release_publication_result_receipt_supersession_recorded_count": source_u64("release_publication_result_receipt_supersession_recorded_count"),
+            "source_release_publication_result_receipt_replacement_receipt_recorded_count": source_u64("release_publication_result_receipt_replacement_receipt_recorded_count"),
+            "source_release_publication_result_receipt_tombstone_recorded_count": source_u64("release_publication_result_receipt_tombstone_recorded_count"),
+            "source_release_publication_result_receipt_latest_replacement_accepted_count": source_u64("release_publication_result_receipt_latest_replacement_accepted_count"),
+            "source_release_publication_result_receipt_cancellation_supersession_release_publication_authority_derived_count": source_u64("release_publication_result_receipt_cancellation_supersession_release_publication_authority_derived_count"),
+            "source_release_publication_result_receipt_cancellation_supersession_activation_authority_derived_count": source_u64("release_publication_result_receipt_cancellation_supersession_activation_authority_derived_count"),
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "release_publication_result_receipt_audit_evidence_surface_count": release_publication_result_receipt_audit_evidence_surface_count,
+            "release_publication_result_receipt_audit_evidence_attempt_count": release_publication_result_receipt_audit_evidence_surface_count,
+            "release_publication_result_receipt_audit_trail_accepted_count": 0,
+            "release_publication_result_receipt_audit_trail_recorded_count": 0,
+            "release_publication_result_receipt_audit_trail_persisted_count": 0,
+            "release_publication_result_receipt_audit_trail_materialized_count": 0,
+            "release_publication_result_receipt_immutable_evidence_accepted_count": 0,
+            "release_publication_result_receipt_immutable_evidence_recorded_count": 0,
+            "release_publication_result_receipt_immutable_evidence_persisted_count": 0,
+            "release_publication_result_receipt_immutable_evidence_materialized_count": 0,
+            "release_publication_result_receipt_hash_chain_recorded_count": 0,
+            "release_publication_result_receipt_hash_chain_persisted_count": 0,
+            "release_publication_result_receipt_merkle_root_recorded_count": 0,
+            "release_publication_result_receipt_merkle_root_persisted_count": 0,
+            "release_publication_result_receipt_attestation_recorded_count": 0,
+            "release_publication_result_receipt_attestation_persisted_count": 0,
+            "release_publication_result_receipt_witness_recorded_count": 0,
+            "release_publication_result_receipt_witness_persisted_count": 0,
+            "release_publication_result_receipt_notary_recorded_count": 0,
+            "release_publication_result_receipt_notary_persisted_count": 0,
+            "release_publication_result_receipt_ledger_evidence_recorded_count": 0,
+            "release_publication_result_receipt_ledger_evidence_persisted_count": 0,
+            "release_publication_result_receipt_index_evidence_recorded_count": 0,
+            "release_publication_result_receipt_index_evidence_persisted_count": 0,
+            "release_publication_result_receipt_delivery_evidence_recorded_count": 0,
+            "release_publication_result_receipt_delivery_evidence_persisted_count": 0,
+            "release_publication_result_receipt_export_evidence_recorded_count": 0,
+            "release_publication_result_receipt_query_evidence_registered_count": 0,
+            "release_publication_result_receipt_observability_evidence_recorded_count": 0,
+            "release_publication_result_receipt_readback_evidence_recorded_count": 0,
+            "release_publication_result_receipt_publication_completion_ack_recorded_count": 0,
+            "release_publication_result_receipt_audit_evidence_acceptance_recorded_count": 0,
+            "release_publication_result_receipt_audit_evidence_operator_approval_derived_count": 0,
+            "release_publication_result_receipt_audit_evidence_release_publication_authority_derived_count": 0,
+            "release_publication_result_receipt_audit_evidence_activation_authority_derived_count": 0,
+            "release_publication_result_receipt_audit_evidence_activation_command_derived_count": 0,
+            "release_publication_result_receipt_audit_evidence_live_execution_allowed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "release_publication_result_receipt_audit_evidence_surfaces": release_publication_result_receipt_audit_evidence_surfaces,
+            "denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence": denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence,
+            "denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_count": denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_count,
+            "allowed_next_actions": [
+                {
+                    "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_retention_expiry_garbage_collection_denial_gate",
+                    "status": "allowed_report_only_next_slice",
+                    "records_audit_trail": false,
+                    "accepts_immutable_evidence": false,
+                    "records_hash_chain": false,
+                    "records_ledger_evidence": false,
+                    "records_publication_completion_ack": false,
+                    "derives_release_publication_authority": false,
+                    "derives_activation_authority": false,
+                    "activates_live": false,
+                    "mutates_memory_store": false,
+                    "writes_kg": false,
+                    "sends_externally": false
+                }
+            ],
+        }),
+    );
+
+    let release_publication_result_receipt_audit_evidence_false_keys = [
+        "packet_acceptance_receipt_release_publication_result_receipt_audit_trail_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_audit_trail_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_audit_trail_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_audit_trail_materialized",
+        "packet_acceptance_receipt_release_publication_result_receipt_immutable_evidence_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_immutable_evidence_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_immutable_evidence_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_immutable_evidence_materialized",
+        "packet_acceptance_receipt_release_publication_result_receipt_hash_chain_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_hash_chain_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_merkle_root_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_merkle_root_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_attestation_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_attestation_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_witness_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_witness_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_notary_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_notary_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_ledger_evidence_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_ledger_evidence_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_index_evidence_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_index_evidence_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_evidence_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_evidence_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_export_evidence_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_query_evidence_registered",
+        "packet_acceptance_receipt_release_publication_result_receipt_observability_evidence_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_readback_evidence_recorded",
+        "packet_acceptance_receipt_publication_completion_ack_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_cancellation_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_supersession_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_replacement_receipt_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_tombstone_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_latest_replacement_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_ordering_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_ordering_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_monotonicity_state_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_replayed",
+        "packet_acceptance_receipt_release_publication_result_receipt_replay_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_replay_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_idempotency_key_registered",
+        "packet_acceptance_receipt_release_publication_result_receipt_idempotency_cache_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_idempotency_cache_hit_promoted",
+        "packet_acceptance_receipt_release_publication_result_receipt_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_materialized",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivered",
+        "packet_acceptance_receipt_release_publication_result_receipt_exported",
+        "packet_acceptance_receipt_release_publication_result_receipt_query_registered",
+        "packet_acceptance_receipt_release_publication_result_receipt_observability_recorded",
+        "packet_acceptance_receipt_release_publication_recorded",
+        "packet_acceptance_receipt_release_artifact_written",
+        "packet_acceptance_receipt_public_artifact_written",
+        "packet_acceptance_receipt_publication_queue_enqueued",
+        "packet_acceptance_receipt_publication_manifest_written",
+        "packet_acceptance_receipt_public_distribution_performed",
+        "packet_acceptance_receipt_channel_delivery_performed",
+        "packet_acceptance_receipt_external_publication_sent",
+        "packet_acceptance_receipt_public_version_tag_created",
+        "packet_acceptance_receipt_release_notes_materialized",
+        "packet_acceptance_receipt_changelog_materialized",
+        "packet_acceptance_receipt_public_release_claimed",
+        "packet_acceptance_receipt_public_ga_claimed",
+        "packet_acceptance_receipt_terminal_status_promoted_to_release_approval",
+        "operator_acceptance_recorded",
+        "operator_approval_recorded",
+        "activation_authority_derived",
+        "activation_command_derived",
+        "activation_allowed",
+        "activation_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "hepta_intelligence_context_attached",
+        "prompt_preview_rendered",
+        "context_injection_performed",
+        "provider_invoked",
+        "model_invoked",
+        "external_kg_adapter_read_performed",
+        "external_adapter_client_constructed",
+        "network_call_performed",
+        "external_db_write_performed",
+        "live_kg_write_performed",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "external_send_performed",
+        "filesystem_written",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in release_publication_result_receipt_audit_evidence_false_keys {
+            report_object.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for key in release_publication_result_receipt_audit_evidence_false_keys {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -47830,6 +48265,253 @@ mod tests {
         assert_eq!(value["side_effects"]["install_executed"], false);
         assert_eq!(value["side_effects"]["external_send_performed"], false);
         assert_eq!(value["side_effects"]["filesystem_written"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_endpoint_blocks_audit_evidence_and_authority()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator readiness packet template packet acceptance receipt release publication result receipt audit-trail immutable-evidence route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-audit-trail-immutable-evidence-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_cancellation_supersession_surface_count"],
+            14
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_cancellation_supersession_attempt_count"],
+            14
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_cancellation_recorded_count"],
+            0
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_supersession_recorded_count"],
+            0
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_replacement_receipt_recorded_count"],
+            0
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_tombstone_recorded_count"],
+            0
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_latest_replacement_accepted_count"],
+            0
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_cancellation_supersession_release_publication_authority_derived_count"],
+            0
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_cancellation_supersession_activation_authority_derived_count"],
+            0
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_audit_evidence_surface_count"],
+            16
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_audit_evidence_attempt_count"],
+            16
+        );
+        for key in [
+            "release_publication_result_receipt_audit_trail_accepted_count",
+            "release_publication_result_receipt_audit_trail_recorded_count",
+            "release_publication_result_receipt_audit_trail_persisted_count",
+            "release_publication_result_receipt_audit_trail_materialized_count",
+            "release_publication_result_receipt_immutable_evidence_accepted_count",
+            "release_publication_result_receipt_immutable_evidence_recorded_count",
+            "release_publication_result_receipt_immutable_evidence_persisted_count",
+            "release_publication_result_receipt_immutable_evidence_materialized_count",
+            "release_publication_result_receipt_hash_chain_recorded_count",
+            "release_publication_result_receipt_merkle_root_recorded_count",
+            "release_publication_result_receipt_attestation_recorded_count",
+            "release_publication_result_receipt_witness_recorded_count",
+            "release_publication_result_receipt_notary_recorded_count",
+            "release_publication_result_receipt_ledger_evidence_recorded_count",
+            "release_publication_result_receipt_index_evidence_recorded_count",
+            "release_publication_result_receipt_delivery_evidence_recorded_count",
+            "release_publication_result_receipt_export_evidence_recorded_count",
+            "release_publication_result_receipt_query_evidence_registered_count",
+            "release_publication_result_receipt_observability_evidence_recorded_count",
+            "release_publication_result_receipt_readback_evidence_recorded_count",
+            "release_publication_result_receipt_publication_completion_ack_recorded_count",
+            "release_publication_result_receipt_audit_evidence_acceptance_recorded_count",
+            "release_publication_result_receipt_audit_evidence_release_publication_authority_derived_count",
+            "release_publication_result_receipt_audit_evidence_activation_authority_derived_count",
+            "release_publication_result_receipt_audit_evidence_activation_command_derived_count",
+            "release_publication_result_receipt_audit_evidence_live_execution_allowed_count",
+        ] {
+            assert_eq!(value[key], 0, "{key}");
+        }
+
+        let surfaces = value["release_publication_result_receipt_audit_evidence_surfaces"]
+            .as_array()
+            .expect(
+                "packet acceptance receipt release publication result receipt audit evidence surfaces",
+            );
+        assert_eq!(surfaces.len(), 16);
+        assert_eq!(
+            surfaces[0]["release_publication_result_receipt_audit_evidence_surface"],
+            "publication_result_receipt_audit_trail_append_claim"
+        );
+        for surface in surfaces {
+            assert_eq!(surface["audit_or_evidence_attempted"], true);
+            assert_eq!(surface["audit_trail_accepted"], false);
+            assert_eq!(surface["audit_trail_recorded"], false);
+            assert_eq!(surface["audit_trail_persisted"], false);
+            assert_eq!(surface["audit_trail_materialized"], false);
+            assert_eq!(surface["immutable_evidence_accepted"], false);
+            assert_eq!(surface["immutable_evidence_recorded"], false);
+            assert_eq!(surface["immutable_evidence_persisted"], false);
+            assert_eq!(surface["immutable_evidence_materialized"], false);
+            assert_eq!(surface["hash_chain_recorded"], false);
+            assert_eq!(surface["merkle_root_recorded"], false);
+            assert_eq!(surface["attestation_recorded"], false);
+            assert_eq!(surface["witness_recorded"], false);
+            assert_eq!(surface["notary_recorded"], false);
+            assert_eq!(surface["ledger_evidence_recorded"], false);
+            assert_eq!(surface["index_evidence_recorded"], false);
+            assert_eq!(surface["delivery_evidence_recorded"], false);
+            assert_eq!(surface["export_evidence_recorded"], false);
+            assert_eq!(surface["query_evidence_registered"], false);
+            assert_eq!(surface["observability_evidence_recorded"], false);
+            assert_eq!(surface["readback_evidence_recorded"], false);
+            assert_eq!(surface["publication_completion_ack_recorded"], false);
+            assert_eq!(surface["acceptance_recorded"], false);
+            assert_eq!(surface["release_publication_authority_derived"], false);
+            assert_eq!(surface["activation_authority_derived"], false);
+            assert_eq!(surface["activation_command_derived"], false);
+            assert_eq!(surface["live_execution_allowed"], false);
+            assert_eq!(surface["install_executed"], false);
+            assert_eq!(surface["service_restarted"], false);
+            assert_eq!(surface["active_binary_mutated"], false);
+            assert_eq!(surface["audit_evidence_noop_confirmed"], true);
+            assert_eq!(
+                surface["release_publication_result_receipt_audit_evidence_status"],
+                "release_publication_result_receipt_audit_trail_immutable_evidence_denied"
+            );
+        }
+
+        let denied =
+            value["denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence"]
+                .as_array()
+                .expect(
+                    "packet acceptance receipt release publication result receipt audit evidence denials",
+                );
+        assert_eq!(denied.len(), 28);
+        assert_eq!(
+            value["denied_by_packet_receipt_release_publication_result_receipt_audit_trail_immutable_evidence_count"],
+            serde_json::json!(denied.len())
+        );
+        let next_actions = value["allowed_next_actions"].as_array().expect(
+            "packet acceptance receipt release publication result receipt audit evidence next actions",
+        );
+        assert_eq!(
+            next_actions[0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_retention_expiry_garbage_collection_denial_gate"
+        );
+        assert_eq!(next_actions[0]["status"], "allowed_report_only_next_slice");
+        assert_eq!(
+            value["packet_acceptance_receipt_release_publication_result_receipt_audit_trail_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_release_publication_result_receipt_immutable_evidence_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_release_publication_result_receipt_hash_chain_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_release_publication_result_receipt_merkle_root_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_release_publication_result_receipt_ledger_evidence_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_release_publication_result_receipt_readback_evidence_recorded"],
+            false
+        );
+        assert_eq!(
+            value["packet_acceptance_receipt_publication_completion_ack_recorded"],
+            false
+        );
+        assert_eq!(value["operator_approval_recorded"], false);
+        assert_eq!(value["activation_authority_derived"], false);
+        assert_eq!(value["activation_allowed"], false);
+        assert_eq!(value["activation_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["install_executed"], false);
+        assert_eq!(value["service_restarted"], false);
+        assert_eq!(value["active_binary_mutated"], false);
+        assert_eq!(value["external_send_performed"], false);
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("audit evidence side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
     }
 
     #[test]

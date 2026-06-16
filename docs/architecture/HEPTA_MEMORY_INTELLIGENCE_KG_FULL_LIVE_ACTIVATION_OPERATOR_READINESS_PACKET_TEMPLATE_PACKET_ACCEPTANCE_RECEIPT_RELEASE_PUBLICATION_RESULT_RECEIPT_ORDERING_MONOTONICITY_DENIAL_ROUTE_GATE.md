@@ -36,8 +36,8 @@ execution.
 `scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-ordering-monotonicity-denial-route-gate.sh`
 
 The route gate replays the source ordering/monotonicity denial gate, checks the
-native gateway route/source command registry at 132/132, verifies terminal
-coverage at 272/272, runs a focused Rust endpoint contract test, and optionally
+native gateway route/source command registry at 133/133, verifies terminal
+coverage at 273/273, runs a focused Rust endpoint contract test, and optionally
 checks the live endpoint when `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`.
 
 The route gate is observational only. It does not write filesystem evidence,

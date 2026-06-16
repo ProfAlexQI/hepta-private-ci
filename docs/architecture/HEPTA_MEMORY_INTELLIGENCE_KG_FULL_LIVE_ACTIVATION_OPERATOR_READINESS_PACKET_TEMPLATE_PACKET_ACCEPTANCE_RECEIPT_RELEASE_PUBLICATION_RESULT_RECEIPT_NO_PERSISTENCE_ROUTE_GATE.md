@@ -42,7 +42,7 @@ install, restart, active-binary mutation, Memory/KG write, provider/model
 invocation, credential read, or external send.
 
 The route gate checks the source gate, verifies native route source text,
-requires route/source parity 132/132, requires terminal coverage 272/272, runs a
+requires route/source parity 133/133, requires terminal coverage 273/273, runs a
 focused Rust endpoint contract test, and optionally checks the live endpoint
 when `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`.
 

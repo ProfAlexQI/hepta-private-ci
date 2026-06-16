@@ -16,11 +16,11 @@ PREFLIGHT_CONTRACT="hepta-intelligence-memory-kg-prompt-preview-preflight-v0"
 CONTEXT_HANDOFF_CONTRACT="hepta-intelligence-memory-kg-prompt-preview-context-handoff-v0"
 
 echo "[hepta-kg-prompt-preview-preflight-gate] intelligence report contract"
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence --lib \
   "$INTELLIGENCE_PREFLIGHT_TEST" -- --nocapture
 
 echo "[hepta-kg-prompt-preview-preflight-gate] runtime summary contract"
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
   "$RUNTIME_PREFLIGHT_TEST" -- --nocapture
 
 intelligence_test_hash_sha256="$(sha256_text "$INTELLIGENCE_PREFLIGHT_TEST:$PREFLIGHT_CONTRACT")"
