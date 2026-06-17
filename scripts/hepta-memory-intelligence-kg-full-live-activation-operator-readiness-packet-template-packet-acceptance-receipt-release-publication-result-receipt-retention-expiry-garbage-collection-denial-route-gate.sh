@@ -171,7 +171,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 136;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 137;' \
   "native gateway route/source command count includes packet acceptance receipt release publication result receipt retention/expiry/garbage-collection route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT' \
@@ -207,8 +207,8 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 136
-    and .implemented_route_count == 136
+    and .route_count == 137
+    and .implemented_route_count == 137
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_retention_expiry_garbage_collection_denial_route_enabled == true
@@ -249,8 +249,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 276
-  and .present_required_marker_count == 276
+  and .required_marker_count == 277
+  and .present_required_marker_count == 277
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -292,8 +292,8 @@ jq -n \
     focused_test_log:$test_log,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_checked,
-    source_route_count_expected:136,
-    terminal_required_marker_count_expected:276,
+    source_route_count_expected:137,
+    terminal_required_marker_count_expected:277,
     source_packet_acceptance_receipt_release_publication_result_receipt_audit_evidence_ready:$source.source_packet_acceptance_receipt_release_publication_result_receipt_audit_evidence_ready,
     release_publication_result_receipt_retention_surface_count:$source.release_publication_result_receipt_retention_surface_count,
     release_publication_result_receipt_retention_policy_recorded_count:$source.release_publication_result_receipt_retention_policy_recorded_count,
