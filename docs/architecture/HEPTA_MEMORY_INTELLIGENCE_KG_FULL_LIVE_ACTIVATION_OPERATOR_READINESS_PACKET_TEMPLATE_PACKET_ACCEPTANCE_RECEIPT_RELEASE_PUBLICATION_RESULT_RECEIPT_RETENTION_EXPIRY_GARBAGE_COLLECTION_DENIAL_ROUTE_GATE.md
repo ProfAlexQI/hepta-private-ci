@@ -27,4 +27,4 @@ send is accepted, recorded, persisted, materialized, or performed.
 The route gate validates the source retention/expiry/garbage-collection
 report, native gateway route wiring, source command count `134`, focused
 codex-cli native unit test, optional live endpoint parity, and terminal
-coverage through `277/277` required markers.
+coverage through `278/278` required markers.

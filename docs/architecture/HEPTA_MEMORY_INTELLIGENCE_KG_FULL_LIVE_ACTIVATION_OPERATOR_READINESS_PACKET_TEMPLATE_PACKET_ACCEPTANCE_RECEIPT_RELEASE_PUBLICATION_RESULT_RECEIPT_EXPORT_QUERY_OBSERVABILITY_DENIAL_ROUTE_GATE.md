@@ -29,7 +29,7 @@ release artifact write, or external send is allowed from the route.
 The route gate validates:
 
 - source export/query/observability gate readiness;
-- native gateway route/source count `137/137`;
-- terminal coverage `277/277`;
+- native gateway route/source count `138/138`;
+- terminal coverage `278/278`;
 - the focused codex-cli native endpoint unit test;
 - optional live endpoint parity when `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`.
