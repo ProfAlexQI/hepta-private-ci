@@ -29,3 +29,12 @@ its attention budget, while the actual health evidence remains bounded and
 fresh. The dedicated diagnostic gate remains the deeper classifier:
 
 - `scripts/hepta-operator-security-attention-budget-diagnostic-gate.sh`
+
+The watchdog and live-soak reports also surface the diagnostic classification so
+the terminal summary does not collapse known legacy-owner warm-up into an
+ambiguous unknown. In legacy-owner coexistence mode, a gated Telegram production
+readiness state with `attention_budget_ok=true`, disabled Hepta poll loop, stale
+observation, and no double-poller risk is reported as
+`warming_observation_budget`. That classification remains read-only and does not
+authorize Telegram ownership handoff, live reads, sends, evidence persistence,
+service restart, public release claims, or artifact distribution.

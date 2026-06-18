@@ -51,7 +51,58 @@ report="$(jq -n \
   --argjson core "$core_json" \
   --argjson closure "$closure_json" \
   --argjson dependency "$dependency_json" \
-  '{
+  '
+    ($operator.telegram_production_readiness_status // {}) as $production
+    | (
+        $operator.status == "attention"
+        and $operator.legacy_owner_coexistence_ready == true
+        and $operator.attention_reason == "telegram_replacement_not_requested"
+        and $owner.active_owner == "legacy_openclaw"
+        and $owner.double_poller_risk == false
+        and $owner.hepta_poll_loop_armed == false
+        and $poll.status == "gated"
+        and $post.activation_currently_enabled == false
+      ) as $legacy_owner_attention_state_known
+    | (
+        $operator.status == "ready"
+        and $operator.security_mode == "active_replacement_ready"
+        and $owner.active_owner == "parallel_bots"
+        and $owner.hepta_parallel_bot_ready == true
+        and $owner.hepta_poll_loop_armed == true
+        and $poll.status == "armed"
+        and $post.activation_currently_enabled == true
+        and $post.single_handler_scope_ready == true
+      ) as $active_replacement_state_known
+    | (
+        $operator.status == "attention"
+        and $operator.attention_reason == "security_gate_not_ready"
+        and $production.status == "attention"
+        and $production.attention_budget_ok == false
+        and ($production.readiness_blockers | length) == 1
+        and ($production.readiness_blockers[0] == "attention_budget_exceeded")
+        and $production.recent_bot_api_ok == true
+        and $production.observation_ready == true
+        and $production.observation_fresh == true
+        and $production.poll_loop_armed == true
+        and $production.cursor_ready == true
+        and $production.delivery_ledger_ready == true
+      ) as $attention_budget_exceeded_state_known
+    | (
+        $legacy_owner_attention_state_known
+        and $production.status == "gated"
+        and $production.attention_budget_ok == true
+        and $production.recent_bot_api_ok == true
+        and $production.observation_ready == false
+        and $production.observation_fresh == false
+        and $production.poll_loop_armed == false
+        and $production.cursor_ready == true
+        and $production.delivery_ledger_ready == true
+        and ($production.readiness_blockers | index("poll_loop_not_armed")) != null
+        and ($production.readiness_blockers | index("production_guards_not_ready")) != null
+        and ($production.readiness_blockers | index("observation_min_poll_iterations")) != null
+        and ($production.readiness_blockers | index("observation_stale")) != null
+      ) as $warming_observation_budget_state_known
+    | {
     product:$product,
     runtime:$runtime,
     base_url:$base_url,
@@ -245,16 +296,31 @@ report="$(jq -n \
     route_count:$route.route_count,
     missing_route_count:$route.missing_route_count,
     operator_security_status:$operator.status,
-    operator_security_attention_budget_known: (
-      $operator.status == "attention"
-      and $operator.attention_reason == "security_gate_not_ready"
-      and $operator.telegram_production_readiness_status.status == "attention"
-      and ($operator.telegram_production_readiness_status.readiness_blockers | index("attention_budget_exceeded")) != null
-      and $operator.telegram_production_readiness_status.recent_bot_api_ok == true
-      and $operator.telegram_production_readiness_status.observation_ready == true
-      and $operator.telegram_production_readiness_status.observation_fresh == true
+    operator_security_attention_state_known:(
+      $legacy_owner_attention_state_known
+      or $active_replacement_state_known
+      or $attention_budget_exceeded_state_known
     ),
-    telegram_production_attention_budget_ok:$operator.telegram_production_readiness_status.attention_budget_ok,
+    telegram_production_readiness_state_known:(
+      $active_replacement_state_known
+      or $attention_budget_exceeded_state_known
+      or $warming_observation_budget_state_known
+    ),
+    telegram_production_readiness_classification:(
+      if $active_replacement_state_known
+      then "ready"
+      elif $attention_budget_exceeded_state_known
+      then "attention_budget_exceeded"
+      elif $warming_observation_budget_state_known
+      then "warming_observation_budget"
+      else "unknown"
+      end
+    ),
+    operator_security_attention_budget_known: (
+      $attention_budget_exceeded_state_known
+      or $warming_observation_budget_state_known
+    ),
+    telegram_production_attention_budget_ok:$production.attention_budget_ok,
     security_mode:$operator.security_mode,
     active_owner:$owner.active_owner,
     double_poller_risk:$owner.double_poller_risk,

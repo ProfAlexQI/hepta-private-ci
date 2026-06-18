@@ -17,6 +17,9 @@ fail=0
 last_owner=""
 last_post=""
 last_production=""
+last_production_attention_budget_known=false
+last_production_readiness_state_known=false
+last_production_readiness_classification="unknown"
 
 for sample in $(seq 1 "$SAMPLES"); do
   health="$(curl -fsS "$BASE_URL/health" | jq -r '.status' 2>/dev/null || echo fail)"
@@ -34,11 +37,20 @@ for sample in $(seq 1 "$SAMPLES"); do
   legacy_sample_ready=false
   production_sample_ready=false
   production_attention_sample_ready=false
+  production_attention_budget_known=false
+  production_readiness_state_known=false
+  production_readiness_classification="unknown"
   if [[ "$owner" == "legacy_openclaw:false:false" \
     && "$poll" == "gated:false:false" \
     && "$post" == "false:false:false" \
     && "$operator" == "attention:legacy_owner_coexistence_ready:true:telegram_replacement_not_requested" ]]; then
     legacy_sample_ready=true
+  fi
+  if [[ "$legacy_sample_ready" == true \
+    && "$production" == "gated:true:true:false:false:false:true:true:poll_loop_not_armed,production_guards_not_ready,observation_min_poll_iterations,observation_stale" ]]; then
+    production_attention_budget_known=true
+    production_readiness_state_known=true
+    production_readiness_classification="warming_observation_budget"
   fi
   if [[ "$owner" == "parallel_bots:false:true" \
     && "$poll" == "armed:false:false" \
@@ -46,13 +58,25 @@ for sample in $(seq 1 "$SAMPLES"); do
     && "$operator" == "ready:active_replacement_ready:false:none" ]]; then
     production_sample_ready=true
   fi
+  if [[ "$production_sample_ready" == true \
+    && "$production" == ready:true:true:true:true:true:true:true:* ]]; then
+    production_attention_budget_known=true
+    production_readiness_state_known=true
+    production_readiness_classification="ready"
+  fi
   if [[ "$owner" == "parallel_bots:false:true" \
     && "$poll" == "armed:false:false" \
     && "$post" == "true:false:false" \
     && "$operator" == "attention:attention_required:false:security_gate_not_ready" \
     && "$production" == "attention:false:true:true:true:true:true:true:attention_budget_exceeded" ]]; then
     production_attention_sample_ready=true
+    production_attention_budget_known=true
+    production_readiness_state_known=true
+    production_readiness_classification="attention_budget_exceeded"
   fi
+  last_production_attention_budget_known="$production_attention_budget_known"
+  last_production_readiness_state_known="$production_readiness_state_known"
+  last_production_readiness_classification="$production_readiness_classification"
 
   if [[ "$health" == "ready" \
     && "$route" == "ready:0" \
@@ -77,10 +101,13 @@ jq -n \
   --arg owner "$last_owner" \
   --arg post "$last_post" \
   --arg production "$last_production" \
+  --arg production_readiness_classification "$last_production_readiness_classification" \
+  --argjson production_attention_budget_known "$last_production_attention_budget_known" \
+  --argjson production_readiness_state_known "$last_production_readiness_state_known" \
   --argjson samples "$SAMPLES" \
   --argjson ok "$ok" \
   --argjson fail "$fail" \
-  '{product:$product,runtime:$runtime,base_url:$base_url,status:(if $fail == 0 then "ready" else "failed" end),samples:$samples,ok:$ok,fail:$fail,active_owner:$owner,legacy_owner_preserved:($owner == "legacy_openclaw:false:false"),telegram_live_send_enabled:($owner == "parallel_bots:false:true"),native_post_real_activation_enabled:($post == "true:false:false"),telegram_production_readiness:$production,telegram_production_attention_budget_known:($production == "attention:false:true:true:true:true:true:true:attention_budget_exceeded")}'
+  '{product:$product,runtime:$runtime,base_url:$base_url,status:(if $fail == 0 then "ready" else "failed" end),samples:$samples,ok:$ok,fail:$fail,active_owner:$owner,legacy_owner_preserved:($owner == "legacy_openclaw:false:false"),telegram_live_send_enabled:($owner == "parallel_bots:false:true"),native_post_real_activation_enabled:($post == "true:false:false"),telegram_production_readiness:$production,telegram_production_attention_budget_known:$production_attention_budget_known,telegram_production_readiness_state_known:$production_readiness_state_known,telegram_production_readiness_classification:$production_readiness_classification}'
 
 if [[ "$fail" != "0" ]]; then
   exit 1
