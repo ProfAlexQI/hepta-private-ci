@@ -242,6 +242,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -252,7 +254,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 145;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 146;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -933,6 +935,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt replay/idempotency denial; models denied duplicate receipt replay, idempotency key/state recording, cross-scope reuse, nonce/status/hash/signature/operator-identity replay, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt ordering/monotonicity denial; models denied sequence cursors, monotonicity state, out-of-order/gap/future/stale/latest-wins claims, ordering bypasses, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2380,6 +2389,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_report(),
                     ),
                 );
             }
@@ -35965,6 +35984,666 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_report =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_report();
+    let source_ready = source_report["status"].as_str() == Some("ready")
+        && source_report["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_ready"]
+            .as_bool()
+            .unwrap_or(false);
+    let source_u64 = |key: &str| source_report[key].as_u64().unwrap_or(0);
+    let source_report_sha256 = sha256_json_value(&source_report);
+    let source_contract_hash = source_report
+        ["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_contract_hash_sha256"]
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string();
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let ordering_surface_specs = [
+        (
+            "source_replay_idempotency_report_required",
+            "blocked_source_report_required_noop",
+            "source_replay_idempotency_report_required",
+        ),
+        (
+            "download_button_result_receipt_sequence_cursor_recording",
+            "blocked_sequence_cursor_recording_noop",
+            "download_button_result_receipt_sequence_cursor_recording_denied",
+        ),
+        (
+            "direct_download_url_result_receipt_out_of_order_sequence",
+            "blocked_out_of_order_sequence_noop",
+            "direct_download_url_result_receipt_out_of_order_sequence_denied",
+        ),
+        (
+            "checksum_prompt_result_receipt_sequence_gap_skip",
+            "blocked_sequence_gap_noop",
+            "checksum_prompt_result_receipt_sequence_gap_skip_denied",
+        ),
+        (
+            "package_manager_install_command_result_receipt_timestamp_rollback",
+            "blocked_timestamp_rollback_noop",
+            "package_manager_install_command_result_receipt_timestamp_rollback_denied",
+        ),
+        (
+            "curl_pipe_shell_result_receipt_epoch_rollback",
+            "blocked_epoch_rollback_noop",
+            "curl_pipe_shell_result_receipt_epoch_rollback_denied",
+        ),
+        (
+            "installer_launch_prompt_result_receipt_same_sequence_different_hash",
+            "blocked_same_sequence_hash_noop",
+            "installer_launch_prompt_result_receipt_same_sequence_different_hash_denied",
+        ),
+        (
+            "auto_update_offer_result_receipt_latest_wins_overwrite",
+            "blocked_latest_wins_overwrite_noop",
+            "auto_update_offer_result_receipt_latest_wins_overwrite_denied",
+        ),
+        (
+            "release_channel_subscription_result_receipt_ack_before_noop",
+            "blocked_ack_before_noop_noop",
+            "release_channel_subscription_result_receipt_ack_before_noop_denied",
+        ),
+        (
+            "update_feed_hint_result_receipt_stage_transition_bypass",
+            "blocked_stage_transition_ordering_noop",
+            "update_feed_hint_result_receipt_stage_transition_bypass_denied",
+        ),
+        (
+            "package_registry_badge_result_receipt_ledger_index_delivery_bypass",
+            "blocked_ledger_index_delivery_ordering_noop",
+            "package_registry_badge_result_receipt_ledger_index_delivery_bypass_denied",
+        ),
+        (
+            "cdn_mirror_download_result_receipt_export_query_observability_bypass",
+            "blocked_export_query_observability_ordering_noop",
+            "cdn_mirror_download_result_receipt_export_query_observability_bypass_denied",
+        ),
+        (
+            "sbom_provenance_notarization_result_receipt_hash_status_ordering_rebind",
+            "blocked_hash_status_ordering_rebind_noop",
+            "sbom_provenance_notarization_result_receipt_hash_status_ordering_rebind_denied",
+        ),
+        (
+            "signature_verification_command_result_receipt_signature_timestamp_ordering",
+            "blocked_signature_timestamp_ordering_noop",
+            "signature_verification_command_result_receipt_signature_timestamp_ordering_denied",
+        ),
+        (
+            "one_click_install_deep_link_result_receipt_activation_authority_ordering_bypass",
+            "blocked_activation_authority_ordering_noop",
+            "one_click_install_deep_link_result_receipt_activation_authority_ordering_bypass_denied",
+        ),
+        (
+            "external_telegram_install_message_result_receipt_external_ordering_bypass",
+            "blocked_external_delivery_ordering_noop",
+            "external_telegram_install_message_result_receipt_external_ordering_bypass_denied",
+        ),
+        (
+            "release_publication_authority_install_affordance_result_receipt_ordering_bypass",
+            "blocked_release_publication_authority_ordering_noop",
+            "release_publication_authority_install_affordance_result_receipt_ordering_bypass_denied",
+        ),
+        (
+            "activation_live_install_restart_active_binary_result_receipt_ordering_bypass",
+            "blocked_activation_live_install_restart_active_binary_ordering_noop",
+            "activation_live_install_restart_active_binary_result_receipt_ordering_bypass_denied",
+        ),
+    ];
+    let ordering_surface_false_keys = [
+        "artifact_download_install_affordance_result_receipt_ordering_allowed",
+        "artifact_download_install_affordance_result_receipt_ordering_recorded",
+        "artifact_download_install_affordance_result_receipt_ordering_persisted",
+        "artifact_download_install_affordance_result_receipt_ordering_performed",
+        "artifact_download_install_affordance_result_receipt_sequence_cursor_accepted",
+        "artifact_download_install_affordance_result_receipt_sequence_cursor_recorded",
+        "artifact_download_install_affordance_result_receipt_sequence_cursor_persisted",
+        "artifact_download_install_affordance_result_receipt_monotonicity_state_recorded",
+        "artifact_download_install_affordance_result_receipt_monotonicity_state_persisted",
+        "artifact_download_install_affordance_result_receipt_monotonicity_state_materialized",
+        "artifact_download_install_affordance_result_receipt_monotonicity_filesystem_written",
+        "artifact_download_install_affordance_result_receipt_timestamp_ordering_accepted",
+        "artifact_download_install_affordance_result_receipt_epoch_ordering_accepted",
+        "artifact_download_install_affordance_result_receipt_stage_ordering_accepted",
+        "artifact_download_install_affordance_result_receipt_same_sequence_hash_override_accepted",
+        "artifact_download_install_affordance_result_receipt_latest_wins_overwrite_accepted",
+        "artifact_download_install_affordance_result_receipt_gap_fill_accepted",
+        "artifact_download_install_affordance_result_receipt_ack_before_noop_accepted",
+        "artifact_download_install_affordance_result_receipt_ledger_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_index_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_delivery_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_export_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_query_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_observability_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_runtime_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_provider_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_memory_kg_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_external_public_install_ordering_bypass_accepted",
+        "artifact_download_install_affordance_result_receipt_replay_allowed",
+        "artifact_download_install_affordance_result_receipt_duplicate_accepted",
+        "artifact_download_install_affordance_result_receipt_idempotency_key_accepted",
+        "artifact_download_install_affordance_result_receipt_idempotency_state_recorded",
+        "artifact_download_install_affordance_result_receipt_recorded",
+        "artifact_download_install_affordance_result_receipt_persisted",
+        "artifact_download_install_affordance_result_receipt_accepted",
+        "artifact_download_install_affordance_result_receipt_materialized",
+        "artifact_download_install_affordance_result_receipt_filesystem_written",
+        "artifact_download_install_affordance_result_receipt_ledger_written",
+        "artifact_download_install_affordance_result_receipt_indexed",
+        "artifact_download_install_affordance_result_receipt_enqueued",
+        "artifact_download_install_affordance_result_receipt_delivered",
+        "artifact_download_install_affordance_result_receipt_exported",
+        "artifact_download_install_affordance_result_receipt_query_registered",
+        "artifact_download_install_affordance_result_receipt_observability_recorded",
+        "artifact_download_install_affordance_completion_ack_recorded",
+        "artifact_download_install_affordance_completion_ack_accepted",
+        "download_button_rendered",
+        "direct_download_url_exposed",
+        "package_manager_install_command_rendered",
+        "curl_pipe_shell_snippet_rendered",
+        "installer_launch_prompt_rendered",
+        "auto_update_offer_rendered",
+        "external_install_message_sent",
+        "telegram_install_message_sent",
+        "operator_approval_from_ordering_accepted",
+        "release_publication_authority_from_ordering_derived",
+        "activation_authority_from_ordering_derived",
+        "activation_command_from_ordering_derived",
+        "activation_from_ordering_allowed",
+        "live_execution_from_ordering_allowed",
+        "install_from_ordering_executed",
+        "service_restart_from_ordering_performed",
+        "launchd_from_ordering_mutated",
+        "active_binary_from_ordering_mutated",
+        "activation_activated",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+    ];
+    let ordering_surfaces = ordering_surface_specs
+        .iter()
+        .map(|(surface, status, reason)| {
+            let mut surface_report = serde_json::json!({
+                "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface": surface,
+                "source_replay_idempotency_present": true,
+                "source_replay_idempotency_ready": true,
+                "source_replay_idempotency_noop_confirmed": true,
+                "canonical_noop_result_receipt_order_identity_required": true,
+                "artifact_download_install_affordance_result_receipt_ordering_requested": true,
+                "artifact_download_install_affordance_result_receipt_ordering_status": status,
+                "receipt_noop_confirmed": true,
+                "reason": reason,
+            });
+            if let Some(surface_object) = surface_report.as_object_mut() {
+                for key in ordering_surface_false_keys {
+                    surface_object.insert(key.to_string(), serde_json::json!(false));
+                }
+                match *surface {
+                    "source_replay_idempotency_report_required" => {
+                        surface_object.insert(
+                            "source_replay_idempotency_report_required".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "download_button_result_receipt_sequence_cursor_recording" => {
+                        surface_object.insert(
+                            "sequence_cursor_recording_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "direct_download_url_result_receipt_out_of_order_sequence" => {
+                        surface_object.insert(
+                            "out_of_order_sequence_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                        surface_object.insert(
+                            "requested_sequence".to_string(),
+                            serde_json::json!(2),
+                        );
+                        surface_object.insert(
+                            "observed_previous_sequence".to_string(),
+                            serde_json::json!(3),
+                        );
+                    }
+                    "checksum_prompt_result_receipt_sequence_gap_skip" => {
+                        surface_object
+                            .insert("sequence_gap_requested".to_string(), serde_json::json!(true));
+                        surface_object.insert(
+                            "requested_sequence".to_string(),
+                            serde_json::json!(5),
+                        );
+                        surface_object.insert(
+                            "expected_next_sequence".to_string(),
+                            serde_json::json!(1),
+                        );
+                    }
+                    "package_manager_install_command_result_receipt_timestamp_rollback" => {
+                        surface_object.insert(
+                            "timestamp_rollback_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "curl_pipe_shell_result_receipt_epoch_rollback" => {
+                        surface_object
+                            .insert("epoch_rollback_requested".to_string(), serde_json::json!(true));
+                    }
+                    "installer_launch_prompt_result_receipt_same_sequence_different_hash" => {
+                        surface_object.insert(
+                            "same_sequence_different_hash_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "auto_update_offer_result_receipt_latest_wins_overwrite" => {
+                        surface_object.insert(
+                            "latest_wins_overwrite_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "release_channel_subscription_result_receipt_ack_before_noop" => {
+                        surface_object.insert(
+                            "completion_ack_before_noop_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "update_feed_hint_result_receipt_stage_transition_bypass" => {
+                        surface_object.insert(
+                            "stage_transition_ordering_bypass_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "package_registry_badge_result_receipt_ledger_index_delivery_bypass" => {
+                        for key in [
+                            "ledger_ordering_bypass_requested",
+                            "index_ordering_bypass_requested",
+                            "delivery_ordering_bypass_requested",
+                        ] {
+                            surface_object.insert(key.to_string(), serde_json::json!(true));
+                        }
+                    }
+                    "cdn_mirror_download_result_receipt_export_query_observability_bypass" => {
+                        for key in [
+                            "export_ordering_bypass_requested",
+                            "query_ordering_bypass_requested",
+                            "observability_ordering_bypass_requested",
+                        ] {
+                            surface_object.insert(key.to_string(), serde_json::json!(true));
+                        }
+                    }
+                    "sbom_provenance_notarization_result_receipt_hash_status_ordering_rebind" => {
+                        surface_object.insert(
+                            "hash_ordering_rebind_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                        surface_object.insert(
+                            "status_ordering_rebind_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "signature_verification_command_result_receipt_signature_timestamp_ordering" => {
+                        surface_object.insert(
+                            "signature_ordering_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                        surface_object.insert(
+                            "timestamp_ordering_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "one_click_install_deep_link_result_receipt_activation_authority_ordering_bypass" => {
+                        surface_object.insert(
+                            "activation_authority_ordering_bypass_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "external_telegram_install_message_result_receipt_external_ordering_bypass" => {
+                        surface_object.insert(
+                            "external_delivery_ordering_bypass_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                        surface_object.insert(
+                            "telegram_delivery_ordering_bypass_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "release_publication_authority_install_affordance_result_receipt_ordering_bypass" => {
+                        surface_object.insert(
+                            "release_publication_authority_ordering_bypass_requested".to_string(),
+                            serde_json::json!(true),
+                        );
+                    }
+                    "activation_live_install_restart_active_binary_result_receipt_ordering_bypass" => {
+                        for key in [
+                            "activation_ordering_bypass_requested",
+                            "install_ordering_bypass_requested",
+                            "service_restart_ordering_bypass_requested",
+                            "active_binary_ordering_bypass_requested",
+                        ] {
+                            surface_object.insert(key.to_string(), serde_json::json!(true));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            surface_report
+        })
+        .collect::<Vec<_>>();
+    let ordering_surface_count = ordering_surfaces.len();
+    let contract_hash = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial:native:source={source_report_sha256}:surfaces={ordering_surface_count}:route_count={}:ordering=0:cursor=0:monotonicity=0:authority=0:install=0:live=0",
+        route_matrix.route_count
+    ));
+    let policy_hash = sha256_text_value(
+        "release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial:no-sequence-cursor:no-monotonicity-state:no-out-of-order:no-gap-fill:no-latest-wins:no-authority:no-install:no-live",
+    );
+    let denials = vec![
+        "source_result_receipt_replay_idempotency_report_required",
+        "canonical_noop_result_receipt_order_identity_required",
+        "sequence_cursor_acceptance_denied",
+        "sequence_cursor_recording_denied",
+        "sequence_cursor_persistence_denied",
+        "monotonicity_state_recording_denied",
+        "monotonicity_state_persistence_denied",
+        "monotonicity_state_materialization_denied",
+        "out_of_order_sequence_denied",
+        "sequence_gap_or_skip_denied",
+        "timestamp_rollback_denied",
+        "epoch_rollback_denied",
+        "same_sequence_different_hash_denied",
+        "latest_wins_overwrite_denied",
+        "completion_ack_before_noop_denied",
+        "stage_transition_ordering_denied",
+        "ledger_index_delivery_ordering_bypass_denied",
+        "export_query_observability_ordering_bypass_denied",
+        "hash_status_ordering_rebind_denied",
+        "signature_timestamp_ordering_denied",
+        "operator_identity_reuse_ordering_denied",
+        "release_publication_authority_ordering_denied",
+        "activation_authority_ordering_denied",
+        "runtime_provider_memory_kg_ordering_bypass_denied",
+        "external_public_release_ordering_bypass_denied",
+        "install_restart_active_binary_ordering_bypass_denied",
+    ];
+    let denied_count = denials.len();
+    let report_ready = source_ready
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_attempt_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_allowed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_duplicate_accepted_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_idempotency_state_recorded_count",
+        ) == 0
+        && ordering_surface_count == 18
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-18",
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_route_enabled": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_ready": report_ready,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_v1",
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_mode": "native_route_denied_ordering_cursor_monotonicity_or_latest_wins_attempt_cannot_create_result_receipt_or_install_activation_authority",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_route": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_route",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_ready": source_ready,
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_report_sha256": source_report_sha256,
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_contract_hash_sha256": source_contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_contract_hash_sha256": contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_policy_hash_sha256": policy_hash,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_attempt_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_attempt_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_allowed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_allowed_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_duplicate_accepted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_duplicate_accepted_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_idempotency_state_recorded_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_idempotency_state_recorded_count"),
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface_count": ordering_surface_count,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_attempt_count": ordering_surface_count,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denied_count": ordering_surface_count,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surfaces": ordering_surfaces,
+        "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity": denials,
+        "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_count": denied_count,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "allowed_next_actions": [
+            {
+                "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_denial_gate",
+                "status": "allowed_report_only_next_slice",
+                "accepts_cancellation": false,
+                "accepts_supersession": false,
+                "accepts_out_of_order_receipt": false,
+                "records_result_receipt": false,
+                "persists_replacement_receipt": false,
+                "renders_download_link": false,
+                "emits_install_command": false,
+                "installs_or_restarts": false,
+                "mutates_active_binary": false,
+                "mutates_memory_store": false,
+                "writes_kg": false,
+                "sends_externally": false
+            }
+        ],
+        }),
+    );
+
+    let ordering_zero_keys = [
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_allowed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_performed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_sequence_cursor_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_sequence_cursor_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_sequence_cursor_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_state_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_state_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_state_materialized_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_filesystem_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_timestamp_ordering_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_epoch_ordering_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_stage_ordering_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_same_sequence_hash_override_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_latest_wins_overwrite_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_gap_fill_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ack_before_noop_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ledger_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_index_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_delivery_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_export_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_query_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_observability_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_runtime_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_provider_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_memory_kg_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_external_public_install_ordering_bypass_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_materialized_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_filesystem_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ledger_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_indexed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_delivered_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_exported_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_query_registered_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_observability_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_operator_approval_from_ordering_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_release_publication_authority_from_ordering_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_authority_from_ordering_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_install_from_ordering_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_service_restart_from_ordering_performed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_active_binary_from_ordering_mutated_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_memory_store_ordering_performed_count",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in ordering_zero_keys {
+            report_object.insert(key.to_string(), serde_json::json!(0));
+        }
+        for key in [
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_live_kg_ordering_performed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_provider_ordering_performed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_model_ordering_performed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_credential_read_from_ordering_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_secret_read_from_ordering_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_external_send_from_ordering_count",
+        ] {
+            report_object.insert(key.to_string(), serde_json::json!(0));
+        }
+    }
+
+    let ordering_false_keys = [
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_allowed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_sequence_cursor_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_state_persisted",
+        "artifact_download_install_affordance_result_receipt_recorded",
+        "artifact_download_install_affordance_result_receipt_persisted",
+        "artifact_download_install_affordance_result_receipt_accepted",
+        "artifact_download_install_affordance_result_receipt_materialized",
+        "artifact_download_install_affordance_result_receipt_filesystem_written",
+        "artifact_download_install_affordance_completion_ack_recorded",
+        "artifact_download_install_affordance_completion_ack_accepted",
+        "operator_acceptance_recorded",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "activation_command_derived",
+        "activation_allowed",
+        "activation_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "external_send_performed",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in ordering_false_keys {
+            report_object.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+
+    let side_effect_false_keys = [
+        "artifact_download_install_affordance_result_receipt_ordering_allowed",
+        "artifact_download_install_affordance_result_receipt_ordering_recorded",
+        "artifact_download_install_affordance_result_receipt_ordering_persisted",
+        "artifact_download_install_affordance_result_receipt_ordering_performed",
+        "artifact_download_install_affordance_result_receipt_sequence_cursor_accepted",
+        "artifact_download_install_affordance_result_receipt_sequence_cursor_recorded",
+        "artifact_download_install_affordance_result_receipt_sequence_cursor_persisted",
+        "artifact_download_install_affordance_result_receipt_monotonicity_state_recorded",
+        "artifact_download_install_affordance_result_receipt_monotonicity_state_persisted",
+        "artifact_download_install_affordance_result_receipt_monotonicity_state_materialized",
+        "artifact_download_install_affordance_result_receipt_monotonicity_filesystem_written",
+        "artifact_download_install_affordance_result_receipt_recorded",
+        "artifact_download_install_affordance_result_receipt_persisted",
+        "artifact_download_install_affordance_result_receipt_accepted",
+        "artifact_download_install_affordance_result_receipt_materialized",
+        "artifact_download_install_affordance_result_receipt_filesystem_written",
+        "artifact_download_install_affordance_completion_ack_recorded",
+        "artifact_download_install_affordance_completion_ack_accepted",
+        "operator_acceptance_recorded",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "activation_command_derived",
+        "activation_allowed",
+        "activation_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "filesystem_written",
+    ];
+    let mut side_effects = serde_json::Map::new();
+    for key in side_effect_false_keys {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -56487,6 +57166,218 @@ mod tests {
         }
         let side_effects = value["side_effects"].as_object().expect(
             "release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt replay idempotency side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_endpoint_blocks_ordering_and_authority()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt ordering monotonicity route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_attempt_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denied_count"],
+            18
+        );
+
+        for key in [
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_allowed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_duplicate_accepted_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_idempotency_state_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_allowed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_persisted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_sequence_cursor_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_sequence_cursor_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_state_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_state_persisted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_latest_wins_overwrite_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ack_before_noop_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_operator_approval_from_ordering_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_release_publication_authority_from_ordering_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_authority_from_ordering_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_install_from_ordering_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_active_binary_from_ordering_mutated_count",
+        ] {
+            assert_eq!(value[key], 0, "{key}");
+        }
+
+        let surfaces = value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surfaces"]
+            .as_array()
+            .expect("packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt ordering monotonicity surfaces");
+        assert_eq!(surfaces.len(), 18);
+        assert_eq!(
+            surfaces[0]["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface"],
+            "source_replay_idempotency_report_required"
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["sequence_cursor_recording_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["out_of_order_sequence_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["latest_wins_overwrite_requested"] == true)
+                .count(),
+            1
+        );
+        for surface in surfaces {
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_ordering_requested"],
+                true
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_ordering_allowed"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_sequence_cursor_recorded"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_monotonicity_state_recorded"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_latest_wins_overwrite_accepted"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_ack_before_noop_accepted"],
+                false
+            );
+            assert_eq!(surface["operator_approval_from_ordering_accepted"], false);
+            assert_eq!(
+                surface["release_publication_authority_from_ordering_derived"],
+                false
+            );
+            assert_eq!(surface["activation_authority_from_ordering_derived"], false);
+            assert_eq!(surface["install_from_ordering_executed"], false);
+            assert_eq!(surface["active_binary_from_ordering_mutated"], false);
+            assert_eq!(surface["receipt_noop_confirmed"], true);
+        }
+
+        let denied = value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity"]
+            .as_array()
+            .expect("packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt ordering monotonicity denials");
+        assert_eq!(denied.len(), 26);
+        assert_eq!(
+            value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_denial_gate"
+        );
+        for key in [
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_allowed",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_sequence_cursor_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_state_persisted",
+            "artifact_download_install_affordance_result_receipt_recorded",
+            "artifact_download_install_affordance_result_receipt_persisted",
+            "artifact_download_install_affordance_completion_ack_recorded",
+            "operator_acceptance_recorded",
+            "operator_approval_recorded",
+            "release_publication_authority_derived",
+            "activation_authority_derived",
+            "activation_command_derived",
+            "activation_allowed",
+            "activation_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+            "release_artifact_written",
+            "public_artifact_written",
+            "external_send_performed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"].as_object().expect(
+            "release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt ordering monotonicity side effects",
         );
         assert!(
             side_effects
