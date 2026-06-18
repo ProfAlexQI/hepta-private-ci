@@ -167,7 +167,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 144;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 145;' \
   "native gateway route/source command count includes terminal distribution delivery receipt query/export/observability route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT' \
@@ -203,8 +203,8 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 144
-    and .implemented_route_count == 144
+    and .route_count == 145
+    and .implemented_route_count == 145
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_route_enabled == true
@@ -243,8 +243,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 284
-  and .present_required_marker_count == 284
+  and .required_marker_count == 285
+  and .present_required_marker_count == 285
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -290,8 +290,8 @@ jq -n \
     focused_test_log:$focused_test_log,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_endpoint_checked,
-    source_route_count_expected:144,
-    terminal_required_marker_count_expected:284,
+    source_route_count_expected:145,
+    terminal_required_marker_count_expected:285,
     release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface_count:18,
     release_publication_result_receipt_delivery_receipt_query_registered_count:0,
     release_publication_result_receipt_delivery_receipt_export_file_written_count:0,
@@ -301,8 +301,8 @@ jq -n \
     release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_live_execution_allowed_count:0,
     route_source_texts_ready:true,
     terminal_coverage_ready:true,
-    terminal_required_marker_count:284,
-    terminal_present_required_marker_count:284,
+    terminal_required_marker_count:285,
+    terminal_present_required_marker_count:285,
     terminal_missing_required_marker_count:0,
     live_route_status:$live_route_status,
     live_route_count:$live_route_count,
