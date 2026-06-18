@@ -229,6 +229,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-queue-artifact-availability-status-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_EXTERNAL_DELIVERY_NON_PERSISTENCE_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-external-delivery-non-persistence-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -239,7 +241,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 141;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 142;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -892,6 +894,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-external-delivery-non-persistence-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-external-delivery-non-persistence-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt/external delivery non-persistence denial; models denied delivery receipts, ledgers, indexes, channel/webhook/Telegram sends, downstream notifications, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt query/export/observability denial; models denied delivery receipt query registration/execution/result exposure, search indexes, export snapshots/files/streams, observability metrics/logs/traces/events, dashboard/alert/readback/audit/status evidence exposure, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2299,6 +2308,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_external_delivery_non_persistence_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_report(),
                     ),
                 );
             }
@@ -34049,6 +34068,496 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_report =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_external_delivery_non_persistence_denial_report();
+    let source_ready = source_report["status"].as_str() == Some("ready")
+        && source_report["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_external_delivery_non_persistence_denial_ready"]
+            .as_bool()
+            .unwrap_or(false);
+    let source_u64 = |key: &str| source_report[key].as_u64().unwrap_or(0);
+    let source_report_sha256 = sha256_json_value(&source_report);
+    let source_contract_hash = source_report
+        ["release_publication_result_receipt_terminal_distribution_delivery_receipt_contract_hash_sha256"]
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string();
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let surface_specs: Vec<(&str, &str, &str, Vec<&str>)> = vec![
+        (
+            "publication_result_receipt_delivery_receipt_query_registration",
+            "blocked_delivery_receipt_query_registration_noop",
+            "delivery_receipt_query_registration_denied",
+            vec!["query_registration_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_query_execution",
+            "blocked_delivery_receipt_query_execution_noop",
+            "delivery_receipt_query_execution_denied",
+            vec!["query_execution_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_query_result",
+            "blocked_delivery_receipt_query_result_noop",
+            "delivery_receipt_query_result_denied",
+            vec!["query_result_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_search_index",
+            "blocked_delivery_receipt_search_index_noop",
+            "delivery_receipt_search_index_denied",
+            vec!["search_index_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_export_request",
+            "blocked_delivery_receipt_export_request_noop",
+            "delivery_receipt_export_request_denied",
+            vec!["export_request_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_export_snapshot",
+            "blocked_delivery_receipt_export_snapshot_noop",
+            "delivery_receipt_export_snapshot_denied",
+            vec!["export_snapshot_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_export_file",
+            "blocked_delivery_receipt_export_file_noop",
+            "delivery_receipt_export_file_denied",
+            vec!["export_file_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_export_stream",
+            "blocked_delivery_receipt_export_stream_noop",
+            "delivery_receipt_export_stream_denied",
+            vec!["export_stream_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_observability_metric",
+            "blocked_delivery_receipt_observability_metric_noop",
+            "delivery_receipt_observability_metric_denied",
+            vec!["observability_metric_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_observability_log",
+            "blocked_delivery_receipt_observability_log_noop",
+            "delivery_receipt_observability_log_denied",
+            vec!["observability_log_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_observability_trace",
+            "blocked_delivery_receipt_observability_trace_noop",
+            "delivery_receipt_observability_trace_denied",
+            vec!["observability_trace_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_observability_event",
+            "blocked_delivery_receipt_observability_event_noop",
+            "delivery_receipt_observability_event_denied",
+            vec!["observability_event_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_dashboard_panel",
+            "blocked_delivery_receipt_dashboard_panel_noop",
+            "delivery_receipt_dashboard_panel_denied",
+            vec!["dashboard_panel_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_alert_slo",
+            "blocked_delivery_receipt_alert_slo_noop",
+            "delivery_receipt_alert_slo_denied",
+            vec!["alert_slo_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_operator_readback",
+            "blocked_delivery_receipt_operator_readback_noop",
+            "delivery_receipt_operator_readback_denied",
+            vec!["operator_readback_requested"],
+        ),
+        (
+            "publication_result_receipt_delivery_receipt_audit_view",
+            "blocked_delivery_receipt_audit_view_noop",
+            "delivery_receipt_audit_view_denied",
+            vec!["audit_view_requested"],
+        ),
+        (
+            "publication_result_receipt_release_publication_authority_observability",
+            "blocked_release_publication_authority_observability_noop",
+            "release_publication_authority_from_observability_denied",
+            vec!["release_publication_authority_observability_requested"],
+        ),
+        (
+            "publication_result_receipt_activation_live_active_binary_observability",
+            "blocked_activation_live_active_binary_observability_noop",
+            "activation_live_active_binary_from_observability_denied",
+            vec![
+                "activation_live_observability_requested",
+                "install_restart_active_binary_observability_requested",
+            ],
+        ),
+    ];
+
+    let query_export_observability_surfaces = surface_specs
+        .into_iter()
+        .map(|(surface, status, reason, requested_flags)| {
+            let mut surface_report = serde_json::json!({
+                "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface": surface,
+                "source_terminal_distribution_delivery_receipt_ready": true,
+                "query_export_observability_attempted": true,
+                "query_export_observability_status": status,
+                "reason": reason,
+            });
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                "query_export_observability_allowed": false,
+                "query_export_observability_request_accepted": false,
+                "query_export_observability_accepted": false,
+                "query_export_observability_recorded": false,
+                "query_export_observability_persisted": false,
+                "query_export_observability_materialized": false,
+                "query_export_observability_filesystem_written": false,
+                "query_export_observability_delivered": false,
+                "query_export_observability_exposed": false,
+                }),
+            );
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                "query_registration_performed": false,
+                "query_execution_performed": false,
+                "query_result_exposed": false,
+                "search_index_written": false,
+                "export_request_accepted": false,
+                "export_snapshot_recorded": false,
+                "export_file_written": false,
+                "export_stream_opened": false,
+                "observability_metric_recorded": false,
+                "observability_log_recorded": false,
+                "observability_trace_recorded": false,
+                "observability_event_recorded": false,
+                "dashboard_panel_exposed": false,
+                "alert_slo_recorded": false,
+                "operator_readback_exposed": false,
+                "audit_view_exposed": false,
+                "delivery_receipt_status_evidence_exposed": false,
+                }),
+            );
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                "acceptance_recorded": false,
+                "operator_approval_derived": false,
+                "release_publication_authority_derived": false,
+                "activation_authority_derived": false,
+                "activation_command_derived": false,
+                "live_execution_allowed": false,
+                "activation_performed": false,
+                "install_executed": false,
+                "service_restarted": false,
+                "launchd_mutated": false,
+                "active_binary_mutated": false,
+                "release_artifact_written": false,
+                "public_artifact_written": false,
+                "memory_store_write_performed": false,
+                "memory_store_mutated": false,
+                "live_kg_write_performed": false,
+                }),
+            );
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                "provider_invoked": false,
+                "model_invoked": false,
+                "credential_read": false,
+                "secret_file_read": false,
+                "external_send_performed": false,
+                "query_export_observability_noop_confirmed": true,
+                }),
+            );
+            if let Some(surface_object) = surface_report.as_object_mut() {
+                for flag in requested_flags {
+                    surface_object.insert(flag.to_string(), serde_json::json!(true));
+                }
+            }
+            surface_report
+        })
+        .collect::<Vec<_>>();
+    let query_export_observability_surface_count = query_export_observability_surfaces.len();
+    let contract_hash = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial:native:source={source_report_sha256}:surfaces={query_export_observability_surface_count}:route_count={}:query=0:export=0:observability=0:authority=0:live=0",
+        route_matrix.route_count
+    ));
+    let policy_hash = sha256_text_value(
+        "release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial:no-query:no-export:no-observability:no-dashboard:no-alert:no-authority",
+    );
+    let denials = vec![
+        "source_terminal_distribution_delivery_receipt_report_required",
+        "query_export_observability_request_acceptance_denied",
+        "query_export_observability_acceptance_denied",
+        "query_export_observability_recording_denied",
+        "query_export_observability_persistence_denied",
+        "query_export_observability_materialization_denied",
+        "query_export_observability_filesystem_write_denied",
+        "query_export_observability_delivery_denied",
+        "query_export_observability_exposure_denied",
+        "delivery_receipt_query_registration_denied",
+        "delivery_receipt_query_execution_denied",
+        "delivery_receipt_query_result_exposure_denied",
+        "delivery_receipt_search_index_write_denied",
+        "delivery_receipt_export_request_denied",
+        "delivery_receipt_export_snapshot_denied",
+        "delivery_receipt_export_file_write_denied",
+        "delivery_receipt_export_stream_denied",
+        "delivery_receipt_observability_metric_denied",
+        "delivery_receipt_observability_log_denied",
+        "delivery_receipt_observability_trace_denied",
+        "delivery_receipt_observability_event_denied",
+        "delivery_receipt_dashboard_panel_denied",
+        "delivery_receipt_alert_slo_denied",
+        "delivery_receipt_operator_readback_denied",
+        "delivery_receipt_audit_view_denied",
+        "delivery_receipt_status_evidence_denied",
+        "acceptance_from_delivery_receipt_observability_denied",
+        "operator_approval_from_delivery_receipt_observability_denied",
+        "release_publication_authority_from_delivery_receipt_observability_denied",
+        "activation_live_from_delivery_receipt_observability_denied",
+        "install_restart_active_binary_from_delivery_receipt_observability_denied",
+        "release_artifact_write_denied",
+        "public_artifact_write_denied",
+        "memory_provider_kg_from_delivery_receipt_observability_denied",
+    ];
+    let denied_count = denials.len();
+    let report_ready = source_ready
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_surface_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_attempt_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_accepted_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_recorded_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_persisted_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_delivered_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_externally_sent_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_telegram_sent_count",
+        ) == 0
+        && source_u64("release_publication_result_receipt_downstream_consumer_notified_count") == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_release_publication_authority_derived_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_activation_authority_derived_count",
+        ) == 0
+        && query_export_observability_surface_count == 18
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-18",
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_v1",
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_mode": "native_route_denied_delivery_receipt_cannot_become_query_export_observability_or_authority",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_external_delivery_non_persistence_denial_route",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_ready": source_ready,
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_report_sha256": source_report_sha256,
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_contract_hash_sha256": source_contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_contract_hash_sha256": contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_policy_hash_sha256": policy_hash,
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_route_enabled": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_ready": report_ready,
+    });
+
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_surface_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_surface_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_attempt_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_attempt_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_accepted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_accepted_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_recorded_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_recorded_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_persisted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_persisted_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_delivered_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_delivered_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_externally_sent_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_externally_sent_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_telegram_sent_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_telegram_sent_count"),
+            "source_release_publication_result_receipt_downstream_consumer_notified_count": source_u64("release_publication_result_receipt_downstream_consumer_notified_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_release_publication_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_release_publication_authority_derived_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_activation_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_activation_authority_derived_count"),
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface_count": query_export_observability_surface_count,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_attempt_count": query_export_observability_surface_count,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_allowed_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_request_accepted_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_persisted_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_materialized_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_filesystem_written_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_delivered_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed_count": 0,
+            "release_publication_result_receipt_delivery_receipt_query_registered_count": 0,
+            "release_publication_result_receipt_delivery_receipt_query_executed_count": 0,
+            "release_publication_result_receipt_delivery_receipt_query_result_exposed_count": 0,
+            "release_publication_result_receipt_delivery_receipt_search_index_written_count": 0,
+            "release_publication_result_receipt_delivery_receipt_export_requested_count": 0,
+            "release_publication_result_receipt_delivery_receipt_export_snapshot_recorded_count": 0,
+            "release_publication_result_receipt_delivery_receipt_export_file_written_count": 0,
+            "release_publication_result_receipt_delivery_receipt_export_stream_opened_count": 0,
+            "release_publication_result_receipt_delivery_receipt_observability_metric_recorded_count": 0,
+            "release_publication_result_receipt_delivery_receipt_observability_log_recorded_count": 0,
+            "release_publication_result_receipt_delivery_receipt_observability_trace_recorded_count": 0,
+            "release_publication_result_receipt_delivery_receipt_observability_event_recorded_count": 0,
+            "release_publication_result_receipt_delivery_receipt_dashboard_panel_exposed_count": 0,
+            "release_publication_result_receipt_delivery_receipt_alert_slo_recorded_count": 0,
+            "release_publication_result_receipt_delivery_receipt_operator_readback_exposed_count": 0,
+            "release_publication_result_receipt_delivery_receipt_audit_view_exposed_count": 0,
+            "release_publication_result_receipt_delivery_receipt_status_evidence_exposed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_acceptance_recorded_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_operator_approval_derived_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_release_publication_authority_derived_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_activation_authority_derived_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_activation_command_derived_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_live_execution_allowed_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_install_executed_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_service_restarted_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_active_binary_mutated_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_release_artifact_written_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_public_artifact_written_count": 0,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surfaces": query_export_observability_surfaces,
+            "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability": denials,
+            "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_count": denied_count,
+            "allowed_next_actions": [
+                {
+                    "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_privacy_redaction_exposure_denial_gate",
+                    "status": "allowed_report_only_next_slice",
+                    "exposes_delivery_receipt_query": false,
+                    "exports_delivery_receipt": false,
+                    "records_observability": false,
+                    "records_operator_acceptance": false,
+                    "derives_release_publication_authority": false,
+                    "derives_activation_authority": false,
+                    "activates_live": false,
+                    "mutates_memory_store": false,
+                    "writes_kg": false,
+                    "sends_externally": false
+                }
+            ],
+        }),
+    );
+
+    let query_export_observability_false_keys = [
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_delivered",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_externally_sent",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_telegram_sent",
+        "packet_acceptance_receipt_release_publication_result_receipt_downstream_consumer_notified",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_allowed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_request_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_materialized",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_filesystem_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_delivered",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_query_registered",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_query_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_query_result_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_search_index_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_requested",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_snapshot_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_file_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_stream_opened",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_metric_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_log_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_trace_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_event_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_dashboard_panel_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_alert_slo_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_operator_readback_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_audit_view_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_status_evidence_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_persisted",
+        "packet_acceptance_receipt_release_publication_recorded",
+        "operator_acceptance_recorded",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "activation_command_derived",
+        "activation_allowed",
+        "activation_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "external_send_performed",
+        "filesystem_written",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in query_export_observability_false_keys {
+            report_object.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for key in query_export_observability_false_keys {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -53624,6 +54133,246 @@ mod tests {
         }
         let side_effects = value["side_effects"].as_object().expect(
             "release publication result receipt terminal distribution delivery receipt side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_endpoint_blocks_observability_exports()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt query export observability route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_attempt_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_attempt_count"],
+            18
+        );
+        for key in [
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_accepted_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_recorded_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_persisted_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_delivered_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_externally_sent_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_telegram_sent_count",
+            "source_release_publication_result_receipt_downstream_consumer_notified_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_release_publication_authority_derived_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_activation_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_allowed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_request_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_persisted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_materialized_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_filesystem_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_delivered_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed_count",
+            "release_publication_result_receipt_delivery_receipt_query_registered_count",
+            "release_publication_result_receipt_delivery_receipt_query_executed_count",
+            "release_publication_result_receipt_delivery_receipt_query_result_exposed_count",
+            "release_publication_result_receipt_delivery_receipt_search_index_written_count",
+            "release_publication_result_receipt_delivery_receipt_export_requested_count",
+            "release_publication_result_receipt_delivery_receipt_export_snapshot_recorded_count",
+            "release_publication_result_receipt_delivery_receipt_export_file_written_count",
+            "release_publication_result_receipt_delivery_receipt_export_stream_opened_count",
+            "release_publication_result_receipt_delivery_receipt_observability_metric_recorded_count",
+            "release_publication_result_receipt_delivery_receipt_observability_log_recorded_count",
+            "release_publication_result_receipt_delivery_receipt_observability_trace_recorded_count",
+            "release_publication_result_receipt_delivery_receipt_observability_event_recorded_count",
+            "release_publication_result_receipt_delivery_receipt_dashboard_panel_exposed_count",
+            "release_publication_result_receipt_delivery_receipt_alert_slo_recorded_count",
+            "release_publication_result_receipt_delivery_receipt_operator_readback_exposed_count",
+            "release_publication_result_receipt_delivery_receipt_audit_view_exposed_count",
+            "release_publication_result_receipt_delivery_receipt_status_evidence_exposed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_acceptance_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_operator_approval_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_release_publication_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_activation_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_activation_command_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_live_execution_allowed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_install_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_service_restarted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_active_binary_mutated_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_release_artifact_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_public_artifact_written_count",
+        ] {
+            assert_eq!(value[key], 0, "{key}");
+        }
+
+        let surfaces = value["release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surfaces"]
+            .as_array()
+            .expect("packet acceptance receipt release publication result receipt terminal distribution delivery receipt query export observability surfaces");
+        assert_eq!(surfaces.len(), 18);
+        assert_eq!(
+            surfaces[0]["release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface"],
+            "publication_result_receipt_delivery_receipt_query_registration"
+        );
+        assert_eq!(surfaces[0]["query_registration_requested"], true);
+        for surface in surfaces {
+            assert_eq!(surface["query_export_observability_attempted"], true);
+            assert_eq!(surface["query_export_observability_allowed"], false);
+            assert_eq!(
+                surface["query_export_observability_request_accepted"],
+                false
+            );
+            assert_eq!(surface["query_export_observability_accepted"], false);
+            assert_eq!(surface["query_export_observability_recorded"], false);
+            assert_eq!(surface["query_export_observability_persisted"], false);
+            assert_eq!(
+                surface["query_export_observability_filesystem_written"],
+                false
+            );
+            assert_eq!(surface["query_export_observability_delivered"], false);
+            assert_eq!(surface["query_export_observability_exposed"], false);
+            assert_eq!(surface["query_registration_performed"], false);
+            assert_eq!(surface["query_execution_performed"], false);
+            assert_eq!(surface["query_result_exposed"], false);
+            assert_eq!(surface["search_index_written"], false);
+            assert_eq!(surface["export_request_accepted"], false);
+            assert_eq!(surface["export_snapshot_recorded"], false);
+            assert_eq!(surface["export_file_written"], false);
+            assert_eq!(surface["export_stream_opened"], false);
+            assert_eq!(surface["observability_metric_recorded"], false);
+            assert_eq!(surface["observability_log_recorded"], false);
+            assert_eq!(surface["observability_trace_recorded"], false);
+            assert_eq!(surface["observability_event_recorded"], false);
+            assert_eq!(surface["dashboard_panel_exposed"], false);
+            assert_eq!(surface["alert_slo_recorded"], false);
+            assert_eq!(surface["operator_readback_exposed"], false);
+            assert_eq!(surface["audit_view_exposed"], false);
+            assert_eq!(surface["delivery_receipt_status_evidence_exposed"], false);
+            assert_eq!(surface["release_publication_authority_derived"], false);
+            assert_eq!(surface["activation_authority_derived"], false);
+            assert_eq!(surface["live_execution_allowed"], false);
+            assert_eq!(surface["release_artifact_written"], false);
+            assert_eq!(surface["public_artifact_written"], false);
+            assert_eq!(surface["query_export_observability_noop_confirmed"], true);
+        }
+
+        let denied = value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability"]
+            .as_array()
+            .expect("packet acceptance receipt release publication result receipt terminal distribution delivery receipt query export observability denials");
+        assert_eq!(denied.len(), 34);
+        assert_eq!(
+            value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_privacy_redaction_exposure_denial_gate"
+        );
+        for key in [
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_persisted",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_filesystem_written",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_query_registered",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_query_executed",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_query_result_exposed",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_search_index_written",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_requested",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_snapshot_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_file_written",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_stream_opened",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_metric_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_log_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_trace_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_event_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_dashboard_panel_exposed",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_alert_slo_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_operator_readback_exposed",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_audit_view_exposed",
+            "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_status_evidence_exposed",
+            "operator_approval_recorded",
+            "release_publication_authority_derived",
+            "activation_authority_derived",
+            "activation_command_derived",
+            "activation_allowed",
+            "activation_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+            "release_artifact_written",
+            "public_artifact_written",
+            "external_send_performed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"].as_object().expect(
+            "release publication result receipt terminal distribution delivery receipt query export observability side effects",
         );
         assert!(
             side_effects
