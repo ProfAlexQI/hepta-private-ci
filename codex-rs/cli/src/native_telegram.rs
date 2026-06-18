@@ -850,16 +850,15 @@ fn resolve_private_hepta_runtime_config_path() -> Option<PathBuf> {
     }
 
     let manifest = PathBuf::from(LOCAL_IMPORT_MANIFEST_PATH);
-    if let Ok(raw) = fs::read_to_string(&manifest) {
-        if let Ok(value) = serde_json::from_str::<Value>(&raw) {
-            if let Some(import_root) = value.get("import_root").and_then(Value::as_str) {
-                let candidate = PathBuf::from(import_root)
-                    .join("private/config")
-                    .join(LEGACY_CONFIG_FILE_NAME);
-                if candidate.is_file() {
-                    return Some(candidate);
-                }
-            }
+    if let Ok(raw) = fs::read_to_string(&manifest)
+        && let Ok(value) = serde_json::from_str::<Value>(&raw)
+        && let Some(import_root) = value.get("import_root").and_then(Value::as_str)
+    {
+        let candidate = PathBuf::from(import_root)
+            .join("private/config")
+            .join(LEGACY_CONFIG_FILE_NAME);
+        if candidate.is_file() {
+            return Some(candidate);
         }
     }
 
@@ -1054,7 +1053,7 @@ fn run_mlx_local_chat_completion(
 fn run_hepta_in_process_model_turn(prompt: &str) -> Result<String, String> {
     #[cfg(feature = "codex-in-process-runner")]
     {
-        return run_hepta_in_process_model_turn_with_codex_exec(prompt);
+        run_hepta_in_process_model_turn_with_codex_exec(prompt)
     }
 
     #[cfg(not(feature = "codex-in-process-runner"))]

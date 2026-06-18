@@ -3,10 +3,14 @@ use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
@@ -64,7 +68,8 @@ use hepta_gateway::NativePostPlanRouteSpec;
 use hepta_gateway::NativePostRealHandlerHarness;
 use hepta_gateway::NativePostRolloutEvidenceResponse;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
+use sha2::Sha256;
 
 use crate::native_telegram;
 use crate::native_telegram::NativeTelegramPluginStatus;
@@ -233,6 +238,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -243,7 +250,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 143;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 144;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -910,6 +917,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance denial; models denied download buttons, direct URLs, install commands, curl pipe snippets, installer prompts, update offers, release channel subscription hints, package badges, external/Telegram install messages, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt no-persistence denial; models denied result receipt schema acceptance, recording, persistence, ledger/index writes, query/export/observability, completion acknowledgement, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2340,6 +2354,16 @@ fn route_native_gateway_request_with_body(
                     ),
                 );
             }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_denial_report(),
+                    ),
+                );
+            }
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT => {
                 return (
                     "200 OK",
@@ -3316,7 +3340,7 @@ fn native_transcript_report(
     let session_file_count = candidates.len();
     candidates.truncate(max_files);
 
-    let query_lower = query.map(|value| value.to_ascii_lowercase());
+    let query_lower = query.map(str::to_ascii_lowercase);
     let mut previews = Vec::new();
     let mut parse_error_count = 0_usize;
     let mut matched_session_count = 0_usize;
@@ -4157,7 +4181,7 @@ fn native_config_report(options: &NativeGatewayOptions) -> NativeConfigResponse 
             bytes: path
                 .metadata()
                 .ok()
-                .filter(|meta| meta.is_file())
+                .filter(std::fs::Metadata::is_file)
                 .map(|meta| meta.len()),
         })
         .collect::<Vec<_>>();
@@ -4244,7 +4268,7 @@ fn native_optional_configs_report() -> NativeOptionalConfigsResponse {
                 bytes: metadata
                     .as_ref()
                     .filter(|meta| meta.is_file())
-                    .map(|meta| meta.len()),
+                    .map(std::fs::Metadata::len),
                 content_exposed: false,
             }
         })
@@ -15184,8 +15208,8 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
         && source_bool(
             "operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_request_denial_matrix_ready",
         )
-        && source_bool("activation_request_allowed") == false
-        && source_bool("activation_request_accepted") == false
+        && !source_bool("activation_request_allowed")
+        && !source_bool("activation_request_accepted")
         && source_u64("activation_request_denial_fixture_count") == 9
         && source_u64("blocked_activation_request_fixture_count") == 9
         && source_u64("noop_activation_request_fixture_count") == 9
@@ -15907,7 +15931,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let result_receipt_fixture_count = result_receipt_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let mut denials = source_activation_command
         .get("denied_by_operator_review_acknowledgement_activation_command_noop_handoff")
@@ -16453,7 +16477,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let replay_idempotency_fixture_count = replay_idempotency_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let mut denials = source_no_persistence
         .get("denied_by_operator_review_acknowledgement_activation_command_result_receipt_no_persistence")
@@ -17036,7 +17060,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let ordering_monotonicity_fixture_count = ordering_monotonicity_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let ordering_monotonicity_fixtures_sha256 = sha256_json_value(&ordering_monotonicity_fixtures);
     let source_replay_report_sha256 = sha256_json_value(&source_replay);
@@ -17698,7 +17722,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let cancellation_supersession_fixture_count = cancellation_supersession_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let cancellation_fixture_count = cancellation_supersession_fixtures
         .as_array()
@@ -18390,7 +18414,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let audit_fixture_count = audit_trail_immutable_evidence_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let audit_trail_denied_count = audit_trail_immutable_evidence_fixtures
         .as_array()
@@ -19025,7 +19049,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let retention_gc_fixture_count = retention_expiry_garbage_collection_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let fixtures_sha256 = sha256_json_value(&retention_expiry_garbage_collection_fixtures);
     let contract_hash_sha256 = sha256_text_value(&format!(
@@ -19671,7 +19695,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let export_query_observability_fixture_count = export_query_observability_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let mut denials = source_retention
         .get("denied_by_operator_review_acknowledgement_activation_command_result_receipt_retention_expiry_garbage_collection")
@@ -20203,7 +20227,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let operator_summary_briefing_fixture_count = operator_summary_briefing_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let mut denials = source_export
         .get("denied_by_operator_review_acknowledgement_activation_command_result_receipt_export_query_observability")
@@ -20689,7 +20713,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let final_acknowledgement_fixture_count = final_acknowledgement_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let fixtures_sha256 = sha256_json_value(&final_acknowledgement_fixtures);
     let contract_hash_sha256 = sha256_text_value(&format!(
@@ -21155,7 +21179,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let terminal_decision_public_claim_fixture_count = terminal_decision_public_claim_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let fixtures_sha256 = sha256_json_value(&terminal_decision_public_claim_fixtures);
     let contract_hash_sha256 = sha256_text_value(&format!(
@@ -21683,7 +21707,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let release_artifact_publication_fixture_count = release_artifact_publication_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let fixtures_sha256 = sha256_json_value(&release_artifact_publication_fixtures);
     let contract_hash_sha256 = sha256_text_value(&format!(
@@ -22199,7 +22223,7 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_reque
     ]);
     let publication_result_receipt_fixture_count = publication_result_receipt_fixtures
         .as_array()
-        .map(|fixtures| fixtures.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let fixtures_sha256 = sha256_json_value(&publication_result_receipt_fixtures);
     let contract_hash_sha256 = sha256_text_value(&format!(
@@ -22788,10 +22812,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_readiness_index_replay_idem
             serde_json::json!({"memory_write_requested": true, "kg_write_requested": true, "provider_invocation_requested": true, "credential_read_requested": true, "install_restart_requested": true, "public_release_requested": true, "external_send_requested": true})
         ),
     ]);
-    let fixture_count = fixtures
-        .as_array()
-        .map(|fixtures| fixtures.len())
-        .unwrap_or(0);
+    let fixture_count = fixtures.as_array().map(std::vec::Vec::len).unwrap_or(0);
     let replay_idempotency_contract_hash_sha256 = sha256_text_value(&format!(
         "hepta-memory-intelligence-kg-full-live-activation-readiness-index-replay-idempotency-denial:native:source={source_report_sha256}:fixtures={}:replay=0:persist=0:authority=0",
         sha256_json_value(&fixtures)
@@ -23122,10 +23143,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
             "final_operator_review_not_accepted",
         ),
     ]);
-    let section_count = sections
-        .as_array()
-        .map(|sections| sections.len())
-        .unwrap_or(0);
+    let section_count = sections.as_array().map(std::vec::Vec::len).unwrap_or(0);
     let required_field_count = sections
         .as_array()
         .map(|sections| {
@@ -23135,7 +23153,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
                     section
                         .get("required_fields")
                         .and_then(serde_json::Value::as_array)
-                        .map(|fields| fields.len())
+                        .map(std::vec::Vec::len)
                         .unwrap_or(0)
                 })
                 .sum::<usize>()
@@ -23751,7 +23769,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     let field_validation_matrix = serde_json::json!(fields);
     let field_validation_matrix_count = field_validation_matrix
         .as_array()
-        .map(|fields| fields.len())
+        .map(std::vec::Vec::len)
         .unwrap_or(0);
     let field_validation_contract_hash_sha256 = sha256_text_value(&format!(
         "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial:native:source={source_report_sha256}:fields={}:route_count={}:acceptance=0:authority=0:live=0",
@@ -35090,6 +35108,490 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_report =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_report();
+    let source_ready = source_report["status"].as_str() == Some("ready")
+        && source_report["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_ready"]
+            .as_bool()
+            .unwrap_or(false);
+    let source_u64 = |key: &str| source_report[key].as_u64().unwrap_or(0);
+    let source_report_sha256 = sha256_json_value(&source_report);
+    let source_contract_hash = source_report
+        ["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_contract_hash_sha256"]
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string();
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let surface_specs: Vec<(&str, &str, &str, Vec<&str>)> = vec![
+        (
+            "source_artifact_download_install_affordance_report_required",
+            "blocked_source_report_required_noop",
+            "source_artifact_download_install_affordance_report_required",
+            vec!["source_artifact_download_install_affordance_report_required"],
+        ),
+        (
+            "download_button_result_receipt_recording",
+            "blocked_download_button_result_receipt_recording_noop",
+            "download_button_result_receipt_recording_denied",
+            vec!["download_button_result_receipt_record_requested"],
+        ),
+        (
+            "direct_download_url_result_receipt_persistence",
+            "blocked_direct_download_url_result_receipt_persistence_noop",
+            "direct_download_url_result_receipt_persistence_denied",
+            vec!["direct_download_url_result_receipt_persist_requested"],
+        ),
+        (
+            "checksum_prompt_result_receipt_materialization",
+            "blocked_checksum_prompt_result_receipt_materialization_noop",
+            "checksum_prompt_result_receipt_materialization_denied",
+            vec!["checksum_prompt_result_receipt_materialize_requested"],
+        ),
+        (
+            "package_manager_install_command_result_receipt",
+            "blocked_package_manager_install_command_result_receipt_noop",
+            "package_manager_install_command_result_receipt_denied",
+            vec!["package_manager_install_command_result_receipt_requested"],
+        ),
+        (
+            "curl_pipe_shell_result_receipt",
+            "blocked_curl_pipe_shell_result_receipt_noop",
+            "curl_pipe_shell_result_receipt_denied",
+            vec!["curl_pipe_shell_result_receipt_requested"],
+        ),
+        (
+            "installer_launch_prompt_result_receipt",
+            "blocked_installer_launch_prompt_result_receipt_noop",
+            "installer_launch_prompt_result_receipt_denied",
+            vec!["installer_launch_prompt_result_receipt_requested"],
+        ),
+        (
+            "auto_update_offer_result_receipt",
+            "blocked_auto_update_offer_result_receipt_noop",
+            "auto_update_offer_result_receipt_denied",
+            vec!["auto_update_offer_result_receipt_requested"],
+        ),
+        (
+            "release_channel_subscription_result_receipt",
+            "blocked_release_channel_subscription_result_receipt_noop",
+            "release_channel_subscription_result_receipt_denied",
+            vec!["release_channel_subscription_result_receipt_requested"],
+        ),
+        (
+            "update_feed_hint_result_receipt",
+            "blocked_update_feed_hint_result_receipt_noop",
+            "update_feed_hint_result_receipt_denied",
+            vec!["update_feed_hint_result_receipt_requested"],
+        ),
+        (
+            "package_registry_badge_result_receipt",
+            "blocked_package_registry_badge_result_receipt_noop",
+            "package_registry_badge_result_receipt_denied",
+            vec!["package_registry_badge_result_receipt_requested"],
+        ),
+        (
+            "cdn_mirror_download_result_receipt",
+            "blocked_cdn_mirror_download_result_receipt_noop",
+            "cdn_mirror_download_result_receipt_denied",
+            vec!["cdn_mirror_download_result_receipt_requested"],
+        ),
+        (
+            "sbom_provenance_notarization_result_receipt",
+            "blocked_sbom_provenance_notarization_result_receipt_noop",
+            "sbom_provenance_notarization_result_receipt_denied",
+            vec!["sbom_provenance_notarization_result_receipt_requested"],
+        ),
+        (
+            "signature_verification_command_result_receipt",
+            "blocked_signature_verification_command_result_receipt_noop",
+            "signature_verification_command_result_receipt_denied",
+            vec!["signature_verification_command_result_receipt_requested"],
+        ),
+        (
+            "one_click_install_deep_link_result_receipt",
+            "blocked_one_click_install_deep_link_result_receipt_noop",
+            "one_click_install_deep_link_result_receipt_denied",
+            vec!["one_click_install_deep_link_result_receipt_requested"],
+        ),
+        (
+            "external_telegram_install_message_result_receipt",
+            "blocked_external_telegram_install_message_result_receipt_noop",
+            "external_telegram_install_message_result_receipt_denied",
+            vec![
+                "external_install_message_result_receipt_requested",
+                "telegram_install_message_result_receipt_requested",
+            ],
+        ),
+        (
+            "release_publication_authority_install_affordance_result_receipt",
+            "blocked_release_publication_authority_install_affordance_result_receipt_noop",
+            "release_publication_authority_install_affordance_result_receipt_denied",
+            vec!["release_publication_authority_install_affordance_result_receipt_requested"],
+        ),
+        (
+            "activation_live_install_restart_active_binary_result_receipt",
+            "blocked_activation_live_install_restart_active_binary_result_receipt_noop",
+            "activation_live_install_restart_active_binary_result_receipt_denied",
+            vec![
+                "activation_live_install_result_receipt_requested",
+                "install_restart_active_binary_result_receipt_requested",
+            ],
+        ),
+    ];
+
+    let result_receipt_surfaces = surface_specs
+        .into_iter()
+        .map(|(surface, status, reason, requested_flags)| {
+            let mut surface_report = serde_json::json!({
+                "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_surface": surface,
+                "source_artifact_download_install_affordance_denial_ready": true,
+                "source_artifact_download_install_affordance_noop_confirmed": true,
+                "artifact_download_install_affordance_result_receipt_attempted": true,
+                "artifact_download_install_affordance_result_receipt_status": status,
+                "reason": reason,
+            });
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                    "artifact_download_install_affordance_result_receipt_allowed": false,
+                    "artifact_download_install_affordance_result_receipt_schema_accepted": false,
+                    "artifact_download_install_affordance_result_receipt_accepted": false,
+                    "artifact_download_install_affordance_result_receipt_recorded": false,
+                    "artifact_download_install_affordance_result_receipt_persisted": false,
+                    "artifact_download_install_affordance_result_receipt_materialized": false,
+                    "artifact_download_install_affordance_result_receipt_filesystem_written": false,
+                    "artifact_download_install_affordance_result_receipt_ledger_written": false,
+                    "artifact_download_install_affordance_result_receipt_indexed": false,
+                    "artifact_download_install_affordance_result_receipt_enqueued": false,
+                    "artifact_download_install_affordance_result_receipt_delivered": false,
+                    "artifact_download_install_affordance_result_receipt_exported": false,
+                    "artifact_download_install_affordance_result_receipt_query_registered": false,
+                    "artifact_download_install_affordance_result_receipt_observability_recorded": false,
+                    "artifact_download_install_affordance_result_receipt_hash_bound": false,
+                    "artifact_download_install_affordance_result_receipt_status_accepted": false,
+                }),
+            );
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                    "artifact_download_install_affordance_completion_ack_recorded": false,
+                    "artifact_download_install_affordance_completion_ack_persisted": false,
+                    "artifact_download_install_affordance_completion_ack_accepted": false,
+                    "artifact_download_install_affordance_completion_ack_materialized": false,
+                    "artifact_download_install_affordance_completion_ack_delivered": false,
+                    "download_button_rendered": false,
+                    "direct_download_url_exposed": false,
+                    "package_manager_install_command_rendered": false,
+                    "curl_pipe_shell_snippet_rendered": false,
+                    "installer_launch_prompt_rendered": false,
+                    "auto_update_offer_rendered": false,
+                    "external_install_message_sent": false,
+                    "telegram_install_message_sent": false,
+                }),
+            );
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                    "acceptance_recorded": false,
+                    "operator_approval_from_receipt_accepted": false,
+                    "release_publication_authority_from_receipt_derived": false,
+                    "activation_authority_from_receipt_derived": false,
+                    "activation_command_from_receipt_derived": false,
+                    "live_execution_from_receipt_allowed": false,
+                    "activation_from_receipt_performed": false,
+                    "install_from_receipt_executed": false,
+                    "service_restart_from_receipt_performed": false,
+                    "launchd_from_receipt_mutated": false,
+                    "active_binary_from_receipt_mutated": false,
+                    "memory_store_write_performed": false,
+                    "memory_store_mutated": false,
+                    "live_kg_write_performed": false,
+                    "provider_invoked": false,
+                    "model_invoked": false,
+                    "credential_read": false,
+                    "secret_file_read": false,
+                    "receipt_noop_confirmed": true,
+                }),
+            );
+            if let Some(surface_object) = surface_report.as_object_mut() {
+                for flag in requested_flags {
+                    surface_object.insert(flag.to_string(), serde_json::json!(true));
+                }
+            }
+            surface_report
+        })
+        .collect::<Vec<_>>();
+    let result_receipt_surface_count = result_receipt_surfaces.len();
+    let contract_hash = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial:native:source={source_report_sha256}:surfaces={result_receipt_surface_count}:route_count={}:persist=0:ledger=0:authority=0:install=0:live=0",
+        route_matrix.route_count
+    ));
+    let policy_hash = sha256_text_value(
+        "release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial:no-receipt-record:no-receipt-persist:no-ledger:no-index:no-export:no-query:no-observability:no-idempotency:no-install:no-live",
+    );
+    let denials = vec![
+        "source_artifact_download_install_affordance_report_required",
+        "download_button_result_receipt_recording_denied",
+        "direct_download_url_result_receipt_persistence_denied",
+        "checksum_prompt_result_receipt_materialization_denied",
+        "package_manager_install_command_result_receipt_denied",
+        "curl_pipe_shell_result_receipt_denied",
+        "installer_launch_prompt_result_receipt_denied",
+        "auto_update_offer_result_receipt_denied",
+        "release_channel_subscription_result_receipt_denied",
+        "update_feed_hint_result_receipt_denied",
+        "package_registry_badge_result_receipt_denied",
+        "cdn_mirror_download_result_receipt_denied",
+        "sbom_provenance_notarization_result_receipt_denied",
+        "signature_verification_command_result_receipt_denied",
+        "one_click_install_deep_link_result_receipt_denied",
+        "external_telegram_install_message_result_receipt_denied",
+        "release_publication_authority_install_affordance_result_receipt_denied",
+        "activation_live_install_restart_active_binary_result_receipt_denied",
+        "result_receipt_schema_acceptance_denied",
+        "result_receipt_recording_denied",
+        "result_receipt_persistence_denied",
+        "result_receipt_ledger_index_queue_delivery_denied",
+        "result_receipt_export_query_observability_denied",
+        "result_receipt_hash_status_identity_binding_denied",
+        "completion_ack_from_result_receipt_denied",
+        "operator_approval_from_result_receipt_denied",
+        "release_publication_authority_from_result_receipt_denied",
+        "activation_authority_from_result_receipt_denied",
+        "install_restart_active_binary_from_result_receipt_denied",
+        "memory_provider_kg_from_result_receipt_denied",
+    ];
+    let denied_count = denials.len();
+    let report_ready = source_ready
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_attempt_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_allowed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_recorded_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_persisted_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_executed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_download_button_rendered_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_direct_download_url_exposed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_package_manager_install_command_rendered_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_external_install_message_sent_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_release_publication_authority_derived_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_authority_derived_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_live_execution_allowed_count",
+        ) == 0
+        && result_receipt_surface_count == 18
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-18",
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_denial_v1",
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_mode": "native_route_denied_download_install_affordance_cannot_emit_or_persist_a_result_receipt_or_install_activation_evidence",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_route",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_ready": source_ready,
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_report_sha256": source_report_sha256,
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_contract_hash_sha256": source_contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_contract_hash_sha256": contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_policy_hash_sha256": policy_hash,
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_denial_route_enabled": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_denial_ready": report_ready,
+    });
+
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_attempt_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_attempt_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_allowed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_allowed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_recorded_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_recorded_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_persisted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_persisted_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_executed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_executed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_download_button_rendered_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_download_button_rendered_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_direct_download_url_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_direct_download_url_exposed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_package_manager_install_command_rendered_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_package_manager_install_command_rendered_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_external_install_message_sent_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_external_install_message_sent_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_release_publication_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_release_publication_authority_derived_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_authority_derived_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_live_execution_allowed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_live_execution_allowed_count"),
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_surface_count": result_receipt_surface_count,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_attempt_count": result_receipt_surface_count,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_surfaces": result_receipt_surfaces,
+            "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt": denials,
+            "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_count": denied_count,
+            "allowed_next_actions": [
+                {
+                    "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_gate",
+                    "status": "allowed_report_only_next_slice",
+                    "records_result_receipt": false,
+                    "persists_result_receipt": false,
+                    "records_idempotency": false,
+                    "accepts_duplicate_receipt": false,
+                    "renders_download_link": false,
+                    "emits_install_command": false,
+                    "prompts_installer": false,
+                    "publishes_update_offer": false,
+                    "sends_external_install_message": false,
+                    "records_operator_acceptance": false,
+                    "derives_release_publication_authority": false,
+                    "derives_activation_authority": false,
+                    "activates_live": false,
+                    "installs_or_restarts": false,
+                    "mutates_active_binary": false,
+                    "mutates_memory_store": false,
+                    "writes_kg": false,
+                    "sends_externally": false
+                }
+            ],
+        }),
+    );
+
+    let result_receipt_zero_keys = [
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_allowed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_schema_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_materialized_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_filesystem_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ledger_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_indexed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_enqueued_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_delivered_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_exported_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_query_registered_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_observability_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_hash_bound_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_status_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_materialized_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_delivered_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_acceptance_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_operator_approval_from_receipt_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_release_publication_authority_from_receipt_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_authority_from_receipt_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_command_from_receipt_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_live_execution_from_receipt_allowed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_install_from_receipt_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_service_restart_from_receipt_performed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_active_binary_from_receipt_mutated_count",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in result_receipt_zero_keys {
+            report_object.insert(key.to_string(), serde_json::json!(0));
+        }
+    }
+
+    let result_receipt_false_keys = [
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_allowed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_schema_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_materialized",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_filesystem_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ledger_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_indexed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_enqueued",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_delivered",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_exported",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_query_registered",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_observability_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_hash_bound",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_status_accepted",
+        "artifact_download_install_affordance_completion_ack_recorded",
+        "artifact_download_install_affordance_completion_ack_persisted",
+        "artifact_download_install_affordance_completion_ack_accepted",
+        "artifact_download_install_affordance_completion_ack_materialized",
+        "artifact_download_install_affordance_completion_ack_delivered",
+        "operator_acceptance_recorded",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "activation_command_derived",
+        "activation_allowed",
+        "activation_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "external_send_performed",
+        "filesystem_written",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in result_receipt_false_keys {
+            report_object.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for key in result_receipt_false_keys {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -37810,16 +38312,13 @@ mod tests {
         assert!(blockers.contains(&"telegram_owner_handoff_not_requested"));
         assert!(!blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
         assert!(!blockers.contains(&"browser_visual_e2e_not_run_in_this_audit"));
-        let next_actions = value["next_actions"]
+        let mut next_actions = value["next_actions"]
             .as_array()
             .expect("next actions")
             .iter()
-            .filter_map(|item| item.as_str())
-            .collect::<Vec<_>>();
-        assert!(
-            next_actions
-                .contains(&"keep browser visual smoke, preflight, soak, and watchdog gates green")
-        );
+            .filter_map(|item| item.as_str());
+        assert!(next_actions.any(|action| action
+            == "keep browser visual smoke, preflight, soak, and watchdog gates green"));
     }
 
     #[test]
@@ -55150,6 +55649,240 @@ mod tests {
     }
 
     #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_endpoint_blocks_persistence()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt no persistence route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_attempt_count"],
+            18
+        );
+        for key in [
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_allowed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_recorded_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_persisted_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_executed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_download_button_rendered_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_direct_download_url_exposed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_package_manager_install_command_rendered_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_external_install_message_sent_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_release_publication_authority_derived_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_authority_derived_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_live_execution_allowed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_allowed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_schema_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_persisted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_materialized_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_filesystem_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ledger_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_indexed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_enqueued_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_delivered_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_exported_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_query_registered_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_observability_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_hash_bound_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_status_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_persisted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_materialized_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_completion_ack_delivered_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_acceptance_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_operator_approval_from_receipt_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_release_publication_authority_from_receipt_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_authority_from_receipt_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_activation_command_from_receipt_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_live_execution_from_receipt_allowed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_install_from_receipt_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_service_restart_from_receipt_performed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_active_binary_from_receipt_mutated_count",
+        ] {
+            assert_eq!(value[key], 0, "{key}");
+        }
+
+        let surfaces = value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_surfaces"]
+            .as_array()
+            .expect("packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt surfaces");
+        assert_eq!(surfaces.len(), 18);
+        assert_eq!(
+            surfaces[0]["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_surface"],
+            "source_artifact_download_install_affordance_report_required"
+        );
+        for surface in surfaces {
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_attempted"],
+                true
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_allowed"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_schema_accepted"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_recorded"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_persisted"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_ledger_written"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_query_registered"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_observability_recorded"],
+                false
+            );
+            assert_eq!(surface["operator_approval_from_receipt_accepted"], false);
+            assert_eq!(
+                surface["release_publication_authority_from_receipt_derived"],
+                false
+            );
+            assert_eq!(surface["activation_authority_from_receipt_derived"], false);
+            assert_eq!(surface["live_execution_from_receipt_allowed"], false);
+            assert_eq!(surface["install_from_receipt_executed"], false);
+            assert_eq!(surface["active_binary_from_receipt_mutated"], false);
+            assert_eq!(surface["receipt_noop_confirmed"], true);
+        }
+
+        let denied = value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt"]
+            .as_array()
+            .expect("packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt denials");
+        assert_eq!(denied.len(), 30);
+        assert_eq!(
+            value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_gate"
+        );
+        for key in [
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_allowed",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_schema_accepted",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_accepted",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_persisted",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_materialized",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_filesystem_written",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ledger_written",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_indexed",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_enqueued",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_delivered",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_exported",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_query_registered",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_observability_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_hash_bound",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_status_accepted",
+            "artifact_download_install_affordance_completion_ack_recorded",
+            "artifact_download_install_affordance_completion_ack_persisted",
+            "artifact_download_install_affordance_completion_ack_accepted",
+            "artifact_download_install_affordance_completion_ack_materialized",
+            "artifact_download_install_affordance_completion_ack_delivered",
+            "operator_acceptance_recorded",
+            "operator_approval_recorded",
+            "release_publication_authority_derived",
+            "activation_authority_derived",
+            "activation_command_derived",
+            "activation_allowed",
+            "activation_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+            "release_artifact_written",
+            "public_artifact_written",
+            "external_send_performed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"].as_object().expect(
+            "release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
     fn hepta_release_hardening_status_gate_endpoint_is_local_only() {
         let options = NativeGatewayOptions {
             bind_addr: "127.0.0.1:7373".to_string(),
@@ -55430,8 +56163,8 @@ mod tests {
         assert_eq!(report.status, "ready");
         assert_eq!(report.session_file_count, 1);
         assert_eq!(report.recent_session_count, 1);
-        assert_eq!(report.raw_transcript_exposed, false);
-        assert_eq!(report.transcript_text_exposed, false);
+        assert!(!report.raw_transcript_exposed);
+        assert!(!report.transcript_text_exposed);
         assert_eq!(
             report.recent_sessions[0].session_id,
             "019e38e5-4a20-7000-a111-222222222222"
@@ -55507,17 +56240,17 @@ mod tests {
         let body = serde_json::to_string(&report).expect("serialize transcript report");
 
         assert_eq!(report.status, "ready");
-        assert_eq!(report.query_present, true);
-        assert_eq!(report.query_redacted, true);
+        assert!(report.query_present);
+        assert!(report.query_redacted);
         assert_eq!(report.query_length, Some("super-secret-query-marker".len()));
         assert_eq!(report.matched_session_count, 1);
         assert_eq!(report.matched_line_count, 1);
-        assert_eq!(report.raw_transcript_exposed, false);
-        assert_eq!(report.transcript_text_exposed, false);
-        assert_eq!(report.query_text_exposed, false);
+        assert!(!report.raw_transcript_exposed);
+        assert!(!report.transcript_text_exposed);
+        assert!(!report.query_text_exposed);
         assert_eq!(report.sessions[0].line_count, 2);
-        assert_eq!(report.sessions[0].redacted_events[0].redacted, true);
-        assert_eq!(report.sessions[0].redacted_events[0].has_text_fields, true);
+        assert!(report.sessions[0].redacted_events[0].redacted);
+        assert!(report.sessions[0].redacted_events[0].has_text_fields);
         assert!(!body.contains("super-secret-query-marker"));
         assert!(!body.contains("input_text"));
     }
@@ -55622,9 +56355,9 @@ mod tests {
 
         assert!(response.evidence_found);
         assert_eq!(response.matched_line_count, 1);
-        assert_eq!(response.task_id_redacted, true);
-        assert_eq!(response.raw_task_id_exposed, false);
-        assert_eq!(response.transcript_text_exposed, false);
+        assert!(response.task_id_redacted);
+        assert!(!response.raw_task_id_exposed);
+        assert!(!response.transcript_text_exposed);
         assert!(!body.contains("task-secret-123"));
         assert!(!body.contains("confidential patch text"));
     }
@@ -55726,15 +56459,15 @@ mod tests {
         let body = serde_json::to_string(&report).expect("serialize events report");
 
         assert_eq!(report.status, "ready");
-        assert_eq!(report.native_route, true);
+        assert!(report.native_route);
         assert_eq!(report.compatibility_mode, "native_live_events_redacted");
-        assert_eq!(report.cursor_present, true);
-        assert_eq!(report.cursor_redacted, true);
+        assert!(report.cursor_present);
+        assert!(report.cursor_redacted);
         assert_eq!(report.cursor_length, Some("secret-live-cursor".len()));
-        assert_eq!(report.raw_cursor_exposed, false);
-        assert_eq!(report.cursor_text_exposed, false);
-        assert_eq!(report.raw_transcript_exposed, false);
-        assert_eq!(report.transcript_text_exposed, false);
+        assert!(!report.raw_cursor_exposed);
+        assert!(!report.cursor_text_exposed);
+        assert!(!report.raw_transcript_exposed);
+        assert!(!report.transcript_text_exposed);
         assert_eq!(report.total_line_count, 2);
         assert_eq!(report.parsed_json_line_count, 2);
         assert_eq!(report.recent_event_count, 2);
@@ -55837,7 +56570,7 @@ mod tests {
         let body = serde_json::to_string(&report).expect("serialize runtime audit report");
 
         assert_eq!(report.status, "ready");
-        assert_eq!(report.native_route, true);
+        assert!(report.native_route);
         assert_eq!(
             report.compatibility_mode,
             "native_gateway_retry_dead_letter_redacted"
@@ -55845,14 +56578,14 @@ mod tests {
         assert_eq!(report.audit_surface, "gateway_retry_dead_letter");
         assert_eq!(report.retry_or_error_event_count, 1);
         assert_eq!(report.subagent_event_count, 1);
-        assert_eq!(report.redaction.raw_error_payload_exposed, false);
-        assert_eq!(report.redaction.raw_agent_payload_exposed, false);
-        assert_eq!(report.redaction.transcript_text_exposed, false);
-        assert_eq!(report.side_effects.gateway_mutation_performed, false);
-        assert_eq!(report.side_effects.telegram_read_performed, false);
-        assert_eq!(report.side_effects.model_invoked, false);
-        assert_eq!(report.side_effects.message_sent, false);
-        assert_eq!(report.side_effects.cursor_written, false);
+        assert!(!report.redaction.raw_error_payload_exposed);
+        assert!(!report.redaction.raw_agent_payload_exposed);
+        assert!(!report.redaction.transcript_text_exposed);
+        assert!(!report.side_effects.gateway_mutation_performed);
+        assert!(!report.side_effects.telegram_read_performed);
+        assert!(!report.side_effects.model_invoked);
+        assert!(!report.side_effects.message_sent);
+        assert!(!report.side_effects.cursor_written);
         assert!(!body.contains("super-secret-error-payload"));
         assert!(!body.contains("subagent-secret-text"));
     }
@@ -55981,11 +56714,11 @@ mod tests {
         let body = serde_json::to_string(&report).expect("serialize approvals report");
 
         assert_eq!(report.status, "ready");
-        assert_eq!(report.native_route, true);
+        assert!(report.native_route);
         assert_eq!(report.pending_approval_count, 0);
         assert_eq!(report.approval_route_count, report.guarded_route_count);
-        assert_eq!(report.raw_command_payload_exposed, false);
-        assert_eq!(report.raw_approval_payload_exposed, false);
+        assert!(!report.raw_command_payload_exposed);
+        assert!(!report.raw_approval_payload_exposed);
         assert!(report.approval_routes.iter().any(|route| {
             route.pattern == "/api/approvals/exec/apply"
                 && route.guarded
@@ -55999,18 +56732,18 @@ mod tests {
         let report = native_optional_configs_report();
         let body = serde_json::to_string(&report).expect("serialize optional configs report");
 
-        assert_eq!(report.native_route, true);
+        assert!(report.native_route);
         assert_eq!(
             report.compatibility_mode,
             "native_optional_configs_redacted"
         );
-        assert_eq!(report.config_content_exposed, false);
-        assert_eq!(report.raw_config_value_exposed, false);
+        assert!(!report.config_content_exposed);
+        assert!(!report.raw_config_value_exposed);
         assert!(
             report
                 .configs
                 .iter()
-                .any(|config| { config.label == "agents" && config.content_exposed == false })
+                .any(|config| { config.label == "agents" && !config.content_exposed })
         );
         assert!(!body.contains("Be genuinely helpful"));
         assert!(!body.contains("What to call them"));
@@ -56031,7 +56764,7 @@ mod tests {
         );
 
         assert_eq!(report.status, "ready");
-        assert_eq!(report.native_route, true);
+        assert!(report.native_route);
         assert_eq!(report.compatibility_mode, "native_ui_contract_audit");
         assert_eq!(report.route_count, CONTROL_UI_ROUTE_SPECS.len());
         assert_eq!(
@@ -56039,16 +56772,16 @@ mod tests {
             CONTROL_UI_ROUTE_SPECS.len()
         );
         assert_eq!(report.post_route_count, report.guarded_post_route_count);
-        assert_eq!(report.action_dispatched, false);
-        assert_eq!(report.external_agent_spawned, false);
-        assert_eq!(report.external_agent_benchmark_executed, false);
-        assert_eq!(report.redaction.raw_action_payload_exposed, false);
-        assert_eq!(report.redaction.raw_agent_payload_exposed, false);
-        assert_eq!(report.side_effects.gateway_mutation_performed, false);
-        assert_eq!(report.side_effects.telegram_read_performed, false);
-        assert_eq!(report.side_effects.model_invoked, false);
-        assert_eq!(report.side_effects.message_sent, false);
-        assert_eq!(report.side_effects.cursor_written, false);
+        assert!(!report.action_dispatched);
+        assert!(!report.external_agent_spawned);
+        assert!(!report.external_agent_benchmark_executed);
+        assert!(!report.redaction.raw_action_payload_exposed);
+        assert!(!report.redaction.raw_agent_payload_exposed);
+        assert!(!report.side_effects.gateway_mutation_performed);
+        assert!(!report.side_effects.telegram_read_performed);
+        assert!(!report.side_effects.model_invoked);
+        assert!(!report.side_effects.message_sent);
+        assert!(!report.side_effects.cursor_written);
     }
 
     #[test]
@@ -56148,93 +56881,77 @@ mod tests {
         let body = serde_json::to_string(&report).expect("serialize post plan report");
 
         assert_eq!(report.status, "dry_run_ready");
-        assert_eq!(report.native_route, true);
+        assert!(report.native_route);
         assert_eq!(report.compatibility_mode, "native_action_post_dry_run");
-        assert_eq!(report.parameter_present, true);
-        assert_eq!(report.parameter_redacted, true);
+        assert!(report.parameter_present);
+        assert!(report.parameter_redacted);
         assert_eq!(report.parameter_length, Some("secret-action-payload".len()));
-        assert_eq!(report.request_body_read, false);
-        assert_eq!(report.body_schema_ready, true);
-        assert_eq!(report.confirmation_contract_ready, true);
-        assert_eq!(report.rollback_contract_ready, true);
-        assert_eq!(report.idempotency_evidence_ready, true);
-        assert_eq!(report.audit_event_contract_ready, true);
-        assert_eq!(report.execution_admission_ready, true);
+        assert!(!report.request_body_read);
+        assert!(report.body_schema_ready);
+        assert!(report.confirmation_contract_ready);
+        assert!(report.rollback_contract_ready);
+        assert!(report.idempotency_evidence_ready);
+        assert!(report.audit_event_contract_ready);
+        assert!(report.execution_admission_ready);
         assert_eq!(report.body_schema.schema_id, "hepta.post.ui_action.v1");
-        assert_eq!(report.body_schema.body_read_during_plan, false);
-        assert_eq!(report.body_schema.raw_body_exposed, false);
-        assert_eq!(report.body_admission_ready, true);
+        assert!(!report.body_schema.body_read_during_plan);
+        assert!(!report.body_schema.raw_body_exposed);
+        assert!(report.body_admission_ready);
         assert_eq!(report.body_admission.admission_status, "not_required");
-        assert_eq!(report.body_admission.body_received, false);
-        assert_eq!(report.body_admission.request_body_read, false);
-        assert_eq!(report.body_admission.raw_body_exposed, false);
-        assert_eq!(report.body_admission.raw_field_values_exposed, false);
-        assert_eq!(
+        assert!(!report.body_admission.body_received);
+        assert!(!report.body_admission.request_body_read);
+        assert!(!report.body_admission.raw_body_exposed);
+        assert!(!report.body_admission.raw_field_values_exposed);
+        assert!(
             report
                 .body_schema
                 .optional_fields
-                .contains(&"action_payload"),
-            true
+                .contains(&"action_payload")
         );
-        assert_eq!(
-            report
+        assert!(
+            !report
                 .confirmation_contract
-                .current_plan_requires_confirmation,
-            false
+                .current_plan_requires_confirmation
         );
         assert_eq!(
             report.rollback_contract.current_plan_rollback_strategy,
             "noop_no_state_written"
         );
-        assert_eq!(report.rollback_contract.state_written_by_plan, false);
-        assert_eq!(report.idempotency_evidence.required, false);
-        assert_eq!(report.idempotency_evidence.key_present, false);
-        assert_eq!(
-            report.idempotency_evidence.current_plan_store_written,
-            false
-        );
-        assert_eq!(report.idempotency_evidence.raw_key_exposed, false);
-        assert_eq!(report.audit_event_contract.required, false);
+        assert!(!report.rollback_contract.state_written_by_plan);
+        assert!(!report.idempotency_evidence.required);
+        assert!(!report.idempotency_evidence.key_present);
+        assert!(!report.idempotency_evidence.current_plan_store_written);
+        assert!(!report.idempotency_evidence.raw_key_exposed);
+        assert!(!report.audit_event_contract.required);
         assert_eq!(
             report.audit_event_contract.schema_id,
             "hepta.post.execution_audit.v1"
         );
         assert_eq!(report.audit_event_contract.event_kind, "ui_action");
-        assert_eq!(report.audit_event_contract.ready_for_real_handler, true);
-        assert_eq!(
-            report.audit_event_contract.current_plan_emits_audit_event,
-            false
-        );
-        assert_eq!(
-            report
+        assert!(report.audit_event_contract.ready_for_real_handler);
+        assert!(!report.audit_event_contract.current_plan_emits_audit_event);
+        assert!(
+            !report
                 .audit_event_contract
-                .current_plan_persists_audit_event,
-            false
+                .current_plan_persists_audit_event
         );
         assert_eq!(report.execution_admission.admission_status, "blocked");
-        assert_eq!(
-            report
+        assert!(
+            !report
                 .execution_admission
-                .current_plan_executes_real_handler,
-            false
+                .current_plan_executes_real_handler
         );
-        assert_eq!(
-            report.execution_admission.real_handler_currently_enabled,
-            false
-        );
-        assert_eq!(report.execution_admission.real_handler_implemented, false);
-        assert_eq!(
-            report.execution_admission.allowlisted_for_real_handler,
-            false
-        );
-        assert_eq!(report.execution_admission.enablement_gate_enabled, false);
-        assert_eq!(report.execution_admission.requires_dry_run_first, true);
+        assert!(!report.execution_admission.real_handler_currently_enabled);
+        assert!(!report.execution_admission.real_handler_implemented);
+        assert!(!report.execution_admission.allowlisted_for_real_handler);
+        assert!(!report.execution_admission.enablement_gate_enabled);
+        assert!(report.execution_admission.requires_dry_run_first);
         assert_eq!(report.execution_admission.blocked_reason, "plan_only_route");
-        assert_eq!(report.raw_request_body_exposed, false);
-        assert_eq!(report.raw_parameter_exposed, false);
-        assert_eq!(report.action_dispatched, false);
-        assert_eq!(report.gateway_mutation_performed, false);
-        assert_eq!(report.message_sent, false);
+        assert!(!report.raw_request_body_exposed);
+        assert!(!report.raw_parameter_exposed);
+        assert!(!report.action_dispatched);
+        assert!(!report.gateway_mutation_performed);
+        assert!(!report.message_sent);
         assert!(!body.contains("secret-action-payload"));
     }
 
@@ -57023,15 +57740,15 @@ mod tests {
             .find(|store| store.filename == "idempotency.jsonl")
             .expect("idempotency store status");
 
-        assert_eq!(status.exists, true);
-        assert_eq!(status.bytes_within_limit, true);
-        assert_eq!(status.jsonl_readable, true);
-        assert_eq!(status.jsonl_valid, false);
+        assert!(status.exists);
+        assert!(status.bytes_within_limit);
+        assert!(status.jsonl_readable);
+        assert!(!status.jsonl_valid);
         assert_eq!(status.line_count, 2);
-        assert_eq!(status.line_count_within_limit, true);
+        assert!(status.line_count_within_limit);
         assert_eq!(status.valid_json_line_count, 1);
         assert_eq!(status.invalid_json_line_count, 1);
-        assert_eq!(status.raw_idempotency_key_exposed, false);
+        assert!(!status.raw_idempotency_key_exposed);
     }
 
     #[test]
@@ -57056,11 +57773,11 @@ mod tests {
             .find(|store| store.filename == "idempotency.jsonl")
             .expect("idempotency store status");
 
-        assert_eq!(status.exists, true);
-        assert_eq!(status.jsonl_valid, true);
-        assert_eq!(status.bytes_within_limit, false);
+        assert!(status.exists);
+        assert!(status.jsonl_valid);
+        assert!(!status.bytes_within_limit);
         assert_eq!(status.line_count, 2);
-        assert_eq!(status.line_count_within_limit, false);
+        assert!(!status.line_count_within_limit);
         assert_eq!(status.invalid_json_line_count, 0);
     }
 
@@ -57107,25 +57824,25 @@ mod tests {
         );
 
         assert_eq!(execution_admission.admission_status, "harness_ready");
-        assert_eq!(execution_admission.current_plan_executes_real_handler, true);
-        assert_eq!(execution_admission.operator_approval_enabled, true);
+        assert!(execution_admission.current_plan_executes_real_handler);
+        assert!(execution_admission.operator_approval_enabled);
         assert_eq!(
             execution_admission.blocked_reason,
             "real_handler_harness_dry_run_only"
         );
         assert_eq!(harness.status, "dry_run_recorded");
         assert_eq!(harness.handler_kind, "task_publish");
-        assert_eq!(harness.dry_run_only, true);
-        assert_eq!(harness.handler_implemented, true);
-        assert_eq!(harness.dual_gate_satisfied, true);
-        assert_eq!(harness.capacity_check_performed, true);
-        assert_eq!(harness.store_capacity_ok, true);
-        assert_eq!(harness.store_write_attempted, true);
-        assert_eq!(harness.store_write_succeeded, true);
-        assert_eq!(harness.task_published, false);
-        assert_eq!(harness.external_side_effects, false);
-        assert_eq!(harness.raw_request_body_exposed, false);
-        assert_eq!(harness.raw_idempotency_key_exposed, false);
+        assert!(harness.dry_run_only);
+        assert!(harness.handler_implemented);
+        assert!(harness.dual_gate_satisfied);
+        assert!(harness.capacity_check_performed);
+        assert!(harness.store_capacity_ok);
+        assert!(harness.store_write_attempted);
+        assert!(harness.store_write_succeeded);
+        assert!(!harness.task_published);
+        assert!(!harness.external_side_effects);
+        assert!(!harness.raw_request_body_exposed);
+        assert!(!harness.raw_idempotency_key_exposed);
         let report = harness
             .store_write_report
             .as_ref()
@@ -57170,35 +57887,32 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         persist_native_post_execution_store_record(temp.path(), &record).expect("seed stores");
 
-        assert_eq!(
+        assert!(
             native_post_execution_store_capacity_allows_append_with_limits(
                 temp.path(),
                 &record,
                 1024 * 1024,
                 2,
             )
-            .expect("capacity check"),
-            true
+            .expect("capacity check")
         );
-        assert_eq!(
-            native_post_execution_store_capacity_allows_append_with_limits(
+        assert!(
+            !native_post_execution_store_capacity_allows_append_with_limits(
                 temp.path(),
                 &record,
                 1024 * 1024,
                 1,
             )
-            .expect("line capacity check"),
-            false
+            .expect("line capacity check")
         );
-        assert_eq!(
-            native_post_execution_store_capacity_allows_append_with_limits(
+        assert!(
+            !native_post_execution_store_capacity_allows_append_with_limits(
                 temp.path(),
                 &record,
                 8,
                 10,
             )
-            .expect("byte capacity check"),
-            false
+            .expect("byte capacity check")
         );
     }
 
@@ -57248,13 +57962,13 @@ mod tests {
         );
 
         assert_eq!(first.status, "dry_run_recorded");
-        assert_eq!(first.store_write_succeeded, true);
+        assert!(first.store_write_succeeded);
         assert_eq!(second.status, "duplicate_suppressed");
-        assert_eq!(second.duplicate_check_performed, true);
-        assert_eq!(second.duplicate_found, true);
-        assert_eq!(second.duplicate_suppressed, true);
-        assert_eq!(second.store_write_attempted, false);
-        assert_eq!(second.store_write_succeeded, false);
+        assert!(second.duplicate_check_performed);
+        assert!(second.duplicate_found);
+        assert!(second.duplicate_suppressed);
+        assert!(!second.store_write_attempted);
+        assert!(!second.store_write_succeeded);
         assert!(second.store_write_report.is_none());
         let idempotency_content = std::fs::read_to_string(temp.path().join("idempotency.jsonl"))
             .expect("idempotency store");
@@ -57337,16 +58051,16 @@ mod tests {
         );
 
         assert_eq!(first.status, "dry_run_recorded");
-        assert_eq!(first.rate_limit_check_performed, true);
-        assert_eq!(first.rate_limited, false);
+        assert!(first.rate_limit_check_performed);
+        assert!(!first.rate_limited);
         assert_eq!(second.status, "rate_limited");
-        assert_eq!(second.duplicate_check_performed, true);
-        assert_eq!(second.duplicate_found, false);
-        assert_eq!(second.rate_limit_check_performed, true);
-        assert_eq!(second.rate_limited, true);
-        assert_eq!(second.rate_limit_suppressed, true);
-        assert_eq!(second.store_write_attempted, false);
-        assert_eq!(second.store_write_succeeded, false);
+        assert!(second.duplicate_check_performed);
+        assert!(!second.duplicate_found);
+        assert!(second.rate_limit_check_performed);
+        assert!(second.rate_limited);
+        assert!(second.rate_limit_suppressed);
+        assert!(!second.store_write_attempted);
+        assert!(!second.store_write_succeeded);
         assert!(second.store_write_report.is_none());
         let rate_limit_content = std::fs::read_to_string(temp.path().join("rate-limit.jsonl"))
             .expect("rate-limit store");
@@ -57415,20 +58129,20 @@ mod tests {
             );
 
             assert_eq!(body_admission.admission_status, "ready_for_real_handler");
-            assert_eq!(native_post_plan_kind_has_real_handler(plan_kind), true);
+            assert!(native_post_plan_kind_has_real_handler(plan_kind));
             assert_eq!(execution_admission.admission_status, "harness_ready");
-            assert_eq!(execution_admission.current_plan_executes_real_handler, true);
+            assert!(execution_admission.current_plan_executes_real_handler);
             assert_eq!(harness.status, "dry_run_recorded");
             assert_eq!(harness.handler_kind, plan_kind);
-            assert_eq!(harness.handler_implemented, true);
-            assert_eq!(harness.dry_run_only, true);
-            assert_eq!(harness.store_write_attempted, true);
-            assert_eq!(harness.store_write_succeeded, true);
-            assert_eq!(harness.task_published, false);
-            assert_eq!(harness.message_sent, false);
-            assert_eq!(harness.external_side_effects, false);
-            assert_eq!(harness.raw_request_body_exposed, false);
-            assert_eq!(harness.raw_idempotency_key_exposed, false);
+            assert!(harness.handler_implemented);
+            assert!(harness.dry_run_only);
+            assert!(harness.store_write_attempted);
+            assert!(harness.store_write_succeeded);
+            assert!(!harness.task_published);
+            assert!(!harness.message_sent);
+            assert!(!harness.external_side_effects);
+            assert!(!harness.raw_request_body_exposed);
+            assert!(!harness.raw_idempotency_key_exposed);
 
             let report = harness
                 .store_write_report
@@ -57485,22 +58199,19 @@ mod tests {
         );
 
         assert_eq!(execution_admission.admission_status, "blocked");
-        assert_eq!(
-            execution_admission.current_plan_executes_real_handler,
-            false
-        );
-        assert_eq!(execution_admission.enablement_gate_enabled, true);
-        assert_eq!(execution_admission.operator_approval_enabled, false);
+        assert!(!execution_admission.current_plan_executes_real_handler);
+        assert!(execution_admission.enablement_gate_enabled);
+        assert!(!execution_admission.operator_approval_enabled);
         assert_eq!(
             execution_admission.blocked_reason,
             "operator_approval_required"
         );
         assert_eq!(harness.status, "blocked");
-        assert_eq!(harness.dual_gate_satisfied, false);
-        assert_eq!(harness.store_write_attempted, false);
-        assert_eq!(harness.store_write_succeeded, false);
+        assert!(!harness.dual_gate_satisfied);
+        assert!(!harness.store_write_attempted);
+        assert!(!harness.store_write_succeeded);
         assert!(harness.store_write_report.is_none());
-        assert_eq!(temp.path().join("idempotency.jsonl").exists(), false);
+        assert!(!temp.path().join("idempotency.jsonl").exists());
     }
 
     #[test]
@@ -57550,22 +58261,19 @@ mod tests {
         );
 
         assert_eq!(mismatched_admission.admission_status, "blocked");
-        assert_eq!(
-            mismatched_admission.current_plan_executes_real_handler,
-            false
-        );
-        assert_eq!(mismatched_admission.handler_scope_configured, true);
-        assert_eq!(mismatched_admission.handler_scope_required, true);
-        assert_eq!(mismatched_admission.handler_scope_matches, false);
+        assert!(!mismatched_admission.current_plan_executes_real_handler);
+        assert!(mismatched_admission.handler_scope_configured);
+        assert!(mismatched_admission.handler_scope_required);
+        assert!(!mismatched_admission.handler_scope_matches);
         assert_eq!(
             mismatched_admission.blocked_reason,
             "handler_scope_not_selected"
         );
         assert_eq!(mismatched_harness.status, "blocked");
-        assert_eq!(mismatched_harness.handler_scope_configured, true);
-        assert_eq!(mismatched_harness.handler_scope_matches, false);
-        assert_eq!(mismatched_harness.store_write_attempted, false);
-        assert_eq!(temp.path().join("idempotency.jsonl").exists(), false);
+        assert!(mismatched_harness.handler_scope_configured);
+        assert!(!mismatched_harness.handler_scope_matches);
+        assert!(!mismatched_harness.store_write_attempted);
+        assert!(!temp.path().join("idempotency.jsonl").exists());
 
         let matched_harness = native_post_real_handler_harness(
             spec,
@@ -57578,11 +58286,11 @@ mod tests {
         );
 
         assert_eq!(matched_admission.admission_status, "harness_ready");
-        assert_eq!(matched_admission.handler_scope_matches, true);
+        assert!(matched_admission.handler_scope_matches);
         assert_eq!(matched_harness.status, "dry_run_recorded");
-        assert_eq!(matched_harness.handler_scope_matches, true);
-        assert_eq!(matched_harness.store_write_attempted, true);
-        assert_eq!(matched_harness.store_write_succeeded, true);
+        assert!(matched_harness.handler_scope_matches);
+        assert!(matched_harness.store_write_attempted);
+        assert!(matched_harness.store_write_succeeded);
         let content = std::fs::read_to_string(temp.path().join("idempotency.jsonl"))
             .expect("idempotency store");
         assert!(content.contains("task_publish"));
@@ -57621,8 +58329,8 @@ mod tests {
 
         assert_eq!(report.status, "written");
         assert_eq!(report.written_file_count, 4);
-        assert_eq!(report.raw_request_body_exposed, false);
-        assert_eq!(report.raw_idempotency_key_exposed, false);
+        assert!(!report.raw_request_body_exposed);
+        assert!(!report.raw_idempotency_key_exposed);
         for file in report.written_files {
             let content = std::fs::read_to_string(&file).expect("read store file");
             assert!(content.contains("hepta.post.execution_store_record.v1"));
@@ -57667,8 +58375,8 @@ mod tests {
         );
         assert_eq!(empty.status, "ready");
         assert_eq!(empty.record_count, 0);
-        assert_eq!(empty.rollback_anchor_present, false);
-        assert_eq!(empty.dry_run_record_present, false);
+        assert!(!empty.rollback_anchor_present);
+        assert!(!empty.dry_run_record_present);
         assert!(empty.latest_record.is_none());
 
         persist_native_post_execution_store_record(temp.path(), &record).expect("write stores");
@@ -57680,27 +58388,27 @@ mod tests {
         );
 
         assert_eq!(report.status, "ready");
-        assert_eq!(report.rollout_evidence_ready, true);
+        assert!(report.rollout_evidence_ready);
         assert_eq!(report.record_count, 1);
         assert_eq!(report.dry_run_record_count, 1);
         assert_eq!(report.rollback_anchor_count, 1);
-        assert_eq!(report.rollback_anchor_present, true);
-        assert_eq!(report.dry_run_record_present, true);
+        assert!(report.rollback_anchor_present);
+        assert!(report.dry_run_record_present);
         assert_eq!(report.invalid_json_line_count, 0);
         assert_eq!(report.plan_kind_counts.len(), 1);
         assert_eq!(report.plan_kind_counts[0].plan_kind, "task_publish");
         assert_eq!(report.plan_kind_counts[0].count, 1);
-        assert_eq!(report.raw_request_body_exposed, false);
-        assert_eq!(report.raw_idempotency_key_exposed, false);
-        assert_eq!(report.task_published, false);
-        assert_eq!(report.external_side_effects, false);
+        assert!(!report.raw_request_body_exposed);
+        assert!(!report.raw_idempotency_key_exposed);
+        assert!(!report.task_published);
+        assert!(!report.external_side_effects);
         let latest = report.latest_record.expect("latest record");
         assert_eq!(latest.plan_kind.as_deref(), Some("task_publish"));
-        assert_eq!(latest.current_plan_executes_real_handler, true);
-        assert_eq!(latest.idempotency_key_redacted, true);
-        assert_eq!(latest.idempotency_key_fingerprint_present, true);
-        assert_eq!(latest.raw_request_body_exposed, false);
-        assert_eq!(latest.raw_idempotency_key_exposed, false);
+        assert!(latest.current_plan_executes_real_handler);
+        assert!(latest.idempotency_key_redacted);
+        assert!(latest.idempotency_key_fingerprint_present);
+        assert!(!latest.raw_request_body_exposed);
+        assert!(!latest.raw_idempotency_key_exposed);
         let rollback_content =
             std::fs::read_to_string(temp.path().join("rollback.jsonl")).expect("rollback store");
         assert!(!rollback_content.contains("secret rollout task"));
@@ -57742,8 +58450,8 @@ mod tests {
         );
         assert_eq!(before.status, "staged");
         assert_eq!(before.gray_release_phase, "awaiting_scoped_dry_run_record");
-        assert_eq!(before.gray_release_ready, false);
-        assert_eq!(before.selected_handler_evidence_ready, false);
+        assert!(!before.gray_release_ready);
+        assert!(!before.selected_handler_evidence_ready);
 
         persist_native_post_execution_store_record(temp.path(), &record).expect("write stores");
         let report = hepta_gateway::native_post_gray_release_evidence_report(
@@ -57757,15 +58465,15 @@ mod tests {
 
         assert_eq!(report.status, "ready");
         assert_eq!(report.gray_release_phase, "gray_release_ready");
-        assert_eq!(report.activation_currently_enabled, true);
-        assert_eq!(report.single_handler_scope_ready, true);
+        assert!(report.activation_currently_enabled);
+        assert!(report.single_handler_scope_ready);
         assert_eq!(
             report.selected_handler_kind.as_deref(),
             Some("task_publish")
         );
-        assert_eq!(report.gray_release_evidence_ready, true);
-        assert_eq!(report.selected_handler_evidence_ready, true);
-        assert_eq!(report.gray_release_ready, true);
+        assert!(report.gray_release_evidence_ready);
+        assert!(report.selected_handler_evidence_ready);
+        assert!(report.gray_release_ready);
         assert_eq!(report.selected_handler_evidence.record_count, 1);
         assert_eq!(report.selected_handler_evidence.dry_run_record_count, 1);
         assert_eq!(report.selected_handler_evidence.rollback_anchor_count, 1);
@@ -57777,8 +58485,8 @@ mod tests {
                 .and_then(|record| record.plan_kind.as_deref()),
             Some("task_publish")
         );
-        assert_eq!(report.raw_request_body_exposed, false);
-        assert_eq!(report.raw_idempotency_key_exposed, false);
+        assert!(!report.raw_request_body_exposed);
+        assert!(!report.raw_idempotency_key_exposed);
         let rollback_content =
             std::fs::read_to_string(temp.path().join("rollback.jsonl")).expect("rollback store");
         assert!(!rollback_content.contains("secret gray task"));
