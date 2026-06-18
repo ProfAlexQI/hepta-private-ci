@@ -8,6 +8,10 @@ INSTALLED_BIN="${HEPTA_INSTALLED_BIN:-${HEPTA_CODEX_INSTALLED_BIN:-$HOME/.local/
 BACKUP_ROOT="${HEPTA_BACKUP_ROOT:-$HOME/.openclaw/workspace/backups}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 
+if [[ -z "${HEPTA_RELEASE_BIN:-}${HEPTA_CODEX_RELEASE_BIN:-}" && ! -f "$RELEASE_BIN" && -f "$INSTALLED_BIN" ]]; then
+  RELEASE_BIN="$INSTALLED_BIN"
+fi
+
 release_sha=""
 installed_sha=""
 if [[ -f "$RELEASE_BIN" ]]; then

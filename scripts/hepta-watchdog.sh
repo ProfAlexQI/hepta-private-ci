@@ -6,6 +6,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$REPO_ROOT/codex-rs/target/release/hepta}}"
 INSTALLED_BIN="${HEPTA_INSTALLED_BIN:-${HEPTA_CODEX_INSTALLED_BIN:-$HOME/.local/opt/hepta/bin/hepta}}"
 
+if [[ -z "${HEPTA_RELEASE_BIN:-}${HEPTA_CODEX_RELEASE_BIN:-}" && ! -f "$RELEASE_BIN" && -f "$INSTALLED_BIN" ]]; then
+  RELEASE_BIN="$INSTALLED_BIN"
+fi
+
 release_sha=""
 installed_sha=""
 if [[ -f "$RELEASE_BIN" ]]; then

@@ -10,6 +10,10 @@ SERVICE_LABEL="${HEPTA_LAUNCHD_LABEL:-ai.hepta.gateway}"
 SERVICE_TARGET="${HEPTA_LAUNCHD_TARGET:-gui/$(id -u)/$SERVICE_LABEL}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 
+if [[ -z "${HEPTA_RELEASE_BIN:-}${HEPTA_CODEX_RELEASE_BIN:-}" && ! -f "$RELEASE_BIN" && -f "$INSTALLED_BIN" ]]; then
+  RELEASE_BIN="$INSTALLED_BIN"
+fi
+
 release_sha=""
 installed_sha=""
 rollback_sha=""
