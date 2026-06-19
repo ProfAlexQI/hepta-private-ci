@@ -18,8 +18,8 @@ The route records no audit trail, immutable evidence, hash chain, ledger evidenc
 `scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-audit-trail-immutable-evidence-route-gate.sh` validates:
 
 - source audit-trail/immutable-evidence denial gate readiness and no-op counts;
-- native gateway route wiring, source command count `148`, endpoint path, report function, and focused unit test;
+- native gateway route wiring, source command count `149`, endpoint path, report function, and focused unit test;
 - optional live endpoint parity with `HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT=1`;
-- terminal coverage marker count `288/288`.
+- terminal coverage marker count `289/289`.
 
 The only allowed next action is the report-only retention/expiry/garbage-collection denial slice.
