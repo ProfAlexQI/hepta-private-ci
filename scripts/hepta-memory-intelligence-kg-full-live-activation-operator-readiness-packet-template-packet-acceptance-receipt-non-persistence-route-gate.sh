@@ -111,7 +111,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 152;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 153;' \
   "native gateway route/source command count includes operator readiness packet acceptance receipt route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_NON_PERSISTENCE_ENDPOINT' \
@@ -149,7 +149,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 152
+    and .route_count == 153
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_non_persistence_route_enabled == true
@@ -231,8 +231,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 292
-  and .present_required_marker_count == 292
+  and .required_marker_count == 293
+  and .present_required_marker_count == 293
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -275,8 +275,8 @@ jq -n \
     focused_test_log:$test_log,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked: ($live != null),
-    source_route_count_expected:152,
-    terminal_required_marker_count_expected:292,
+    source_route_count_expected:153,
+    terminal_required_marker_count_expected:293,
     source_packet_assembly_ready: $source.source_packet_assembly_ready,
     source_packet_assembly_attempt_count: $source.source_packet_assembly_attempt_count,
     receipt_surface_count: $source.receipt_surface_count,
