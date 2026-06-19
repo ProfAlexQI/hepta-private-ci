@@ -168,7 +168,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 147;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 148;' \
   "native gateway route/source command count includes packet acceptance receipt release publication result receipt operator-facing summary/briefing route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ENDPOINT' \
@@ -207,8 +207,8 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 147
-    and .implemented_route_count == 147
+    and .route_count == 148
+    and .implemented_route_count == 148
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_operator_facing_summary_briefing_non_persistence_denial_route_enabled == true
@@ -249,8 +249,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 287
-  and .present_required_marker_count == 287
+  and .required_marker_count == 288
+  and .present_required_marker_count == 288
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -296,8 +296,8 @@ jq -n \
     focused_test_log:$focused_test_log,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_endpoint_checked,
-    source_route_count_expected:147,
-    terminal_required_marker_count_expected:287,
+    source_route_count_expected:148,
+    terminal_required_marker_count_expected:288,
     source_packet_acceptance_receipt_release_publication_result_receipt_export_query_observability_ready:true,
     release_publication_result_receipt_operator_facing_summary_briefing_surface_count:18,
     release_publication_result_receipt_operator_summary_recorded_count:0,
