@@ -120,7 +120,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 149;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 150;' \
   "native gateway route/source command count includes readiness index replay/idempotency route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_READINESS_INDEX_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT' \
@@ -158,7 +158,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 149
+    and .route_count == 150
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_readiness_index_replay_idempotency_denial_route_enabled == true
@@ -210,8 +210,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 289
-  and .present_required_marker_count == 289
+  and .required_marker_count == 290
+  and .present_required_marker_count == 290
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -249,7 +249,7 @@ jq -n \
     source_replay_idempotency_gate_ready:$source.memory_intelligence_kg_full_live_activation_readiness_index_replay_idempotency_denial_ready,
     source_replay_gate_sha256:$source_replay_gate_sha256,
     source_route_wired:true,
-    source_route_count_expected:149,
+    source_route_count_expected:150,
     native_gateway_source:"codex-rs/cli/src/native_gateway.rs",
     native_gateway_sha256:$native_gateway_sha256,
     native_gateway_unit_test_log:$test_log,
