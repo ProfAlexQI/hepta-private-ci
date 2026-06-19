@@ -47,7 +47,7 @@ require_source_text "$SOURCE_REPLAY_IDEMPOTENCY_GATE" \
   "source replay/idempotency gate denies memory/provider/KG replay"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 146;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 147;' \
   "native gateway route/source command count includes artifact download/install affordance result receipt replay/idempotency route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT' \
@@ -83,8 +83,8 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 146
-    and .implemented_route_count == 146
+    and .route_count == 147
+    and .implemented_route_count == 147
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_route_enabled == true
@@ -116,8 +116,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 286
-  and .present_required_marker_count == 286
+  and .required_marker_count == 287
+  and .present_required_marker_count == 287
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -163,8 +163,8 @@ jq -n \
     focused_test_log:$focused_test_log,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_endpoint_checked,
-    source_route_count_expected:146,
-    terminal_required_marker_count_expected:286,
+    source_route_count_expected:147,
+    terminal_required_marker_count_expected:287,
     result_receipt_replay_idempotency_surface_count:18,
     result_receipt_replay_allowed_count:0,
     result_receipt_duplicate_accepted_count:0,
@@ -187,4 +187,4 @@ jq -n \
     }
   }'
 
-echo "artifact download/install affordance result receipt replay/idempotency denial route gate passed: endpoint ready, 18 surfaces, source route count 146, terminal markers 286/286" >&2
+echo "artifact download/install affordance result receipt replay/idempotency denial route gate passed: endpoint ready, 18 surfaces, source route count 147, terminal markers 287/287" >&2
