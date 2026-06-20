@@ -161,7 +161,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 159;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 160;' \
   "native gateway route/source command count includes activation command result receipt final operator acknowledgement route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT' \
@@ -199,7 +199,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 159
+    and .route_count == 160
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .source_operator_review_acknowledgement_activation_command_result_receipt_operator_facing_summary_briefing_route_ready == true
@@ -248,8 +248,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 299
-  and .present_required_marker_count == 299
+  and .required_marker_count == 300
+  and .present_required_marker_count == 300
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
