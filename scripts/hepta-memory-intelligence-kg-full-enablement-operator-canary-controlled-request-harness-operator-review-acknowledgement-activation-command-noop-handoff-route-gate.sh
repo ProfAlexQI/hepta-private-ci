@@ -160,7 +160,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 156;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 157;' \
   "native gateway route/source command count includes activation command no-op handoff route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_NOOP_HANDOFF_ENDPOINT' \
@@ -201,7 +201,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 156
+    and .route_count == 157
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_noop_handoff_route_enabled == true

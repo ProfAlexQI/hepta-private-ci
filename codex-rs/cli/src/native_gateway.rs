@@ -264,6 +264,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-binding-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REPLAY_CROSS_BINDING_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-replay-cross-binding-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -274,7 +276,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 156;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 157;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1032,6 +1034,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-replay-cross-binding-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-replay-cross-binding-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session replay/cross-binding denial; models denied identity/session replay, cross-session binding, token/fingerprint/nonce/device-session rebinds, authority, install/restart/active-binary mutation, Memory/KG writes, provider/model invocation, credential reads, and channel/Telegram/external sends while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout denial; models denied identity revocation, session logout, session lifecycle mutation, revocation/logout tokens, authority, install/restart/active-binary mutation, Memory/KG writes, provider/model invocation, credential reads, and channel/Telegram/external sends while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2589,6 +2598,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denial_report(),
                     ),
                 );
             }
@@ -42149,6 +42168,512 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let source = hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_denial_report();
+    let source_report_sha256 = sha256_text_value(&source.to_string());
+    let source_contract_hash = source
+        .get("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_contract_hash_sha256")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let source_bool = |key: &str| -> bool {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| -> u64 {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_ready = source_bool(
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_denial_ready",
+    );
+
+    let surface_false_keys = [
+        "operator_identity_revocation_requested",
+        "operator_session_logout_requested",
+        "session_revocation_requested",
+        "session_logout_requested",
+        "session_lifecycle_mutation_requested",
+        "operator_identity_revocation_accepted",
+        "operator_identity_revocation_recorded",
+        "operator_identity_revocation_persisted",
+        "operator_session_logout_accepted",
+        "operator_session_logout_recorded",
+        "operator_session_logout_persisted",
+        "session_revocation_recorded",
+        "session_revocation_persisted",
+        "session_logout_recorded",
+        "session_logout_persisted",
+        "identity_invalidation_recorded",
+        "revocation_token_recorded",
+        "logout_nonce_recorded",
+        "device_session_logout_recorded",
+        "session_revocation_refresh_recorded",
+        "identity_revocation_status_promoted",
+        "session_logout_summary_promoted",
+        "operator_approval_from_revocation_logout_derived",
+        "acceptance_from_revocation_logout_recorded",
+        "terminal_decision_from_revocation_logout_recorded",
+        "terminal_status_from_revocation_logout_recorded",
+        "release_publication_authority_from_revocation_logout_derived",
+        "activation_authority_from_revocation_logout_derived",
+        "download_link_from_revocation_logout_rendered",
+        "install_command_from_revocation_logout_rendered",
+        "install_from_revocation_logout_executed",
+        "service_restart_from_revocation_logout_performed",
+        "launchd_from_revocation_logout_mutated",
+        "active_binary_from_revocation_logout_mutated",
+        "result_receipt_from_revocation_logout_recorded",
+        "result_receipt_from_revocation_logout_persisted",
+        "identity_invalidation_requested",
+        "revocation_token_requested",
+        "logout_nonce_requested",
+        "device_session_logout_requested",
+        "session_revocation_refresh_requested",
+        "identity_revocation_status_requested",
+        "session_logout_summary_requested",
+        "identity_badge_revocation_requested",
+        "session_readback_logout_requested",
+        "identity_dashboard_revocation_requested",
+        "channel_session_logout_requested",
+        "operator_identity_approval_revocation_requested",
+        "telegram_identity_session_logout_revocation_requested",
+        "authority_revocation_logout_requested",
+        "live_session_revocation_requested",
+        "install_restart_active_binary_session_revocation_requested",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+    ];
+    let surface_specs = [
+        (
+            "source_operator_identity_session_replay_cross_binding_report_required",
+            "blocked_source_replay_cross_binding_required_noop",
+            "source_operator_identity_session_replay_cross_binding_report_required",
+            &["source_operator_identity_session_replay_cross_binding_report_required"][..],
+        ),
+        (
+            "download_button_identity_revocation_claim",
+            "blocked_identity_revocation_noop",
+            "download_button_identity_revocation_claim_denied",
+            &[
+                "operator_identity_revocation_requested",
+                "session_lifecycle_mutation_requested",
+            ][..],
+        ),
+        (
+            "direct_download_url_session_logout_claim",
+            "blocked_session_logout_noop",
+            "direct_download_url_session_logout_claim_denied",
+            &[
+                "operator_session_logout_requested",
+                "session_logout_requested",
+                "session_lifecycle_mutation_requested",
+            ][..],
+        ),
+        (
+            "checksum_prompt_identity_invalidation_claim",
+            "blocked_identity_invalidation_noop",
+            "checksum_prompt_identity_invalidation_claim_denied",
+            &[
+                "operator_identity_revocation_requested",
+                "identity_invalidation_requested",
+            ][..],
+        ),
+        (
+            "package_manager_install_command_session_revocation_token_claim",
+            "blocked_session_revocation_token_noop",
+            "package_manager_install_command_session_revocation_token_claim_denied",
+            &["session_revocation_requested", "revocation_token_requested"][..],
+        ),
+        (
+            "curl_pipe_shell_logout_nonce_claim",
+            "blocked_logout_nonce_noop",
+            "curl_pipe_shell_logout_nonce_claim_denied",
+            &[
+                "operator_session_logout_requested",
+                "logout_nonce_requested",
+            ][..],
+        ),
+        (
+            "installer_launch_prompt_device_session_logout_claim",
+            "blocked_device_session_logout_noop",
+            "installer_launch_prompt_device_session_logout_claim_denied",
+            &[
+                "operator_session_logout_requested",
+                "device_session_logout_requested",
+            ][..],
+        ),
+        (
+            "auto_update_offer_session_revocation_refresh_claim",
+            "blocked_session_revocation_refresh_noop",
+            "auto_update_offer_session_revocation_refresh_claim_denied",
+            &[
+                "session_revocation_requested",
+                "session_revocation_refresh_requested",
+            ][..],
+        ),
+        (
+            "release_channel_subscription_identity_revocation_status_claim",
+            "blocked_identity_revocation_status_noop",
+            "release_channel_subscription_identity_revocation_status_claim_denied",
+            &[
+                "operator_identity_revocation_requested",
+                "identity_revocation_status_requested",
+            ][..],
+        ),
+        (
+            "update_feed_hint_session_logout_summary_claim",
+            "blocked_session_logout_summary_noop",
+            "update_feed_hint_session_logout_summary_claim_denied",
+            &[
+                "operator_session_logout_requested",
+                "session_logout_summary_requested",
+            ][..],
+        ),
+        (
+            "package_registry_badge_operator_identity_badge_revocation_claim",
+            "blocked_identity_badge_revocation_noop",
+            "package_registry_badge_operator_identity_badge_revocation_claim_denied",
+            &[
+                "operator_identity_revocation_requested",
+                "identity_badge_revocation_requested",
+            ][..],
+        ),
+        (
+            "cdn_mirror_download_session_readback_logout_claim",
+            "blocked_session_readback_logout_noop",
+            "cdn_mirror_download_session_readback_logout_claim_denied",
+            &[
+                "operator_session_logout_requested",
+                "session_readback_logout_requested",
+            ][..],
+        ),
+        (
+            "sbom_provenance_notarization_identity_dashboard_revocation_claim",
+            "blocked_identity_dashboard_revocation_noop",
+            "sbom_provenance_notarization_identity_dashboard_revocation_claim_denied",
+            &[
+                "operator_identity_revocation_requested",
+                "identity_dashboard_revocation_requested",
+            ][..],
+        ),
+        (
+            "signature_verification_command_channel_session_logout_claim",
+            "blocked_channel_session_logout_noop",
+            "signature_verification_command_channel_session_logout_claim_denied",
+            &[
+                "operator_session_logout_requested",
+                "channel_session_logout_requested",
+            ][..],
+        ),
+        (
+            "one_click_install_deep_link_operator_identity_approval_revocation_claim",
+            "blocked_identity_approval_revocation_noop",
+            "one_click_install_deep_link_operator_identity_approval_revocation_claim_denied",
+            &[
+                "operator_identity_revocation_requested",
+                "operator_identity_approval_revocation_requested",
+            ][..],
+        ),
+        (
+            "external_telegram_install_message_identity_session_logout_revocation_claim",
+            "blocked_external_telegram_logout_revocation_noop",
+            "external_telegram_install_message_identity_session_logout_revocation_claim_denied",
+            &[
+                "operator_identity_revocation_requested",
+                "operator_session_logout_requested",
+                "telegram_identity_session_logout_revocation_requested",
+            ][..],
+        ),
+        (
+            "release_publication_authority_identity_session_revocation_logout_claim",
+            "blocked_authority_revocation_logout_noop",
+            "release_publication_authority_identity_session_revocation_logout_claim_denied",
+            &[
+                "operator_identity_revocation_requested",
+                "operator_session_logout_requested",
+                "authority_revocation_logout_requested",
+            ][..],
+        ),
+        (
+            "activation_live_install_restart_active_binary_session_revocation_claim",
+            "blocked_live_session_revocation_noop",
+            "activation_live_install_restart_active_binary_session_revocation_claim_denied",
+            &[
+                "session_revocation_requested",
+                "live_session_revocation_requested",
+                "install_restart_active_binary_session_revocation_requested",
+            ][..],
+        ),
+    ];
+    let operator_identity_session_revocation_logout_surfaces = surface_specs
+        .iter()
+        .map(|(surface, status, reason, extra_true_keys)| {
+            let mut surface_report = serde_json::json!({
+                "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_surface": surface,
+                "source_operator_identity_session_replay_cross_binding_ready": source_ready,
+                "artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_attempted": true,
+                "operator_identity_session_revocation_logout_noop_confirmed": true,
+                "operator_identity_session_revocation_logout_status": status,
+                "reason": reason,
+            });
+            if let Some(surface_object) = surface_report.as_object_mut() {
+                for key in &surface_false_keys {
+                    surface_object.insert((*key).to_string(), serde_json::json!(false));
+                }
+                for key in extra_true_keys.iter() {
+                    surface_object.insert((*key).to_string(), serde_json::json!(true));
+                }
+            }
+            surface_report
+        })
+        .collect::<Vec<_>>();
+    let operator_identity_session_revocation_logout_surface_count =
+        operator_identity_session_revocation_logout_surfaces.len();
+    let contract_hash = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-denial:native:source={source_report_sha256}:surfaces={operator_identity_session_revocation_logout_surface_count}:route_count={}:revocation=0:logout=0:lifecycle=0:authority=0:install=0:live=0",
+        route_matrix.route_count
+    ));
+    let policy_hash = sha256_text_value(
+        "artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout:no-revocation:no-logout:no-lifecycle:no-approval:no-authority:no-install:no-live",
+    );
+    let denials = vec![
+        "artifact_download_install_affordance_result_receipt_operator_identity_revocation_acceptance_denied",
+        "artifact_download_install_affordance_result_receipt_operator_identity_revocation_recording_denied",
+        "artifact_download_install_affordance_result_receipt_operator_session_logout_acceptance_denied",
+        "artifact_download_install_affordance_result_receipt_operator_session_logout_recording_denied",
+        "artifact_download_install_affordance_result_receipt_session_revocation_recording_denied",
+        "artifact_download_install_affordance_result_receipt_session_logout_recording_denied",
+        "artifact_download_install_affordance_result_receipt_identity_invalidation_recording_denied",
+        "artifact_download_install_affordance_result_receipt_revocation_token_recording_denied",
+        "artifact_download_install_affordance_result_receipt_logout_nonce_recording_denied",
+        "artifact_download_install_affordance_result_receipt_device_session_logout_denied",
+        "artifact_download_install_affordance_result_receipt_session_lifecycle_status_promotion_denied",
+        "artifact_download_install_affordance_result_receipt_acceptance_from_revocation_logout_denied",
+        "artifact_download_install_affordance_operator_approval_from_revocation_logout_denied",
+        "artifact_download_install_affordance_release_publication_authority_from_revocation_logout_denied",
+        "artifact_download_install_affordance_activation_authority_from_revocation_logout_denied",
+        "artifact_download_install_affordance_download_install_from_revocation_logout_denied",
+        "artifact_download_install_affordance_memory_provider_secret_external_send_from_revocation_logout_denied",
+        "artifact_download_install_affordance_session_lifecycle_mutation_from_denied_receipt_denied",
+    ];
+    let denied_count = denials.len();
+    let report_ready = source_ready
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_surface_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_denied_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_replay_recorded_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_replay_recorded_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cross_session_binding_recorded_count",
+        ) == 0
+        && operator_identity_session_revocation_logout_surface_count == 18
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-20",
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denial_v1",
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_mode": "native_route_denied_replay_cross_binding_cannot_create_revocation_logout_or_session_lifecycle_authority",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_gate": source["gate"].clone(),
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_ready": source_ready,
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_report_sha256": source_report_sha256,
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_contract_hash_sha256": source_contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_contract_hash_sha256": contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_policy_hash_sha256": policy_hash,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denial_route_enabled": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denial_ready": report_ready,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_surface_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_surface_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_attempt_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_attempt_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_denied_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_denied_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_replay_recorded_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_replay_recorded_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_replay_recorded_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_replay_recorded_count"),
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cross_session_binding_recorded_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cross_session_binding_recorded_count"),
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_surface_count": operator_identity_session_revocation_logout_surface_count,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_attempt_count": operator_identity_session_revocation_logout_surface_count,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denied_count": operator_identity_session_revocation_logout_surface_count,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_surfaces": operator_identity_session_revocation_logout_surfaces,
+        "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout": denials,
+        "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_count": denied_count,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "allowed_next_actions": [
+            {
+                "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_denial_gate",
+                "status": "allowed_report_only_next_slice",
+                "records_operator_identity": false,
+                "records_operator_session": false,
+                "records_session_binding": false,
+                "accepts_replay": false,
+                "accepts_cross_session_binding": false,
+                "records_revocation": false,
+                "records_logout": false,
+                "accepts_revocation_replay": false,
+                "records_reinstatement": false,
+                "derives_authority": false,
+                "renders_download_link": false,
+                "emits_install_command": false,
+                "installs_or_restarts": false,
+                "mutates_active_binary": false,
+                "mutates_memory_store": false,
+                "writes_kg": false,
+                "sends_externally": false
+            }
+        ],
+        }),
+    );
+
+    let zero_keys = [
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_revocation_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_revocation_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_revocation_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_logout_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_logout_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_logout_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_revocation_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_revocation_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_logout_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_logout_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_identity_invalidation_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_revocation_token_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_logout_nonce_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_device_session_logout_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_revocation_refresh_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_identity_revocation_status_promoted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_logout_summary_promoted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_approval_from_revocation_logout_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_acceptance_from_revocation_logout_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_release_publication_authority_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_activation_authority_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_install_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_service_restart_performed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_active_binary_mutated_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_external_send_count",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in &zero_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(0));
+        }
+    }
+
+    let false_keys = [
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_revocation_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_logout_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_lifecycle_recorded",
+        "artifact_download_install_affordance_result_receipt_recorded",
+        "artifact_download_install_affordance_result_receipt_persisted",
+        "artifact_download_install_affordance_completion_ack_recorded",
+        "download_button_rendered",
+        "direct_download_url_exposed",
+        "package_manager_install_command_rendered",
+        "curl_pipe_shell_snippet_rendered",
+        "installer_launch_prompt_rendered",
+        "auto_update_offer_rendered",
+        "external_install_message_sent",
+        "telegram_install_message_sent",
+        "operator_acceptance_recorded",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "activation_allowed",
+        "activation_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "external_send_performed",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in &false_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(false));
+        }
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for key in &surface_false_keys {
+        side_effects.insert((*key).to_string(), serde_json::json!(false));
+    }
+    side_effects.insert("filesystem_written".to_string(), serde_json::json!(false));
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -65190,6 +65715,244 @@ mod tests {
         }
         let side_effects = value["side_effects"].as_object().expect(
             "release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt operator identity session replay cross binding side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_endpoint_blocks_revocation_logout_and_session_lifecycle_authority()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt operator identity session revocation logout route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_denied_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_attempt_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_denied_count"],
+            18
+        );
+
+        for key in [
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_revocation_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_revocation_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_logout_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_logout_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_revocation_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_logout_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_identity_invalidation_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_revocation_token_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_logout_nonce_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_device_session_logout_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_approval_from_revocation_logout_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_release_publication_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_activation_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_install_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_service_restart_performed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_active_binary_mutated_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_revocation_logout_external_send_count",
+        ] {
+            assert_eq!(value[key], 0, "{key}");
+        }
+
+        let surfaces = value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_surfaces"]
+            .as_array()
+            .expect("artifact download install affordance result receipt operator identity session revocation logout surfaces");
+        assert_eq!(surfaces.len(), 18);
+        assert_eq!(
+            surfaces[0]["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_surface"],
+            "source_operator_identity_session_replay_cross_binding_report_required"
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["operator_identity_revocation_requested"] == true)
+                .count(),
+            8
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["operator_session_logout_requested"] == true)
+                .count(),
+            8
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["session_revocation_requested"] == true)
+                .count(),
+            3
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(
+                    |surface| surface["telegram_identity_session_logout_revocation_requested"]
+                        == true
+                )
+                .count(),
+            1
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(
+                    |surface| surface["install_restart_active_binary_session_revocation_requested"]
+                        == true
+                )
+                .count(),
+            1
+        );
+        for surface in surfaces {
+            assert_eq!(
+                surface["artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_attempted"],
+                true
+            );
+            assert_eq!(
+                surface["operator_identity_session_revocation_logout_noop_confirmed"],
+                true
+            );
+            for key in [
+                "operator_identity_revocation_accepted",
+                "operator_identity_revocation_recorded",
+                "operator_identity_revocation_persisted",
+                "operator_session_logout_accepted",
+                "operator_session_logout_recorded",
+                "operator_session_logout_persisted",
+                "session_revocation_recorded",
+                "session_revocation_persisted",
+                "session_logout_recorded",
+                "session_logout_persisted",
+                "identity_invalidation_recorded",
+                "revocation_token_recorded",
+                "logout_nonce_recorded",
+                "device_session_logout_recorded",
+                "operator_approval_from_revocation_logout_derived",
+                "release_publication_authority_from_revocation_logout_derived",
+                "activation_authority_from_revocation_logout_derived",
+                "install_from_revocation_logout_executed",
+                "service_restart_from_revocation_logout_performed",
+                "active_binary_from_revocation_logout_mutated",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "live_kg_write_performed",
+                "provider_invoked",
+                "model_invoked",
+                "credential_read",
+                "secret_file_read",
+                "external_send_performed",
+            ] {
+                assert_eq!(surface[key], false, "{key}");
+            }
+        }
+
+        let denied = value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout"]
+            .as_array()
+            .expect("artifact download install affordance result receipt operator identity session revocation logout denials");
+        assert_eq!(denied.len(), 18);
+        assert_eq!(
+            value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_denial_gate"
+        );
+        for key in [
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_revocation_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_session_logout_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_session_lifecycle_recorded",
+            "operator_approval_recorded",
+            "release_publication_authority_derived",
+            "activation_authority_derived",
+            "activation_allowed",
+            "activation_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+            "release_artifact_written",
+            "public_artifact_written",
+            "external_send_performed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"].as_object().expect(
+            "release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt operator identity session revocation logout side effects",
         );
         assert!(
             side_effects
