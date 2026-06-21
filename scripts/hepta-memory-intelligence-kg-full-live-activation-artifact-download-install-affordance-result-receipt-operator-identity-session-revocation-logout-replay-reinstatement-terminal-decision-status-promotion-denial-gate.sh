@@ -298,12 +298,28 @@ report="$(
         ],
         allowed_next_actions:[
           {
+            action:"prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_terminal_public_claim_status_exposure_denial_gate",
+            status:"allowed_report_only_next_slice",
+            records_public_claim:false,
+            exposes_status:false,
+            records_terminal_decision:false,
+            records_status_promotion:false,
+            derives_authority:false,
+            renders_download_link:false,
+            emits_install_command:false,
+            installs_or_restarts:false,
+            mutates_active_binary:false,
+            mutates_memory_store:false,
+            writes_kg:false,
+            sends_externally:false
+          },
+          {
             action:"prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_reconfirmation_denial_gate",
             status:"allowed_report_only_next_slice",
             records_operator_intent:false,
             records_operator_consent:false,
-            records_terminal_decision:false,
-            records_status_promotion:false,
+            records_operator_identity:false,
+            records_operator_session:false,
             derives_authority:false,
             renders_download_link:false,
             emits_install_command:false,
@@ -573,12 +589,28 @@ jq -e '
   and ([.release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_terminal_decision_status_promotion_surfaces[] | select(.telegram_decision_requested == true)] | length) == 1
   and ([.release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_terminal_decision_status_promotion_surfaces[] | select(.install_restart_active_binary_status_requested == true)] | length) == 1
   and ($report.allowed_next_actions | any(
+    .action == "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_terminal_public_claim_status_exposure_denial_gate"
+    and .status == "allowed_report_only_next_slice"
+    and .records_public_claim == false
+    and .exposes_status == false
+    and .records_terminal_decision == false
+    and .records_status_promotion == false
+    and .derives_authority == false
+    and .renders_download_link == false
+    and .emits_install_command == false
+    and .installs_or_restarts == false
+    and .mutates_active_binary == false
+    and .mutates_memory_store == false
+    and .writes_kg == false
+    and .sends_externally == false
+  ))
+  and ($report.allowed_next_actions | any(
     .action == "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_reconfirmation_denial_gate"
     and .status == "allowed_report_only_next_slice"
     and .records_operator_intent == false
     and .records_operator_consent == false
-    and .records_terminal_decision == false
-    and .records_status_promotion == false
+    and .records_operator_identity == false
+    and .records_operator_session == false
     and .derives_authority == false
     and .renders_download_link == false
     and .emits_install_command == false
