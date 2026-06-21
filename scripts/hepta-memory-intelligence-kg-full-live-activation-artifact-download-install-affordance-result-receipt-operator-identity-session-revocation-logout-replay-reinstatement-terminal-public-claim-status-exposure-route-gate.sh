@@ -84,7 +84,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 167;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 168;' \
   "native gateway route/source command count includes operator identity/session revocation/logout replay/reinstatement terminal public claim/status route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT' \
@@ -117,8 +117,8 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 167
-    and .implemented_route_count == 167
+    and .route_count == 168
+    and .implemented_route_count == 168
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_terminal_public_claim_status_exposure_denial_route_enabled == true
@@ -204,7 +204,7 @@ jq -n \
     live_route_status:$live_route_status,
     live_route_count:$live_route_count,
     live_missing_route_count:$live_missing_route_count,
-    expected_route_count:167,
+    expected_route_count:168,
     expected_terminal_required_marker_count:300,
     route_gate_ready:true,
     source_gate_ready:true,
