@@ -741,6 +741,9 @@ scripts/hepta-intelligence-bounded-context-attachment-preview-readback-route-gat
 echo "[hepta-preflight] KG read-only adapter shadow-rank canary route gate"
 scripts/hepta-kg-read-only-adapter-shadow-rank-canary-route-gate.sh
 
+echo "[hepta-preflight] provider-router dry-run envelope readback audit route gate"
+scripts/hepta-provider-router-dry-run-envelope-readback-audit-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence export/query/observability denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-export-query-observability-denial-gate.sh
 
