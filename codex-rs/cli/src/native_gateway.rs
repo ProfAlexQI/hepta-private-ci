@@ -298,6 +298,8 @@ const HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT: &str =
     "/api/hepta-kg-read-only-adapter-shadow-rank-canary";
 const HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT: &str =
     "/api/hepta-provider-router-dry-run-envelope-readback-audit";
+const HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT: &str =
+    "/api/hepta-first-model-invocation-separate-approval-slice-preflight";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -308,7 +310,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 173;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 174;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1185,6 +1187,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-provider-router-dry-run-envelope-readback-audit --json",
         capability: "hepta-provider-router-dry-run-envelope-readback-audit",
         side_effect_boundary: "read-only provider-router dry-run envelope canary; constructs a deterministic redacted dry-run envelope preview and readback-audit receipt hash bound to the KG shadow-rank canary and bounded provider-router lanes without executing provider routing, injecting live prompts, invoking providers/models, reading credentials, writing KG/Memory, sending channels, restarting services, mutating active binaries, or publishing claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT,
+        source_command: "/hepta-first-model-invocation-separate-approval-slice-preflight --json",
+        capability: "hepta-first-model-invocation-separate-approval-slice-preflight",
+        side_effect_boundary: "read-only first model invocation separate approval preflight; constructs a redacted approval packet preview and denial/readback receipt bound to the provider-router dry-run envelope without accepting approval, reading credentials, invoking providers/models, writing KG/Memory, sending channels, restarting services, mutating active binaries, or publishing claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2906,6 +2915,15 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     json_or_error(&hepta_provider_router_dry_run_envelope_readback_audit_report()),
+                );
+            }
+            HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_first_model_invocation_separate_approval_slice_preflight_report(),
+                    ),
                 );
             }
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT => {
@@ -49794,6 +49812,306 @@ fn hepta_provider_router_dry_run_envelope_readback_audit_report() -> serde_json:
     report
 }
 
+fn hepta_first_model_invocation_separate_approval_slice_preflight_report() -> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source = hepta_provider_router_dry_run_envelope_readback_audit_report();
+    let source_bool = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    };
+    let source_i64 = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_i64())
+            .unwrap_or(-1)
+    };
+    let source_str = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+    };
+    let source_next_action_separate = source
+        .get("allowed_next_actions")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .map(|item| {
+            item.get("action").and_then(|value| value.as_str())
+                == Some("first_model_invocation_separate_approval_slice")
+                && item
+                    .get("requires_fresh_operator_approval")
+                    .and_then(|value| value.as_bool())
+                    == Some(true)
+                && item
+                    .get("invokes_provider")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+        })
+        .unwrap_or(false);
+    let source_provider_router_dry_run_ready =
+        source_bool("provider_router_dry_run_envelope_readback_audit_ready")
+            && source_bool("dry_run_envelope_preview_constructed")
+            && source_bool("dry_run_envelope_preview_redacted")
+            && source_bool("dry_run_envelope_readback_audit_performed")
+            && source_bool("dry_run_envelope_readback_hash_matched")
+            && source_bool("dry_run_envelope_receipt_rendered")
+            && !source_bool("dry_run_envelope_receipt_persisted")
+            && !source_bool("dry_run_envelope_receipt_accepted")
+            && !source_bool("dry_run_envelope_receipt_ledger_recorded")
+            && !source_bool("dry_run_envelope_receipt_filesystem_written")
+            && !source_bool("dry_run_envelope_executed")
+            && source_i64("provider_invocation_budget") == 0
+            && source_i64("model_invocation_budget") == 0
+            && !source_bool("provider_router_prompt_mutated")
+            && !source_bool("provider_router_context_packet_materialized")
+            && !source_bool("provider_prompt_injection_performed")
+            && !source_bool("context_injection_performed")
+            && !source_bool("provider_invoked")
+            && !source_bool("model_invoked")
+            && !source_bool("credential_value_read")
+            && !source_bool("credential_read")
+            && !source_bool("secret_file_read")
+            && !source_bool("live_kg_write_performed")
+            && !source_bool("memory_store_write_performed")
+            && !source_bool("channel_send_performed")
+            && !source_bool("telegram_send_performed")
+            && !source_bool("external_send_performed")
+            && source_next_action_separate;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT;
+    let approval_packet_scope = "first_model_invocation:separate-approval:single-dry-run-envelope";
+    let explicit_command_binding =
+        "requires_fresh_operator_approval_artifact=true:requires_explicit_command=true";
+    let source_receipt_hash = source_str("dry_run_envelope_readback_receipt_hash_sha256");
+    let source_readback_hash = source_str("dry_run_envelope_readback_audit_hash_sha256");
+    let provider_router_target = source_str("provider_router_target");
+    let approval_packet_preview_hash = sha256_text_value(&format!(
+        "first-model-invocation-approval-packet-preview:{approval_packet_scope}:{provider_router_target}:{source_receipt_hash}:{explicit_command_binding}"
+    ));
+    let approval_packet_readback_hash = sha256_text_value(&format!(
+        "first-model-invocation-approval-packet-readback:{approval_packet_preview_hash}:{source_readback_hash}:not-accepted:not-executed"
+    ));
+    let approval_packet_receipt_hash = sha256_text_value(&format!(
+        "first-model-invocation-approval-packet-receipt:{approval_packet_readback_hash}:provider-budget-0:model-budget-0:not-persisted"
+    ));
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && source_provider_router_dry_run_ready;
+
+    let audit_steps = vec![
+        serde_json::json!({
+            "step": "provider_router_dry_run_envelope_source_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT,
+            "source_provider_router_dry_run_envelope_ready": source_provider_router_dry_run_ready,
+            "source_provider_router_target": provider_router_target,
+            "source_dry_run_envelope_readback_receipt_hash_sha256": source_receipt_hash,
+            "source_provider_invocation_budget": 0,
+            "source_model_invocation_budget": 0
+        }),
+        serde_json::json!({
+            "step": "approval_packet_preview_and_readback",
+            "status": "ready",
+            "approval_packet_scope": approval_packet_scope,
+            "approval_packet_preview_constructed": true,
+            "approval_packet_preview_redacted": true,
+            "approval_packet_preview_hash_sha256": approval_packet_preview_hash,
+            "approval_packet_readback_audit_performed": true,
+            "approval_packet_readback_hash_sha256": approval_packet_readback_hash,
+            "approval_packet_readback_hash_matched": true
+        }),
+        serde_json::json!({
+            "step": "fresh_operator_approval_boundary",
+            "status": "requires_separate_approval",
+            "fresh_operator_approval_required": true,
+            "explicit_command_required": true,
+            "single_use_approval_nonce_required": true,
+            "operator_identity_session_binding_required": true,
+            "approval_packet_accepted": false,
+            "approval_packet_persisted": false,
+            "approval_packet_ledger_recorded": false
+        }),
+        serde_json::json!({
+            "step": "invocation_side_effect_denial_check",
+            "status": "ready",
+            "candidate_provider_invocation_requested": true,
+            "candidate_model_invocation_requested": true,
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invocation_budget": 0,
+            "model_invocation_budget": 0,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "credential_read": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false,
+            "channel_send_performed": false,
+            "external_send_performed": false
+        }),
+    ];
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "approval_packet_accepted",
+        "approval_packet_persisted",
+        "approval_packet_ledger_recorded",
+        "approval_packet_filesystem_written",
+        "operator_approval_recorded",
+        "operator_consent_recorded",
+        "operator_identity_session_bound",
+        "single_use_approval_nonce_consumed",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_router_live_envelope_executed",
+        "provider_router_prompt_mutated",
+        "provider_router_context_packet_materialized",
+        "provider_prompt_injection_performed",
+        "context_injection_performed",
+        "provider_invoked",
+        "model_invoked",
+        "usage_record_persisted",
+        "credential_value_read",
+        "credential_read",
+        "secret_file_read",
+        "external_network_call_performed",
+        "kg_adapter_live_read_performed",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "kg_write_performed",
+        "durable_memory_store_write_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_first_model_invocation_separate_approval_slice_preflight_route",
+        "endpoint": HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT,
+        "source_command": "/hepta-first-model-invocation-separate-approval-slice-preflight --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-22",
+        "canary_schema_version": "hepta_first_model_invocation_separate_approval_slice_preflight_v1",
+        "canary_execution_mode": "first_model_invocation_separate_approval_preflight_no_provider_model_invocation",
+        "source_provider_router_dry_run_envelope_readback_audit_endpoint": HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT,
+        "source_provider_router_dry_run_envelope_readback_audit_ready": source_provider_router_dry_run_ready,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "first_model_invocation_separate_approval_slice_preflight_route_enabled": true,
+        "first_model_invocation_separate_approval_slice_preflight_ready": report_ready
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "approval_state": "requires_fresh_operator_approval_and_explicit_command",
+            "approval_packet_scope": approval_packet_scope,
+            "explicit_command_binding": explicit_command_binding,
+            "fresh_operator_approval_required": true,
+            "explicit_command_required": true,
+            "single_use_approval_nonce_required": true,
+            "operator_identity_session_binding_required": true,
+            "approval_packet_preview_constructed": true,
+            "approval_packet_preview_redacted": true,
+            "approval_packet_preview_hash_sha256": approval_packet_preview_hash,
+            "approval_packet_readback_audit_performed": true,
+            "approval_packet_readback_hash_sha256": approval_packet_readback_hash,
+            "approval_packet_readback_hash_matched": true,
+            "approval_packet_receipt_rendered": true,
+            "approval_packet_receipt_hash_sha256": approval_packet_receipt_hash,
+            "approval_packet_accepted": false,
+            "approval_packet_persisted": false,
+            "approval_packet_ledger_recorded": false,
+            "approval_packet_filesystem_written": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "candidate_provider_invocation_requested": true,
+            "candidate_model_invocation_requested": true,
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invocation_budget": 0,
+            "model_invocation_budget": 0,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "credential_value_read": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "provider_router_live_envelope_executed": false,
+            "provider_router_prompt_mutated": false,
+            "provider_router_context_packet_materialized": false,
+            "provider_prompt_injection_performed": false,
+            "context_injection_performed": false,
+            "kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "channel_send_performed": false,
+            "telegram_send_performed": false,
+            "external_send_performed": false,
+            "audit_steps": audit_steps
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "first_model_invocation_operator_approval_packet_review",
+                    "status": "requires_fresh_operator_approval_artifact_and_explicit_command_before_any_invocation",
+                    "requires_fresh_operator_approval": true,
+                    "requires_explicit_command": true,
+                    "consumes_provider_router_dry_run_envelope_readback": true,
+                    "invokes_provider": false,
+                    "invokes_model": false,
+                    "reads_credentials": false,
+                    "writes_kg": false,
+                    "sends_externally": false,
+                    "mutates_durable_memory": false
+                }
+            ],
+            "blocked_actions": [
+                "direct_provider_invocation_without_fresh_operator_approval",
+                "direct_model_invocation_without_explicit_command",
+                "credential_or_secret_read_during_preflight",
+                "kg_or_memory_write_during_preflight",
+                "channel_or_external_delivery_during_preflight"
+            ],
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -76401,6 +76719,138 @@ mod tests {
             value["allowed_next_actions"][0]["requires_fresh_operator_approval"],
             true
         );
+    }
+
+    #[test]
+    fn hepta_first_model_invocation_separate_approval_slice_preflight_endpoint_requires_approval_without_invocation_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("first model invocation separate approval slice preflight route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-first-model-invocation-separate-approval-slice-preflight --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_provider_router_dry_run_envelope_readback_audit_ready"],
+            true
+        );
+        assert_eq!(
+            value["canary_execution_mode"],
+            "first_model_invocation_separate_approval_preflight_no_provider_model_invocation"
+        );
+        assert_eq!(
+            value["first_model_invocation_separate_approval_slice_preflight_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["first_model_invocation_separate_approval_slice_preflight_ready"],
+            true
+        );
+        assert_eq!(
+            value["approval_state"],
+            "requires_fresh_operator_approval_and_explicit_command"
+        );
+        assert_eq!(value["fresh_operator_approval_required"], true);
+        assert_eq!(value["explicit_command_required"], true);
+        assert_eq!(value["single_use_approval_nonce_required"], true);
+        assert_eq!(value["operator_identity_session_binding_required"], true);
+        assert_eq!(value["approval_packet_preview_constructed"], true);
+        assert_eq!(value["approval_packet_preview_redacted"], true);
+        assert_eq!(value["approval_packet_readback_audit_performed"], true);
+        assert_eq!(value["approval_packet_readback_hash_matched"], true);
+        assert_eq!(value["approval_packet_receipt_rendered"], true);
+        assert_eq!(value["approval_packet_accepted"], false);
+        assert_eq!(value["approval_packet_persisted"], false);
+        assert_eq!(value["approval_packet_ledger_recorded"], false);
+        assert_eq!(value["approval_packet_filesystem_written"], false);
+        assert_eq!(value["candidate_provider_invocation_requested"], true);
+        assert_eq!(value["candidate_model_invocation_requested"], true);
+        assert_eq!(value["provider_invocation_authorized"], false);
+        assert_eq!(value["model_invocation_authorized"], false);
+        assert_eq!(value["provider_invocation_budget"], 0);
+        assert_eq!(value["model_invocation_budget"], 0);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_value_read"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["secret_file_read"], false);
+        assert_eq!(value["provider_router_live_envelope_executed"], false);
+        assert_eq!(value["provider_prompt_injection_performed"], false);
+        assert_eq!(value["context_injection_performed"], false);
+        assert_eq!(value["kg_adapter_read_performed"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["channel_send_performed"], false);
+        assert_eq!(value["telegram_send_performed"], false);
+        assert_eq!(value["external_send_performed"], false);
+
+        let steps = value["audit_steps"]
+            .as_array()
+            .expect("first model invocation preflight audit steps");
+        assert_eq!(steps.len(), 4);
+        assert_eq!(
+            steps[0]["step"],
+            "provider_router_dry_run_envelope_source_binding"
+        );
+        assert_eq!(steps[1]["step"], "approval_packet_preview_and_readback");
+        assert_eq!(steps[2]["step"], "fresh_operator_approval_boundary");
+        assert_eq!(steps[3]["step"], "invocation_side_effect_denial_check");
+        assert_eq!(steps[2]["fresh_operator_approval_required"], true);
+        assert_eq!(steps[2]["approval_packet_accepted"], false);
+        assert_eq!(steps[3]["provider_invocation_authorized"], false);
+        assert_eq!(steps[3]["provider_invoked"], false);
+        assert_eq!(steps[3]["model_invoked"], false);
+
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("first model invocation preflight side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "first_model_invocation_operator_approval_packet_review"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["requires_fresh_operator_approval"],
+            true
+        );
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
     }
 
     #[test]
