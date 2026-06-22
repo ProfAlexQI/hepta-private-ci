@@ -750,6 +750,9 @@ scripts/hepta-first-model-invocation-separate-approval-slice-preflight-route-gat
 echo "[hepta-preflight] first model invocation operator approval packet review acceptance-denial preflight route gate"
 scripts/hepta-first-model-invocation-operator-approval-packet-review-acceptance-denial-preflight-route-gate.sh
 
+echo "[hepta-preflight] first model invocation operator approval acceptance artifact precondition route gate"
+scripts/hepta-first-model-invocation-operator-approval-acceptance-artifact-precondition-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence export/query/observability denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-export-query-observability-denial-gate.sh
 
