@@ -747,6 +747,9 @@ scripts/hepta-provider-router-dry-run-envelope-readback-audit-route-gate.sh
 echo "[hepta-preflight] first model invocation separate approval slice preflight route gate"
 scripts/hepta-first-model-invocation-separate-approval-slice-preflight-route-gate.sh
 
+echo "[hepta-preflight] first model invocation operator approval packet review acceptance-denial preflight route gate"
+scripts/hepta-first-model-invocation-operator-approval-packet-review-acceptance-denial-preflight-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence export/query/observability denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-export-query-observability-denial-gate.sh
 
