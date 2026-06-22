@@ -156,7 +156,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 169;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 170;' \
   "native gateway route/source command count includes packet acceptance receipt final acknowledgement route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_FINAL_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT' \

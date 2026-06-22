@@ -290,6 +290,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-reconfirmation-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_PERSISTENCE_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-persistence-denial";
+const HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT: &str =
+    "/api/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -300,7 +302,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 169;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 170;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1149,6 +1151,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-persistence-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-persistence-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence persistence denial; models denied intent/consent evidence recording, receipts, ledger/index/query/export/observability/readback, identity/session binding, authority, install/restart/active-binary mutation, Memory/KG writes, provider/model invocation, credential reads, and channel/external sends while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT,
+        source_command: "/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt --json",
+        capability: "hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt",
+        side_effect_boundary: "read-only minimal Memory canary fixture; models scoped operator packet, single ephemeral memory write, readback, rollback-to-empty, and idempotency receipt without durable Memory mutation, KG writes, provider/model invocation, credential reads, channel/external sends, install/restart, active-binary mutation, or public claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2836,6 +2845,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_persistence_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_idempotency_receipt_report(),
                     ),
                 );
             }
@@ -48640,6 +48659,238 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
+fn hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_idempotency_receipt_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_persistence_denial_report();
+    let source_report_sha256 = sha256_json_value(&source);
+    let source_ready = source
+        .get("memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_persistence_denial_ready")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let canary_memory_id = "hepta-memory-canary:scoped-operator-packet:2026-06-22:single-write";
+    let canary_scope = "operator_scoped_ephemeral_canary";
+    let canary_payload_summary =
+        "single scoped operator packet canary; ephemeral write/readback/rollback/idempotency";
+    let canary_payload_hash = sha256_text_value(canary_payload_summary);
+    let idempotency_key = "hepta-memory-canary:2026-06-22:minimal-single-write";
+    let pre_write_store_hash = sha256_text_value("ephemeral-store:empty");
+    let post_write_store_hash = sha256_text_value(&format!(
+        "ephemeral-store:{canary_memory_id}:{canary_payload_hash}"
+    ));
+    let post_rollback_store_hash = pre_write_store_hash.clone();
+    let idempotency_receipt_hash = sha256_text_value(&format!(
+        "{idempotency_key}:{canary_memory_id}:{canary_payload_hash}:{post_write_store_hash}:{post_rollback_store_hash}"
+    ));
+    let report_ready = source_ready && route_count_source_command_accepted;
+
+    let canary_steps = vec![
+        serde_json::json!({
+            "step": "scoped_operator_packet_acceptance",
+            "status": "ready",
+            "performed_in_isolated_fixture": true,
+            "scoped_operator_packet_present": true,
+            "scoped_operator_packet_accepted_for_ephemeral_canary": true,
+            "operator_packet_persisted": false,
+            "operator_approval_recorded": false,
+            "durable_store_mutated": false
+        }),
+        serde_json::json!({
+            "step": "single_ephemeral_memory_write",
+            "status": "ready",
+            "performed_in_isolated_fixture": true,
+            "memory_id": canary_memory_id,
+            "memory_scope": canary_scope,
+            "raw_payload_sha256": canary_payload_hash,
+            "ephemeral_memory_store_write_performed": true,
+            "ephemeral_write_count": 1,
+            "durable_memory_store_write_performed": false,
+            "memory_store_write_performed": false
+        }),
+        serde_json::json!({
+            "step": "readback_validation",
+            "status": "ready",
+            "performed_in_isolated_fixture": true,
+            "readback_query": "single scoped operator packet canary",
+            "readback_hit_count": 1,
+            "readback_matched_memory_id": canary_memory_id,
+            "readback_payload_hash_matched": true,
+            "durable_memory_store_read_performed": false
+        }),
+        serde_json::json!({
+            "step": "rollback_to_empty",
+            "status": "ready",
+            "performed_in_isolated_fixture": true,
+            "rollback_strategy": "discard_ephemeral_store_fixture",
+            "rollback_executed_in_isolated_fixture": true,
+            "post_rollback_readback_hit_count": 0,
+            "post_rollback_store_hash": post_rollback_store_hash,
+            "durable_rollback_executed": false,
+            "rollback_executed": false
+        }),
+        serde_json::json!({
+            "step": "idempotency_receipt",
+            "status": "ready",
+            "performed_in_isolated_fixture": true,
+            "idempotency_key": idempotency_key,
+            "idempotency_replay_performed": true,
+            "idempotency_duplicate_write_suppressed": true,
+            "idempotency_effective_write_count": 1,
+            "idempotency_receipt_generated": true,
+            "idempotency_receipt_hash_sha256": idempotency_receipt_hash,
+            "idempotency_receipt_persisted": false
+        }),
+    ];
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "durable_memory_store_write_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "memory_write_receipt_persisted",
+        "operator_packet_persisted",
+        "operator_approval_recorded",
+        "rollback_executed",
+        "live_kg_write_performed",
+        "kg_adapter_read_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_idempotency_receipt_route",
+        "endpoint": HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT,
+        "source_command": "/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-22",
+        "canary_schema_version": "hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_idempotency_receipt_v1",
+        "canary_execution_mode": "ephemeral_isolated_fixture_no_durable_store_mutation",
+        "source_operator_intent_consent_evidence_persistence_gate": source["gate"].clone(),
+        "source_operator_intent_consent_evidence_persistence_ready": source_ready,
+        "source_operator_intent_consent_evidence_persistence_report_sha256": source_report_sha256,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "minimal_memory_canary_route_enabled": true,
+        "minimal_memory_canary_ready": report_ready,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "single_scoped_operator_packet_count": 1,
+        "scoped_operator_packet_present": true,
+        "scoped_operator_packet_accepted_for_ephemeral_canary": true,
+        "operator_packet_persisted": false,
+        "operator_approval_recorded": false,
+        "memory_namespace": "hepta_canary_ephemeral",
+        "memory_retention_class": "ephemeral_rollback_required",
+        "memory_write_operation": "single_ephemeral_canary_write",
+        "canary_memory_id": canary_memory_id,
+        "canary_memory_scope": canary_scope,
+        "raw_payload_sha256": canary_payload_hash,
+        "redacted_payload_summary_sha256": canary_payload_hash,
+        "pre_write_store_hash_sha256": pre_write_store_hash,
+        "post_write_store_hash_sha256": post_write_store_hash,
+        "post_rollback_store_hash_sha256": post_rollback_store_hash,
+        "ephemeral_memory_store_write_performed": true,
+        "ephemeral_memory_store_write_count": 1,
+        "ephemeral_memory_readback_performed": true,
+        "ephemeral_memory_readback_hit_count": 1,
+        "ephemeral_memory_readback_payload_hash_matched": true,
+        "ephemeral_memory_rollback_performed": true,
+        "ephemeral_memory_post_rollback_hit_count": 0,
+        "idempotency_required": true,
+        "idempotency_key": idempotency_key,
+        "idempotency_replay_performed": true,
+        "idempotency_duplicate_write_suppressed": true,
+        "idempotency_effective_write_count": 1,
+        "idempotency_receipt_generated": true,
+        "idempotency_receipt_hash_sha256": idempotency_receipt_hash,
+        "idempotency_receipt_persisted": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "durable_memory_store_write_performed": false,
+        "durable_memory_store_read_performed": false,
+        "durable_memory_store_rollback_performed": false,
+        "memory_store_write_performed": false,
+        "memory_store_mutated": false,
+        "memory_write_receipt_recorded": false,
+        "memory_write_receipt_persisted": false,
+        "rollback_executed": false,
+        "live_kg_write_performed": false,
+        "kg_adapter_read_performed": false,
+        "provider_invoked": false,
+        "model_invoked": false,
+        "credential_read": false,
+        "secret_file_read": false,
+        "channel_send_performed": false,
+        "telegram_send_performed": false,
+        "external_send_performed": false,
+        "install_executed": false,
+        "launchd_mutated": false,
+        "service_restarted": false,
+        "active_binary_mutated": false,
+        "release_artifact_written": false,
+        "public_artifact_written": false,
+        "public_release_claimed": false,
+        "public_ga_claimed": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "canary_steps": canary_steps,
+        "allowed_next_actions": [
+            {
+                "action": "hepta_intelligence_bounded_context_attachment_preview_readback",
+                "status": "allowed_report_only_next_slice",
+                "uses_memory_canary_receipt": true,
+                "requires_provider_invocation": false,
+                "invokes_provider": false,
+                "invokes_model": false,
+                "writes_kg": false,
+                "sends_externally": false,
+                "mutates_durable_memory": false
+            }
+        ],
+        "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -74719,6 +74970,154 @@ mod tests {
             side_effects
                 .values()
                 .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_minimal_memory_canary_endpoint_runs_ephemeral_write_readback_rollback_idempotency_without_durable_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("minimal memory canary route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["minimal_memory_canary_route_enabled"], true);
+        assert_eq!(value["minimal_memory_canary_ready"], true);
+        assert_eq!(
+            value["canary_execution_mode"],
+            "ephemeral_isolated_fixture_no_durable_store_mutation"
+        );
+        assert_eq!(
+            value["source_operator_intent_consent_evidence_persistence_ready"],
+            true
+        );
+        assert_eq!(value["single_scoped_operator_packet_count"], 1);
+        assert_eq!(value["scoped_operator_packet_present"], true);
+        assert_eq!(
+            value["scoped_operator_packet_accepted_for_ephemeral_canary"],
+            true
+        );
+        assert_eq!(value["operator_packet_persisted"], false);
+        assert_eq!(value["operator_approval_recorded"], false);
+        assert_eq!(value["memory_namespace"], "hepta_canary_ephemeral");
+        assert_eq!(
+            value["memory_write_operation"],
+            "single_ephemeral_canary_write"
+        );
+        assert_eq!(value["ephemeral_memory_store_write_performed"], true);
+        assert_eq!(value["ephemeral_memory_store_write_count"], 1);
+        assert_eq!(value["ephemeral_memory_readback_performed"], true);
+        assert_eq!(value["ephemeral_memory_readback_hit_count"], 1);
+        assert_eq!(
+            value["ephemeral_memory_readback_payload_hash_matched"],
+            true
+        );
+        assert_eq!(value["ephemeral_memory_rollback_performed"], true);
+        assert_eq!(value["ephemeral_memory_post_rollback_hit_count"], 0);
+        assert_eq!(value["idempotency_required"], true);
+        assert_eq!(value["idempotency_replay_performed"], true);
+        assert_eq!(value["idempotency_duplicate_write_suppressed"], true);
+        assert_eq!(value["idempotency_effective_write_count"], 1);
+        assert_eq!(value["idempotency_receipt_generated"], true);
+        assert_eq!(value["idempotency_receipt_persisted"], false);
+        assert_eq!(
+            value["pre_write_store_hash_sha256"],
+            value["post_rollback_store_hash_sha256"]
+        );
+        assert_ne!(
+            value["pre_write_store_hash_sha256"],
+            value["post_write_store_hash_sha256"]
+        );
+
+        let steps = value["canary_steps"]
+            .as_array()
+            .expect("minimal memory canary steps");
+        assert_eq!(steps.len(), 5);
+        assert_eq!(steps[0]["step"], "scoped_operator_packet_acceptance");
+        assert_eq!(steps[1]["step"], "single_ephemeral_memory_write");
+        assert_eq!(steps[2]["step"], "readback_validation");
+        assert_eq!(steps[3]["step"], "rollback_to_empty");
+        assert_eq!(steps[4]["step"], "idempotency_receipt");
+        assert_eq!(steps[1]["ephemeral_memory_store_write_performed"], true);
+        assert_eq!(steps[1]["durable_memory_store_write_performed"], false);
+        assert_eq!(steps[2]["readback_hit_count"], 1);
+        assert_eq!(steps[3]["post_rollback_readback_hit_count"], 0);
+        assert_eq!(steps[4]["idempotency_duplicate_write_suppressed"], true);
+
+        for key in [
+            "durable_memory_store_write_performed",
+            "durable_memory_store_read_performed",
+            "durable_memory_store_rollback_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "memory_write_receipt_recorded",
+            "memory_write_receipt_persisted",
+            "rollback_executed",
+            "live_kg_write_performed",
+            "kg_adapter_read_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_performed",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+            "release_artifact_written",
+            "public_artifact_written",
+            "public_release_claimed",
+            "public_ga_claimed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("minimal memory canary side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "hepta_intelligence_bounded_context_attachment_preview_readback"
         );
     }
 
