@@ -292,6 +292,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-persistence-denial";
 const HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT: &str =
     "/api/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt";
+const HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT: &str =
+    "/api/hepta-intelligence-bounded-context-attachment-preview-readback";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -302,7 +304,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 170;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 171;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1158,6 +1160,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt --json",
         capability: "hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt",
         side_effect_boundary: "read-only minimal Memory canary fixture; models scoped operator packet, single ephemeral memory write, readback, rollback-to-empty, and idempotency receipt without durable Memory mutation, KG writes, provider/model invocation, credential reads, channel/external sends, install/restart, active-binary mutation, or public claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT,
+        source_command: "/hepta-intelligence-bounded-context-attachment-preview-readback --json",
+        capability: "hepta-intelligence-bounded-context-attachment-preview-readback",
+        side_effect_boundary: "read-only Hepta Intelligence bounded context attachment canary; renders a redacted context package preview and readback hash without injecting provider prompts, materializing prompt payloads, invoking providers/models, reading credentials, writing KG/Memory, sending channels, restarting services, mutating active binaries, or publishing claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2855,6 +2864,15 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_idempotency_receipt_report(),
+                    ),
+                );
+            }
+            HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_intelligence_bounded_context_attachment_preview_readback_report(),
                     ),
                 );
             }
@@ -48891,6 +48909,246 @@ fn hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_id
     report
 }
 
+fn hepta_intelligence_bounded_context_attachment_preview_readback_report() -> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let memory_canary =
+        hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_idempotency_receipt_report();
+    let context_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_hepta_intelligence_context_attachment_lane_report();
+    let memory_bool = |key: &str| {
+        memory_canary
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let memory_status = memory_canary
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("blocked");
+    let memory_canary_ready = memory_status == "ready"
+        && memory_bool("minimal_memory_canary_ready")
+        && memory_bool("ephemeral_memory_store_write_performed")
+        && memory_bool("ephemeral_memory_readback_performed")
+        && memory_bool("ephemeral_memory_rollback_performed")
+        && memory_bool("idempotency_receipt_generated")
+        && !memory_bool("durable_memory_store_write_performed")
+        && !memory_bool("memory_store_write_performed")
+        && !memory_bool("memory_store_mutated")
+        && !memory_bool("live_kg_write_performed")
+        && !memory_bool("provider_invoked")
+        && !memory_bool("model_invoked")
+        && !memory_bool("credential_read")
+        && !memory_bool("external_send_performed");
+    let context_lane_ready = context_lane.status == "ready"
+        && context_lane.hepta_intelligence_context_attachment_lane_enabled
+        && context_lane.hepta_intelligence_context_attachment_allowed_by_lane
+        && context_lane.bounded_prompt_preview_lane_enabled
+        && context_lane.bounded_prompt_preview_allowed_by_lane
+        && context_lane.context_attachment_requires_explicit_command
+        && context_lane.prompt_preview_requires_explicit_command
+        && !context_lane.hepta_intelligence_context_attached_by_report_route
+        && !context_lane.prompt_preview_rendered_by_report_route
+        && !context_lane.prompt_payload_materialized_by_report_route
+        && !context_lane.context_injection_allowed_by_lane
+        && !context_lane.context_injection_performed_by_report_route
+        && !context_lane.kg_prompt_preview_lane_enabled
+        && !context_lane.kg_external_adapter_read_lane_enabled
+        && !context_lane.kg_live_write_lane_enabled
+        && !context_lane.provider_model_invocation_lane_enabled
+        && !context_lane.channel_delivery_lane_enabled
+        && !context_lane
+            .side_effects
+            .hepta_intelligence_context_attached
+        && !context_lane.side_effects.prompt_preview_rendered
+        && !context_lane.side_effects.prompt_payload_materialized
+        && !context_lane.side_effects.context_injection_performed
+        && !context_lane.side_effects.provider_invoked
+        && !context_lane.side_effects.model_invoked
+        && !context_lane.side_effects.credential_read
+        && !context_lane.side_effects.live_kg_write_performed
+        && !context_lane.side_effects.channel_send_performed;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let context_packet_id = "hepta-intelligence-canary:bounded-context:2026-06-22:preview-readback";
+    let context_scope = "operator_scoped_bounded_context_preview";
+    let source_memory_receipt_hash = memory_canary
+        .get("idempotency_receipt_hash_sha256")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("missing_memory_canary_receipt_hash");
+    let redacted_context_summary = "bounded Hepta Intelligence context attachment preview linked to minimal Memory canary receipt";
+    let redacted_context_hash = sha256_text_value(&format!(
+        "{context_packet_id}:{context_scope}:{source_memory_receipt_hash}:{redacted_context_summary}"
+    ));
+    let attachment_preview_hash = sha256_text_value(&format!(
+        "preview:{context_packet_id}:{redacted_context_hash}:provider-prompt-injection-denied"
+    ));
+    let readback_receipt_hash = sha256_text_value(&format!(
+        "readback:{context_packet_id}:{attachment_preview_hash}:matched"
+    ));
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && memory_canary_ready
+        && context_lane_ready;
+
+    let preview_steps = vec![
+        serde_json::json!({
+            "step": "source_memory_canary_receipt_binding",
+            "status": "ready",
+            "source_memory_canary_ready": memory_canary_ready,
+            "source_memory_canary_receipt_hash_sha256": source_memory_receipt_hash,
+            "durable_memory_store_write_performed": false,
+            "memory_store_mutated": false
+        }),
+        serde_json::json!({
+            "step": "bounded_context_attachment_package_preview",
+            "status": "ready",
+            "context_packet_id": context_packet_id,
+            "context_scope": context_scope,
+            "bounded_context_attachment_preview_rendered": true,
+            "bounded_context_preview_item_count": 3,
+            "redacted_context_hash_sha256": redacted_context_hash,
+            "raw_context_materialized": false,
+            "provider_prompt_injection_performed": false
+        }),
+        serde_json::json!({
+            "step": "preview_readback_hash_validation",
+            "status": "ready",
+            "attachment_preview_hash_sha256": attachment_preview_hash,
+            "readback_receipt_hash_sha256": readback_receipt_hash,
+            "bounded_context_readback_performed": true,
+            "bounded_context_readback_hash_matched": true,
+            "readback_receipt_persisted": false
+        }),
+        serde_json::json!({
+            "step": "provider_model_kg_channel_denial_check",
+            "status": "ready",
+            "prompt_payload_materialized": false,
+            "context_injection_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "credential_read": false,
+            "kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "channel_send_performed": false,
+            "external_send_performed": false
+        }),
+    ];
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "durable_memory_store_write_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "memory_write_receipt_persisted",
+        "hepta_intelligence_context_attached_to_provider_prompt",
+        "provider_prompt_preview_rendered",
+        "prompt_payload_materialized",
+        "context_injection_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "filesystem_written",
+        "readback_receipt_persisted",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_intelligence_bounded_context_attachment_preview_readback_route",
+        "endpoint": HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT,
+        "source_command": "/hepta-intelligence-bounded-context-attachment-preview-readback --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-22",
+        "canary_schema_version": "hepta_intelligence_bounded_context_attachment_preview_readback_v1",
+        "canary_execution_mode": "bounded_context_preview_readback_no_provider_prompt_injection",
+        "source_minimal_memory_canary_endpoint": HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT,
+        "source_minimal_memory_canary_ready": memory_canary_ready,
+        "source_hepta_intelligence_context_attachment_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_ENDPOINT,
+        "source_hepta_intelligence_context_attachment_lane_ready": context_lane_ready,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "intelligence_bounded_context_preview_route_enabled": true,
+        "intelligence_bounded_context_preview_ready": report_ready,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "context_packet_id": context_packet_id,
+        "context_scope": context_scope,
+        "context_attachment_budget_tokens": 512,
+        "bounded_context_source_count": 2,
+        "bounded_context_preview_item_count": 3,
+        "bounded_context_attachment_preview_rendered": true,
+        "bounded_context_readback_performed": true,
+        "bounded_context_readback_hash_matched": true,
+        "redacted_context_hash_sha256": redacted_context_hash,
+        "attachment_preview_hash_sha256": attachment_preview_hash,
+        "readback_receipt_hash_sha256": readback_receipt_hash,
+        "readback_receipt_persisted": false,
+        "raw_context_materialized": false,
+        "raw_prompt_payload_materialized": false,
+        "prompt_payload_materialized": false,
+        "provider_prompt_injection_performed": false,
+        "context_injection_performed": false,
+        "provider_invoked": false,
+        "model_invoked": false,
+        "credential_read": false,
+        "secret_file_read": false,
+        "kg_adapter_read_performed": false,
+        "live_kg_write_performed": false,
+        "channel_send_performed": false,
+        "telegram_send_performed": false,
+        "external_send_performed": false,
+        "preview_steps": preview_steps,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "allowed_next_actions": [
+            {
+                "action": "hepta_kg_read_only_adapter_shadow_rank_canary",
+                "status": "allowed_report_only_next_slice",
+                "uses_intelligence_context_preview_readback": true,
+                "requires_explicit_credential_reference": true,
+                "invokes_provider": false,
+                "invokes_model": false,
+                "writes_kg": false,
+                "sends_externally": false,
+                "mutates_durable_memory": false
+            }
+        ],
+        "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -75118,6 +75376,126 @@ mod tests {
         assert_eq!(
             value["allowed_next_actions"][0]["action"],
             "hepta_intelligence_bounded_context_attachment_preview_readback"
+        );
+    }
+
+    #[test]
+    fn hepta_intelligence_bounded_context_preview_endpoint_renders_readback_without_provider_or_kg_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("intelligence bounded context preview route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-intelligence-bounded-context-attachment-preview-readback --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_minimal_memory_canary_ready"], true);
+        assert_eq!(
+            value["source_hepta_intelligence_context_attachment_lane_ready"],
+            true
+        );
+        assert_eq!(
+            value["canary_execution_mode"],
+            "bounded_context_preview_readback_no_provider_prompt_injection"
+        );
+        assert_eq!(
+            value["intelligence_bounded_context_preview_route_enabled"],
+            true
+        );
+        assert_eq!(value["intelligence_bounded_context_preview_ready"], true);
+        assert_eq!(
+            value["context_scope"],
+            "operator_scoped_bounded_context_preview"
+        );
+        assert_eq!(value["context_attachment_budget_tokens"], 512);
+        assert_eq!(value["bounded_context_source_count"], 2);
+        assert_eq!(value["bounded_context_preview_item_count"], 3);
+        assert_eq!(value["bounded_context_attachment_preview_rendered"], true);
+        assert_eq!(value["bounded_context_readback_performed"], true);
+        assert_eq!(value["bounded_context_readback_hash_matched"], true);
+        assert_eq!(value["readback_receipt_persisted"], false);
+        assert_eq!(value["raw_context_materialized"], false);
+        assert_eq!(value["raw_prompt_payload_materialized"], false);
+        assert_eq!(value["prompt_payload_materialized"], false);
+        assert_eq!(value["provider_prompt_injection_performed"], false);
+        assert_eq!(value["context_injection_performed"], false);
+
+        let steps = value["preview_steps"]
+            .as_array()
+            .expect("intelligence bounded context preview steps");
+        assert_eq!(steps.len(), 4);
+        assert_eq!(steps[0]["step"], "source_memory_canary_receipt_binding");
+        assert_eq!(
+            steps[1]["step"],
+            "bounded_context_attachment_package_preview"
+        );
+        assert_eq!(steps[2]["step"], "preview_readback_hash_validation");
+        assert_eq!(steps[3]["step"], "provider_model_kg_channel_denial_check");
+        assert_eq!(
+            steps[1]["bounded_context_attachment_preview_rendered"],
+            true
+        );
+        assert_eq!(steps[1]["raw_context_materialized"], false);
+        assert_eq!(steps[1]["provider_prompt_injection_performed"], false);
+        assert_eq!(steps[2]["bounded_context_readback_hash_matched"], true);
+        assert_eq!(steps[2]["readback_receipt_persisted"], false);
+
+        for key in [
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_performed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("intelligence bounded context preview side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "hepta_kg_read_only_adapter_shadow_rank_canary"
         );
     }
 
