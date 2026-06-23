@@ -312,6 +312,8 @@ const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-no-persistence";
 const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT:
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial";
+const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT:
+    &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -322,7 +324,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 180;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 181;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1248,6 +1250,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial --json",
         capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial",
         side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt replay/idempotency denial gate; derives deterministic replay, duplicate, retry, cross-scope, status-upgrade, and idempotency-cache denial evidence from the no-persistence result receipt while denying receipt acceptance, replay execution, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+        source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial --json",
+        capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial",
+        side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt ordering/monotonicity denial gate; derives deterministic sequence cursor, stale/late/future, timestamp rollback, epoch rollback, same-sequence override, and latest-wins denial evidence from the replay/idempotency denial surface while denying receipt acceptance, ordering state persistence, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3037,6 +3046,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_report(),
                     ),
                 );
             }
@@ -52887,6 +52906,578 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     report
 }
 
+fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_report();
+    let source_bool = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    };
+    let source_i64 = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_i64())
+            .unwrap_or(-1)
+    };
+    let source_str = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+    };
+    let source_next_action_ordering_monotonicity = source
+        .get("allowed_next_actions")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .map(|item| {
+            item.get("action").and_then(|value| value.as_str())
+                == Some(
+                    "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial",
+                )
+                && item
+                    .get("records_result_receipt")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("persists_result_receipt")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("accepts_result_receipt")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("registers_idempotency_key")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("writes_idempotency_cache")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("requires_fresh_accepted_operator_approval_artifact")
+                    .and_then(|value| value.as_bool())
+                    == Some(true)
+                && item
+                    .get("requires_single_use_approval_nonce")
+                    .and_then(|value| value.as_bool())
+                    == Some(true)
+                && item
+                    .get("requires_operator_identity_session_binding")
+                    .and_then(|value| value.as_bool())
+                    == Some(true)
+                && item
+                    .get("requires_explicit_command")
+                    .and_then(|value| value.as_bool())
+                    == Some(true)
+                && item
+                    .get("invokes_provider")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+        })
+        .unwrap_or(false);
+    let source_replay_idempotency_ready = source_bool(
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_ready",
+    ) && source_bool(
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_no_persistence_ready",
+    ) && source_bool(
+        "final_authorization_dry_run_result_receipt_replay_idempotency_readback_hash_matched",
+    ) && source_i64("replay_idempotency_fixture_count") == 8
+        && source_i64("blocked_replay_idempotency_fixture_count") == 8
+        && source_i64("noop_replay_idempotency_fixture_count") == 8
+        && source_i64("allowed_replay_idempotency_fixture_count") == 0
+        && source_i64("accepted_replay_idempotency_fixture_count") == 0
+        && source_i64("replay_idempotency_performed_count") == 0
+        && source_i64("duplicate_result_receipt_accepted_count") == 0
+        && source_i64("retry_result_receipt_accepted_count") == 0
+        && source_i64("idempotency_state_recorded_count") == 0
+        && source_i64("idempotency_state_persisted_count") == 0
+        && !source_bool("final_authorization_dry_run_result_receipt_replay_allowed")
+        && !source_bool("final_authorization_dry_run_result_receipt_replayed")
+        && !source_bool("final_authorization_dry_run_result_receipt_replay_recorded")
+        && !source_bool("final_authorization_dry_run_result_receipt_replay_persisted")
+        && !source_bool("final_authorization_dry_run_result_receipt_replay_performed")
+        && !source_bool("final_authorization_dry_run_result_receipt_duplicate_accepted")
+        && !source_bool("final_authorization_dry_run_result_receipt_retry_accepted")
+        && !source_bool("final_authorization_dry_run_result_receipt_idempotency_key_accepted")
+        && !source_bool("final_authorization_dry_run_result_receipt_idempotency_key_registered")
+        && !source_bool("final_authorization_dry_run_result_receipt_idempotency_state_recorded")
+        && !source_bool("final_authorization_dry_run_result_receipt_idempotency_state_persisted")
+        && !source_bool("final_authorization_dry_run_result_receipt_idempotency_cache_written")
+        && !source_bool(
+            "final_authorization_dry_run_result_receipt_idempotency_cache_hit_promoted",
+        )
+        && !source_bool("final_authorization_dry_run_result_receipt_cross_scope_reuse_accepted")
+        && !source_bool("final_authorization_dry_run_result_receipt_status_upgrade_accepted")
+        && !source_bool("final_authorization_dry_run_result_receipt_completed_status_accepted")
+        && !source_bool("completion_ack_replay_accepted")
+        && !source_bool("final_authorization_from_replay_allowed")
+        && !source_bool("operator_approval_from_replay_accepted")
+        && !source_bool("activation_from_replay_allowed")
+        && !source_bool("provider_invocation_authorized")
+        && !source_bool("model_invocation_authorized")
+        && source_i64("provider_invocation_budget") == 0
+        && source_i64("model_invocation_budget") == 0
+        && !source_bool("provider_invoked")
+        && !source_bool("model_invoked")
+        && !source_bool("credential_read")
+        && !source_bool("secret_file_read")
+        && !source_bool("live_kg_write_performed")
+        && !source_bool("memory_store_write_performed")
+        && !source_bool("channel_send_performed")
+        && !source_bool("telegram_send_performed")
+        && !source_bool("external_send_performed")
+        && source_next_action_ordering_monotonicity;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT;
+    let source_replay_denial_hash = source_str(
+        "final_authorization_dry_run_result_receipt_replay_idempotency_denial_hash_sha256",
+    );
+    let source_replay_readback_hash = source_str(
+        "final_authorization_dry_run_result_receipt_replay_idempotency_readback_hash_sha256",
+    );
+    let source_result_receipt_hash =
+        source_str("source_final_authorization_dry_run_result_receipt_hash_sha256");
+    let ordering_scope = "first_model_invocation:operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial";
+    let ordering_monotonicity_denial_hash = sha256_text_value(&format!(
+        "first-model-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial:{ordering_scope}:{source_replay_denial_hash}:{source_replay_readback_hash}:{source_result_receipt_hash}:sequence=false:monotonic=false:latest-wins=false"
+    ));
+    let ordering_monotonicity_readback_hash = sha256_text_value(&format!(
+        "first-model-final-authorization-dry-run-result-receipt-ordering-monotonicity-readback:{ordering_monotonicity_denial_hash}:cursor=false:epoch=false:authority=false"
+    ));
+    let ordering_fixtures = vec![
+        serde_json::json!({
+            "fixture_id": "duplicate-sequence-number",
+            "ordering_monotonicity_status": "blocked_duplicate_sequence_number",
+            "final_authorization_dry_run_result_receipt_duplicate_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_sequence_cursor_recorded": false,
+            "activation_from_ordering_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "stale-sequence-cursor",
+            "ordering_monotonicity_status": "blocked_stale_sequence_cursor",
+            "final_authorization_dry_run_result_receipt_stale_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_monotonic_sequence_accepted": false,
+            "activation_from_ordering_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "late-receipt-timestamp",
+            "ordering_monotonicity_status": "blocked_late_receipt_timestamp",
+            "final_authorization_dry_run_result_receipt_late_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_timestamp_ordering_accepted": false,
+            "activation_from_ordering_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "future-sequence-gap",
+            "ordering_monotonicity_status": "blocked_future_sequence_gap",
+            "final_authorization_dry_run_result_receipt_future_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_gap_fill_accepted": false,
+            "activation_from_ordering_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "timestamp-rollback",
+            "ordering_monotonicity_status": "blocked_timestamp_rollback",
+            "final_authorization_dry_run_result_receipt_timestamp_rollback_accepted": false,
+            "final_authorization_dry_run_result_receipt_status_rollback_accepted": false,
+            "activation_from_ordering_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "epoch-rollback",
+            "ordering_monotonicity_status": "blocked_epoch_rollback",
+            "final_authorization_dry_run_result_receipt_epoch_rollback_accepted": false,
+            "final_authorization_dry_run_result_receipt_epoch_state_persisted": false,
+            "activation_from_ordering_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "same-sequence-override",
+            "ordering_monotonicity_status": "blocked_same_sequence_override",
+            "final_authorization_dry_run_result_receipt_same_sequence_override_accepted": false,
+            "operator_approval_from_ordering_accepted": false,
+            "activation_from_ordering_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "latest-wins-promotion",
+            "ordering_monotonicity_status": "blocked_latest_wins_promotion",
+            "final_authorization_dry_run_result_receipt_latest_wins_promoted": false,
+            "provider_invocation_authorized_from_ordering": false,
+            "model_invocation_authorized_from_ordering": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "activation_from_ordering_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+    ];
+    let ordering_fixture_count = ordering_fixtures.len();
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && source_replay_idempotency_ready;
+
+    let audit_steps = vec![
+        serde_json::json!({
+            "step": "replay_idempotency_source_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT,
+            "source_replay_idempotency_ready": source_replay_idempotency_ready,
+            "source_replay_denial_hash_sha256": source_replay_denial_hash,
+            "source_replay_readback_hash_sha256": source_replay_readback_hash
+        }),
+        serde_json::json!({
+            "step": "ordering_sequence_fixture_denial",
+            "status": "blocked_report_only",
+            "ordering_monotonicity_fixture_count": ordering_fixture_count,
+            "blocked_ordering_monotonicity_fixture_count": ordering_fixture_count,
+            "allowed_ordering_monotonicity_fixture_count": 0,
+            "accepted_ordering_monotonicity_fixture_count": 0,
+            "ordering_monotonicity_performed_count": 0
+        }),
+        serde_json::json!({
+            "step": "sequence_cursor_no_write",
+            "status": "not_recorded_or_persisted",
+            "final_authorization_dry_run_result_receipt_sequence_cursor_accepted": false,
+            "final_authorization_dry_run_result_receipt_sequence_cursor_recorded": false,
+            "final_authorization_dry_run_result_receipt_sequence_cursor_persisted": false,
+            "final_authorization_dry_run_result_receipt_monotonicity_state_recorded": false,
+            "final_authorization_dry_run_result_receipt_monotonicity_state_persisted": false
+        }),
+        serde_json::json!({
+            "step": "late_future_rollback_denial",
+            "status": "denied",
+            "final_authorization_dry_run_result_receipt_late_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_future_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_timestamp_rollback_accepted": false,
+            "final_authorization_dry_run_result_receipt_epoch_rollback_accepted": false,
+            "final_authorization_dry_run_result_receipt_same_sequence_override_accepted": false,
+            "final_authorization_dry_run_result_receipt_latest_wins_promoted": false
+        }),
+        serde_json::json!({
+            "step": "ordering_authority_non_promotion",
+            "status": "authority_denied",
+            "final_authorization_from_ordering_allowed": false,
+            "operator_approval_from_ordering_accepted": false,
+            "activation_from_ordering_allowed": false,
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invoked": false,
+            "model_invoked": false
+        }),
+        serde_json::json!({
+            "step": "side_effect_denial_check",
+            "status": "ready",
+            "credential_read": false,
+            "secret_file_read": false,
+            "provider_router_live_envelope_executed": false,
+            "provider_prompt_injection_performed": false,
+            "context_injection_performed": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false,
+            "channel_send_performed": false,
+            "external_send_performed": false,
+            "install_executed": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false
+        }),
+    ];
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "final_authorization_dry_run_result_receipt_ordering_allowed",
+        "final_authorization_dry_run_result_receipt_ordered",
+        "final_authorization_dry_run_result_receipt_ordering_recorded",
+        "final_authorization_dry_run_result_receipt_ordering_persisted",
+        "final_authorization_dry_run_result_receipt_ordering_performed",
+        "final_authorization_dry_run_result_receipt_sequence_cursor_accepted",
+        "final_authorization_dry_run_result_receipt_sequence_cursor_recorded",
+        "final_authorization_dry_run_result_receipt_sequence_cursor_persisted",
+        "final_authorization_dry_run_result_receipt_monotonicity_state_recorded",
+        "final_authorization_dry_run_result_receipt_monotonicity_state_persisted",
+        "final_authorization_dry_run_result_receipt_monotonic_sequence_accepted",
+        "final_authorization_dry_run_result_receipt_duplicate_sequence_accepted",
+        "final_authorization_dry_run_result_receipt_stale_sequence_accepted",
+        "final_authorization_dry_run_result_receipt_late_sequence_accepted",
+        "final_authorization_dry_run_result_receipt_future_sequence_accepted",
+        "final_authorization_dry_run_result_receipt_gap_fill_accepted",
+        "final_authorization_dry_run_result_receipt_timestamp_ordering_accepted",
+        "final_authorization_dry_run_result_receipt_timestamp_rollback_accepted",
+        "final_authorization_dry_run_result_receipt_epoch_rollback_accepted",
+        "final_authorization_dry_run_result_receipt_epoch_state_persisted",
+        "final_authorization_dry_run_result_receipt_status_rollback_accepted",
+        "final_authorization_dry_run_result_receipt_same_sequence_override_accepted",
+        "final_authorization_dry_run_result_receipt_latest_wins_promoted",
+        "completion_ack_ordering_accepted",
+        "operator_approval_from_ordering_accepted",
+        "final_authorization_from_ordering_allowed",
+        "activation_from_ordering_allowed",
+        "final_authorization_dry_run_result_receipt_recorded",
+        "final_authorization_dry_run_result_receipt_persisted",
+        "final_authorization_dry_run_result_receipt_accepted",
+        "final_authorization_dry_run_result_receipt_materialized",
+        "final_authorization_dry_run_result_receipt_filesystem_written",
+        "completion_ack_recorded",
+        "completion_ack_persisted",
+        "completion_ack_accepted",
+        "final_authorization_preconditions_satisfied",
+        "final_authorization_accepted",
+        "final_authorization_persisted",
+        "fresh_live_accepted_operator_approval_artifact_present",
+        "fresh_live_accepted_operator_approval_artifact_verified",
+        "single_use_approval_nonce_verified",
+        "single_use_approval_nonce_consumed",
+        "operator_identity_session_binding_verified",
+        "operator_identity_session_bound",
+        "explicit_invocation_command_accepted",
+        "approval_packet_accepted",
+        "operator_approval_recorded",
+        "operator_consent_recorded",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_router_live_envelope_executed",
+        "provider_router_prompt_mutated",
+        "provider_router_context_packet_materialized",
+        "provider_prompt_injection_performed",
+        "context_injection_performed",
+        "provider_invoked",
+        "model_invoked",
+        "usage_record_persisted",
+        "credential_value_read",
+        "credential_read",
+        "secret_file_read",
+        "external_network_call_performed",
+        "kg_adapter_live_read_performed",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "kg_write_performed",
+        "durable_memory_store_write_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_route",
+        "endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+        "source_command": "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-23",
+        "canary_schema_version": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_v1",
+        "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_no_provider_model_invocation",
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT,
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_ready": source_replay_idempotency_ready,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_route_enabled": true,
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_ready": report_ready
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "result_receipt_ordering_monotonicity_state": "final_authorization_dry_run_result_receipt_sequence_cursor_monotonicity_denied",
+            "result_receipt_ordering_monotonicity_scope": ordering_scope,
+            "source_final_authorization_dry_run_result_receipt_replay_idempotency_denial_hash_sha256": source_replay_denial_hash,
+            "source_final_authorization_dry_run_result_receipt_replay_idempotency_readback_hash_sha256": source_replay_readback_hash,
+            "source_final_authorization_dry_run_result_receipt_hash_sha256": source_result_receipt_hash,
+            "final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_hash_sha256": ordering_monotonicity_denial_hash,
+            "final_authorization_dry_run_result_receipt_ordering_monotonicity_readback_hash_sha256": ordering_monotonicity_readback_hash,
+            "final_authorization_dry_run_result_receipt_ordering_monotonicity_readback_hash_matched": true,
+            "ordering_monotonicity_fixture_count": ordering_fixture_count,
+            "blocked_ordering_monotonicity_fixture_count": ordering_fixture_count,
+            "noop_ordering_monotonicity_fixture_count": ordering_fixture_count,
+            "allowed_ordering_monotonicity_fixture_count": 0,
+            "accepted_ordering_monotonicity_fixture_count": 0,
+            "ordering_monotonicity_performed_count": 0,
+            "sequence_cursor_recorded_count": 0,
+            "sequence_cursor_persisted_count": 0,
+            "monotonicity_state_recorded_count": 0,
+            "monotonicity_state_persisted_count": 0,
+            "ordering_monotonicity_fixtures": ordering_fixtures
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "final_authorization_dry_run_result_receipt_ordering_allowed": false,
+            "final_authorization_dry_run_result_receipt_ordered": false,
+            "final_authorization_dry_run_result_receipt_ordering_recorded": false,
+            "final_authorization_dry_run_result_receipt_ordering_persisted": false,
+            "final_authorization_dry_run_result_receipt_ordering_performed": false,
+            "final_authorization_dry_run_result_receipt_sequence_cursor_accepted": false,
+            "final_authorization_dry_run_result_receipt_sequence_cursor_recorded": false,
+            "final_authorization_dry_run_result_receipt_sequence_cursor_persisted": false,
+            "final_authorization_dry_run_result_receipt_monotonicity_state_recorded": false,
+            "final_authorization_dry_run_result_receipt_monotonicity_state_persisted": false,
+            "final_authorization_dry_run_result_receipt_monotonic_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_duplicate_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_stale_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_late_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_future_sequence_accepted": false,
+            "final_authorization_dry_run_result_receipt_gap_fill_accepted": false,
+            "final_authorization_dry_run_result_receipt_timestamp_ordering_accepted": false,
+            "final_authorization_dry_run_result_receipt_timestamp_rollback_accepted": false,
+            "final_authorization_dry_run_result_receipt_epoch_rollback_accepted": false,
+            "final_authorization_dry_run_result_receipt_epoch_state_persisted": false,
+            "final_authorization_dry_run_result_receipt_status_rollback_accepted": false,
+            "final_authorization_dry_run_result_receipt_same_sequence_override_accepted": false,
+            "final_authorization_dry_run_result_receipt_latest_wins_promoted": false,
+            "completion_ack_ordering_accepted": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "final_authorization_from_ordering_allowed": false,
+            "operator_approval_from_ordering_accepted": false,
+            "activation_from_ordering_allowed": false,
+            "final_authorization_from_replay_allowed": false,
+            "operator_approval_from_replay_accepted": false,
+            "activation_from_replay_allowed": false,
+            "final_authorization_from_result_receipt_allowed": false,
+            "operator_approval_from_result_receipt_accepted": false,
+            "activation_from_result_receipt_allowed": false,
+            "final_authorization_dry_run_result_receipt_recorded": false,
+            "final_authorization_dry_run_result_receipt_persisted": false,
+            "final_authorization_dry_run_result_receipt_accepted": false,
+            "final_authorization_dry_run_result_receipt_materialized": false,
+            "final_authorization_dry_run_result_receipt_filesystem_written": false,
+            "completion_ack_recorded": false,
+            "completion_ack_persisted": false,
+            "completion_ack_accepted": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "fresh_live_accepted_operator_approval_artifact_required": true,
+            "fresh_live_accepted_operator_approval_artifact_present": false,
+            "fresh_live_accepted_operator_approval_artifact_verified": false,
+            "single_use_approval_nonce_required": true,
+            "single_use_approval_nonce_verified": false,
+            "single_use_approval_nonce_consumed": false,
+            "operator_identity_session_binding_required": true,
+            "operator_identity_session_binding_verified": false,
+            "operator_identity_session_bound": false,
+            "explicit_invocation_command_required": true,
+            "explicit_invocation_command_accepted": false,
+            "final_authorization_candidate_present": true,
+            "final_authorization_preconditions_satisfied": false,
+            "final_authorization_denied": true,
+            "final_authorization_accepted": false,
+            "final_authorization_persisted": false,
+            "approval_packet_accepted": false,
+            "operator_approval_recorded": false,
+            "operator_consent_recorded": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "candidate_provider_invocation_requested": true,
+            "candidate_model_invocation_requested": true,
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invocation_authorized_from_ordering": false,
+            "model_invocation_authorized_from_ordering": false,
+            "provider_invocation_budget": 0,
+            "model_invocation_budget": 0,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "credential_value_read": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "provider_router_live_envelope_executed": false,
+            "provider_router_prompt_mutated": false,
+            "provider_router_context_packet_materialized": false,
+            "provider_prompt_injection_performed": false,
+            "context_injection_performed": false,
+            "kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false,
+            "channel_send_performed": false,
+            "telegram_send_performed": false,
+            "external_send_performed": false,
+            "audit_steps": audit_steps
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial",
+                    "status": "allowed_report_only_next_slice",
+                    "records_result_receipt": false,
+                    "persists_result_receipt": false,
+                    "accepts_result_receipt": false,
+                    "records_sequence_cursor": false,
+                    "persists_monotonicity_state": false,
+                    "requires_fresh_accepted_operator_approval_artifact": true,
+                    "requires_single_use_approval_nonce": true,
+                    "requires_operator_identity_session_binding": true,
+                    "requires_explicit_command": true,
+                    "invokes_provider": false,
+                    "invokes_model": false,
+                    "reads_credentials": false,
+                    "writes_kg": false,
+                    "sends_externally": false,
+                    "mutates_durable_memory": false
+                }
+            ],
+            "blocked_actions": [
+                "final_authorization_result_receipt_sequence_cursor_recording",
+                "final_authorization_result_receipt_monotonicity_state_persistence",
+                "final_authorization_result_receipt_duplicate_sequence_acceptance",
+                "final_authorization_result_receipt_stale_sequence_acceptance",
+                "final_authorization_result_receipt_late_sequence_acceptance",
+                "final_authorization_result_receipt_future_sequence_acceptance",
+                "final_authorization_result_receipt_timestamp_rollback_acceptance",
+                "final_authorization_result_receipt_epoch_rollback_acceptance",
+                "final_authorization_result_receipt_same_sequence_override",
+                "final_authorization_result_receipt_latest_wins_promotion",
+                "operator_approval_from_result_receipt_ordering",
+                "activation_from_result_receipt_ordering",
+                "provider_or_model_invocation_from_result_receipt_ordering",
+                "credential_or_secret_read_from_result_receipt_ordering",
+                "kg_or_memory_write_from_result_receipt_ordering",
+                "channel_or_external_delivery_from_result_receipt_ordering"
+            ],
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -80874,6 +81465,225 @@ mod tests {
         );
         assert_eq!(
             value["allowed_next_actions"][0]["writes_idempotency_cache"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
+    }
+
+    #[test]
+    fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_endpoint_blocks_ordering_and_invocation_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "first model invocation approval final authorization dry-run result receipt ordering/monotonicity route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["canary_execution_mode"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_no_provider_model_invocation"
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["result_receipt_ordering_monotonicity_state"],
+            "final_authorization_dry_run_result_receipt_sequence_cursor_monotonicity_denied"
+        );
+        assert_eq!(value["ordering_monotonicity_fixture_count"], 8);
+        assert_eq!(value["blocked_ordering_monotonicity_fixture_count"], 8);
+        assert_eq!(value["noop_ordering_monotonicity_fixture_count"], 8);
+        assert_eq!(value["allowed_ordering_monotonicity_fixture_count"], 0);
+        assert_eq!(value["accepted_ordering_monotonicity_fixture_count"], 0);
+        assert_eq!(value["ordering_monotonicity_performed_count"], 0);
+        assert_eq!(value["sequence_cursor_recorded_count"], 0);
+        assert_eq!(value["sequence_cursor_persisted_count"], 0);
+        assert_eq!(value["monotonicity_state_recorded_count"], 0);
+        assert_eq!(value["monotonicity_state_persisted_count"], 0);
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_ordering_monotonicity_readback_hash_matched"],
+            true
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_ordering_allowed"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_ordered"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_ordering_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_ordering_persisted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_sequence_cursor_accepted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_sequence_cursor_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_monotonicity_state_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_monotonicity_state_persisted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_duplicate_sequence_accepted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_stale_sequence_accepted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_late_sequence_accepted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_future_sequence_accepted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_timestamp_rollback_accepted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_epoch_rollback_accepted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_same_sequence_override_accepted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_latest_wins_promoted"],
+            false
+        );
+        assert_eq!(value["completion_ack_ordering_accepted"], false);
+        assert_eq!(value["final_authorization_from_ordering_allowed"], false);
+        assert_eq!(value["operator_approval_from_ordering_accepted"], false);
+        assert_eq!(value["activation_from_ordering_allowed"], false);
+        assert_eq!(value["provider_invocation_authorized"], false);
+        assert_eq!(value["model_invocation_authorized"], false);
+        assert_eq!(value["provider_invocation_authorized_from_ordering"], false);
+        assert_eq!(value["model_invocation_authorized_from_ordering"], false);
+        assert_eq!(value["provider_invocation_budget"], 0);
+        assert_eq!(value["model_invocation_budget"], 0);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["secret_file_read"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["telegram_send_performed"], false);
+        assert_eq!(value["external_send_performed"], false);
+
+        let fixtures = value["ordering_monotonicity_fixtures"]
+            .as_array()
+            .expect("first model invocation result receipt ordering fixtures");
+        assert_eq!(fixtures.len(), 8);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["ordering_monotonicity_status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("blocked_"))
+                && fixture["activation_from_ordering_allowed"] == false
+                && fixture["receipt_noop_confirmed"] == true
+        }));
+
+        let steps = value["audit_steps"].as_array().expect(
+            "first model invocation final authorization result receipt ordering audit steps",
+        );
+        assert_eq!(steps.len(), 6);
+        assert_eq!(steps[0]["step"], "replay_idempotency_source_binding");
+        assert_eq!(steps[1]["step"], "ordering_sequence_fixture_denial");
+        assert_eq!(steps[2]["step"], "sequence_cursor_no_write");
+        assert_eq!(steps[3]["step"], "late_future_rollback_denial");
+        assert_eq!(steps[4]["step"], "ordering_authority_non_promotion");
+        assert_eq!(steps[5]["step"], "side_effect_denial_check");
+        assert_eq!(steps[1]["blocked_ordering_monotonicity_fixture_count"], 8);
+        assert_eq!(
+            steps[2]["final_authorization_dry_run_result_receipt_sequence_cursor_recorded"],
+            false
+        );
+        assert_eq!(
+            steps[3]["final_authorization_dry_run_result_receipt_epoch_rollback_accepted"],
+            false
+        );
+        assert_eq!(steps[4]["activation_from_ordering_allowed"], false);
+        assert_eq!(steps[4]["provider_invoked"], false);
+        assert_eq!(steps[4]["model_invoked"], false);
+
+        let side_effects = value["side_effects"].as_object().expect(
+            "first model invocation final authorization result receipt ordering side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["records_sequence_cursor"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["persists_monotonicity_state"],
             false
         );
         assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);

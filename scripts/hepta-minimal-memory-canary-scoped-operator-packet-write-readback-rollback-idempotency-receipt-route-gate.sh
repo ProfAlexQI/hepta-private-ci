@@ -22,7 +22,7 @@ require_source_text() {
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 180;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 181;' \
   "native gateway route/source command count includes minimal memory canary route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT' \
@@ -55,8 +55,8 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   )"
   jq -e '
     .status == "ready"
-    and .route_count == 180
-    and .implemented_route_count == 180
+    and .route_count == 181
+    and .implemented_route_count == 181
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .minimal_memory_canary_route_enabled == true
