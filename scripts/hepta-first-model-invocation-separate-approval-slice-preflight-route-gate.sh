@@ -5,7 +5,7 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
-EXPECTED_ROUTE_COUNT=178
+EXPECTED_ROUTE_COUNT=179
 
 cd "$REPO_ROOT"
 
@@ -27,7 +27,7 @@ require_source_text() {
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 178;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 179;' \
   "native gateway route/source command count includes first model invocation approval preflight route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT' \
