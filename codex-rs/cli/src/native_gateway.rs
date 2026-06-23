@@ -318,6 +318,8 @@ const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial";
 const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_AUDIT_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT:
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-audit-immutable-evidence-denial";
+const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT:
+    &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -328,7 +330,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 183;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 184;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1275,6 +1277,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-audit-immutable-evidence-denial --json",
         capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-audit-immutable-evidence-denial",
         side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt audit/immutable-evidence denial gate; derives deterministic audit-ledger, hash-chain, immutable-evidence, attestation, witness/notary, merkle proof, export/query, and external-evidence denial evidence from the cancellation/supersession denial surface while denying receipt acceptance, audit recording, ledger writes, evidence materialization, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT,
+        source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial --json",
+        capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial",
+        side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt retention/expiry/garbage-collection denial gate; derives deterministic retention policy, TTL expiry, garbage-collection scan, delete-marker, archive/compaction, export/query, and external-retention notification denial evidence from the audit/immutable-evidence denial surface while denying receipt retention, expiry, deletion, archive/compaction, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3094,6 +3103,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_report(),
                     ),
                 );
             }
@@ -54311,6 +54330,414 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     report
 }
 
+fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_report();
+    let source_bool = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    };
+    let source_i64 = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_i64())
+            .unwrap_or(-1)
+    };
+    let source_str = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+    };
+    let source_next_action_retention_expiry_garbage_collection = source
+        .get("allowed_next_actions")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .map(|item| {
+            item.get("action").and_then(|value| value.as_str())
+                == Some(
+                    "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial",
+                )
+                && item
+                    .get("records_audit")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("records_immutable_evidence")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("persists_ledger")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("exports_evidence")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item.get("invokes_provider").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+        })
+        .unwrap_or(false);
+    let source_audit_ready = source_bool(
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_ready",
+    ) && source_bool(
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_ready",
+    ) && source_bool(
+        "final_authorization_dry_run_result_receipt_audit_immutable_evidence_readback_hash_matched",
+    ) && source_i64("audit_immutable_evidence_fixture_count") == 8
+        && source_i64("blocked_audit_immutable_evidence_fixture_count") == 8
+        && source_i64("noop_audit_immutable_evidence_fixture_count") == 8
+        && source_i64("allowed_audit_immutable_evidence_fixture_count") == 0
+        && source_i64("accepted_audit_immutable_evidence_fixture_count") == 0
+        && source_i64("audit_immutable_evidence_performed_count") == 0
+        && source_i64("audit_recorded_count") == 0
+        && source_i64("ledger_written_count") == 0
+        && source_i64("hash_chain_appended_count") == 0
+        && source_i64("immutable_evidence_materialized_count") == 0
+        && source_i64("attestation_signed_count") == 0
+        && source_i64("witness_notarized_count") == 0
+        && source_i64("merkle_root_published_count") == 0
+        && source_i64("evidence_export_recorded_count") == 0
+        && source_i64("external_evidence_sent_count") == 0
+        && !source_bool("final_authorization_dry_run_result_receipt_audit_allowed")
+        && !source_bool("final_authorization_dry_run_result_receipt_audit_recorded")
+        && !source_bool("final_authorization_dry_run_result_receipt_ledger_written")
+        && !source_bool("final_authorization_dry_run_result_receipt_hash_chain_appended")
+        && !source_bool(
+            "final_authorization_dry_run_result_receipt_immutable_evidence_materialized",
+        )
+        && !source_bool("final_authorization_dry_run_result_receipt_attestation_signed")
+        && !source_bool("final_authorization_dry_run_result_receipt_witness_notarized")
+        && !source_bool("final_authorization_dry_run_result_receipt_merkle_root_published")
+        && !source_bool("final_authorization_dry_run_result_receipt_evidence_export_recorded")
+        && !source_bool("final_authorization_dry_run_result_receipt_external_evidence_sent")
+        && !source_bool("final_authorization_from_audit_immutable_evidence_allowed")
+        && !source_bool("operator_approval_from_audit_immutable_evidence_accepted")
+        && !source_bool("activation_from_audit_immutable_evidence_allowed")
+        && !source_bool("provider_invocation_authorized")
+        && !source_bool("model_invocation_authorized")
+        && source_i64("provider_invocation_budget") == 0
+        && source_i64("model_invocation_budget") == 0
+        && !source_bool("provider_invoked")
+        && !source_bool("model_invoked")
+        && !source_bool("credential_read")
+        && !source_bool("secret_file_read")
+        && !source_bool("live_kg_write_performed")
+        && !source_bool("memory_store_write_performed")
+        && !source_bool("channel_send_performed")
+        && !source_bool("telegram_send_performed")
+        && !source_bool("external_send_performed")
+        && source_next_action_retention_expiry_garbage_collection;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT;
+    let source_audit_hash = source_str(
+        "final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_hash_sha256",
+    );
+    let source_audit_readback_hash = source_str(
+        "final_authorization_dry_run_result_receipt_audit_immutable_evidence_readback_hash_sha256",
+    );
+    let retention_scope = "first_model_invocation:operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial";
+    let retention_expiry_garbage_collection_denial_hash = sha256_text_value(&format!(
+        "first-model-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial:{retention_scope}:{source_audit_hash}:{source_audit_readback_hash}:retention=false:ttl=false:expiry=false:gc=false:delete=false"
+    ));
+    let retention_expiry_garbage_collection_readback_hash = sha256_text_value(&format!(
+        "first-model-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-readback:{retention_expiry_garbage_collection_denial_hash}:archive=false:compaction=false:export=false:external=false"
+    ));
+    let retention_fixtures = vec![
+        serde_json::json!({
+            "fixture_id": "retention-policy-record",
+            "retention_expiry_garbage_collection_status": "blocked_retention_policy_record",
+            "final_authorization_dry_run_result_receipt_retention_recorded": false,
+            "final_authorization_dry_run_result_receipt_retention_policy_persisted": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "ttl-expiry-schedule",
+            "retention_expiry_garbage_collection_status": "blocked_ttl_expiry_schedule",
+            "final_authorization_dry_run_result_receipt_ttl_scheduled": false,
+            "final_authorization_dry_run_result_receipt_expiry_applied": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "garbage-collection-scan",
+            "retention_expiry_garbage_collection_status": "blocked_garbage_collection_scan",
+            "final_authorization_dry_run_result_receipt_garbage_collection_scan_performed": false,
+            "final_authorization_dry_run_result_receipt_garbage_collection_candidate_recorded": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "delete-marker-materialization",
+            "retention_expiry_garbage_collection_status": "blocked_delete_marker_materialization",
+            "final_authorization_dry_run_result_receipt_delete_marker_recorded": false,
+            "final_authorization_from_retention_expiry_garbage_collection_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "archive-compaction-record",
+            "retention_expiry_garbage_collection_status": "blocked_archive_compaction_record",
+            "final_authorization_dry_run_result_receipt_archive_recorded": false,
+            "final_authorization_dry_run_result_receipt_compaction_performed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "expiry-status-promotion",
+            "retention_expiry_garbage_collection_status": "blocked_expiry_status_promotion",
+            "operator_approval_from_retention_expiry_garbage_collection_accepted": false,
+            "activation_from_retention_expiry_garbage_collection_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "retention-export-query",
+            "retention_expiry_garbage_collection_status": "blocked_retention_export_query",
+            "final_authorization_dry_run_result_receipt_retention_export_recorded": false,
+            "result_receipt_retention_query_registered": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "external-retention-notification",
+            "retention_expiry_garbage_collection_status": "blocked_external_retention_notification",
+            "final_authorization_dry_run_result_receipt_external_retention_notification_sent": false,
+            "external_send_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "receipt_noop_confirmed": true
+        }),
+    ];
+    let retention_fixture_count = retention_fixtures.len();
+    let report_ready =
+        route_matrix.ready && route_count_source_command_accepted && source_audit_ready;
+
+    let audit_steps = vec![
+        serde_json::json!({
+            "step": "audit_immutable_evidence_source_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_AUDIT_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT,
+            "source_audit_immutable_evidence_ready": source_audit_ready,
+            "source_audit_hash_sha256": source_audit_hash,
+            "source_audit_readback_hash_sha256": source_audit_readback_hash
+        }),
+        serde_json::json!({
+            "step": "retention_expiry_garbage_collection_fixture_denial",
+            "status": "blocked_report_only",
+            "retention_expiry_garbage_collection_fixture_count": retention_fixture_count,
+            "blocked_retention_expiry_garbage_collection_fixture_count": retention_fixture_count,
+            "allowed_retention_expiry_garbage_collection_fixture_count": 0,
+            "accepted_retention_expiry_garbage_collection_fixture_count": 0,
+            "retention_expiry_garbage_collection_performed_count": 0
+        }),
+        serde_json::json!({
+            "step": "ttl_expiry_gc_no_schedule_or_scan",
+            "status": "not_recorded_or_persisted",
+            "final_authorization_dry_run_result_receipt_retention_policy_persisted": false,
+            "final_authorization_dry_run_result_receipt_ttl_scheduled": false,
+            "final_authorization_dry_run_result_receipt_expiry_applied": false,
+            "final_authorization_dry_run_result_receipt_garbage_collection_scan_performed": false
+        }),
+        serde_json::json!({
+            "step": "archive_compaction_delete_marker_denial",
+            "status": "denied",
+            "final_authorization_dry_run_result_receipt_delete_marker_recorded": false,
+            "final_authorization_dry_run_result_receipt_archive_recorded": false,
+            "final_authorization_dry_run_result_receipt_compaction_performed": false
+        }),
+        serde_json::json!({
+            "step": "retention_expiry_garbage_collection_authority_non_promotion",
+            "status": "authority_denied",
+            "final_authorization_from_retention_expiry_garbage_collection_allowed": false,
+            "operator_approval_from_retention_expiry_garbage_collection_accepted": false,
+            "activation_from_retention_expiry_garbage_collection_allowed": false,
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invoked": false,
+            "model_invoked": false
+        }),
+        serde_json::json!({
+            "step": "side_effect_denial_check",
+            "status": "ready",
+            "credential_read": false,
+            "secret_file_read": false,
+            "provider_router_live_envelope_executed": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false,
+            "channel_send_performed": false,
+            "external_send_performed": false,
+            "install_executed": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false
+        }),
+    ];
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "final_authorization_dry_run_result_receipt_retention_recorded",
+        "final_authorization_dry_run_result_receipt_retention_policy_persisted",
+        "final_authorization_dry_run_result_receipt_ttl_scheduled",
+        "final_authorization_dry_run_result_receipt_expiry_applied",
+        "final_authorization_dry_run_result_receipt_garbage_collection_scan_performed",
+        "final_authorization_dry_run_result_receipt_garbage_collection_candidate_recorded",
+        "final_authorization_dry_run_result_receipt_delete_marker_recorded",
+        "final_authorization_dry_run_result_receipt_archive_recorded",
+        "final_authorization_dry_run_result_receipt_compaction_performed",
+        "final_authorization_dry_run_result_receipt_retention_export_recorded",
+        "final_authorization_dry_run_result_receipt_external_retention_notification_sent",
+        "result_receipt_retention_query_registered",
+        "operator_approval_from_retention_expiry_garbage_collection_accepted",
+        "final_authorization_from_retention_expiry_garbage_collection_allowed",
+        "activation_from_retention_expiry_garbage_collection_allowed",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "live_kg_write_performed",
+        "memory_store_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_route",
+        "endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT,
+        "source_command": "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-24",
+        "canary_schema_version": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_v1",
+        "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_no_provider_model_invocation",
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_AUDIT_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT,
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_ready": source_audit_ready,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_route_enabled": true,
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_ready": report_ready
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "result_receipt_retention_expiry_garbage_collection_state": "final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denied",
+            "result_receipt_retention_expiry_garbage_collection_scope": retention_scope,
+            "source_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_hash_sha256": source_audit_hash,
+            "source_final_authorization_dry_run_result_receipt_audit_immutable_evidence_readback_hash_sha256": source_audit_readback_hash,
+            "final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_hash_sha256": retention_expiry_garbage_collection_denial_hash,
+            "final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_readback_hash_sha256": retention_expiry_garbage_collection_readback_hash,
+            "final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_readback_hash_matched": true,
+            "retention_expiry_garbage_collection_fixture_count": retention_fixture_count,
+            "blocked_retention_expiry_garbage_collection_fixture_count": retention_fixture_count,
+            "noop_retention_expiry_garbage_collection_fixture_count": retention_fixture_count,
+            "allowed_retention_expiry_garbage_collection_fixture_count": 0,
+            "accepted_retention_expiry_garbage_collection_fixture_count": 0,
+            "retention_expiry_garbage_collection_performed_count": 0,
+            "retention_expiry_garbage_collection_fixtures": retention_fixtures,
+            "retention_recorded_count": 0,
+            "retention_policy_persisted_count": 0,
+            "ttl_scheduled_count": 0,
+            "expiry_applied_count": 0,
+            "garbage_collection_scan_performed_count": 0,
+            "garbage_collection_candidate_recorded_count": 0,
+            "delete_marker_recorded_count": 0,
+            "archive_recorded_count": 0,
+            "compaction_performed_count": 0,
+            "retention_export_recorded_count": 0,
+            "external_retention_notification_sent_count": 0
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "final_authorization_dry_run_result_receipt_retention_recorded": false,
+            "final_authorization_dry_run_result_receipt_retention_policy_persisted": false,
+            "final_authorization_dry_run_result_receipt_ttl_scheduled": false,
+            "final_authorization_dry_run_result_receipt_expiry_applied": false,
+            "final_authorization_dry_run_result_receipt_garbage_collection_scan_performed": false,
+            "final_authorization_dry_run_result_receipt_garbage_collection_candidate_recorded": false,
+            "final_authorization_dry_run_result_receipt_delete_marker_recorded": false,
+            "final_authorization_dry_run_result_receipt_archive_recorded": false,
+            "final_authorization_dry_run_result_receipt_compaction_performed": false,
+            "final_authorization_dry_run_result_receipt_retention_export_recorded": false,
+            "final_authorization_dry_run_result_receipt_external_retention_notification_sent": false,
+            "result_receipt_retention_query_registered": false,
+            "final_authorization_from_retention_expiry_garbage_collection_allowed": false,
+            "operator_approval_from_retention_expiry_garbage_collection_accepted": false,
+            "activation_from_retention_expiry_garbage_collection_allowed": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invocation_authorized_from_retention_expiry_garbage_collection": false,
+            "model_invocation_authorized_from_retention_expiry_garbage_collection": false,
+            "provider_invocation_budget": 0,
+            "model_invocation_budget": 0,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "credential_value_read": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "provider_router_live_envelope_executed": false,
+            "provider_prompt_injection_performed": false,
+            "context_injection_performed": false,
+            "kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false,
+            "channel_send_performed": false,
+            "telegram_send_performed": false,
+            "external_send_performed": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial",
+                    "status": "allowed_report_only_next_slice",
+                    "records_result_receipt": false,
+                    "records_retention": false,
+                    "records_expiry": false,
+                    "records_garbage_collection": false,
+                    "exports_receipt": false,
+                    "invokes_provider": false,
+                    "invokes_model": false,
+                    "reads_credentials": false,
+                    "writes_kg": false,
+                    "sends_externally": false,
+                    "mutates_durable_memory": false
+                }
+            ],
+            "audit_steps": audit_steps,
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -82975,6 +83402,246 @@ mod tests {
         );
         assert_eq!(value["allowed_next_actions"][0]["persists_ledger"], false);
         assert_eq!(value["allowed_next_actions"][0]["exports_evidence"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
+    }
+
+    #[test]
+    fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_endpoint_blocks_retention_gc_and_invocation_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "first model invocation approval final authorization dry-run result receipt retention/expiry/gc route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["canary_execution_mode"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_no_provider_model_invocation"
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["result_receipt_retention_expiry_garbage_collection_state"],
+            "final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denied"
+        );
+        assert_eq!(
+            value["retention_expiry_garbage_collection_fixture_count"],
+            8
+        );
+        assert_eq!(
+            value["blocked_retention_expiry_garbage_collection_fixture_count"],
+            8
+        );
+        assert_eq!(
+            value["noop_retention_expiry_garbage_collection_fixture_count"],
+            8
+        );
+        assert_eq!(
+            value["allowed_retention_expiry_garbage_collection_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_retention_expiry_garbage_collection_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["retention_expiry_garbage_collection_performed_count"],
+            0
+        );
+        assert_eq!(value["retention_recorded_count"], 0);
+        assert_eq!(value["retention_policy_persisted_count"], 0);
+        assert_eq!(value["ttl_scheduled_count"], 0);
+        assert_eq!(value["expiry_applied_count"], 0);
+        assert_eq!(value["garbage_collection_scan_performed_count"], 0);
+        assert_eq!(value["garbage_collection_candidate_recorded_count"], 0);
+        assert_eq!(value["delete_marker_recorded_count"], 0);
+        assert_eq!(value["archive_recorded_count"], 0);
+        assert_eq!(value["compaction_performed_count"], 0);
+        assert_eq!(value["retention_export_recorded_count"], 0);
+        assert_eq!(value["external_retention_notification_sent_count"], 0);
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_readback_hash_matched"],
+            true
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_retention_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_retention_policy_persisted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_ttl_scheduled"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_expiry_applied"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_garbage_collection_scan_performed"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_delete_marker_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_archive_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_compaction_performed"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_external_retention_notification_sent"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_from_retention_expiry_garbage_collection_allowed"],
+            false
+        );
+        assert_eq!(
+            value["operator_approval_from_retention_expiry_garbage_collection_accepted"],
+            false
+        );
+        assert_eq!(
+            value["activation_from_retention_expiry_garbage_collection_allowed"],
+            false
+        );
+        assert_eq!(value["provider_invocation_authorized"], false);
+        assert_eq!(value["model_invocation_authorized"], false);
+        assert_eq!(
+            value["provider_invocation_authorized_from_retention_expiry_garbage_collection"],
+            false
+        );
+        assert_eq!(
+            value["model_invocation_authorized_from_retention_expiry_garbage_collection"],
+            false
+        );
+        assert_eq!(value["provider_invocation_budget"], 0);
+        assert_eq!(value["model_invocation_budget"], 0);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["secret_file_read"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["telegram_send_performed"], false);
+        assert_eq!(value["external_send_performed"], false);
+
+        let fixtures = value["retention_expiry_garbage_collection_fixtures"]
+            .as_array()
+            .expect("first model invocation result receipt retention expiry gc fixtures");
+        assert_eq!(fixtures.len(), 8);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["retention_expiry_garbage_collection_status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("blocked_"))
+                && fixture["receipt_noop_confirmed"] == true
+        }));
+
+        let steps = value["audit_steps"].as_array().expect(
+            "first model invocation final authorization result receipt retention expiry gc steps",
+        );
+        assert_eq!(steps.len(), 6);
+        assert_eq!(steps[0]["step"], "audit_immutable_evidence_source_binding");
+        assert_eq!(
+            steps[1]["step"],
+            "retention_expiry_garbage_collection_fixture_denial"
+        );
+        assert_eq!(steps[2]["step"], "ttl_expiry_gc_no_schedule_or_scan");
+        assert_eq!(steps[3]["step"], "archive_compaction_delete_marker_denial");
+        assert_eq!(
+            steps[4]["step"],
+            "retention_expiry_garbage_collection_authority_non_promotion"
+        );
+        assert_eq!(steps[5]["step"], "side_effect_denial_check");
+        assert_eq!(
+            steps[1]["blocked_retention_expiry_garbage_collection_fixture_count"],
+            8
+        );
+        assert_eq!(
+            steps[2]["final_authorization_dry_run_result_receipt_ttl_scheduled"],
+            false
+        );
+        assert_eq!(
+            steps[3]["final_authorization_dry_run_result_receipt_compaction_performed"],
+            false
+        );
+        assert_eq!(
+            steps[4]["activation_from_retention_expiry_garbage_collection_allowed"],
+            false
+        );
+        assert_eq!(steps[4]["provider_invoked"], false);
+        assert_eq!(steps[4]["model_invoked"], false);
+
+        let side_effects = value["side_effects"].as_object().expect(
+            "first model invocation final authorization result receipt retention expiry gc side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["records_retention"], false);
+        assert_eq!(value["allowed_next_actions"][0]["records_expiry"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["records_garbage_collection"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["exports_receipt"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
     }
