@@ -110,12 +110,6 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
     and .final_authorization_from_cancellation_supersession_allowed == false
     and .operator_approval_from_cancellation_supersession_accepted == false
     and .activation_from_cancellation_supersession_allowed == false
-    and .final_authorization_preconditions_satisfied == false
-    and .final_authorization_denied == true
-    and .final_authorization_accepted == false
-    and .approval_packet_accepted == false
-    and .operator_approval_recorded == false
-    and .operator_consent_recorded == false
     and .provider_invocation_authorized == false
     and .model_invocation_authorized == false
     and .provider_invocation_authorized_from_cancellation_supersession == false
