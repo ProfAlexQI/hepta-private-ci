@@ -780,6 +780,9 @@ scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-r
 echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt export/query/observability denial route gate"
 scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-export-query-observability-denial-route-gate.sh
 
+echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt operator-facing summary/briefing non-persistence denial route gate"
+scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-operator-facing-summary-briefing-non-persistence-denial-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence export/query/observability denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-export-query-observability-denial-gate.sh
 
