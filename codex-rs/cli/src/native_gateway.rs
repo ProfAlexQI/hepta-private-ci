@@ -320,6 +320,8 @@ const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-audit-immutable-evidence-denial";
 const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT:
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial";
+const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT:
+    &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-export-query-observability-denial";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -330,7 +332,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 184;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 185;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1284,6 +1286,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial --json",
         capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial",
         side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt retention/expiry/garbage-collection denial gate; derives deterministic retention policy, TTL expiry, garbage-collection scan, delete-marker, archive/compaction, export/query, and external-retention notification denial evidence from the audit/immutable-evidence denial surface while denying receipt retention, expiry, deletion, archive/compaction, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT,
+        source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-export-query-observability-denial --json",
+        capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-export-query-observability-denial",
+        side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt export/query/observability denial gate; derives deterministic export, query, dashboard, metric, log, trace, alert, SLO, and external observability notification denial evidence from the retention/expiry/garbage-collection denial surface while denying export materialization, query registration, observability publication, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3113,6 +3122,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_report(),
                     ),
                 );
             }
@@ -54738,6 +54757,416 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     report
 }
 
+fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_report();
+    let source_bool = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    };
+    let source_i64 = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_i64())
+            .unwrap_or(-1)
+    };
+    let source_str = |key: &str| {
+        source
+            .get(key)
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+    };
+    let source_next_action_export_query_observability = source
+        .get("allowed_next_actions")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .map(|item| {
+            item.get("action").and_then(|value| value.as_str())
+                == Some(
+                    "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial",
+                )
+                && item
+                    .get("records_retention")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item.get("records_expiry").and_then(|value| value.as_bool()) == Some(false)
+                && item
+                    .get("records_garbage_collection")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("exports_receipt")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item.get("invokes_provider").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+        })
+        .unwrap_or(false);
+    let source_retention_ready = source_bool(
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_ready",
+    ) && source_bool(
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial_ready",
+    ) && source_bool(
+        "final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_readback_hash_matched",
+    ) && source_i64(
+        "retention_expiry_garbage_collection_fixture_count",
+    ) == 8
+        && source_i64("blocked_retention_expiry_garbage_collection_fixture_count") == 8
+        && source_i64("noop_retention_expiry_garbage_collection_fixture_count") == 8
+        && source_i64("allowed_retention_expiry_garbage_collection_fixture_count") == 0
+        && source_i64("accepted_retention_expiry_garbage_collection_fixture_count") == 0
+        && source_i64("retention_expiry_garbage_collection_performed_count") == 0
+        && source_i64("retention_recorded_count") == 0
+        && source_i64("retention_policy_persisted_count") == 0
+        && source_i64("ttl_scheduled_count") == 0
+        && source_i64("expiry_applied_count") == 0
+        && source_i64("garbage_collection_scan_performed_count") == 0
+        && source_i64("delete_marker_recorded_count") == 0
+        && source_i64("archive_recorded_count") == 0
+        && source_i64("compaction_performed_count") == 0
+        && source_i64("retention_export_recorded_count") == 0
+        && source_i64("external_retention_notification_sent_count") == 0
+        && !source_bool("final_authorization_dry_run_result_receipt_retention_recorded")
+        && !source_bool("final_authorization_dry_run_result_receipt_retention_policy_persisted")
+        && !source_bool("final_authorization_dry_run_result_receipt_ttl_scheduled")
+        && !source_bool("final_authorization_dry_run_result_receipt_expiry_applied")
+        && !source_bool(
+            "final_authorization_dry_run_result_receipt_garbage_collection_scan_performed",
+        )
+        && !source_bool("final_authorization_dry_run_result_receipt_delete_marker_recorded")
+        && !source_bool("final_authorization_dry_run_result_receipt_archive_recorded")
+        && !source_bool("final_authorization_dry_run_result_receipt_compaction_performed")
+        && !source_bool(
+            "final_authorization_dry_run_result_receipt_external_retention_notification_sent",
+        )
+        && !source_bool("final_authorization_from_retention_expiry_garbage_collection_allowed")
+        && !source_bool("operator_approval_from_retention_expiry_garbage_collection_accepted")
+        && !source_bool("activation_from_retention_expiry_garbage_collection_allowed")
+        && !source_bool("provider_invocation_authorized")
+        && !source_bool("model_invocation_authorized")
+        && source_i64("provider_invocation_budget") == 0
+        && source_i64("model_invocation_budget") == 0
+        && !source_bool("provider_invoked")
+        && !source_bool("model_invoked")
+        && !source_bool("credential_read")
+        && !source_bool("secret_file_read")
+        && !source_bool("live_kg_write_performed")
+        && !source_bool("memory_store_write_performed")
+        && !source_bool("channel_send_performed")
+        && !source_bool("telegram_send_performed")
+        && !source_bool("external_send_performed")
+        && source_next_action_export_query_observability;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT;
+    let source_retention_hash = source_str(
+        "final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_hash_sha256",
+    );
+    let source_retention_readback_hash = source_str(
+        "final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_readback_hash_sha256",
+    );
+    let export_scope = "first_model_invocation:operator-approval-final-authorization-dry-run-result-receipt-export-query-observability-denial";
+    let export_query_observability_denial_hash = sha256_text_value(&format!(
+        "first-model-final-authorization-dry-run-result-receipt-export-query-observability-denial:{export_scope}:{source_retention_hash}:{source_retention_readback_hash}:export=false:query=false:metrics=false:logs=false:traces=false:alerts=false"
+    ));
+    let export_query_observability_readback_hash = sha256_text_value(&format!(
+        "first-model-final-authorization-dry-run-result-receipt-export-query-observability-readback:{export_query_observability_denial_hash}:dashboard=false:slo=false:external=false:authority=false"
+    ));
+    let export_fixtures = vec![
+        serde_json::json!({
+            "fixture_id": "receipt-export-materialization",
+            "export_query_observability_status": "blocked_export_materialization",
+            "final_authorization_dry_run_result_receipt_export_materialized": false,
+            "final_authorization_dry_run_result_receipt_export_filesystem_written": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "receipt-query-index",
+            "export_query_observability_status": "blocked_query_index_registration",
+            "final_authorization_dry_run_result_receipt_query_registered": false,
+            "final_authorization_dry_run_result_receipt_query_executed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "observability-metric",
+            "export_query_observability_status": "blocked_observability_metric_recording",
+            "final_authorization_dry_run_result_receipt_metric_recorded": false,
+            "final_authorization_dry_run_result_receipt_dashboard_published": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "log-trace-correlation",
+            "export_query_observability_status": "blocked_log_trace_correlation",
+            "final_authorization_dry_run_result_receipt_log_recorded": false,
+            "final_authorization_dry_run_result_receipt_trace_recorded": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "alert-slo-promotion",
+            "export_query_observability_status": "blocked_alert_slo_promotion",
+            "final_authorization_dry_run_result_receipt_alert_emitted": false,
+            "final_authorization_dry_run_result_receipt_slo_recorded": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "operator-approval-from-query",
+            "export_query_observability_status": "blocked_operator_approval_from_query",
+            "operator_approval_from_export_query_observability_accepted": false,
+            "activation_from_export_query_observability_allowed": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "provider-invocation-from-observability",
+            "export_query_observability_status": "blocked_provider_invocation_from_observability",
+            "provider_invocation_authorized_from_export_query_observability": false,
+            "model_invocation_authorized_from_export_query_observability": false,
+            "receipt_noop_confirmed": true
+        }),
+        serde_json::json!({
+            "fixture_id": "external-observability-delivery",
+            "export_query_observability_status": "blocked_external_observability_delivery",
+            "final_authorization_dry_run_result_receipt_external_observability_sent": false,
+            "external_send_performed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "receipt_noop_confirmed": true
+        }),
+    ];
+    let export_fixture_count = export_fixtures.len();
+    let report_ready =
+        route_matrix.ready && route_count_source_command_accepted && source_retention_ready;
+
+    let audit_steps = vec![
+        serde_json::json!({
+            "step": "retention_expiry_garbage_collection_source_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT,
+            "source_retention_expiry_garbage_collection_ready": source_retention_ready,
+            "source_retention_hash_sha256": source_retention_hash,
+            "source_retention_readback_hash_sha256": source_retention_readback_hash
+        }),
+        serde_json::json!({
+            "step": "export_query_observability_fixture_denial",
+            "status": "blocked_report_only",
+            "export_query_observability_fixture_count": export_fixture_count,
+            "blocked_export_query_observability_fixture_count": export_fixture_count,
+            "allowed_export_query_observability_fixture_count": 0,
+            "accepted_export_query_observability_fixture_count": 0,
+            "export_query_observability_performed_count": 0
+        }),
+        serde_json::json!({
+            "step": "export_query_no_materialization_or_index",
+            "status": "not_recorded_or_persisted",
+            "final_authorization_dry_run_result_receipt_export_materialized": false,
+            "final_authorization_dry_run_result_receipt_export_filesystem_written": false,
+            "final_authorization_dry_run_result_receipt_query_registered": false,
+            "final_authorization_dry_run_result_receipt_query_executed": false
+        }),
+        serde_json::json!({
+            "step": "observability_no_metric_log_trace_alert",
+            "status": "denied",
+            "final_authorization_dry_run_result_receipt_metric_recorded": false,
+            "final_authorization_dry_run_result_receipt_log_recorded": false,
+            "final_authorization_dry_run_result_receipt_trace_recorded": false,
+            "final_authorization_dry_run_result_receipt_alert_emitted": false,
+            "final_authorization_dry_run_result_receipt_dashboard_published": false
+        }),
+        serde_json::json!({
+            "step": "export_query_observability_authority_non_promotion",
+            "status": "authority_denied",
+            "final_authorization_from_export_query_observability_allowed": false,
+            "operator_approval_from_export_query_observability_accepted": false,
+            "activation_from_export_query_observability_allowed": false,
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invoked": false,
+            "model_invoked": false
+        }),
+        serde_json::json!({
+            "step": "side_effect_denial_check",
+            "status": "ready",
+            "credential_read": false,
+            "secret_file_read": false,
+            "provider_router_live_envelope_executed": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false,
+            "channel_send_performed": false,
+            "external_send_performed": false,
+            "install_executed": false,
+            "active_binary_mutated": false,
+            "public_release_claimed": false
+        }),
+    ];
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "final_authorization_dry_run_result_receipt_export_materialized",
+        "final_authorization_dry_run_result_receipt_export_filesystem_written",
+        "final_authorization_dry_run_result_receipt_query_registered",
+        "final_authorization_dry_run_result_receipt_query_executed",
+        "final_authorization_dry_run_result_receipt_metric_recorded",
+        "final_authorization_dry_run_result_receipt_dashboard_published",
+        "final_authorization_dry_run_result_receipt_log_recorded",
+        "final_authorization_dry_run_result_receipt_trace_recorded",
+        "final_authorization_dry_run_result_receipt_alert_emitted",
+        "final_authorization_dry_run_result_receipt_slo_recorded",
+        "final_authorization_dry_run_result_receipt_external_observability_sent",
+        "operator_approval_from_export_query_observability_accepted",
+        "final_authorization_from_export_query_observability_allowed",
+        "activation_from_export_query_observability_allowed",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "live_kg_write_performed",
+        "memory_store_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_route",
+        "endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT,
+        "source_command": "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-export-query-observability-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-24",
+        "canary_schema_version": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_v1",
+        "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_no_provider_model_invocation",
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT,
+        "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_ready": source_retention_ready,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_route_enabled": true,
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_ready": report_ready
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "result_receipt_export_query_observability_state": "final_authorization_dry_run_result_receipt_export_query_observability_denied",
+            "result_receipt_export_query_observability_scope": export_scope,
+            "source_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_hash_sha256": source_retention_hash,
+            "source_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_readback_hash_sha256": source_retention_readback_hash,
+            "final_authorization_dry_run_result_receipt_export_query_observability_denial_hash_sha256": export_query_observability_denial_hash,
+            "final_authorization_dry_run_result_receipt_export_query_observability_readback_hash_sha256": export_query_observability_readback_hash,
+            "final_authorization_dry_run_result_receipt_export_query_observability_readback_hash_matched": true,
+            "export_query_observability_fixture_count": export_fixture_count,
+            "blocked_export_query_observability_fixture_count": export_fixture_count,
+            "noop_export_query_observability_fixture_count": export_fixture_count,
+            "allowed_export_query_observability_fixture_count": 0,
+            "accepted_export_query_observability_fixture_count": 0,
+            "export_query_observability_performed_count": 0,
+            "export_query_observability_fixtures": export_fixtures,
+            "export_materialized_count": 0,
+            "export_filesystem_written_count": 0,
+            "query_registered_count": 0,
+            "query_executed_count": 0,
+            "metric_recorded_count": 0,
+            "dashboard_published_count": 0,
+            "log_recorded_count": 0,
+            "trace_recorded_count": 0,
+            "alert_emitted_count": 0,
+            "slo_recorded_count": 0,
+            "external_observability_sent_count": 0
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "final_authorization_dry_run_result_receipt_export_materialized": false,
+            "final_authorization_dry_run_result_receipt_export_filesystem_written": false,
+            "final_authorization_dry_run_result_receipt_query_registered": false,
+            "final_authorization_dry_run_result_receipt_query_executed": false,
+            "final_authorization_dry_run_result_receipt_metric_recorded": false,
+            "final_authorization_dry_run_result_receipt_dashboard_published": false,
+            "final_authorization_dry_run_result_receipt_log_recorded": false,
+            "final_authorization_dry_run_result_receipt_trace_recorded": false,
+            "final_authorization_dry_run_result_receipt_alert_emitted": false,
+            "final_authorization_dry_run_result_receipt_slo_recorded": false,
+            "final_authorization_dry_run_result_receipt_external_observability_sent": false,
+            "result_receipt_observability_query_registered": false,
+            "final_authorization_from_export_query_observability_allowed": false,
+            "operator_approval_from_export_query_observability_accepted": false,
+            "activation_from_export_query_observability_allowed": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invocation_authorized_from_export_query_observability": false,
+            "model_invocation_authorized_from_export_query_observability": false,
+            "provider_invocation_budget": 0,
+            "model_invocation_budget": 0,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "credential_value_read": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "provider_router_live_envelope_executed": false,
+            "provider_prompt_injection_performed": false,
+            "context_injection_performed": false,
+            "kg_adapter_read_performed": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false,
+            "channel_send_performed": false,
+            "telegram_send_performed": false,
+            "external_send_performed": false
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_operator_facing_summary_briefing_non_persistence_denial",
+                    "status": "allowed_report_only_next_slice",
+                    "records_result_receipt": false,
+                    "exports_receipt": false,
+                    "registers_query": false,
+                    "records_observability": false,
+                    "delivers_briefing": false,
+                    "invokes_provider": false,
+                    "invokes_model": false,
+                    "reads_credentials": false,
+                    "writes_kg": false,
+                    "sends_externally": false,
+                    "mutates_durable_memory": false
+                }
+            ],
+            "audit_steps": audit_steps,
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -83642,6 +84071,238 @@ mod tests {
             false
         );
         assert_eq!(value["allowed_next_actions"][0]["exports_receipt"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
+    }
+
+    #[test]
+    fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_endpoint_blocks_views_and_invocation_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "first model invocation approval final authorization dry-run result receipt export/query/observability route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-export-query-observability-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_retention_expiry_garbage_collection_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["canary_execution_mode"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_no_provider_model_invocation"
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_export_query_observability_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["result_receipt_export_query_observability_state"],
+            "final_authorization_dry_run_result_receipt_export_query_observability_denied"
+        );
+        assert_eq!(value["export_query_observability_fixture_count"], 8);
+        assert_eq!(value["blocked_export_query_observability_fixture_count"], 8);
+        assert_eq!(value["noop_export_query_observability_fixture_count"], 8);
+        assert_eq!(value["allowed_export_query_observability_fixture_count"], 0);
+        assert_eq!(
+            value["accepted_export_query_observability_fixture_count"],
+            0
+        );
+        assert_eq!(value["export_query_observability_performed_count"], 0);
+        assert_eq!(value["export_materialized_count"], 0);
+        assert_eq!(value["export_filesystem_written_count"], 0);
+        assert_eq!(value["query_registered_count"], 0);
+        assert_eq!(value["query_executed_count"], 0);
+        assert_eq!(value["metric_recorded_count"], 0);
+        assert_eq!(value["dashboard_published_count"], 0);
+        assert_eq!(value["log_recorded_count"], 0);
+        assert_eq!(value["trace_recorded_count"], 0);
+        assert_eq!(value["alert_emitted_count"], 0);
+        assert_eq!(value["slo_recorded_count"], 0);
+        assert_eq!(value["external_observability_sent_count"], 0);
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_export_query_observability_readback_hash_matched"],
+            true
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_export_materialized"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_export_filesystem_written"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_query_registered"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_query_executed"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_metric_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_dashboard_published"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_log_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_trace_recorded"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_alert_emitted"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_dry_run_result_receipt_external_observability_sent"],
+            false
+        );
+        assert_eq!(
+            value["final_authorization_from_export_query_observability_allowed"],
+            false
+        );
+        assert_eq!(
+            value["operator_approval_from_export_query_observability_accepted"],
+            false
+        );
+        assert_eq!(
+            value["activation_from_export_query_observability_allowed"],
+            false
+        );
+        assert_eq!(value["provider_invocation_authorized"], false);
+        assert_eq!(value["model_invocation_authorized"], false);
+        assert_eq!(
+            value["provider_invocation_authorized_from_export_query_observability"],
+            false
+        );
+        assert_eq!(
+            value["model_invocation_authorized_from_export_query_observability"],
+            false
+        );
+        assert_eq!(value["provider_invocation_budget"], 0);
+        assert_eq!(value["model_invocation_budget"], 0);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["secret_file_read"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["memory_store_write_performed"], false);
+        assert_eq!(value["telegram_send_performed"], false);
+        assert_eq!(value["external_send_performed"], false);
+
+        let fixtures = value["export_query_observability_fixtures"]
+            .as_array()
+            .expect("first model invocation result receipt export query observability fixtures");
+        assert_eq!(fixtures.len(), 8);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["export_query_observability_status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("blocked_"))
+                && fixture["receipt_noop_confirmed"] == true
+        }));
+
+        let steps = value["audit_steps"].as_array().expect(
+            "first model invocation final authorization result receipt export query observability steps",
+        );
+        assert_eq!(steps.len(), 6);
+        assert_eq!(
+            steps[0]["step"],
+            "retention_expiry_garbage_collection_source_binding"
+        );
+        assert_eq!(
+            steps[1]["step"],
+            "export_query_observability_fixture_denial"
+        );
+        assert_eq!(steps[2]["step"], "export_query_no_materialization_or_index");
+        assert_eq!(steps[3]["step"], "observability_no_metric_log_trace_alert");
+        assert_eq!(
+            steps[4]["step"],
+            "export_query_observability_authority_non_promotion"
+        );
+        assert_eq!(steps[5]["step"], "side_effect_denial_check");
+        assert_eq!(
+            steps[1]["blocked_export_query_observability_fixture_count"],
+            8
+        );
+        assert_eq!(
+            steps[2]["final_authorization_dry_run_result_receipt_export_materialized"],
+            false
+        );
+        assert_eq!(
+            steps[3]["final_authorization_dry_run_result_receipt_metric_recorded"],
+            false
+        );
+        assert_eq!(
+            steps[4]["activation_from_export_query_observability_allowed"],
+            false
+        );
+        assert_eq!(steps[4]["provider_invoked"], false);
+        assert_eq!(steps[4]["model_invoked"], false);
+
+        let side_effects = value["side_effects"].as_object().expect(
+            "first model invocation final authorization result receipt export query observability side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_operator_facing_summary_briefing_non_persistence_denial"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["exports_receipt"], false);
+        assert_eq!(value["allowed_next_actions"][0]["registers_query"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["records_observability"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["delivers_briefing"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
     }
