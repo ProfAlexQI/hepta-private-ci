@@ -22,7 +22,7 @@ require_source_text() {
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 187;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 188;' \
   "native gateway route/source command count includes minimal memory canary route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT' \
