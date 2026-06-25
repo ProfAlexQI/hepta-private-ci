@@ -5,7 +5,7 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
-EXPECTED_ROUTE_COUNT=189
+EXPECTED_ROUTE_COUNT=190
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
@@ -48,7 +48,7 @@ require_source_text "$SOURCE_REPLAY_IDEMPOTENCY_GATE" \
   "source replay/idempotency gate denies memory/provider/KG replay"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 189;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 190;' \
   "native gateway route/source command count includes artifact download/install affordance result receipt replay/idempotency route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT' \

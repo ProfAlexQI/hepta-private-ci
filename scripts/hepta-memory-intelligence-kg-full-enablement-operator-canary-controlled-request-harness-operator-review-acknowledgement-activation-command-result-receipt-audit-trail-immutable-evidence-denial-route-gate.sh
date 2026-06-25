@@ -7,7 +7,7 @@ MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$HOME/.local/opt/hepta/bin/hepta}}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
-EXPECTED_ROUTE_COUNT=189
+EXPECTED_ROUTE_COUNT=190
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
@@ -159,7 +159,7 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 189;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 190;' \
   "native gateway route/source command count includes activation command result receipt audit-trail/immutable-evidence denial route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT' \
