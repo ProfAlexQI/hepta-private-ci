@@ -120,6 +120,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTEL
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-hepta-intelligence-context-attachment-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane";
+const HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-activation-truth-index";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_ACCEPTANCE_RECEIPT_LANE_ENDPOINT: &str =
@@ -338,7 +340,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 188;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 189;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -592,6 +594,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane",
         side_effect_boundary: "read-only operator-approved KG prompt-preview adapter lane status; enables KG preview/read-only adapter lane authority without reading credentials, invoking adapters, writing KG, invoking providers/models, delivering channels, or claiming public release",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-activation-truth-index --json",
+        capability: "hepta-memory-intelligence-kg-activation-truth-index",
+        side_effect_boundary: "read-only aggregate truth index for Memory, Hepta Intelligence, and KG activation state; separates core connection, lane readiness, explicit-command readiness, and full-live blocked status without executing writes, provider/model calls, KG mutation, delivery, install, restart, or public claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2158,6 +2167,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_report(),
                     ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_memory_intelligence_kg_activation_truth_index_report()),
                 );
             }
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT =>
@@ -12792,6 +12808,392 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_prev
                 public_ga_claimed: false,
             },
     }
+}
+
+fn hepta_memory_intelligence_kg_activation_truth_index_report() -> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let memory_inventory = hepta_memory_capability_absorption_inventory_report();
+    let runtime_readiness = hepta_memory_intelligence_kg_full_enablement_runtime_readiness_report();
+    let memory_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_memory_live_mutation_durable_lane_report();
+    let intelligence_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_hepta_intelligence_context_attachment_lane_report();
+    let kg_preview_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_report();
+    let readiness_index =
+        hepta_memory_intelligence_kg_full_live_activation_readiness_index_replay_idempotency_denial_report();
+
+    let source_full_live_activation_enabled = readiness_index
+        .get("source_full_live_activation_enabled")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let source_full_live_activation_status = readiness_index
+        .get("source_full_live_activation_status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown");
+    let readiness_replay_allowed = readiness_index
+        .get("replay_allowed")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let readiness_replay_accepted = readiness_index
+        .get("replay_accepted")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let readiness_side_effects_all_false = readiness_index
+        .get("side_effects")
+        .and_then(serde_json::Value::as_object)
+        .map(|effects| effects.values().all(|value| value.as_bool() == Some(false)))
+        .unwrap_or(false);
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let memory_core_connected = runtime_readiness.status == "ready"
+        && runtime_readiness.core_full_fusion_complete
+        && runtime_readiness.active_service_stack_consumes_memory_intelligence
+        && runtime_readiness.memory_surface_count == 14
+        && runtime_readiness.absorbed_or_represented_count == 14
+        && runtime_readiness.gap_report_ready_count == 14
+        && runtime_readiness.live_mutation_enabled_count == 0
+        && !runtime_readiness.memory_store_mutation_enabled;
+    let memory_lane_ready = memory_lane.status == "ready"
+        && memory_lane.operator_approved_activation_lane_effective
+        && memory_lane.memory_durable_mutation_lane_enabled
+        && memory_lane.memory_store_write_path_enabled
+        && memory_lane.memory_store_mutation_enabled
+        && memory_lane.live_memory_write_allowed_by_lane
+        && memory_lane.memory_write_execution_requires_explicit_command
+        && !memory_lane.live_memory_write_performed_by_report_route
+        && !memory_lane.memory_write_execution_command_exposed_by_report_route
+        && !memory_lane.side_effects.memory_store_mutated
+        && !memory_lane.side_effects.memory_store_write_performed;
+    let intelligence_lane_ready = intelligence_lane.status == "ready"
+        && intelligence_lane.hepta_intelligence_context_attachment_lane_enabled
+        && intelligence_lane.hepta_intelligence_context_attachment_allowed_by_lane
+        && intelligence_lane.context_attachment_requires_explicit_command
+        && intelligence_lane.bounded_prompt_preview_lane_enabled
+        && intelligence_lane.bounded_prompt_preview_allowed_by_lane
+        && intelligence_lane.prompt_preview_requires_explicit_command
+        && !intelligence_lane.hepta_intelligence_context_attached_by_report_route
+        && !intelligence_lane.prompt_preview_rendered_by_report_route
+        && !intelligence_lane.prompt_payload_materialized_by_report_route
+        && !intelligence_lane.context_injection_allowed_by_lane
+        && !intelligence_lane.context_injection_performed_by_report_route
+        && !intelligence_lane
+            .side_effects
+            .hepta_intelligence_context_attached
+        && !intelligence_lane.side_effects.prompt_preview_rendered
+        && !intelligence_lane.side_effects.context_injection_performed;
+    let kg_lane_ready = kg_preview_lane.status == "ready"
+        && kg_preview_lane.kg_prompt_preview_lane_enabled
+        && kg_preview_lane.kg_prompt_preview_allowed_by_lane
+        && kg_preview_lane.kg_external_adapter_read_lane_enabled
+        && kg_preview_lane.kg_external_adapter_read_allowed_by_lane
+        && kg_preview_lane.kg_external_adapter_requires_explicit_command
+        && kg_preview_lane.kg_external_adapter_credential_reference_required
+        && !kg_preview_lane.kg_prompt_preview_rendered_by_report_route
+        && !kg_preview_lane.kg_external_adapter_read_performed_by_report_route
+        && !kg_preview_lane.kg_external_adapter_credential_read_allowed_by_lane
+        && !kg_preview_lane.kg_external_adapter_credential_read_performed_by_report_route
+        && !kg_preview_lane.kg_live_write_lane_enabled
+        && !kg_preview_lane.kg_live_write_allowed_by_lane
+        && !kg_preview_lane.kg_live_write_performed_by_report_route
+        && !kg_preview_lane.provider_model_invocation_lane_enabled
+        && !kg_preview_lane.provider_model_invocation_allowed_by_lane
+        && !kg_preview_lane.channel_delivery_lane_enabled
+        && !kg_preview_lane
+            .side_effects
+            .external_kg_adapter_read_performed
+        && !kg_preview_lane.side_effects.credential_read
+        && !kg_preview_lane.side_effects.live_kg_write_performed
+        && !kg_preview_lane.side_effects.provider_invoked
+        && !kg_preview_lane.side_effects.model_invoked;
+    let operator_approved_lanes_ready =
+        memory_lane_ready && intelligence_lane_ready && kg_lane_ready;
+    let full_live_activation_blocked = !source_full_live_activation_enabled
+        && source_full_live_activation_status == "blocked_report_only"
+        && !readiness_replay_allowed
+        && !readiness_replay_accepted
+        && readiness_side_effects_all_false;
+    let report_only_boundaries_intact = !memory_lane.side_effects.provider_invoked
+        && !memory_lane.side_effects.model_invoked
+        && !memory_lane.side_effects.credential_read
+        && !memory_lane.side_effects.live_kg_write_performed
+        && !memory_lane.side_effects.channel_send_performed
+        && !memory_lane.side_effects.external_send_performed
+        && !memory_lane.side_effects.service_restarted
+        && !memory_lane.side_effects.active_binary_mutated
+        && !memory_lane.side_effects.public_release_claimed
+        && !intelligence_lane.side_effects.provider_invoked
+        && !intelligence_lane.side_effects.model_invoked
+        && !intelligence_lane.side_effects.credential_read
+        && !intelligence_lane.side_effects.live_kg_write_performed
+        && !intelligence_lane.side_effects.channel_send_performed
+        && !kg_preview_lane.side_effects.provider_invoked
+        && !kg_preview_lane.side_effects.model_invoked
+        && !kg_preview_lane.side_effects.credential_read
+        && !kg_preview_lane.side_effects.live_kg_write_performed
+        && !kg_preview_lane.side_effects.channel_send_performed
+        && !kg_preview_lane.side_effects.external_send_performed
+        && !kg_preview_lane.side_effects.service_restarted
+        && !kg_preview_lane.side_effects.active_binary_mutated
+        && !kg_preview_lane.side_effects.public_release_claimed;
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && memory_inventory.memory_capability_inventory_ready
+        && memory_core_connected
+        && operator_approved_lanes_ready
+        && full_live_activation_blocked
+        && report_only_boundaries_intact;
+    let truth_index_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-activation-truth-index-v1:route_count={}:memory_core_connected={}:operator_lanes_ready={}:full_live_blocked={}:readiness={}",
+        route_matrix.route_count,
+        memory_core_connected,
+        operator_approved_lanes_ready,
+        full_live_activation_blocked,
+        sha256_json_value(&readiness_index),
+    ));
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "source_command": "/hepta-memory-intelligence-kg-activation-truth-index --json",
+        "native_route": true,
+        "compatibility_mode": "native_memory_intelligence_kg_activation_truth_index_read_only",
+        "side_effect_free": true,
+        "audit_date": "2026-06-25",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT,
+        "truth_index_schema_version": "memory_intelligence_kg_activation_truth_index_v1",
+        "truth_index_hash_sha256": truth_index_hash_sha256,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_cutover_floor": NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+        "route_count_floor_preserved": route_count_floor_preserved,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+        "source_memory_capability_inventory_endpoint": HEPTA_MEMORY_CAPABILITY_ABSORPTION_INVENTORY_ENDPOINT,
+        "source_runtime_readiness_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_READINESS_ENDPOINT,
+        "source_memory_live_mutation_durable_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_MEMORY_LIVE_MUTATION_DURABLE_LANE_ENDPOINT,
+        "source_hepta_intelligence_context_attachment_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_ENDPOINT,
+        "source_kg_prompt_preview_read_only_adapter_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT,
+        "source_full_live_activation_readiness_index_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_READINESS_INDEX_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "hepta_core_connected": memory_core_connected,
+            "hepta_core_full_fusion_complete": runtime_readiness.core_full_fusion_complete,
+            "active_binary_package": runtime_readiness.active_binary_package,
+            "remaining_direct_codex_dependency_count": runtime_readiness.remaining_direct_codex_dependency_count,
+            "memory_capability_inventory_ready": memory_inventory.memory_capability_inventory_ready,
+            "memory_surface_count": memory_inventory.surface_count,
+            "absorbed_or_represented_count": memory_inventory.absorbed_or_represented_count,
+            "gap_report_ready_count": memory_inventory.gap_report_ready_count,
+            "baseline_live_mutation_enabled_count": memory_inventory.live_mutation_enabled_count,
+            "baseline_memory_store_mutation_enabled": memory_inventory.memory_store_mutation_enabled,
+            "operator_approved_lanes_ready": operator_approved_lanes_ready,
+            "operator_approved_lane_count": 3,
+            "ready_operator_approved_lane_count": if operator_approved_lanes_ready { 3 } else { 0 },
+            "explicit_command_required_for_execution": true,
+            "report_only_boundaries_intact": report_only_boundaries_intact,
+            "full_live_activation_enabled": false,
+            "full_live_activation_status": source_full_live_activation_status,
+            "full_live_activation_blocked": full_live_activation_blocked,
+            "live_activation_blocker_count": readiness_index["live_activation_blocker_count"].clone(),
+            "readiness_surface_count": readiness_index["readiness_surface_count"].clone(),
+            "replay_allowed": readiness_replay_allowed,
+            "replay_accepted": readiness_replay_accepted,
+            "readiness_index_side_effects_all_false": readiness_side_effects_all_false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "memory_lane": {
+                "status": memory_lane.status,
+                "core_connected": memory_core_connected,
+                "operator_approved_lane_ready": memory_lane_ready,
+                "memory_durable_mutation_lane_enabled": memory_lane.memory_durable_mutation_lane_enabled,
+                "memory_store_write_path_enabled": memory_lane.memory_store_write_path_enabled,
+                "memory_store_mutation_enabled": memory_lane.memory_store_mutation_enabled,
+                "live_memory_write_allowed_by_lane": memory_lane.live_memory_write_allowed_by_lane,
+                "execution_requires_explicit_command": memory_lane.memory_write_execution_requires_explicit_command,
+                "receipt_required": memory_lane.memory_write_receipt_required,
+                "post_write_validation_required": memory_lane.post_write_validation_required,
+                "report_route_write_performed": memory_lane.live_memory_write_performed_by_report_route,
+                "report_route_exposes_execution_command": memory_lane.memory_write_execution_command_exposed_by_report_route,
+                "side_effect_memory_store_mutated": memory_lane.side_effects.memory_store_mutated,
+                "side_effect_memory_store_write_performed": memory_lane.side_effects.memory_store_write_performed
+            },
+            "hepta_intelligence_lane": {
+                "status": intelligence_lane.status,
+                "operator_approved_lane_ready": intelligence_lane_ready,
+                "context_attachment_lane_enabled": intelligence_lane.hepta_intelligence_context_attachment_lane_enabled,
+                "context_attachment_allowed_by_lane": intelligence_lane.hepta_intelligence_context_attachment_allowed_by_lane,
+                "bounded_prompt_preview_lane_enabled": intelligence_lane.bounded_prompt_preview_lane_enabled,
+                "bounded_prompt_preview_allowed_by_lane": intelligence_lane.bounded_prompt_preview_allowed_by_lane,
+                "context_attachment_requires_explicit_command": intelligence_lane.context_attachment_requires_explicit_command,
+                "prompt_preview_requires_explicit_command": intelligence_lane.prompt_preview_requires_explicit_command,
+                "context_injection_allowed_by_lane": intelligence_lane.context_injection_allowed_by_lane,
+                "report_route_context_attached": intelligence_lane.hepta_intelligence_context_attached_by_report_route,
+                "report_route_prompt_preview_rendered": intelligence_lane.prompt_preview_rendered_by_report_route,
+                "report_route_prompt_payload_materialized": intelligence_lane.prompt_payload_materialized_by_report_route,
+                "report_route_context_injection_performed": intelligence_lane.context_injection_performed_by_report_route
+            },
+            "kg_lane": {
+                "status": kg_preview_lane.status,
+                "operator_approved_lane_ready": kg_lane_ready,
+                "kg_prompt_preview_lane_enabled": kg_preview_lane.kg_prompt_preview_lane_enabled,
+                "kg_prompt_preview_allowed_by_lane": kg_preview_lane.kg_prompt_preview_allowed_by_lane,
+                "kg_external_adapter_read_lane_enabled": kg_preview_lane.kg_external_adapter_read_lane_enabled,
+                "kg_external_adapter_read_allowed_by_lane": kg_preview_lane.kg_external_adapter_read_allowed_by_lane,
+                "kg_external_adapter_requires_explicit_command": kg_preview_lane.kg_external_adapter_requires_explicit_command,
+                "kg_external_adapter_credential_reference_required": kg_preview_lane.kg_external_adapter_credential_reference_required,
+                "kg_external_adapter_credential_read_allowed_by_lane": kg_preview_lane.kg_external_adapter_credential_read_allowed_by_lane,
+                "supported_kg_adapter_count": kg_preview_lane.supported_kg_adapter_count,
+                "supported_kg_adapters": kg_preview_lane.supported_kg_adapters,
+                "kg_live_write_lane_enabled": kg_preview_lane.kg_live_write_lane_enabled,
+                "kg_live_write_allowed_by_lane": kg_preview_lane.kg_live_write_allowed_by_lane,
+                "report_route_kg_prompt_preview_rendered": kg_preview_lane.kg_prompt_preview_rendered_by_report_route,
+                "report_route_kg_adapter_read_performed": kg_preview_lane.kg_external_adapter_read_performed_by_report_route,
+                "report_route_credential_read_performed": kg_preview_lane.kg_external_adapter_credential_read_performed_by_report_route,
+                "report_route_kg_live_write_performed": kg_preview_lane.kg_live_write_performed_by_report_route
+            }
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "truth_matrix": [
+                {
+                    "surface": "hepta_core",
+                    "connected": memory_core_connected,
+                    "operator_approved_lane_ready": true,
+                    "explicit_command_required": false,
+                    "report_route_execution_performed": false,
+                    "full_live_unrestricted": false
+                },
+                {
+                    "surface": "memory",
+                    "connected": true,
+                    "operator_approved_lane_ready": memory_lane_ready,
+                    "explicit_command_required": true,
+                    "report_route_execution_performed": memory_lane.live_memory_write_performed_by_report_route,
+                    "full_live_unrestricted": false
+                },
+                {
+                    "surface": "hepta_intelligence",
+                    "connected": true,
+                    "operator_approved_lane_ready": intelligence_lane_ready,
+                    "explicit_command_required": true,
+                    "report_route_execution_performed": intelligence_lane.hepta_intelligence_context_attached_by_report_route,
+                    "full_live_unrestricted": false
+                },
+                {
+                    "surface": "kg",
+                    "connected": true,
+                    "operator_approved_lane_ready": kg_lane_ready,
+                    "explicit_command_required": true,
+                    "report_route_execution_performed": kg_preview_lane.kg_external_adapter_read_performed_by_report_route,
+                    "full_live_unrestricted": false
+                },
+                {
+                    "surface": "provider_model",
+                    "connected": false,
+                    "operator_approved_lane_ready": false,
+                    "explicit_command_required": true,
+                    "report_route_execution_performed": false,
+                    "full_live_unrestricted": false
+                },
+                {
+                    "surface": "channel_public_release",
+                    "connected": false,
+                    "operator_approved_lane_ready": false,
+                    "explicit_command_required": true,
+                    "report_route_execution_performed": false,
+                    "full_live_unrestricted": false
+                }
+            ],
+            "blocked_actions": [
+                "treat_lane_ready_as_full_live_activation",
+                "write_memory_from_truth_index_report_route",
+                "attach_or_inject_context_from_truth_index_report_route",
+                "render_or_materialize_prompt_payload_from_truth_index_report_route",
+                "read_kg_adapter_or_credential_from_truth_index_report_route",
+                "write_live_kg_from_truth_index_report_route",
+                "invoke_provider_or_model_from_truth_index_report_route",
+                "telegram_or_channel_delivery_from_truth_index_report_route",
+                "release_public_claim_from_truth_index_report_route",
+                "service_restart_or_active_binary_mutation_from_truth_index_report_route"
+            ],
+            "allowed_next_actions": [
+                {
+                    "action": "continue_release_artifact_publication_denial_chain",
+                    "status": "allowed_report_only_next_slice",
+                    "mutates_memory": false,
+                    "writes_kg": false,
+                    "invokes_provider": false,
+                    "invokes_model": false,
+                    "delivers_channel": false,
+                    "claims_public_release": false
+                },
+                {
+                    "action": "prepare_minimal_memory_canary_scoped_operator_packet",
+                    "status": "blocked_until_release_and_separate_gate",
+                    "requires_explicit_command": true,
+                    "kg_allowed": false,
+                    "provider_model_allowed": false,
+                    "channel_delivery_allowed": false
+                }
+            ]
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "side_effects": {
+                "truth_index_report_route_mutated_state": false,
+                "full_live_enablement_performed": false,
+                "memory_store_mutated": false,
+                "memory_store_write_performed": false,
+                "hepta_intelligence_context_attached": false,
+                "prompt_preview_rendered": false,
+                "prompt_payload_materialized": false,
+                "context_injection_performed": false,
+                "external_kg_adapter_read_performed": false,
+                "external_adapter_client_constructed": false,
+                "kg_credential_read": false,
+                "auth_secret_read": false,
+                "credential_read": false,
+                "live_kg_write_performed": false,
+                "provider_invoked": false,
+                "model_invoked": false,
+                "network_call_performed": false,
+                "external_db_write_performed": false,
+                "channel_send_performed": false,
+                "telegram_send_performed": false,
+                "external_send_performed": false,
+                "operator_acceptance_recorded": false,
+                "operator_approval_recorded": false,
+                "activation_authority_derived": false,
+                "release_artifact_written": false,
+                "public_release_claimed": false,
+                "public_ga_claimed": false,
+                "install_executed": false,
+                "launchd_mutated": false,
+                "service_restarted": false,
+                "active_binary_mutated": false,
+                "filesystem_written": false
+            }
+        }),
+    );
+    report
 }
 
 fn hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_payload_materialization_lane_report()
@@ -62910,6 +63312,204 @@ mod tests {
         assert_eq!(value["side_effects"]["active_binary_mutated"], false);
         assert_eq!(value["side_effects"]["public_release_claimed"], false);
         assert_eq!(value["side_effects"]["public_ga_claimed"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_activation_truth_index_endpoint_separates_lane_readiness_from_full_live_activation()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("Memory/Intelligence/KG activation truth index json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-activation-truth-index --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_memory_intelligence_kg_activation_truth_index_read_only"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["source_route_wired"], true);
+        assert_eq!(value["hepta_core_connected"], true);
+        assert_eq!(value["hepta_core_full_fusion_complete"], true);
+        assert_eq!(value["active_binary_package"], "hepta-cli");
+        assert_eq!(value["remaining_direct_codex_dependency_count"], 0);
+        assert_eq!(value["memory_capability_inventory_ready"], true);
+        assert_eq!(value["memory_surface_count"], 14);
+        assert_eq!(value["absorbed_or_represented_count"], 14);
+        assert_eq!(value["baseline_live_mutation_enabled_count"], 0);
+        assert_eq!(value["baseline_memory_store_mutation_enabled"], false);
+        assert_eq!(value["operator_approved_lanes_ready"], true);
+        assert_eq!(value["operator_approved_lane_count"], 3);
+        assert_eq!(value["ready_operator_approved_lane_count"], 3);
+        assert_eq!(value["explicit_command_required_for_execution"], true);
+        assert_eq!(value["report_only_boundaries_intact"], true);
+        assert_eq!(value["full_live_activation_enabled"], false);
+        assert_eq!(value["full_live_activation_status"], "blocked_report_only");
+        assert_eq!(value["full_live_activation_blocked"], true);
+        assert_eq!(value["live_activation_blocker_count"], 13);
+        assert_eq!(value["replay_allowed"], false);
+        assert_eq!(value["replay_accepted"], false);
+        assert_eq!(value["readiness_index_side_effects_all_false"], true);
+
+        assert_eq!(value["memory_lane"]["operator_approved_lane_ready"], true);
+        assert_eq!(
+            value["memory_lane"]["memory_durable_mutation_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_lane"]["live_memory_write_allowed_by_lane"],
+            true
+        );
+        assert_eq!(
+            value["memory_lane"]["execution_requires_explicit_command"],
+            true
+        );
+        assert_eq!(value["memory_lane"]["report_route_write_performed"], false);
+        assert_eq!(
+            value["memory_lane"]["report_route_exposes_execution_command"],
+            false
+        );
+        assert_eq!(
+            value["memory_lane"]["side_effect_memory_store_mutated"],
+            false
+        );
+        assert_eq!(
+            value["hepta_intelligence_lane"]["operator_approved_lane_ready"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_lane"]["context_attachment_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_lane"]["bounded_prompt_preview_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_lane"]["context_attachment_requires_explicit_command"],
+            true
+        );
+        assert_eq!(
+            value["hepta_intelligence_lane"]["report_route_context_attached"],
+            false
+        );
+        assert_eq!(
+            value["hepta_intelligence_lane"]["report_route_context_injection_performed"],
+            false
+        );
+        assert_eq!(value["kg_lane"]["operator_approved_lane_ready"], true);
+        assert_eq!(value["kg_lane"]["kg_prompt_preview_lane_enabled"], true);
+        assert_eq!(
+            value["kg_lane"]["kg_external_adapter_read_lane_enabled"],
+            true
+        );
+        assert_eq!(
+            value["kg_lane"]["kg_external_adapter_requires_explicit_command"],
+            true
+        );
+        assert_eq!(
+            value["kg_lane"]["kg_external_adapter_credential_reference_required"],
+            true
+        );
+        assert_eq!(
+            value["kg_lane"]["kg_external_adapter_credential_read_allowed_by_lane"],
+            false
+        );
+        assert_eq!(value["kg_lane"]["supported_kg_adapter_count"], 3);
+        assert_eq!(value["kg_lane"]["kg_live_write_lane_enabled"], false);
+        assert_eq!(
+            value["kg_lane"]["report_route_kg_adapter_read_performed"],
+            false
+        );
+        assert_eq!(
+            value["kg_lane"]["report_route_credential_read_performed"],
+            false
+        );
+        assert_eq!(
+            value["kg_lane"]["report_route_kg_live_write_performed"],
+            false
+        );
+
+        let truth_matrix = value["truth_matrix"]
+            .as_array()
+            .expect("truth matrix entries");
+        assert_eq!(truth_matrix.len(), 6);
+        assert!(truth_matrix.iter().any(|entry| {
+            entry["surface"] == "memory"
+                && entry["operator_approved_lane_ready"] == true
+                && entry["explicit_command_required"] == true
+                && entry["report_route_execution_performed"] == false
+                && entry["full_live_unrestricted"] == false
+        }));
+        assert!(truth_matrix.iter().any(|entry| {
+            entry["surface"] == "kg"
+                && entry["operator_approved_lane_ready"] == true
+                && entry["explicit_command_required"] == true
+                && entry["report_route_execution_performed"] == false
+                && entry["full_live_unrestricted"] == false
+        }));
+
+        let blocked = value["blocked_actions"]
+            .as_array()
+            .expect("blocked truth-index actions")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blocked.contains(&"treat_lane_ready_as_full_live_activation"));
+        assert!(blocked.contains(&"write_memory_from_truth_index_report_route"));
+        assert!(blocked.contains(&"write_live_kg_from_truth_index_report_route"));
+        assert!(blocked.contains(&"invoke_provider_or_model_from_truth_index_report_route"));
+        assert!(blocked.contains(&"release_public_claim_from_truth_index_report_route"));
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "continue_release_artifact_publication_denial_chain"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["claims_public_release"],
+            false
+        );
+
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("truth index side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|effect| effect.as_bool() == Some(false)),
+            "truth index side effects must all be false: {side_effects:?}"
+        );
     }
 
     #[test]
