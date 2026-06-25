@@ -240,6 +240,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKE
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_DISTRIBUTION_ARTIFACT_MANIFEST_STATUS_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-distribution-artifact-manifest-status-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT: &str =
@@ -342,7 +344,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 190;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 191;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1016,6 +1018,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-distribution-artifact-manifest-status-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-distribution-artifact-manifest-status-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt distribution artifact/manifest status denial; models denied artifact manifests, package manifests, checksum indexes, metadata, CDN/update feed metadata, signing/notarization/provenance/SBOM/digests, package channel manifests, external/Telegram artifact-manifest status sends, release/public claims, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact distribution signing/notarization surface denial; models denied signing execution, notarization submission/ticket, stapling, provenance/SBOM publication, release-asset packaging, CDN/update-feed writes, package registry/channel publication, release/public claims, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2772,6 +2781,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_report(),
                     ),
                 );
             }
@@ -36347,19 +36366,517 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     report
 }
 
-fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_report()
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_report()
 -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let source_report =
-        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_report();
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_denial_report();
     let source_ready = source_report["status"].as_str() == Some("ready")
-        && source_report["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_ready"]
+        && source_report["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_denial_ready"]
             .as_bool()
             .unwrap_or(false);
     let source_u64 = |key: &str| source_report[key].as_u64().unwrap_or(0);
     let source_report_sha256 = sha256_json_value(&source_report);
     let source_contract_hash = source_report
-        ["release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_contract_hash_sha256"]
+        ["release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_contract_hash_sha256"]
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string();
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let surface_specs: Vec<(&str, &str, &str, Vec<&str>)> = vec![
+        (
+            "delivery_receipt_artifact_signing_execution",
+            "blocked_artifact_signing_execution_noop",
+            "artifact_signing_execution_denied",
+            vec!["artifact_signing_requested"],
+        ),
+        (
+            "delivery_receipt_package_signing_execution",
+            "blocked_package_signing_execution_noop",
+            "package_signing_execution_denied",
+            vec!["package_signing_requested"],
+        ),
+        (
+            "delivery_receipt_signature_manifest_write",
+            "blocked_signature_manifest_write_noop",
+            "signature_manifest_write_denied",
+            vec!["signature_manifest_write_requested"],
+        ),
+        (
+            "delivery_receipt_signature_checksum_binding",
+            "blocked_signature_checksum_binding_noop",
+            "signature_checksum_binding_denied",
+            vec!["signature_checksum_binding_requested"],
+        ),
+        (
+            "delivery_receipt_notarization_submission",
+            "blocked_notarization_submission_noop",
+            "notarization_submission_denied",
+            vec!["notarization_submission_requested"],
+        ),
+        (
+            "delivery_receipt_notarization_ticket_record",
+            "blocked_notarization_ticket_record_noop",
+            "notarization_ticket_recording_denied",
+            vec!["notarization_ticket_record_requested"],
+        ),
+        (
+            "delivery_receipt_stapling_execution",
+            "blocked_stapling_execution_noop",
+            "stapling_execution_denied",
+            vec!["stapling_execution_requested"],
+        ),
+        (
+            "delivery_receipt_installer_signing_execution",
+            "blocked_installer_signing_execution_noop",
+            "installer_signing_execution_denied",
+            vec!["installer_signing_requested"],
+        ),
+        (
+            "delivery_receipt_provenance_attestation_publication",
+            "blocked_provenance_attestation_publication_noop",
+            "provenance_attestation_publication_denied",
+            vec!["provenance_attestation_publication_requested"],
+        ),
+        (
+            "delivery_receipt_sbom_manifest_publication",
+            "blocked_sbom_manifest_publication_noop",
+            "sbom_manifest_publication_denied",
+            vec!["sbom_manifest_publication_requested"],
+        ),
+        (
+            "delivery_receipt_release_asset_packaging",
+            "blocked_release_asset_packaging_noop",
+            "release_asset_packaging_denied",
+            vec!["release_asset_packaging_requested"],
+        ),
+        (
+            "delivery_receipt_artifact_bundle_packaging",
+            "blocked_artifact_bundle_packaging_noop",
+            "artifact_bundle_packaging_denied",
+            vec!["artifact_bundle_packaging_requested"],
+        ),
+        (
+            "delivery_receipt_cdn_artifact_write",
+            "blocked_cdn_artifact_write_noop",
+            "cdn_artifact_write_denied",
+            vec!["cdn_artifact_write_requested"],
+        ),
+        (
+            "delivery_receipt_update_feed_artifact_write",
+            "blocked_update_feed_artifact_write_noop",
+            "update_feed_artifact_write_denied",
+            vec!["update_feed_artifact_write_requested"],
+        ),
+        (
+            "delivery_receipt_package_registry_artifact_publish",
+            "blocked_package_registry_artifact_publish_noop",
+            "package_registry_artifact_publish_denied",
+            vec!["package_registry_artifact_publish_requested"],
+        ),
+        (
+            "delivery_receipt_external_telegram_package_channel_publication",
+            "blocked_external_telegram_package_channel_publication_noop",
+            "external_telegram_package_channel_publication_denied",
+            vec![
+                "external_package_channel_publication_requested",
+                "telegram_package_channel_publication_requested",
+            ],
+        ),
+        (
+            "delivery_receipt_release_publication_authority_signing_status",
+            "blocked_release_publication_authority_signing_status_noop",
+            "release_publication_authority_from_signing_status_denied",
+            vec!["release_publication_authority_signing_status_requested"],
+        ),
+        (
+            "delivery_receipt_activation_live_install_restart_active_binary_signing_path",
+            "blocked_activation_live_install_restart_active_binary_signing_path_noop",
+            "activation_live_install_restart_active_binary_from_signing_path_denied",
+            vec![
+                "activation_live_signing_path_requested",
+                "install_restart_active_binary_signing_path_requested",
+            ],
+        ),
+    ];
+
+    let artifact_distribution_signing_notarization_surfaces = surface_specs
+        .into_iter()
+        .map(|(surface, status, reason, requested_flags)| {
+            let mut surface_report = serde_json::json!({
+                "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface": surface,
+                "source_distribution_artifact_manifest_status_ready": true,
+                "artifact_distribution_signing_notarization_surface_attempted": true,
+                "artifact_distribution_signing_notarization_surface_status": status,
+                "reason": reason,
+            });
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                    "artifact_distribution_signing_notarization_surface_allowed": false,
+                    "artifact_distribution_signing_notarization_surface_request_accepted": false,
+                    "artifact_distribution_signing_notarization_surface_accepted": false,
+                    "artifact_distribution_signing_notarization_surface_recorded": false,
+                    "artifact_distribution_signing_notarization_surface_persisted": false,
+                    "artifact_distribution_signing_notarization_surface_materialized": false,
+                    "artifact_distribution_signing_notarization_surface_filesystem_written": false,
+                    "artifact_distribution_signing_notarization_surface_delivered": false,
+                    "artifact_distribution_signing_notarization_surface_exposed": false,
+                    "artifact_distribution_signing_notarization_surface_executed": false,
+                }),
+            );
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                    "artifact_signing_executed": false,
+                    "package_signing_executed": false,
+                    "signature_manifest_written": false,
+                    "signature_checksum_bound": false,
+                    "notarization_submitted": false,
+                    "notarization_ticket_recorded": false,
+                    "stapling_executed": false,
+                    "installer_signing_executed": false,
+                    "provenance_attestation_published": false,
+                    "sbom_manifest_published": false,
+                    "release_asset_packaged": false,
+                    "artifact_bundle_packaged": false,
+                    "cdn_artifact_written": false,
+                    "update_feed_artifact_written": false,
+                    "package_registry_artifact_published": false,
+                    "external_package_channel_published": false,
+                    "telegram_package_channel_published": false,
+                    "public_release_claimed": false,
+                    "public_ga_claimed": false,
+                }),
+            );
+            extend_json_object(
+                &mut surface_report,
+                serde_json::json!({
+                    "acceptance_recorded": false,
+                    "operator_approval_derived": false,
+                    "release_publication_authority_derived": false,
+                    "activation_authority_derived": false,
+                    "activation_command_derived": false,
+                    "live_execution_allowed": false,
+                    "activation_performed": false,
+                    "install_executed": false,
+                    "service_restarted": false,
+                    "launchd_mutated": false,
+                    "active_binary_mutated": false,
+                    "memory_store_write_performed": false,
+                    "memory_store_mutated": false,
+                    "live_kg_write_performed": false,
+                    "provider_invoked": false,
+                    "model_invoked": false,
+                    "credential_read": false,
+                    "secret_file_read": false,
+                    "artifact_distribution_signing_notarization_surface_noop_confirmed": true,
+                }),
+            );
+            if let Some(surface_object) = surface_report.as_object_mut() {
+                for flag in requested_flags {
+                    surface_object.insert(flag.to_string(), serde_json::json!(true));
+                }
+            }
+            surface_report
+        })
+        .collect::<Vec<_>>();
+    let artifact_distribution_signing_notarization_surface_count =
+        artifact_distribution_signing_notarization_surfaces.len();
+    let contract_hash = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial:native:source={source_report_sha256}:surfaces={artifact_distribution_signing_notarization_surface_count}:route_count={}:signing=0:notarization=0:authority=0:live=0",
+        route_matrix.route_count
+    ));
+    let policy_hash = sha256_text_value(
+        "release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial:no-signing-execution:no-notarization:no-stapling:no-provenance-publication:no-sbom-publication:no-release-asset-packaging:no-cdn-update-feed-write:no-live",
+    );
+    let denials = vec![
+        "source_distribution_artifact_manifest_status_report_required",
+        "artifact_distribution_signing_notarization_surface_request_acceptance_denied",
+        "artifact_distribution_signing_notarization_surface_acceptance_denied",
+        "artifact_distribution_signing_notarization_surface_recording_denied",
+        "artifact_distribution_signing_notarization_surface_persistence_denied",
+        "artifact_distribution_signing_notarization_surface_materialization_denied",
+        "artifact_distribution_signing_notarization_surface_filesystem_write_denied",
+        "artifact_distribution_signing_notarization_surface_delivery_denied",
+        "artifact_distribution_signing_notarization_surface_exposure_denied",
+        "artifact_signing_execution_denied",
+        "package_signing_execution_denied",
+        "signature_manifest_write_denied",
+        "signature_checksum_binding_denied",
+        "notarization_submission_denied",
+        "notarization_ticket_recording_denied",
+        "stapling_execution_denied",
+        "installer_signing_execution_denied",
+        "provenance_attestation_publication_denied",
+        "sbom_manifest_publication_denied",
+        "release_asset_packaging_denied",
+        "artifact_bundle_packaging_denied",
+        "cdn_artifact_write_denied",
+        "update_feed_artifact_write_denied",
+        "package_registry_artifact_publish_denied",
+        "external_package_channel_publication_denied",
+        "telegram_package_channel_publication_denied",
+        "public_release_claim_from_signing_notarization_denied",
+        "public_ga_claim_from_signing_notarization_denied",
+        "acceptance_from_signing_notarization_denied",
+        "operator_approval_from_signing_notarization_denied",
+        "release_publication_authority_from_signing_notarization_denied",
+        "activation_live_from_signing_notarization_denied",
+        "install_restart_active_binary_from_signing_notarization_denied",
+        "memory_provider_kg_from_signing_notarization_denied",
+    ];
+    let denied_count = denials.len();
+    let report_ready = source_ready
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_surface_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_attempt_count",
+        ) == 18
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_exposed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_package_signing_status_exposed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_status_exposed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_status_exposed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_status_exposed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_status_exposed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_release_publication_authority_derived_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_activation_authority_derived_count",
+        ) == 0
+        && artifact_distribution_signing_notarization_surface_count == 18
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-26",
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_v1",
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_mode": "native_route_denied_distribution_artifact_manifest_status_cannot_execute_signing_notarization_stapling_provenance_sbom_packaging_channel_publication_authority_or_live_install",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_gate": source_report["gate"].clone(),
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_ready": source_ready,
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_report_sha256": source_report_sha256,
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_contract_hash_sha256": source_contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_contract_hash_sha256": contract_hash,
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_policy_hash_sha256": policy_hash,
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_route_enabled": true,
+        "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_ready": report_ready,
+    });
+
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_surface_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_surface_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_attempt_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_attempt_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_exposed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_package_signing_status_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_package_signing_status_exposed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_status_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_status_exposed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_status_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_status_exposed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_status_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_status_exposed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_status_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_status_exposed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_release_publication_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_release_publication_authority_derived_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_activation_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_activation_authority_derived_count"),
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_count": artifact_distribution_signing_notarization_surface_count,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_attempt_count": artifact_distribution_signing_notarization_surface_count,
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denied_count": artifact_distribution_signing_notarization_surface_count,
+        }),
+    );
+
+    for key in [
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_allowed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_request_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_persisted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_materialized_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_filesystem_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_delivered_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_package_signing_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_signature_manifest_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_signature_checksum_bound_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_ticket_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_installer_signing_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_release_asset_packaged_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_bundle_packaged_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_cdn_artifact_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_update_feed_artifact_written_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_package_registry_artifact_published_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_external_package_channel_published_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_telegram_package_channel_published_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_acceptance_recorded_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_operator_approval_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_release_publication_authority_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_activation_authority_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_activation_command_derived_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_live_execution_allowed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_install_executed_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_service_restarted_count",
+        "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_active_binary_mutated_count",
+    ] {
+        if let Some(report_object) = report.as_object_mut() {
+            report_object.insert(key.to_string(), serde_json::json!(0));
+        }
+    }
+
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_surfaces": artifact_distribution_signing_notarization_surfaces,
+            "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface": denials,
+            "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_count": denied_count,
+            "allowed_next_actions": [
+                {
+                    "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_gate",
+                    "status": "allowed_report_only_next_slice",
+                    "executes_signing": false,
+                    "executes_notarization": false,
+                    "executes_stapling": false,
+                    "publishes_provenance": false,
+                    "publishes_sbom": false,
+                    "packages_release_asset": false,
+                    "writes_cdn_artifact": false,
+                    "writes_update_feed_artifact": false,
+                    "publishes_external_package_channel": false,
+                    "records_operator_acceptance": false,
+                    "derives_release_publication_authority": false,
+                    "derives_activation_authority": false,
+                    "activates_live": false,
+                    "mutates_memory_store": false,
+                    "writes_kg": false,
+                    "sends_externally": false
+                }
+            ],
+        }),
+    );
+
+    let false_keys = [
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_allowed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_request_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_persisted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_materialized",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_filesystem_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_delivered",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_package_signing_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_signature_manifest_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_signature_checksum_bound",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_ticket_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_installer_signing_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_release_asset_packaged",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_bundle_packaged",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_cdn_artifact_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_update_feed_artifact_written",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_package_registry_artifact_published",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_external_package_channel_published",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_telegram_package_channel_published",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_persisted",
+        "packet_acceptance_receipt_release_publication_recorded",
+        "operator_acceptance_recorded",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "activation_command_derived",
+        "activation_allowed",
+        "activation_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "external_send_performed",
+        "filesystem_written",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in false_keys {
+            report_object.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for key in false_keys {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
+fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_report =
+        hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_report();
+    let source_ready = source_report["status"].as_str() == Some("ready")
+        && source_report["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_ready"]
+            .as_bool()
+            .unwrap_or(false);
+    let source_u64 = |key: &str| source_report[key].as_u64().unwrap_or(0);
+    let source_report_sha256 = sha256_json_value(&source_report);
+    let source_contract_hash = source_report
+        ["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_contract_hash_sha256"]
         .as_str()
         .unwrap_or("unknown")
         .to_string();
@@ -36490,7 +37007,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
         .map(|(surface, status, reason, requested_flags)| {
             let mut surface_report = serde_json::json!({
                 "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_surface": surface,
-                "source_terminal_distribution_delivery_receipt_query_export_observability_ready": true,
+                "source_artifact_distribution_signing_notarization_surface_ready": true,
                 "artifact_download_install_affordance_attempted": true,
                 "artifact_download_install_affordance_status": status,
                 "reason": reason,
@@ -36583,7 +37100,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
         "release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-denial:no-download-link:no-install-command:no-installer-prompt:no-update-offer:no-external-install-message:no-live",
     );
     let denials = vec![
-        "source_delivery_receipt_query_export_observability_report_required",
+        "source_artifact_distribution_signing_notarization_surface_report_required",
         "artifact_download_install_affordance_request_acceptance_denied",
         "artifact_download_install_affordance_acceptance_denied",
         "artifact_download_install_affordance_recording_denied",
@@ -36619,36 +37136,46 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     let denied_count = denials.len();
     let report_ready = source_ready
         && source_u64(
-            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_count",
         ) == 18
         && source_u64(
-            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_attempt_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_attempt_count",
         ) == 18
         && source_u64(
-            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted_count",
         ) == 0
         && source_u64(
-            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded_count",
         ) == 0
         && source_u64(
-            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_persisted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_persisted_count",
         ) == 0
         && source_u64(
-            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed_count",
-        ) == 0
-        && source_u64("release_publication_result_receipt_delivery_receipt_query_registered_count")
-            == 0
-        && source_u64(
-            "release_publication_result_receipt_delivery_receipt_export_file_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed_count",
         ) == 0
         && source_u64(
-            "release_publication_result_receipt_delivery_receipt_observability_metric_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed_count",
         ) == 0
         && source_u64(
-            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_release_publication_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed_count",
         ) == 0
         && source_u64(
-            "release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_activation_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_release_publication_authority_derived_count",
+        ) == 0
+        && source_u64(
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_activation_authority_derived_count",
         ) == 0
         && artifact_download_install_affordance_surface_count == 18
         && route_count_source_command_accepted;
@@ -36665,11 +37192,11 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
         "side_effect_free": true,
         "audit_date": "2026-06-18",
         "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_schema_version": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_v1",
-        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_mode": "native_route_denied_delivery_receipt_query_export_observability_cannot_become_download_link_install_command_installer_prompt_update_offer_external_install_message_or_live_authority",
-        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_denial_route",
-        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_ready": source_ready,
-        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_report_sha256": source_report_sha256,
-        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_contract_hash_sha256": source_contract_hash,
+        "receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_mode": "native_route_denied_artifact_distribution_signing_notarization_surface_cannot_become_download_link_install_command_installer_prompt_update_offer_external_install_message_or_live_authority",
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_gate": source_report["gate"].clone(),
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_ready": source_ready,
+        "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_report_sha256": source_report_sha256,
+        "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_contract_hash_sha256": source_contract_hash,
         "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_contract_hash_sha256": contract_hash,
         "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_policy_hash_sha256": policy_hash,
         "minimum_required_samples": 24,
@@ -36686,17 +37213,21 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     extend_json_object(
         &mut report,
         serde_json::json!({
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface_count"),
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_attempt_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_attempt_count"),
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted_count"),
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded_count"),
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_persisted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_persisted_count"),
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed_count"),
-            "source_release_publication_result_receipt_delivery_receipt_query_registered_count": source_u64("release_publication_result_receipt_delivery_receipt_query_registered_count"),
-            "source_release_publication_result_receipt_delivery_receipt_export_file_written_count": source_u64("release_publication_result_receipt_delivery_receipt_export_file_written_count"),
-            "source_release_publication_result_receipt_delivery_receipt_observability_metric_recorded_count": source_u64("release_publication_result_receipt_delivery_receipt_observability_metric_recorded_count"),
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_release_publication_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_release_publication_authority_derived_count"),
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_activation_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_activation_authority_derived_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_attempt_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_attempt_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denied_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denied_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_persisted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_persisted_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_release_publication_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_release_publication_authority_derived_count"),
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_activation_authority_derived_count": source_u64("release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_activation_authority_derived_count"),
             "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_surface_count": artifact_download_install_affordance_surface_count,
             "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_count": artifact_download_install_affordance_surface_count,
             "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_attempt_count": artifact_download_install_affordance_surface_count,
@@ -36781,12 +37312,15 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
     );
 
     let artifact_download_install_affordance_false_keys = [
-        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted",
-        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded",
-        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed",
-        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_query_registered",
-        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_export_file_written",
-        "packet_acceptance_receipt_release_publication_result_receipt_delivery_receipt_observability_metric_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published",
+        "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published",
         "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_allowed",
         "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_request_accepted",
         "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_accepted",
@@ -77848,6 +78382,259 @@ mod tests {
     }
 
     #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_endpoint_blocks_signing_notarization_surfaces()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact distribution signing notarization route json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_attempt_count"],
+            18
+        );
+        assert_eq!(
+            value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_denied_count"],
+            18
+        );
+        for key in [
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_exposed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_package_signing_status_exposed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_status_exposed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_status_exposed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_status_exposed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_status_exposed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_release_publication_authority_derived_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_activation_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_allowed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_request_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_persisted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_materialized_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_filesystem_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_delivered_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_package_signing_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_signature_manifest_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_signature_checksum_bound_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_ticket_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_installer_signing_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_release_asset_packaged_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_bundle_packaged_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_cdn_artifact_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_update_feed_artifact_written_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_package_registry_artifact_published_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_external_package_channel_published_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_telegram_package_channel_published_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_acceptance_recorded_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_operator_approval_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_release_publication_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_activation_authority_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_activation_command_derived_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_live_execution_allowed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_install_executed_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_service_restarted_count",
+            "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_active_binary_mutated_count",
+        ] {
+            assert_eq!(value[key], 0, "{key}");
+        }
+
+        let surfaces = value["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_surfaces"]
+            .as_array()
+            .expect("packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact distribution signing notarization surfaces");
+        assert_eq!(surfaces.len(), 18);
+        assert_eq!(
+            surfaces[0]["release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface"],
+            "delivery_receipt_artifact_signing_execution"
+        );
+        assert_eq!(surfaces[0]["artifact_signing_requested"], true);
+        for surface in surfaces {
+            assert_eq!(
+                surface["artifact_distribution_signing_notarization_surface_attempted"],
+                true
+            );
+            for key in [
+                "artifact_distribution_signing_notarization_surface_allowed",
+                "artifact_distribution_signing_notarization_surface_request_accepted",
+                "artifact_distribution_signing_notarization_surface_accepted",
+                "artifact_distribution_signing_notarization_surface_recorded",
+                "artifact_distribution_signing_notarization_surface_persisted",
+                "artifact_distribution_signing_notarization_surface_materialized",
+                "artifact_distribution_signing_notarization_surface_filesystem_written",
+                "artifact_distribution_signing_notarization_surface_delivered",
+                "artifact_distribution_signing_notarization_surface_exposed",
+                "artifact_distribution_signing_notarization_surface_executed",
+                "artifact_signing_executed",
+                "package_signing_executed",
+                "signature_manifest_written",
+                "signature_checksum_bound",
+                "notarization_submitted",
+                "notarization_ticket_recorded",
+                "stapling_executed",
+                "installer_signing_executed",
+                "provenance_attestation_published",
+                "sbom_manifest_published",
+                "release_asset_packaged",
+                "artifact_bundle_packaged",
+                "cdn_artifact_written",
+                "update_feed_artifact_written",
+                "package_registry_artifact_published",
+                "external_package_channel_published",
+                "telegram_package_channel_published",
+                "public_release_claimed",
+                "public_ga_claimed",
+                "acceptance_recorded",
+                "operator_approval_derived",
+                "release_publication_authority_derived",
+                "activation_authority_derived",
+                "activation_command_derived",
+                "live_execution_allowed",
+                "activation_performed",
+                "install_executed",
+                "service_restarted",
+                "launchd_mutated",
+                "active_binary_mutated",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "live_kg_write_performed",
+                "provider_invoked",
+                "model_invoked",
+                "credential_read",
+                "secret_file_read",
+            ] {
+                assert_eq!(surface[key], false, "{key}");
+            }
+            assert_eq!(
+                surface["artifact_distribution_signing_notarization_surface_noop_confirmed"],
+                true
+            );
+        }
+
+        let denied = value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface"]
+            .as_array()
+            .expect("packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact distribution signing notarization denials");
+        assert_eq!(denied.len(), 34);
+        assert_eq!(
+            value["denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_gate"
+        );
+        for key in [
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_package_signing_executed",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_signature_manifest_written",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_signature_checksum_bound",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_ticket_recorded",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published",
+            "packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published",
+            "operator_acceptance_recorded",
+            "operator_approval_recorded",
+            "release_publication_authority_derived",
+            "activation_authority_derived",
+            "activation_command_derived",
+            "activation_allowed",
+            "activation_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+            "release_artifact_written",
+            "public_artifact_written",
+            "public_release_claimed",
+            "public_ga_claimed",
+            "external_send_performed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"].as_object().expect(
+            "release publication result receipt terminal distribution delivery receipt artifact distribution signing notarization side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
     fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_endpoint_blocks_download_and_install_surfaces()
      {
         let options = NativeGatewayOptions {
@@ -77899,11 +78686,11 @@ mod tests {
             true
         );
         assert_eq!(
-            value["source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_ready"],
+            value["source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_ready"],
             true
         );
         assert_eq!(
-            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_surface_count"],
+            value["source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_count"],
             18
         );
         assert_eq!(
@@ -77915,15 +78702,18 @@ mod tests {
             18
         );
         for key in [
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_accepted_count",
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_recorded_count",
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_persisted_count",
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_exposed_count",
-            "source_release_publication_result_receipt_delivery_receipt_query_registered_count",
-            "source_release_publication_result_receipt_delivery_receipt_export_file_written_count",
-            "source_release_publication_result_receipt_delivery_receipt_observability_metric_recorded_count",
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_release_publication_authority_derived_count",
-            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_activation_authority_derived_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_accepted_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_recorded_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_persisted_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_exposed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_executed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_signing_executed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_notarization_submitted_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_stapling_executed_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_provenance_attestation_published_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_sbom_manifest_published_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_release_publication_authority_derived_count",
+            "source_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_activation_authority_derived_count",
             "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_allowed_count",
             "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_request_accepted_count",
             "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_accepted_count",

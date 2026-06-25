@@ -5,7 +5,7 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
-EXPECTED_ROUTE_COUNT=190
+EXPECTED_ROUTE_COUNT=191
 
 cd "$REPO_ROOT"
 
@@ -27,7 +27,7 @@ require_source_text() {
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 190;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 191;' \
   "native gateway route/source command count includes KG shadow-rank canary route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT' \

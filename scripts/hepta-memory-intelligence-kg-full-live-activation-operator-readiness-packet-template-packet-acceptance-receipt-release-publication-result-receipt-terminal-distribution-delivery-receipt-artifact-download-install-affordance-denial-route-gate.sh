@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
-EXPECTED_ROUTE_COUNT=190
+EXPECTED_ROUTE_COUNT=191
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
@@ -146,7 +146,7 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 190;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 191;' \
   "native gateway route/source command count includes terminal distribution delivery receipt artifact download/install affordance route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_DENIAL_ENDPOINT' \
@@ -188,7 +188,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_route_enabled == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_denial_ready == true
-    and .source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_ready == true
+    and .source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_ready == true
     and .release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_surface_count == 18
     and .release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_recorded_count == 0
     and .release_publication_result_receipt_terminal_distribution_delivery_receipt_download_button_rendered_count == 0
@@ -238,6 +238,9 @@ terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 25
 live_route_status="$(jq -r '.status // "skipped"' <<<"$LIVE_ROUTE_JSON")"
 live_route_count="$(jq -r '.route_count // 0' <<<"$LIVE_ROUTE_JSON")"
 live_missing_route_count="$(jq -r '.missing_route_count // 0' <<<"$LIVE_ROUTE_JSON")"
+terminal_required_marker_count="$(jq -r '.required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
+terminal_present_required_marker_count="$(jq -r '.present_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
+terminal_missing_required_marker_count="$(jq -r '.missing_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
 
 jq -n \
   --arg product "Hepta" \
@@ -254,6 +257,10 @@ jq -n \
   --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
   --argjson live_route_count "$live_route_count" \
   --argjson live_missing_route_count "$live_missing_route_count" \
+  --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
+  --argjson terminal_required_marker_count "$terminal_required_marker_count" \
+  --argjson terminal_present_required_marker_count "$terminal_present_required_marker_count" \
+  --argjson terminal_missing_required_marker_count "$terminal_missing_required_marker_count" \
   '{
     product:$product,
     runtime:$runtime,
@@ -272,8 +279,7 @@ jq -n \
     focused_test_log:$focused_test_log,
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_endpoint_checked,
-    source_route_count_expected:153,
-    terminal_required_marker_count_expected:293,
+    expected_route_count:$expected_route_count,
     release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_surface_count:18,
     release_publication_result_receipt_terminal_distribution_delivery_receipt_download_button_rendered_count:0,
     release_publication_result_receipt_terminal_distribution_delivery_receipt_direct_download_url_exposed_count:0,
@@ -284,9 +290,9 @@ jq -n \
     release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_live_execution_allowed_count:0,
     route_source_texts_ready:true,
     terminal_coverage_ready:true,
-    terminal_required_marker_count:285,
-    terminal_present_required_marker_count:285,
-    terminal_missing_required_marker_count:0,
+    terminal_required_marker_count:$terminal_required_marker_count,
+    terminal_present_required_marker_count:$terminal_present_required_marker_count,
+    terminal_missing_required_marker_count:$terminal_missing_required_marker_count,
     live_route_status:$live_route_status,
     live_route_count:$live_route_count,
     live_missing_route_count:$live_missing_route_count,
