@@ -5,6 +5,7 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
+EXPECTED_ROUTE_COUNT=189
 
 cd "$REPO_ROOT"
 
@@ -53,10 +54,10 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   LIVE_ROUTE_JSON="$(
     curl -fsS "$BASE_URL/api/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt"
   )"
-  jq -e '
+  jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
     .status == "ready"
-    and .route_count == 184
-    and .implemented_route_count == 184
+    and .route_count == $expected
+    and .implemented_route_count == $expected
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .minimal_memory_canary_route_enabled == true
@@ -124,6 +125,7 @@ jq -n \
   --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
   --argjson live_route_count "$live_route_count" \
   --argjson live_missing_route_count "$live_missing_route_count" \
+  --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
   '{
     product:$product,
     runtime:$runtime,
@@ -138,7 +140,7 @@ jq -n \
     live_route_status:$live_route_status,
     live_route_count:$live_route_count,
     live_missing_route_count:$live_missing_route_count,
-    expected_route_count:180,
+    expected_route_count:$expected_route_count,
     route_gate_ready:true,
     minimal_memory_canary_ready:true,
     canary_execution_mode:"ephemeral_isolated_fixture_no_durable_store_mutation",
