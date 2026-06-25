@@ -5,7 +5,7 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
-EXPECTED_ROUTE_COUNT=191
+EXPECTED_ROUTE_COUNT=192
 
 cd "$REPO_ROOT"
 
@@ -23,7 +23,7 @@ require_source_text() {
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 191;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 192;' \
   "native gateway route/source command count includes minimal memory canary route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT' \

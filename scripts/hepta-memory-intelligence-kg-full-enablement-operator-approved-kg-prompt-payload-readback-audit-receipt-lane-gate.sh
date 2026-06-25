@@ -58,7 +58,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 191;' \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 192;' \
   "native gateway route/source command count includes context handoff acceptance lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
