@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
+EXPECTED_ROUTE_COUNT=189
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
@@ -57,7 +58,7 @@ FINAL_ACKNOWLEDGEMENT_JSON="$(
       scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-final-operator-acknowledgement-non-acceptance-denial-gate.sh
 )"
 
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   def zero_fields($o; $fields): all($fields[]; $o[.] == 0);
   def false_fields($o; $fields): all($fields[]; $o[.] == false);
 
@@ -153,10 +154,10 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   LIVE_ROUTE_JSON="$(
     curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-final-operator-acknowledgement-non-acceptance-denial"
   )"
-  jq -e '
+  jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
     .status == "ready"
-    and .route_count == 160
-    and .implemented_route_count == 160
+    and .route_count == $expected
+    and .implemented_route_count == $expected
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_final_operator_acknowledgement_non_acceptance_denial_route_enabled == true
@@ -188,7 +189,7 @@ TERMINAL_COVERAGE_JSON="$(
     scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 )"
 
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
   and .required_marker_count == 300
@@ -238,7 +239,7 @@ jq -n \
     live_route_status:$live_route_status,
     live_route_count:$live_route_count,
     live_missing_route_count:$live_missing_route_count,
-    expected_route_count:160,
+    expected_route_count:189,
     expected_terminal_required_marker_count:300,
     route_gate_ready:true,
     source_gate_ready:true,

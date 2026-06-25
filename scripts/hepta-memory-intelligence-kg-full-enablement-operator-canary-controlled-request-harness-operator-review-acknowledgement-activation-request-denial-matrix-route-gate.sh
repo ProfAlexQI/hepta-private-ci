@@ -7,6 +7,7 @@ MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$HOME/.local/opt/hepta/bin/hepta}}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
+EXPECTED_ROUTE_COUNT=189
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
@@ -30,7 +31,7 @@ OPERATOR_ACK_ROUTE_JSON="$(
   curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-non-acceptance"
 )"
 
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .status == "ready"
   and .operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_route_enabled == true
   and .operator_canary_controlled_request_harness_operator_review_acknowledgement_non_acceptance_ready == true
@@ -83,7 +84,7 @@ ACTIVATION_DENIAL_JSON="$(
       scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-request-denial-matrix-gate.sh
 )"
 
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .runtime == "hepta"
   and .status == "ready"
   and .gate == "hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_request_denial_matrix_gate"
@@ -204,9 +205,9 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   LIVE_ROUTE_JSON="$(
     curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-request-denial-matrix"
   )"
-  jq -e '
+  jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
     .status == "ready"
-    and .route_count == 160
+    and .route_count == $expected
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_request_denial_matrix_route_enabled == true
@@ -380,7 +381,7 @@ report="$(
     }'
 )"
 
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .runtime == "hepta"
   and .status == "ready"
   and .gate == "hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_request_denial_matrix_route_gate"

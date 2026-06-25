@@ -5,6 +5,7 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
+EXPECTED_ROUTE_COUNT=189
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
@@ -81,10 +82,10 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   LIVE_ROUTE_JSON="$(
     curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial"
   )"
-  jq -e '
+  jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
     .status == "ready"
-    and .route_count == 160
-    and .implemented_route_count == 160
+    and .route_count == $expected
+    and .implemented_route_count == $expected
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_route_enabled == true
@@ -113,7 +114,7 @@ TERMINAL_COVERAGE_JSON="$(
     scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 )"
 
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
   and .required_marker_count == 300

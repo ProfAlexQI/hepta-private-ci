@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
+EXPECTED_ROUTE_COUNT=189
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
@@ -51,7 +52,7 @@ REPLAY_JSON="$(
       scripts/hepta-memory-intelligence-kg-full-live-activation-readiness-index-replay-idempotency-denial-gate.sh
 )"
 
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .runtime == "hepta"
   and .status == "ready"
   and .gate == "hepta_memory_intelligence_kg_full_live_activation_readiness_index_replay_idempotency_denial_gate"
@@ -156,9 +157,9 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   LIVE_ROUTE_JSON="$(
     curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-live-activation-readiness-index-replay-idempotency-denial"
   )"
-  jq -e '
+  jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
     .status == "ready"
-    and .route_count == 160
+    and .route_count == $expected
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_readiness_index_replay_idempotency_denial_route_enabled == true
@@ -207,7 +208,7 @@ TERMINAL_COVERAGE_JSON="$(
     "hepta-preflight-terminal-coverage-inventory-gate" \
     scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 )"
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
   and .required_marker_count == 300

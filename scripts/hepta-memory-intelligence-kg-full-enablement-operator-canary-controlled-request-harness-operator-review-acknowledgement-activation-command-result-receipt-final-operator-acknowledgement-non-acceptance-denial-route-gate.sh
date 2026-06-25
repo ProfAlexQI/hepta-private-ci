@@ -7,6 +7,7 @@ MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$HOME/.local/opt/hepta/bin/hepta}}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
+EXPECTED_ROUTE_COUNT=189
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
@@ -53,7 +54,7 @@ FINAL_ACK_JSON="$(
       scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial-gate.sh
 )"
 
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .runtime == "hepta"
   and .status == "ready"
   and .gate == "hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_gate"
@@ -197,9 +198,9 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   LIVE_ROUTE_JSON="$(
     curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial"
   )"
-  jq -e '
+  jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
     .status == "ready"
-    and .route_count == 160
+    and .route_count == $expected
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .source_operator_review_acknowledgement_activation_command_result_receipt_operator_facing_summary_briefing_route_ready == true
@@ -245,7 +246,7 @@ TERMINAL_COVERAGE_JSON="$(
     "hepta-preflight-terminal-coverage-inventory-gate" \
     scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 )"
-jq -e '
+jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
   and .required_marker_count == 300
