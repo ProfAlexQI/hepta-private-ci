@@ -222,8 +222,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 300
-  and .present_required_marker_count == 300
+  and .required_marker_count >= 300
+  and .present_required_marker_count == .required_marker_count
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0

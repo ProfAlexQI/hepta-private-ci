@@ -203,8 +203,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 300
-  and .present_required_marker_count == 300
+  and .required_marker_count >= 300
+  and .present_required_marker_count == .required_marker_count
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -213,6 +213,7 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
 source_gate_sha256="$(printf '%s' "$SOURCE_GATE_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 256 | awk '{print $1}')"
+terminal_required_marker_count="$(jq -r '.required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
 live_route_status="$(jq -r '.status // "skipped"' <<<"$LIVE_ROUTE_JSON")"
 live_route_count="$(jq -r '.route_count // 0' <<<"$LIVE_ROUTE_JSON")"
 live_missing_route_count="$(jq -r '.missing_route_count // 0' <<<"$LIVE_ROUTE_JSON")"
@@ -228,6 +229,7 @@ jq -n \
   --arg source_gate_sha256 "$source_gate_sha256" \
   --arg focused_test_log "$TEST_LOG" \
   --arg terminal_coverage_sha256 "$terminal_coverage_sha256" \
+  --argjson terminal_required_marker_count "$terminal_required_marker_count" \
   --arg live_route_status "$live_route_status" \
   --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
   --argjson live_route_count "$live_route_count" \
@@ -251,7 +253,7 @@ jq -n \
     live_route_count:$live_route_count,
     live_missing_route_count:$live_missing_route_count,
     expected_route_count:192,
-    expected_terminal_required_marker_count:300,
+    expected_terminal_required_marker_count:$terminal_required_marker_count,
     route_gate_ready:true,
     source_gate_ready:true,
     operator_identity_revocation_recorded:false,

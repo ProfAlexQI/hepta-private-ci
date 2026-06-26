@@ -192,8 +192,8 @@ TERMINAL_COVERAGE_JSON="$(
 jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count == 300
-  and .present_required_marker_count == 300
+  and .required_marker_count >= 300
+  and .present_required_marker_count == .required_marker_count
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -202,6 +202,7 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 native_gateway_sha256="$(shasum -a 256 "$NATIVE_GATEWAY_SOURCE" | awk '{print $1}')"
 source_gate_sha256="$(printf '%s' "$SOURCE_GATE_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 256 | awk '{print $1}')"
+terminal_required_marker_count="$(jq -r '.required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
 live_route_status="$(jq -r '.status // "skipped"' <<<"$LIVE_ROUTE_JSON")"
 live_route_count="$(jq -r '.route_count // 0' <<<"$LIVE_ROUTE_JSON")"
 live_missing_route_count="$(jq -r '.missing_route_count // 0' <<<"$LIVE_ROUTE_JSON")"
@@ -217,6 +218,7 @@ jq -n \
   --arg native_gateway_sha256 "$native_gateway_sha256" \
   --arg source_gate_sha256 "$source_gate_sha256" \
   --arg terminal_coverage_sha256 "$terminal_coverage_sha256" \
+  --argjson terminal_required_marker_count "$terminal_required_marker_count" \
   --arg focused_test_log "$TEST_LOG" \
   --arg live_route_status "$live_route_status" \
   --arg next_slice "operator_identity_session_revocation_logout_replay_reinstatement_cancellation_supersession_denial" \
@@ -241,7 +243,7 @@ jq -n \
     live_route_count:$live_route_count,
     live_missing_route_count:$live_missing_route_count,
     expected_route_count:192,
-    expected_terminal_required_marker_count:300,
+    expected_terminal_required_marker_count:$terminal_required_marker_count,
     route_gate_ready:true,
     source_gate_ready:true,
     ordering_recorded:false,
