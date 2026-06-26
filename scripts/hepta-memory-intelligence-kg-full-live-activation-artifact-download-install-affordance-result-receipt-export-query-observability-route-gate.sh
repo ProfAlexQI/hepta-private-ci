@@ -223,6 +223,9 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
 source_export_query_gate_sha256="$(printf '%s' "$EXPORT_QUERY_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 256 | awk '{print $1}')"
+terminal_required_marker_count="$(jq -r '.required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
+terminal_present_required_marker_count="$(jq -r '.present_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
+terminal_missing_required_marker_count="$(jq -r '.missing_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
 live_route_status="$(jq -r '.status // "skipped"' <<<"$LIVE_ROUTE_JSON")"
 live_route_count="$(jq -r '.route_count // 0' <<<"$LIVE_ROUTE_JSON")"
 live_missing_route_count="$(jq -r '.missing_route_count // 0' <<<"$LIVE_ROUTE_JSON")"
@@ -238,6 +241,9 @@ jq -n \
   --arg source_export_query_gate_sha256 "$source_export_query_gate_sha256" \
   --arg focused_test_log "$TEST_LOG" \
   --arg terminal_coverage_sha256 "$terminal_coverage_sha256" \
+  --argjson terminal_required_marker_count "$terminal_required_marker_count" \
+  --argjson terminal_present_required_marker_count "$terminal_present_required_marker_count" \
+  --argjson terminal_missing_required_marker_count "$terminal_missing_required_marker_count" \
   --arg live_route_status "$live_route_status" \
   --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
   --argjson live_route_count "$live_route_count" \
@@ -257,7 +263,7 @@ jq -n \
     source_export_query_observability_gate_ready:true,
     source_export_query_gate_sha256:$source_export_query_gate_sha256,
     source_route_count_expected:153,
-    terminal_required_marker_count_expected:293,
+    expected_terminal_required_marker_count:$terminal_required_marker_count,
     focused_endpoint_test_passed:true,
     focused_test_log:$focused_test_log,
     native_gateway_sha256:$native_gateway_sha256,

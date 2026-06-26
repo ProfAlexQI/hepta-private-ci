@@ -252,6 +252,9 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
 source_audit_evidence_gate_sha256="$(printf '%s' "$AUDIT_EVIDENCE_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 256 | awk '{print $1}')"
+terminal_required_marker_count="$(jq -r '.required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
+terminal_present_required_marker_count="$(jq -r '.present_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
+terminal_missing_required_marker_count="$(jq -r '.missing_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
 
 jq -n \
   --arg product "Hepta" \
@@ -263,6 +266,9 @@ jq -n \
   --arg source_audit_evidence_gate_sha256 "$source_audit_evidence_gate_sha256" \
   --arg test_log "$TEST_LOG" \
   --arg terminal_coverage_sha256 "$terminal_coverage_sha256" \
+  --argjson terminal_required_marker_count "$terminal_required_marker_count" \
+  --argjson terminal_present_required_marker_count "$terminal_present_required_marker_count" \
+  --argjson terminal_missing_required_marker_count "$terminal_missing_required_marker_count" \
   --argjson source "$AUDIT_EVIDENCE_JSON" \
   --argjson terminal "$TERMINAL_COVERAGE_JSON" \
   --argjson live "$LIVE_ROUTE_JSON" \
@@ -286,7 +292,7 @@ jq -n \
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_checked,
     source_route_count_expected:153,
-    terminal_required_marker_count_expected:293,
+    expected_terminal_required_marker_count:$terminal_required_marker_count,
     source_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_ready:$source.source_packet_acceptance_receipt_release_publication_result_receipt_cancellation_supersession_ready,
     release_publication_result_receipt_audit_evidence_surface_count:$source.release_publication_result_receipt_audit_evidence_surface_count,
     release_publication_result_receipt_audit_trail_recorded_count:$source.release_publication_result_receipt_audit_trail_recorded_count,

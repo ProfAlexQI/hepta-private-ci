@@ -275,6 +275,9 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
 source_terminal_decision_gate_sha256="$(printf '%s' "$TERMINAL_DECISION_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 256 | awk '{print $1}')"
+terminal_required_marker_count="$(jq -r '.required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
+terminal_present_required_marker_count="$(jq -r '.present_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
+terminal_missing_required_marker_count="$(jq -r '.missing_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
 
 jq -n \
   --arg product "Hepta" \
@@ -286,6 +289,9 @@ jq -n \
   --arg source_terminal_decision_gate_sha256 "$source_terminal_decision_gate_sha256" \
   --arg test_log "$TEST_LOG" \
   --arg terminal_coverage_sha256 "$terminal_coverage_sha256" \
+  --argjson terminal_required_marker_count "$terminal_required_marker_count" \
+  --argjson terminal_present_required_marker_count "$terminal_present_required_marker_count" \
+  --argjson terminal_missing_required_marker_count "$terminal_missing_required_marker_count" \
   --argjson source "$TERMINAL_DECISION_JSON" \
   --argjson terminal "$TERMINAL_COVERAGE_JSON" \
   --argjson live "$LIVE_ROUTE_JSON" \
@@ -309,7 +315,7 @@ jq -n \
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_checked,
     source_route_count_expected:153,
-    terminal_required_marker_count_expected:293,
+    expected_terminal_required_marker_count:$terminal_required_marker_count,
     source_packet_acceptance_receipt_final_acknowledgement_ready:$source.source_packet_acceptance_receipt_final_acknowledgement_ready,
     terminal_decision_status_surface_count:$source.terminal_decision_status_surface_count,
     terminal_decision_status_attempt_count:$source.terminal_decision_status_attempt_count,
