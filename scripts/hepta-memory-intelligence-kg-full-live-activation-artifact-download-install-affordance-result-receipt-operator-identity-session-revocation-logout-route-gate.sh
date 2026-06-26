@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
-EXPECTED_ROUTE_COUNT=192
+EXPECTED_ROUTE_COUNT="${HEPTA_EXPECTED_ROUTE_COUNT:-$(bash "$REPO_ROOT/scripts/lib/hepta-native-route-count.sh")}"
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
@@ -131,7 +131,7 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 192;' \
+  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = ${EXPECTED_ROUTE_COUNT};" \
   "native gateway route/source command count includes artifact download/install affordance result receipt operator identity/session revocation/logout route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT' \
@@ -234,6 +234,7 @@ jq -n \
   --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
   --argjson live_route_count "$live_route_count" \
   --argjson live_missing_route_count "$live_missing_route_count" \
+  --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
   '{
     product:$product,
     runtime:$runtime,
@@ -252,7 +253,7 @@ jq -n \
     live_route_status:$live_route_status,
     live_route_count:$live_route_count,
     live_missing_route_count:$live_missing_route_count,
-    expected_route_count:192,
+    expected_route_count:$expected_route_count,
     expected_terminal_required_marker_count:$terminal_required_marker_count,
     route_gate_ready:true,
     source_gate_ready:true,

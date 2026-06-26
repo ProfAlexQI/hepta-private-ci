@@ -1358,6 +1358,9 @@ scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 echo "[hepta-preflight] preflight terminal coverage diagnostic contract gate"
 scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh
 
+echo "[hepta-preflight] upstream Codex latest multisurface absorption native route gate"
+scripts/hepta-upstream-codex-latest-multisurface-absorption-route-gate.sh
+
 echo "[hepta-preflight] upstream Codex latest active-safety regression gate"
 scripts/hepta-upstream-codex-latest-active-safety-regression.sh
 

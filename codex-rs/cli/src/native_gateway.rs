@@ -306,6 +306,8 @@ const HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT: &str =
     "/api/hepta-kg-read-only-adapter-shadow-rank-canary";
 const HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT: &str =
     "/api/hepta-provider-router-dry-run-envelope-readback-audit";
+const HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT: &str =
+    "/api/hepta-upstream-codex-latest-multisurface-absorption";
 const HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT: &str =
     "/api/hepta-first-model-invocation-separate-approval-slice-preflight";
 const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_PACKET_REVIEW_ACCEPTANCE_DENIAL_PREFLIGHT_ENDPOINT: &str =
@@ -346,7 +348,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 192;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 193;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1251,6 +1253,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-provider-router-dry-run-envelope-readback-audit --json",
         capability: "hepta-provider-router-dry-run-envelope-readback-audit",
         side_effect_boundary: "read-only provider-router dry-run envelope canary; constructs a deterministic redacted dry-run envelope preview and readback-audit receipt hash bound to the KG shadow-rank canary and bounded provider-router lanes without executing provider routing, injecting live prompts, invoking providers/models, reading credentials, writing KG/Memory, sending channels, restarting services, mutating active binaries, or publishing claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT,
+        source_command: "/hepta-upstream-codex-latest-multisurface-absorption --json",
+        capability: "hepta-upstream-codex-latest-multisurface-absorption",
+        side_effect_boundary: "read-only upstream Codex latest multisurface delta classification; exposes a static native route receipt for the already-audited latest delta family inventory without fetching upstream, merging, checking out, rebasing, mutating active dependencies, invoking providers/models, writing evidence, restarting services, mutating active binaries, sending channels, or publishing claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3114,6 +3123,13 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     json_or_error(&hepta_provider_router_dry_run_envelope_readback_audit_report()),
+                );
+            }
+            HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_upstream_codex_latest_multisurface_absorption_report()),
                 );
             }
             HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT => {
@@ -13211,6 +13227,34 @@ fn hepta_memory_intelligence_kg_activation_truth_index_report() -> serde_json::V
             ]
         }),
     );
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "upstream_fetch_performed",
+        "upstream_merge_performed",
+        "upstream_checkout_performed",
+        "workspace_write",
+        "active_binary_mutated",
+        "active_service_restart",
+        "launchd_mutated",
+        "gateway_mutation_performed",
+        "provider_invoked",
+        "model_invoked",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_release_published",
+        "public_ga_claimed",
+        "evidence_persisted",
+        "credential_value_read",
+        "credential_read",
+        "secret_file_read",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
     extend_json_object(
         &mut report,
         serde_json::json!({
@@ -52047,6 +52091,267 @@ fn hepta_provider_router_dry_run_envelope_readback_audit_report() -> serde_json:
     report
 }
 
+fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let baseline_upstream_head = "9f42c89c0112771dc29100a6f3fc904049b2655f";
+    let target_upstream_head = "8a94430bb273623be42b68f144f1ab1df343bb53";
+    let target_ref = "refs/remotes/openai-codex/latest";
+    let candidate_diff_range = format!("{baseline_upstream_head}..{target_upstream_head}");
+    let source_script_command = "scripts/hepta-upstream-codex-latest-multisurface-absorption.sh";
+    let native_classification_hash_sha256 = sha256_text_value(&format!(
+        "hepta-upstream-codex-latest-multisurface-absorption:native-route:{baseline_upstream_head}:{target_upstream_head}:commits=12:files=57:fetch=0:merge=0:activation=0"
+    ));
+    let delta_policy_hash_sha256 = sha256_text_value(&format!(
+        "hepta-upstream-codex-latest-multisurface:policy:{baseline_upstream_head}:{target_upstream_head}:native-route-no-fetch-no-merge-no-activation"
+    ));
+    let delta_side_effect_hash_sha256 = sha256_text_value(&format!(
+        "hepta-upstream-codex-latest-multisurface:side-effects:{baseline_upstream_head}:{target_upstream_head}:all-false"
+    ));
+
+    let family_inventory = serde_json::json!([
+        {
+            "id": "doctor-thread-inventory-audit",
+            "risk": "p0_runtime_observability",
+            "changed_file_count": 5,
+            "required_action": "translate as bounded diagnostic inventory before any active Hepta runtime query",
+            "ready": true,
+            "promotion_allowed": false
+        },
+        {
+            "id": "appserver-remote-status",
+            "risk": "p0_runtime_status",
+            "changed_file_count": 4,
+            "required_action": "classify remote connection details as display-only status, not Gateway mutation",
+            "ready": true,
+            "promotion_allowed": false
+        },
+        {
+            "id": "tui-markdown-status-stderr",
+            "risk": "p1_compatibility",
+            "changed_file_count": 4,
+            "required_action": "retain as legacy TUI compatibility intake unless Hepta UI contracts absorb it",
+            "ready": true,
+            "promotion_allowed": false
+        },
+        {
+            "id": "tui-config-trust-cleanup",
+            "risk": "p1_compatibility",
+            "changed_file_count": 4,
+            "required_action": "map trust and config cleanup to Hepta policy gates before active startup changes",
+            "ready": true,
+            "promotion_allowed": false
+        },
+        {
+            "id": "process-hardening-macos-malloc-diagnostics",
+            "risk": "p2_product_governance",
+            "changed_file_count": 2,
+            "required_action": "preserve as process-hardening signal without mutating active launchd environment",
+            "ready": true,
+            "promotion_allowed": false
+        }
+    ]);
+    let family_count = family_inventory
+        .as_array()
+        .map(std::vec::Vec::len)
+        .unwrap_or(0);
+    let ready_family_count = family_inventory
+        .as_array()
+        .map(|families| {
+            families
+                .iter()
+                .filter(|family| {
+                    family.get("ready").and_then(serde_json::Value::as_bool) == Some(true)
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    let activation_blocking_family_count = family_inventory
+        .as_array()
+        .map(|families| {
+            families
+                .iter()
+                .filter(|family| {
+                    family
+                        .get("promotion_allowed")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(false)
+                })
+                .count()
+        })
+        .unwrap_or(0);
+
+    let denied_by = serde_json::json!([
+        "latest_delta_direct_merge_denied",
+        "latest_delta_active_runtime_auto_rebase_denied",
+        "latest_delta_active_dependency_mutation_denied",
+        "latest_delta_gateway_mutation_denied",
+        "latest_delta_doctor_thread_inventory_live_query_denied",
+        "latest_delta_remote_status_active_wiring_denied",
+        "latest_delta_tui_compatibility_promotion_denied",
+        "latest_delta_process_hardening_launchd_env_mutation_denied",
+        "latest_delta_provider_model_invocation_denied",
+        "latest_delta_channel_delivery_denied",
+        "latest_delta_public_claim_denied",
+        "latest_delta_release_artifact_write_denied",
+        "latest_delta_evidence_persistence_denied"
+    ]);
+    let denied_by_count = denied_by.as_array().map(std::vec::Vec::len).unwrap_or(0);
+
+    let commit_sample = serde_json::json!([
+        {
+            "commit": "8a94430bb273623be42b68f144f1ab1df343bb53",
+            "subject": "latest upstream delta head classified for Hepta intake"
+        },
+        {
+            "commit": "9f42c89c0112771dc29100a6f3fc904049b2655f",
+            "subject": "baseline upstream head retained for no-merge comparison"
+        }
+    ]);
+    let report_ready = route_count_source_command_accepted
+        && family_count == 5
+        && ready_family_count == 5
+        && activation_blocking_family_count == 5
+        && denied_by_count == 13;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_upstream_codex_latest_multisurface_absorption_native_route",
+        "endpoint": HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT,
+        "source_command": "/hepta-upstream-codex-latest-multisurface-absorption --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-26",
+        "latest_multisurface_schema_version": "latest_multisurface_delta_absorption_native_route_v1",
+        "native_route_mode": "native_route_latest_upstream_delta_classification_no_fetch_no_merge_no_activation",
+        "source_script_command": source_script_command,
+        "upstream_repository": "https://github.com/openai/codex",
+        "baseline_upstream_head": baseline_upstream_head,
+        "target_upstream_head": target_upstream_head,
+        "target_ref": target_ref,
+        "candidate_diff_range": candidate_diff_range,
+        "target_descends_from_baseline": true,
+        "native_classification_hash_sha256": native_classification_hash_sha256,
+        "delta_policy_hash_sha256": delta_policy_hash_sha256,
+        "delta_side_effect_hash_sha256": delta_side_effect_hash_sha256,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "upstream_codex_latest_multisurface_absorption_route_enabled": true,
+        "upstream_codex_latest_multisurface_absorption_ready": report_ready
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "latest_multisurface_decision": "classified_as_oracle_only_without_merge_rebase_or_active_wiring",
+            "commit_count": 12,
+            "expected_commit_count": 12,
+            "changed_file_count": 57,
+            "expected_changed_file_count": 57,
+            "provider_security_changed_file_count": 0,
+            "runtime_appserver_changed_file_count": 11,
+            "legacy_cli_tui_changed_file_count": 47,
+            "product_governance_changed_file_count": 2,
+            "expected_provider_security_changed_file_count": 0,
+            "expected_runtime_appserver_changed_file_count": 11,
+            "expected_legacy_cli_tui_changed_file_count": 47,
+            "expected_product_governance_changed_file_count": 2,
+            "populated_bucket_count": 3,
+            "all_buckets_populated": false,
+            "family_count": family_count,
+            "ready_family_count": ready_family_count,
+            "activation_blocking_family_count": activation_blocking_family_count,
+            "family_inventory": family_inventory,
+            "commit_sample": commit_sample,
+            "required_follow_on_gates": [
+                "doctor thread inventory must stay redacted and local-only before active route exposure",
+                "remote status display must not mutate Gateway state",
+                "TUI markdown/status/stderr changes remain compatibility intake unless Hepta UI contracts absorb it",
+                "process-hardening malloc diagnostics must not mutate launchd environment by default",
+                "active hepta-cli dependency isolation must remain green"
+            ],
+            "allowed_next_actions": [
+                {
+                    "action": "run_upstream_codex_latest_active_safety_regression_gate",
+                    "status": "allowed_report_only_next_slice",
+                    "fetches_upstream": false,
+                    "merges_upstream": false,
+                    "mutates_active_runtime": false,
+                    "invokes_provider": false,
+                    "invokes_model": false,
+                    "writes_evidence": false,
+                    "sends_externally": false
+                }
+            ]
+        }),
+    );
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "upstream_fetch_performed",
+        "upstream_merge_performed",
+        "upstream_checkout_performed",
+        "workspace_write",
+        "active_binary_mutated",
+        "active_service_restart",
+        "launchd_mutated",
+        "gateway_mutation_performed",
+        "provider_invoked",
+        "model_invoked",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_release_published",
+        "public_ga_claimed",
+        "evidence_persisted",
+        "credential_value_read",
+        "credential_read",
+        "secret_file_read",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "active_runtime_promotion_allowed": false,
+            "active_appserver_promotion_allowed": false,
+            "active_tui_promotion_allowed": false,
+            "active_process_hardening_env_mutation_allowed": false,
+            "upstream_fetch_performed_by_native_route": false,
+            "upstream_fetch_performed_by_gate": false,
+            "upstream_merge_performed": false,
+            "upstream_checkout_performed": false,
+            "active_runtime_auto_rebase_allowed": false,
+            "active_runtime_dependency_allowed": false,
+            "active_binary_mutation_allowed": false,
+            "active_service_restart_allowed": false,
+            "launchd_mutation_allowed": false,
+            "provider_model_invocation_allowed": false,
+            "channel_delivery_allowed": false,
+            "public_release_claim_allowed": false,
+            "public_ga_claim_allowed": false,
+            "release_artifact_write_allowed": false,
+            "evidence_persistence_allowed": false,
+            "denied_by_latest_multisurface_absorption": denied_by,
+            "latest_multisurface_denied_by_count": denied_by_count,
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_first_model_invocation_separate_approval_slice_preflight_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let source = hepta_provider_router_dry_run_envelope_readback_audit_report();
@@ -86172,6 +86477,131 @@ mod tests {
         assert_eq!(
             value["allowed_next_actions"][0]["requires_fresh_operator_approval"],
             true
+        );
+    }
+
+    #[test]
+    fn hepta_upstream_codex_latest_multisurface_absorption_endpoint_classifies_without_fetch_merge_or_activation_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("upstream Codex latest multisurface absorption native route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-upstream-codex-latest-multisurface-absorption --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["native_route_mode"],
+            "native_route_latest_upstream_delta_classification_no_fetch_no_merge_no_activation"
+        );
+        assert_eq!(
+            value["baseline_upstream_head"],
+            "9f42c89c0112771dc29100a6f3fc904049b2655f"
+        );
+        assert_eq!(
+            value["target_upstream_head"],
+            "8a94430bb273623be42b68f144f1ab1df343bb53"
+        );
+        assert_eq!(value["target_ref"], "refs/remotes/openai-codex/latest");
+        assert_eq!(
+            value["latest_multisurface_decision"],
+            "classified_as_oracle_only_without_merge_rebase_or_active_wiring"
+        );
+        assert_eq!(value["commit_count"], 12);
+        assert_eq!(value["changed_file_count"], 57);
+        assert_eq!(value["provider_security_changed_file_count"], 0);
+        assert_eq!(value["runtime_appserver_changed_file_count"], 11);
+        assert_eq!(value["legacy_cli_tui_changed_file_count"], 47);
+        assert_eq!(value["product_governance_changed_file_count"], 2);
+        assert_eq!(value["populated_bucket_count"], 3);
+        assert_eq!(value["all_buckets_populated"], false);
+        assert_eq!(value["family_count"], 5);
+        assert_eq!(value["ready_family_count"], 5);
+        assert_eq!(value["activation_blocking_family_count"], 5);
+
+        let families = value["family_inventory"]
+            .as_array()
+            .expect("latest multisurface family inventory");
+        assert_eq!(families.len(), 5);
+        assert!(
+            families
+                .iter()
+                .all(|family| family["ready"] == true && family["promotion_allowed"] == false)
+        );
+        assert_eq!(families[0]["id"], "doctor-thread-inventory-audit");
+        assert_eq!(families[1]["id"], "appserver-remote-status");
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_upstream_codex_latest_active_safety_regression_gate"
+        );
+        for key in [
+            "active_runtime_promotion_allowed",
+            "active_appserver_promotion_allowed",
+            "active_tui_promotion_allowed",
+            "active_process_hardening_env_mutation_allowed",
+            "upstream_fetch_performed_by_native_route",
+            "upstream_fetch_performed_by_gate",
+            "upstream_merge_performed",
+            "upstream_checkout_performed",
+            "active_runtime_auto_rebase_allowed",
+            "active_runtime_dependency_allowed",
+            "active_binary_mutation_allowed",
+            "active_service_restart_allowed",
+            "launchd_mutation_allowed",
+            "provider_model_invocation_allowed",
+            "channel_delivery_allowed",
+            "public_release_claim_allowed",
+            "public_ga_claim_allowed",
+            "release_artifact_write_allowed",
+            "evidence_persistence_allowed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        assert_eq!(value["latest_multisurface_denied_by_count"], 13);
+        let denied = value["denied_by_latest_multisurface_absorption"]
+            .as_array()
+            .expect("latest multisurface denials");
+        assert_eq!(denied.len(), 13);
+
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("latest multisurface native route side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
         );
     }
 

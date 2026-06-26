@@ -301,6 +301,7 @@ required_markers=(
   "JSON report capture migration inventory gate"
   "preflight terminal coverage inventory gate"
   "preflight terminal coverage diagnostic contract gate"
+  "upstream Codex latest multisurface absorption native route gate"
   "upstream Codex latest active-safety regression gate"
   "upstream Codex latest release-governance non-activation gate"
   "upstream Codex latest operator briefing non-persistence gate"
@@ -567,8 +568,8 @@ if [[ "$good_rc" -eq 0 ]] \
     and .phase_family_ready_count == 10
     and .phase_family_budget_failure_count == 0
     and .phase_family_budget_ready == true
-    and .phase_family_anchor_count == 51
-    and .phase_family_anchor_ready_count == 51
+    and .phase_family_anchor_count == 52
+    and .phase_family_anchor_ready_count == 52
     and .phase_family_anchor_failure_count == 0
     and .phase_family_anchor_ready == true
     and .phase_family_anchor_family_count == 10
