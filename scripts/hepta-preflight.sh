@@ -900,6 +900,9 @@ scripts/hepta-artifact-signing-receipt-release-public-artifact-publication-denia
 echo "[hepta-preflight] first-model positive approval packet boundary route gate"
 scripts/hepta-first-model-positive-approval-packet-boundary-route-gate.sh
 
+echo "[hepta-preflight] scoped Memory canary durable receipt boundary route gate"
+scripts/hepta-scoped-memory-canary-durable-receipt-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
