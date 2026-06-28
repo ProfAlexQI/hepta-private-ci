@@ -362,6 +362,8 @@ const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-final-operator-acknowledgement-non-acceptance-denial";
 const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT:
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial";
+const HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-first-model-positive-approval-packet-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -372,7 +374,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 205;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 206;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1473,6 +1475,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial --json",
         capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial",
         side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt terminal operator decision/public-claim non-promotion denial gate; derives deterministic terminal decision, status, public claim, release, artifact, activation, install, and publication denial evidence from the final acknowledgement surface while denying terminal decision acceptance, public claim promotion, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public exposure",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-first-model-positive-approval-packet-boundary --json",
+        capability: "hepta-first-model-positive-approval-packet-boundary",
+        side_effect_boundary: "read-only first-model positive approval packet boundary; binds artifact publication denial and first-model terminal decision denial into a positive approval packet scaffold while denying approval acceptance, packet persistence, provider/model invocation, credential reads, KG/Memory writes, channel sends, public claims, artifact writes, install/restart, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3507,6 +3516,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(
                         &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_report(),
                     ),
+                );
+            }
+            HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_first_model_positive_approval_packet_boundary_report()),
                 );
             }
             HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT => {
@@ -57431,6 +57447,521 @@ fn hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_a
     report
 }
 
+fn hepta_first_model_positive_approval_packet_boundary_report() -> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let artifact_publication =
+        hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_release_public_artifact_publication_denial_report();
+    let first_model_terminal =
+        hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_report();
+
+    let artifact_bool = |key: &str| {
+        artifact_publication
+            .get(key)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    };
+    let artifact_u64 = |key: &str| {
+        artifact_publication
+            .get(key)
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0)
+    };
+    let first_model_bool = |key: &str| {
+        first_model_terminal
+            .get(key)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    };
+    let first_model_u64 = |key: &str| {
+        first_model_terminal
+            .get(key)
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0)
+    };
+
+    let artifact_next_action_boundary = artifact_publication
+        .get("allowed_next_actions")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .map(|item| {
+            item.get("action").and_then(|value| value.as_str())
+                == Some("prepare_first_model_positive_approval_packet_boundary_gate")
+                && item
+                    .get("derives_operator_approval")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("derives_activation_authority")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("writes_release_artifact")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("invokes_provider")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("reads_credentials")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let first_model_next_action_status_exposure = first_model_terminal
+        .get("allowed_next_actions")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .map(|item| {
+            item.get("action").and_then(|value| value.as_str())
+                == Some(
+                    "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial",
+                )
+                && item
+                    .get("accepts_terminal_decision")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("claims_public_release")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item
+                    .get("writes_release_artifact")
+                    .and_then(|value| value.as_bool())
+                    == Some(false)
+                && item.get("activates_runtime").and_then(|value| value.as_bool())
+                    == Some(false)
+                && item.get("invokes_provider").and_then(|value| value.as_bool())
+                    == Some(false)
+                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+        })
+        .unwrap_or(false);
+
+    let artifact_publication_ready = artifact_bool(
+        "memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_release_public_artifact_publication_denial_ready",
+    ) && artifact_u64(
+        "artifact_distribution_signing_notarization_receipt_release_public_artifact_publication_surface_count",
+    ) == 18
+        && artifact_u64(
+            "artifact_distribution_signing_notarization_receipt_release_public_artifact_publication_denied_count",
+        ) == 18
+        && artifact_u64(
+            "denied_by_artifact_distribution_signing_notarization_receipt_release_public_artifact_publication_count",
+        ) == 17
+        && artifact_u64("release_artifact_written_count") == 0
+        && artifact_u64("public_artifact_written_count") == 0
+        && artifact_u64("publication_queue_enqueued_count") == 0
+        && artifact_u64("public_release_claimed_count") == 0
+        && artifact_u64("public_ga_claimed_count") == 0
+        && !artifact_bool("release_artifact_written")
+        && !artifact_bool("public_artifact_written")
+        && !artifact_bool("release_publication_authority_derived")
+        && !artifact_bool("activation_authority_derived")
+        && !artifact_bool("install_executed")
+        && !artifact_bool("service_restarted")
+        && !artifact_bool("active_binary_mutated")
+        && !artifact_bool("memory_store_write_performed")
+        && !artifact_bool("live_kg_write_performed")
+        && !artifact_bool("provider_invoked")
+        && !artifact_bool("model_invoked")
+        && !artifact_bool("credential_read")
+        && !artifact_bool("secret_file_read")
+        && !artifact_bool("external_send_performed")
+        && artifact_next_action_boundary;
+    let first_model_terminal_ready = first_model_bool(
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_ready",
+    ) && first_model_u64(
+        "terminal_operator_decision_public_claim_fixture_count",
+    ) == 10
+        && first_model_u64("accepted_terminal_operator_decision_public_claim_fixture_count") == 0
+        && first_model_u64("terminal_operator_decision_performed_count") == 0
+        && first_model_u64("public_claim_promotion_performed_count") == 0
+        && first_model_u64("terminal_operator_decision_recorded_count") == 0
+        && first_model_u64("terminal_operator_decision_persisted_count") == 0
+        && first_model_u64("public_claim_recorded_count") == 0
+        && first_model_u64("public_claim_promoted_count") == 0
+        && first_model_u64("public_release_published_count") == 0
+        && first_model_u64("release_artifact_written_count") == 0
+        && !first_model_bool("terminal_operator_decision_accepted")
+        && !first_model_bool("public_claim_accepted")
+        && !first_model_bool("public_release_published")
+        && !first_model_bool("release_artifact_written")
+        && !first_model_bool("activation_allowed")
+        && !first_model_bool("provider_invoked")
+        && !first_model_bool("model_invoked")
+        && !first_model_bool("credential_read")
+        && !first_model_bool("secret_file_read")
+        && !first_model_bool("live_kg_write_performed")
+        && !first_model_bool("memory_store_write_performed")
+        && !first_model_bool("channel_send_performed")
+        && !first_model_bool("telegram_send_performed")
+        && !first_model_bool("external_send_performed")
+        && !first_model_bool("install_executed")
+        && !first_model_bool("service_restarted")
+        && !first_model_bool("active_binary_mutated")
+        && first_model_next_action_status_exposure;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_artifact_publication_report_sha256 = sha256_json_value(&artifact_publication);
+    let source_first_model_terminal_report_sha256 = sha256_json_value(&first_model_terminal);
+    let positive_packet_scope = "first-model-positive-approval-packet-boundary:artifact-publication-denied:first-model-terminal-decision-denied";
+    let positive_packet_boundary_hash = sha256_text_value(&format!(
+        "{positive_packet_scope}:{source_artifact_publication_report_sha256}:{source_first_model_terminal_report_sha256}:approval=false:persist=false:provider=false:model=false"
+    ));
+    let policy_hash = sha256_text_value(
+        "first-model-positive-approval-packet-boundary:no-approval-acceptance:no-persistence:no-provider:no-model:no-credential:no-memory:no-kg:no-channel:no-public-claim:no-install",
+    );
+
+    let packet_items = vec![
+        serde_json::json!({
+            "item_id": "artifact-publication-denial-source",
+            "ready": artifact_publication_ready,
+            "accepted": false,
+            "source_report_sha256": source_artifact_publication_report_sha256,
+            "reason": "release/public artifact publication denial is source evidence, not approval authority"
+        }),
+        serde_json::json!({
+            "item_id": "first-model-terminal-decision-source",
+            "ready": first_model_terminal_ready,
+            "accepted": false,
+            "source_report_sha256": source_first_model_terminal_report_sha256,
+            "reason": "first-model terminal decision/public-claim denial is source evidence, not invocation authority"
+        }),
+        serde_json::json!({
+            "item_id": "fresh-operator-approval-artifact",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "fresh accepted operator approval artifact is still missing"
+        }),
+        serde_json::json!({
+            "item_id": "single-use-nonce",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "single-use nonce is not verified or consumed"
+        }),
+        serde_json::json!({
+            "item_id": "operator-identity-session-binding",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "operator identity/session binding is not accepted"
+        }),
+        serde_json::json!({
+            "item_id": "explicit-invocation-command",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "explicit invocation command path is not accepted"
+        }),
+        serde_json::json!({
+            "item_id": "bounded-prompt-context-preview",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "positive packet can name bounded preview requirements but cannot inject context"
+        }),
+        serde_json::json!({
+            "item_id": "credential-use-policy",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "credential read policy remains denied"
+        }),
+        serde_json::json!({
+            "item_id": "provider-model-invocation-policy",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "provider/model invocation remains unauthorized"
+        }),
+        serde_json::json!({
+            "item_id": "memory-kg-write-policy",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "durable Memory and KG writes remain separate approval gates"
+        }),
+        serde_json::json!({
+            "item_id": "receipt-audit-retention-readback",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "receipt/audit/retention/readback acceptance is missing"
+        }),
+        serde_json::json!({
+            "item_id": "rollback-kill-switch",
+            "ready": true,
+            "accepted": false,
+            "required": true,
+            "reason": "rollback and kill-switch acceptance is missing"
+        }),
+    ];
+    let packet_item_count = packet_items.len();
+    let accepted_packet_item_count = packet_items
+        .iter()
+        .filter(|item| item.get("accepted").and_then(|value| value.as_bool()) == Some(true))
+        .count();
+    let denied_by = vec![
+        "positive_approval_packet_boundary_not_operator_approval",
+        "fresh_operator_approval_artifact_missing",
+        "single_use_nonce_not_verified_or_consumed",
+        "operator_identity_session_binding_not_accepted",
+        "explicit_invocation_command_not_accepted",
+        "approval_packet_recording_denied",
+        "approval_packet_persistence_denied",
+        "approval_packet_delivery_denied",
+        "provider_model_invocation_denied",
+        "credential_secret_read_denied",
+        "prompt_context_injection_denied",
+        "memory_store_write_denied",
+        "live_kg_write_denied",
+        "channel_external_send_denied",
+        "public_claim_artifact_install_restart_denied",
+    ];
+    let denied_count = denied_by.len();
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && artifact_publication_ready
+        && first_model_terminal_ready
+        && packet_item_count == 12
+        && accepted_packet_item_count == 0
+        && denied_count == 15;
+
+    let audit_steps = vec![
+        serde_json::json!({
+            "step": "artifact_publication_denial_source_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_RELEASE_PUBLIC_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT,
+            "source_ready": artifact_publication_ready,
+            "source_report_sha256": source_artifact_publication_report_sha256
+        }),
+        serde_json::json!({
+            "step": "first_model_terminal_decision_source_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT,
+            "source_ready": first_model_terminal_ready,
+            "source_report_sha256": source_first_model_terminal_report_sha256
+        }),
+        serde_json::json!({
+            "step": "positive_approval_packet_boundary_scaffold",
+            "status": "blocked_report_only",
+            "packet_item_count": packet_item_count,
+            "accepted_packet_item_count": accepted_packet_item_count,
+            "positive_approval_packet_recorded": false,
+            "positive_approval_packet_persisted": false,
+            "positive_approval_packet_accepted": false
+        }),
+        serde_json::json!({
+            "step": "provider_model_credential_boundary",
+            "status": "denied",
+            "provider_invocation_authorized": false,
+            "model_invocation_authorized": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "credential_read": false,
+            "secret_file_read": false
+        }),
+        serde_json::json!({
+            "step": "memory_kg_channel_publication_boundary",
+            "status": "denied",
+            "memory_store_write_performed": false,
+            "live_kg_write_performed": false,
+            "channel_send_performed": false,
+            "telegram_send_performed": false,
+            "external_send_performed": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false
+        }),
+    ];
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "positive_approval_packet_recorded",
+        "positive_approval_packet_persisted",
+        "positive_approval_packet_accepted",
+        "positive_approval_packet_delivered",
+        "operator_approval_recorded",
+        "operator_consent_recorded",
+        "operator_identity_session_bound",
+        "single_use_nonce_consumed",
+        "explicit_invocation_command_accepted",
+        "approval_authority_derived",
+        "activation_authority_derived",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "provider_prompt_injection_performed",
+        "context_injection_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_first_model_positive_approval_packet_boundary_route",
+        "endpoint": HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT,
+        "source_command": "/hepta-first-model-positive-approval-packet-boundary --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-28",
+        "first_model_positive_approval_packet_boundary_schema_version": "first_model_positive_approval_packet_boundary_v1",
+        "first_model_positive_approval_packet_boundary_mode": "native_route_report_only_positive_approval_packet_boundary_no_accept_no_persist_no_provider_model_invocation",
+        "first_model_positive_approval_packet_boundary_status": "blocked",
+        "first_model_positive_approval_packet_boundary_decision": "positive_approval_packet_shape_declared_but_cannot_authorize_provider_model_invocation_without_fresh_operator_approval_nonce_identity_session_and_explicit_command",
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "first_model_positive_approval_packet_boundary_route_enabled": true,
+        "first_model_positive_approval_packet_boundary_ready": report_ready,
+        "source_artifact_publication_denial_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_RELEASE_PUBLIC_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT,
+        "source_artifact_publication_denial_ready": artifact_publication_ready,
+        "source_artifact_publication_denial_report_sha256": source_artifact_publication_report_sha256,
+        "source_first_model_terminal_decision_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT,
+        "source_first_model_terminal_decision_ready": first_model_terminal_ready,
+        "source_first_model_terminal_decision_report_sha256": source_first_model_terminal_report_sha256,
+        "positive_approval_packet_scope": positive_packet_scope,
+        "positive_approval_packet_boundary_hash_sha256": positive_packet_boundary_hash,
+        "positive_approval_packet_boundary_policy_hash_sha256": policy_hash,
+        "positive_approval_packet_item_count": packet_item_count,
+        "accepted_positive_approval_packet_item_count": accepted_packet_item_count,
+        "positive_approval_packet_items": packet_items,
+        "denied_by_first_model_positive_approval_packet_boundary": denied_by,
+        "denied_by_first_model_positive_approval_packet_boundary_count": denied_count,
+        "audit_steps": audit_steps,
+    });
+    let zero_keys = [
+        "positive_approval_packet_recorded_count",
+        "positive_approval_packet_persisted_count",
+        "positive_approval_packet_accepted_count",
+        "operator_approval_recorded_count",
+        "provider_invoked_count",
+        "model_invoked_count",
+        "memory_store_write_performed_count",
+        "live_kg_write_performed_count",
+        "credential_read_count",
+        "external_send_performed_count",
+        "release_artifact_written_count",
+        "public_artifact_written_count",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in &zero_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(0));
+        }
+    }
+    let true_keys = [
+        "fresh_operator_approval_artifact_required",
+        "single_use_nonce_required",
+        "operator_identity_session_binding_required",
+        "explicit_invocation_command_required",
+    ];
+    let false_keys = [
+        "fresh_operator_approval_artifact_present",
+        "fresh_operator_approval_artifact_verified",
+        "single_use_nonce_verified",
+        "single_use_nonce_consumed",
+        "operator_identity_session_binding_verified",
+        "operator_identity_session_bound",
+        "explicit_invocation_command_accepted",
+        "positive_approval_packet_recorded",
+        "positive_approval_packet_persisted",
+        "positive_approval_packet_accepted",
+        "positive_approval_packet_delivered",
+        "operator_approval_recorded",
+        "operator_consent_recorded",
+        "approval_authority_derived",
+        "activation_authority_derived",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "provider_prompt_injection_performed",
+        "context_injection_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "filesystem_written",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in &true_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(true));
+        }
+        for key in &false_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(false));
+        }
+        report_object.insert(
+            "provider_invocation_budget".to_string(),
+            serde_json::json!(0),
+        );
+        report_object.insert("model_invocation_budget".to_string(), serde_json::json!(0));
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "prepare_minimal_memory_canary_scoped_operator_packet",
+                    "status": "allowed_report_only_next_slice",
+                    "accepts_positive_approval_packet": false,
+                    "records_operator_approval": false,
+                    "invokes_provider": false,
+                    "invokes_model": false,
+                    "reads_credentials": false,
+                    "writes_memory": false,
+                    "writes_kg": false,
+                    "sends_externally": false,
+                    "claims_public_release": false,
+                    "installs_or_restarts": false,
+                    "mutates_active_binary": false
+                }
+            ],
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_idempotency_receipt_report()
 -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
@@ -83274,6 +83805,114 @@ mod tests {
         let side_effects = value["side_effects"]
             .as_object()
             .expect("audit evidence side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_first_model_positive_approval_packet_boundary_endpoint_blocks_approval_and_invocation_authority()
+     {
+        let value = hepta_first_model_positive_approval_packet_boundary_report();
+
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-first-model-positive-approval-packet-boundary --json"
+        );
+        assert_eq!(value["route_count"], serde_json::json!(206));
+        assert_eq!(value["implemented_route_count"], serde_json::json!(206));
+        assert_eq!(value["missing_route_count"], serde_json::json!(0));
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["first_model_positive_approval_packet_boundary_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["first_model_positive_approval_packet_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["first_model_positive_approval_packet_boundary_status"],
+            "blocked"
+        );
+        assert_eq!(value["source_artifact_publication_denial_ready"], true);
+        assert_eq!(value["source_first_model_terminal_decision_ready"], true);
+        assert_eq!(value["positive_approval_packet_item_count"], 12);
+        assert_eq!(value["accepted_positive_approval_packet_item_count"], 0);
+        assert_eq!(
+            value["denied_by_first_model_positive_approval_packet_boundary_count"],
+            15
+        );
+        assert_eq!(value["positive_approval_packet_recorded"], false);
+        assert_eq!(value["positive_approval_packet_persisted"], false);
+        assert_eq!(value["positive_approval_packet_accepted"], false);
+        assert_eq!(value["fresh_operator_approval_artifact_present"], false);
+        assert_eq!(value["single_use_nonce_consumed"], false);
+        assert_eq!(value["operator_identity_session_bound"], false);
+        assert_eq!(value["explicit_invocation_command_accepted"], false);
+        for key in [
+            "operator_approval_recorded",
+            "approval_authority_derived",
+            "activation_authority_derived",
+            "provider_invocation_authorized",
+            "model_invocation_authorized",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "provider_prompt_injection_performed",
+            "context_injection_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "kg_write_performed",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "public_release_claimed",
+            "public_ga_claimed",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+            "filesystem_written",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let items = value["positive_approval_packet_items"]
+            .as_array()
+            .expect("positive approval packet items");
+        assert_eq!(items.len(), 12);
+        assert!(
+            items
+                .iter()
+                .all(|item| item["accepted"].as_bool() == Some(false))
+        );
+        let denied = value["denied_by_first_model_positive_approval_packet_boundary"]
+            .as_array()
+            .expect("positive approval packet denials");
+        assert_eq!(denied.len(), 15);
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "prepare_minimal_memory_canary_scoped_operator_packet"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["accepts_positive_approval_packet"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("positive approval packet boundary side effects");
         assert!(
             side_effects
                 .values()

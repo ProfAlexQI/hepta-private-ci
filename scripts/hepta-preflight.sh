@@ -897,6 +897,9 @@ scripts/hepta-artifact-signing-receipt-terminal-public-claim-delivery-readback-d
 echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt release/public artifact publication denial route gate"
 scripts/hepta-artifact-signing-receipt-release-public-artifact-publication-denial-route-gate.sh
 
+echo "[hepta-preflight] first-model positive approval packet boundary route gate"
+scripts/hepta-first-model-positive-approval-packet-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
