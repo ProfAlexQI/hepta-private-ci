@@ -314,6 +314,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTAL
     "/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-export-query-observability-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-operator-facing-summary-briefing-non-persistence-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-final-operator-acknowledgement-non-acceptance-denial";
 const HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT: &str =
     "/api/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt";
 const HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT: &str =
@@ -364,7 +366,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 201;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 202;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1297,6 +1299,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-operator-facing-summary-briefing-non-persistence-denial --json",
         capability: "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-operator-facing-summary-briefing-non-persistence-denial",
         side_effect_boundary: "read-only Memory/Intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing/notarization result receipt operator-facing summary/briefing non-persistence denial; models denied operator summaries, briefings, readbacks, status banners, dashboards, delivery, authority views, install/restart/active-binary status, Memory/KG writes, provider/model invocation, credential reads, and channel/external sends while preserving report-only no-op boundaries",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-final-operator-acknowledgement-non-acceptance-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-final-operator-acknowledgement-non-acceptance-denial",
+        side_effect_boundary: "read-only Memory/Intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing/notarization result receipt final operator acknowledgement non-acceptance denial; models denied final acknowledgement acceptance, received/confirmed/read/seen/final response/completion/status acknowledgements, authority derivation, install/restart/active-binary mutation, Memory/KG writes, provider/model invocation, credential reads, public artifact claims, and channel/external sends while preserving report-only no-op boundaries",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3241,6 +3250,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_operator_facing_summary_briefing_non_persistence_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_final_operator_acknowledgement_non_acceptance_denial_report(),
                     ),
                 );
             }
@@ -55470,6 +55489,509 @@ fn hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_a
     report
 }
 
+fn hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_final_operator_acknowledgement_non_acceptance_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source =
+        hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_operator_facing_summary_briefing_non_persistence_denial_report();
+    let source_report_sha256 = sha256_json_value(&source);
+    let source_u64 = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_bool = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_ready = source_bool(
+        "memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_operator_facing_summary_briefing_non_persistence_denial_ready",
+    );
+    let source_contract_hash = source
+        .get("artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_contract_hash_sha256")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!(""));
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let surface_false_keys = [
+        "source_signing_receipt_summary_briefing_report_required",
+        "final_operator_acknowledgement_requested",
+        "final_operator_acknowledgement_request_accepted",
+        "final_operator_acknowledgement_accepted",
+        "final_operator_acknowledgement_recorded",
+        "final_operator_acknowledgement_persisted",
+        "final_operator_acknowledgement_materialized",
+        "final_operator_acknowledgement_filesystem_written",
+        "final_operator_acknowledgement_delivered",
+        "operator_received_requested",
+        "operator_received_recorded",
+        "operator_confirmed_requested",
+        "operator_confirmed_recorded",
+        "operator_read_requested",
+        "operator_read_recorded",
+        "operator_seen_requested",
+        "operator_seen_recorded",
+        "final_response_requested",
+        "final_response_recorded",
+        "completion_acknowledgement_requested",
+        "completion_acknowledgement_recorded",
+        "status_acknowledgement_requested",
+        "status_acknowledgement_recorded",
+        "summary_acknowledgement_requested",
+        "summary_acknowledgement_recorded",
+        "briefing_acknowledgement_requested",
+        "briefing_acknowledgement_recorded",
+        "readback_digest_acknowledgement_requested",
+        "readback_digest_acknowledgement_recorded",
+        "dashboard_acknowledgement_requested",
+        "dashboard_acknowledgement_recorded",
+        "notification_acknowledgement_requested",
+        "notification_acknowledgement_recorded",
+        "channel_acknowledgement_requested",
+        "channel_acknowledgement_delivered",
+        "external_acknowledgement_requested",
+        "external_acknowledgement_sent",
+        "telegram_acknowledgement_requested",
+        "telegram_acknowledgement_sent",
+        "operator_approval_acknowledgement_requested",
+        "authority_acknowledgement_requested",
+        "live_acknowledgement_requested",
+        "install_restart_active_binary_acknowledgement_requested",
+        "acknowledgement_acceptance_recorded",
+        "operator_acceptance_from_acknowledgement_recorded",
+        "operator_approval_from_acknowledgement_derived",
+        "release_publication_authority_from_acknowledgement_derived",
+        "activation_authority_from_acknowledgement_derived",
+        "activation_command_from_acknowledgement_derived",
+        "activation_from_acknowledgement_allowed",
+        "live_execution_from_acknowledgement_allowed",
+        "download_link_from_acknowledgement_rendered",
+        "install_command_from_acknowledgement_rendered",
+        "install_from_acknowledgement_executed",
+        "service_restart_from_acknowledgement_performed",
+        "launchd_from_acknowledgement_mutated",
+        "active_binary_from_acknowledgement_mutated",
+        "result_receipt_from_acknowledgement_recorded",
+        "result_receipt_from_acknowledgement_persisted",
+        "signing_receipt_summary_from_acknowledgement_recorded",
+        "signing_receipt_briefing_from_acknowledgement_recorded",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+    ];
+    let surface_specs: &[(&str, &str, &str, &[&str])] = &[
+        (
+            "source_signing_receipt_summary_briefing_report_required",
+            "blocked_source_signing_receipt_summary_briefing_required_noop",
+            "source_signing_receipt_summary_briefing_report_required",
+            &["source_signing_receipt_summary_briefing_report_required"][..],
+        ),
+        (
+            "artifact_signing_summary_final_operator_acknowledgement_claim",
+            "blocked_artifact_signing_summary_final_ack_noop",
+            "artifact_signing_summary_final_operator_acknowledgement_claim_denied",
+            &["final_operator_acknowledgement_requested"][..],
+        ),
+        (
+            "package_signing_briefing_operator_received_claim",
+            "blocked_package_signing_briefing_operator_received_noop",
+            "package_signing_briefing_operator_received_claim_denied",
+            &["operator_received_requested"][..],
+        ),
+        (
+            "signature_manifest_readback_operator_confirmed_claim",
+            "blocked_signature_manifest_readback_operator_confirmed_noop",
+            "signature_manifest_readback_operator_confirmed_claim_denied",
+            &["operator_confirmed_requested"][..],
+        ),
+        (
+            "notarization_status_banner_operator_read_claim",
+            "blocked_notarization_status_banner_operator_read_noop",
+            "notarization_status_banner_operator_read_claim_denied",
+            &["operator_read_requested"][..],
+        ),
+        (
+            "witness_notary_exported_summary_operator_seen_claim",
+            "blocked_witness_notary_exported_summary_operator_seen_noop",
+            "witness_notary_exported_summary_operator_seen_claim_denied",
+            &["operator_seen_requested"][..],
+        ),
+        (
+            "tombstone_garbage_collection_briefing_card_final_response_claim",
+            "blocked_tombstone_gc_briefing_card_final_response_noop",
+            "tombstone_garbage_collection_briefing_card_final_response_claim_denied",
+            &["final_response_requested"][..],
+        ),
+        (
+            "replacement_garbage_collection_notification_completion_acknowledgement_claim",
+            "blocked_replacement_gc_notification_completion_ack_noop",
+            "replacement_garbage_collection_notification_completion_acknowledgement_claim_denied",
+            &["completion_acknowledgement_requested"][..],
+        ),
+        (
+            "provenance_dashboard_narrative_status_acknowledgement_claim",
+            "blocked_provenance_dashboard_status_ack_noop",
+            "provenance_dashboard_narrative_status_acknowledgement_claim_denied",
+            &[
+                "status_acknowledgement_requested",
+                "dashboard_acknowledgement_requested",
+            ][..],
+        ),
+        (
+            "sbom_audit_narrative_summary_acknowledgement_claim",
+            "blocked_sbom_audit_summary_ack_noop",
+            "sbom_audit_narrative_summary_acknowledgement_claim_denied",
+            &["summary_acknowledgement_requested"][..],
+        ),
+        (
+            "release_asset_final_summary_briefing_acknowledgement_claim",
+            "blocked_release_asset_summary_briefing_ack_noop",
+            "release_asset_final_summary_briefing_acknowledgement_claim_denied",
+            &[
+                "summary_acknowledgement_requested",
+                "briefing_acknowledgement_requested",
+            ][..],
+        ),
+        (
+            "cdn_dashboard_briefing_readback_digest_acknowledgement_claim",
+            "blocked_cdn_dashboard_briefing_readback_ack_noop",
+            "cdn_dashboard_briefing_readback_digest_acknowledgement_claim_denied",
+            &[
+                "dashboard_acknowledgement_requested",
+                "briefing_acknowledgement_requested",
+                "readback_digest_acknowledgement_requested",
+            ][..],
+        ),
+        (
+            "package_registry_operator_memo_dashboard_notification_acknowledgement_claim",
+            "blocked_package_registry_dashboard_notification_ack_noop",
+            "package_registry_operator_memo_dashboard_notification_acknowledgement_claim_denied",
+            &[
+                "dashboard_acknowledgement_requested",
+                "notification_acknowledgement_requested",
+            ][..],
+        ),
+        (
+            "dashboard_hash_approval_summary_channel_acknowledgement_claim",
+            "blocked_dashboard_hash_approval_summary_channel_ack_noop",
+            "dashboard_hash_approval_summary_channel_acknowledgement_claim_denied",
+            &[
+                "operator_approval_acknowledgement_requested",
+                "summary_acknowledgement_requested",
+                "channel_acknowledgement_requested",
+            ][..],
+        ),
+        (
+            "external_telegram_observability_briefing_acknowledgement_claim",
+            "blocked_external_telegram_observability_briefing_ack_noop",
+            "external_telegram_observability_briefing_acknowledgement_claim_denied",
+            &[
+                "external_acknowledgement_requested",
+                "telegram_acknowledgement_requested",
+                "briefing_acknowledgement_requested",
+            ][..],
+        ),
+        (
+            "release_publication_authority_view_acknowledgement_claim",
+            "blocked_release_publication_authority_ack_noop",
+            "release_publication_authority_view_acknowledgement_claim_denied",
+            &["authority_acknowledgement_requested"][..],
+        ),
+        (
+            "activation_live_install_view_acknowledgement_claim",
+            "blocked_activation_live_install_ack_noop",
+            "activation_live_install_view_acknowledgement_claim_denied",
+            &["live_acknowledgement_requested"][..],
+        ),
+        (
+            "install_restart_active_binary_status_acknowledgement_claim",
+            "blocked_install_restart_active_binary_ack_noop",
+            "install_restart_active_binary_status_acknowledgement_claim_denied",
+            &[
+                "live_acknowledgement_requested",
+                "install_restart_active_binary_acknowledgement_requested",
+                "status_acknowledgement_requested",
+            ][..],
+        ),
+    ];
+    let surfaces = surface_specs
+        .iter()
+        .map(|(surface, status, reason, true_keys)| {
+            let mut surface_report = serde_json::json!({
+                "surface": surface,
+                "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_surface": surface,
+                "source_signing_receipt_summary_briefing_ready": source_ready,
+                "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_attempted": true,
+                "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_allowed": false,
+                "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_noop_confirmed": true,
+                "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_status": status,
+                "reason": reason,
+            });
+            if let Some(surface_object) = surface_report.as_object_mut() {
+                for key in &surface_false_keys {
+                    surface_object.insert((*key).to_string(), serde_json::json!(false));
+                }
+                for key in true_keys.iter() {
+                    surface_object.insert((*key).to_string(), serde_json::json!(true));
+                }
+            }
+            surface_report
+        })
+        .collect::<Vec<_>>();
+    let surface_count = surfaces.len();
+    let contract_hash = sha256_text_value(&format!(
+        "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-final-operator-acknowledgement-non-acceptance-denial:native:source={source_report_sha256}:surfaces={surface_count}:route_count={}:ack=0:authority=0:install=0:live=0",
+        route_matrix.route_count
+    ));
+    let policy_hash = sha256_text_value(
+        "artifact-signing-notarization-result-receipt-final-operator-acknowledgement:no-ack:no-received:no-confirmed:no-read:no-seen:no-final-response:no-status:no-authority:no-install:no-live",
+    );
+    let denials = vec![
+        "source_artifact_distribution_signing_notarization_receipt_summary_briefing_report_required",
+        "artifact_signing_summary_final_operator_acknowledgement_denied",
+        "package_signing_briefing_operator_received_denied",
+        "signature_manifest_readback_operator_confirmed_denied",
+        "notarization_status_banner_operator_read_denied",
+        "witness_notary_exported_summary_operator_seen_denied",
+        "tombstone_garbage_collection_briefing_card_final_response_denied",
+        "replacement_garbage_collection_notification_completion_acknowledgement_denied",
+        "provenance_dashboard_narrative_status_acknowledgement_denied",
+        "sbom_audit_narrative_summary_acknowledgement_denied",
+        "release_asset_final_summary_briefing_acknowledgement_denied",
+        "cdn_dashboard_briefing_readback_digest_acknowledgement_denied",
+        "package_registry_operator_memo_dashboard_notification_acknowledgement_denied",
+        "dashboard_hash_approval_summary_channel_acknowledgement_denied",
+        "external_telegram_observability_briefing_acknowledgement_denied",
+        "release_publication_authority_view_acknowledgement_denied",
+        "activation_live_install_view_acknowledgement_denied",
+        "install_restart_active_binary_status_acknowledgement_denied",
+        "memory_provider_kg_secret_external_send_from_acknowledgement_denied",
+    ];
+    let denied_count = denials.len();
+    let report_ready = source_ready
+        && source_u64(
+            "artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_surface_count",
+        ) == 18
+        && source_u64(
+            "artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_denied_count",
+        ) == 18
+        && source_u64(
+            "artifact_distribution_signing_notarization_receipt_operator_summary_recorded_count",
+        ) == 0
+        && source_u64(
+            "artifact_distribution_signing_notarization_receipt_operator_briefing_recorded_count",
+        ) == 0
+        && source_u64("artifact_distribution_signing_notarization_receipt_readback_recorded_count")
+            == 0
+        && source_u64(
+            "artifact_distribution_signing_notarization_receipt_briefing_delivery_recorded_count",
+        ) == 0
+        && source_u64(
+            "release_publication_authority_from_signing_receipt_summary_briefing_derived_count",
+        ) == 0
+        && source_u64("activation_authority_from_signing_receipt_summary_briefing_derived_count")
+            == 0
+        && surface_count == 18
+        && route_count_source_command_accepted;
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_final_operator_acknowledgement_non_acceptance_denial_route",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT,
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-final-operator-acknowledgement-non-acceptance-denial --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-27",
+        "minimum_required_samples": 24,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "source_route_wired": true,
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_schema_version": "memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_operator_intent_consent_evidence_artifact_signing_receipt_final_operator_acknowledgement_non_acceptance_denial_route_v1",
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_mode": "native_route_denied_signing_receipt_summary_briefing_cannot_be_acknowledged_accepted_promoted_or_used_for_authority_or_live_install",
+            "memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_final_operator_acknowledgement_non_acceptance_denial_route_enabled": true,
+            "memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_final_operator_acknowledgement_non_acceptance_denial_ready": report_ready,
+            "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_non_acceptance_denial_ready": report_ready,
+            "source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_route": "hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_operator_facing_summary_briefing_non_persistence_denial_route",
+            "source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_ready": source_ready,
+            "source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_report_sha256": source_report_sha256,
+            "source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_contract_hash_sha256": source_contract_hash,
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_contract_hash_sha256": contract_hash,
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_policy_hash_sha256": policy_hash,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_surface_count": source_u64("artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_surface_count"),
+            "source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_attempt_count": source_u64("artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_attempt_count"),
+            "source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_denied_count": source_u64("artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_denied_count"),
+            "source_artifact_distribution_signing_notarization_receipt_operator_summary_recorded_count": source_u64("artifact_distribution_signing_notarization_receipt_operator_summary_recorded_count"),
+            "source_artifact_distribution_signing_notarization_receipt_operator_briefing_recorded_count": source_u64("artifact_distribution_signing_notarization_receipt_operator_briefing_recorded_count"),
+            "source_artifact_distribution_signing_notarization_receipt_readback_recorded_count": source_u64("artifact_distribution_signing_notarization_receipt_readback_recorded_count"),
+            "source_artifact_distribution_signing_notarization_receipt_briefing_delivery_recorded_count": source_u64("artifact_distribution_signing_notarization_receipt_briefing_delivery_recorded_count"),
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_surface_count": surface_count,
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_attempt_count": surface_count,
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_denied_count": surface_count,
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_surfaces": surfaces,
+            "denied_by_artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement": denials,
+            "denied_by_artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_count": denied_count,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [{
+                "action": "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_terminal_decision_status_promotion_denial_gate",
+                "status": "allowed_report_only_next_slice",
+                "records_final_acknowledgement": false,
+                "records_received_confirmed_read_seen": false,
+                "records_terminal_decision": false,
+                "records_status_promotion": false,
+                "derives_operator_approval": false,
+                "derives_release_publication_authority": false,
+                "derives_activation_authority": false,
+                "renders_download_link": false,
+                "emits_install_command": false,
+                "installs_or_restarts": false,
+                "mutates_active_binary": false,
+                "mutates_memory_store": false,
+                "writes_kg": false,
+                "invokes_provider": false,
+                "reads_credentials": false,
+                "sends_externally": false
+            }],
+        }),
+    );
+
+    let zero_keys = [
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_allowed_count",
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_accepted_count",
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_persisted_count",
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_materialized_count",
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_filesystem_written_count",
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_delivered_count",
+        "artifact_distribution_signing_notarization_receipt_operator_received_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_operator_confirmed_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_operator_read_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_operator_seen_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_final_response_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_completion_acknowledgement_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_status_acknowledgement_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_summary_acknowledgement_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_briefing_acknowledgement_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_readback_digest_acknowledgement_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_dashboard_acknowledgement_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_notification_acknowledgement_recorded_count",
+        "artifact_distribution_signing_notarization_receipt_channel_acknowledgement_delivered_count",
+        "artifact_distribution_signing_notarization_receipt_external_acknowledgement_sent_count",
+        "artifact_distribution_signing_notarization_receipt_telegram_acknowledgement_sent_count",
+        "artifact_distribution_signing_notarization_receipt_acceptance_from_acknowledgement_recorded_count",
+        "operator_approval_from_signing_receipt_acknowledgement_derived_count",
+        "release_publication_authority_from_signing_receipt_acknowledgement_derived_count",
+        "activation_authority_from_signing_receipt_acknowledgement_derived_count",
+        "download_link_from_signing_receipt_acknowledgement_rendered_count",
+        "install_command_from_signing_receipt_acknowledgement_rendered_count",
+        "install_from_signing_receipt_acknowledgement_executed_count",
+        "service_restart_from_signing_receipt_acknowledgement_performed_count",
+        "active_binary_from_signing_receipt_acknowledgement_mutated_count",
+        "memory_store_write_performed_count",
+        "live_kg_write_performed_count",
+        "provider_invoked_count",
+        "model_invoked_count",
+        "credential_read_count",
+        "secret_file_read_count",
+        "external_send_performed_count",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in &zero_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(0));
+        }
+    }
+
+    let false_keys = [
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_accepted",
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_recorded",
+        "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_persisted",
+        "artifact_distribution_signing_notarization_receipt_operator_received_recorded",
+        "artifact_distribution_signing_notarization_receipt_operator_confirmed_recorded",
+        "artifact_distribution_signing_notarization_receipt_operator_read_recorded",
+        "artifact_distribution_signing_notarization_receipt_operator_seen_recorded",
+        "artifact_distribution_signing_notarization_receipt_final_response_recorded",
+        "artifact_distribution_signing_notarization_receipt_completion_acknowledgement_recorded",
+        "artifact_distribution_signing_notarization_receipt_status_acknowledgement_recorded",
+        "artifact_distribution_signing_notarization_receipt_acknowledgement_acceptance_recorded",
+        "operator_acceptance_recorded",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "activation_allowed",
+        "activation_performed",
+        "download_link_rendered",
+        "install_command_rendered",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "filesystem_written",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in &false_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(false));
+        }
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for key in &surface_false_keys {
+        side_effects.insert((*key).to_string(), serde_json::json!(false));
+    }
+    side_effects.insert("filesystem_written".to_string(), serde_json::json!(false));
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
 fn hepta_minimal_memory_canary_scoped_operator_packet_write_readback_rollback_idempotency_receipt_report()
 -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
@@ -92514,6 +93036,273 @@ mod tests {
         let side_effects = value["side_effects"]
             .as_object()
             .expect("artifact signing receipt operator summary briefing side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_final_operator_acknowledgement_endpoint_blocks_acceptance_and_authority()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("artifact signing receipt final operator acknowledgement route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-final-operator-acknowledgement-non-acceptance-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_final_operator_acknowledgement_non_acceptance_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_final_operator_acknowledgement_non_acceptance_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["source_artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_denied_count"],
+            18
+        );
+        assert_eq!(
+            value["artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_attempt_count"],
+            18
+        );
+        assert_eq!(
+            value["artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_denied_count"],
+            18
+        );
+
+        for key in [
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_accepted_count",
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_recorded_count",
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_persisted_count",
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_delivered_count",
+            "artifact_distribution_signing_notarization_receipt_operator_received_recorded_count",
+            "artifact_distribution_signing_notarization_receipt_operator_confirmed_recorded_count",
+            "artifact_distribution_signing_notarization_receipt_operator_read_recorded_count",
+            "artifact_distribution_signing_notarization_receipt_operator_seen_recorded_count",
+            "artifact_distribution_signing_notarization_receipt_final_response_recorded_count",
+            "artifact_distribution_signing_notarization_receipt_completion_acknowledgement_recorded_count",
+            "artifact_distribution_signing_notarization_receipt_status_acknowledgement_recorded_count",
+            "artifact_distribution_signing_notarization_receipt_external_acknowledgement_sent_count",
+            "artifact_distribution_signing_notarization_receipt_telegram_acknowledgement_sent_count",
+            "operator_approval_from_signing_receipt_acknowledgement_derived_count",
+            "release_publication_authority_from_signing_receipt_acknowledgement_derived_count",
+            "activation_authority_from_signing_receipt_acknowledgement_derived_count",
+            "install_from_signing_receipt_acknowledgement_executed_count",
+            "service_restart_from_signing_receipt_acknowledgement_performed_count",
+            "active_binary_from_signing_receipt_acknowledgement_mutated_count",
+            "memory_store_write_performed_count",
+            "live_kg_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "secret_file_read_count",
+            "external_send_performed_count",
+        ] {
+            assert_eq!(value[key], 0, "{key}");
+        }
+
+        let surfaces = value[
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_surfaces"
+        ]
+        .as_array()
+        .expect("artifact signing receipt final operator acknowledgement surfaces");
+        assert_eq!(surfaces.len(), 18);
+        assert_eq!(
+            surfaces[0]["artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_surface"],
+            "source_signing_receipt_summary_briefing_report_required"
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["final_operator_acknowledgement_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["telegram_acknowledgement_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["authority_acknowledgement_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["live_acknowledgement_requested"] == true)
+                .count(),
+            2
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(
+                    |surface| surface["install_restart_active_binary_acknowledgement_requested"]
+                        == true
+                )
+                .count(),
+            1
+        );
+        for surface in surfaces {
+            assert_eq!(
+                surface["artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_attempted"],
+                true
+            );
+            assert_eq!(
+                surface["artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_allowed"],
+                false
+            );
+            assert_eq!(
+                surface["artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_noop_confirmed"],
+                true
+            );
+            for key in [
+                "final_operator_acknowledgement_accepted",
+                "final_operator_acknowledgement_recorded",
+                "final_operator_acknowledgement_persisted",
+                "final_operator_acknowledgement_delivered",
+                "operator_received_recorded",
+                "operator_confirmed_recorded",
+                "operator_read_recorded",
+                "operator_seen_recorded",
+                "final_response_recorded",
+                "completion_acknowledgement_recorded",
+                "status_acknowledgement_recorded",
+                "summary_acknowledgement_recorded",
+                "briefing_acknowledgement_recorded",
+                "readback_digest_acknowledgement_recorded",
+                "dashboard_acknowledgement_recorded",
+                "notification_acknowledgement_recorded",
+                "channel_acknowledgement_delivered",
+                "external_acknowledgement_sent",
+                "telegram_acknowledgement_sent",
+                "operator_approval_from_acknowledgement_derived",
+                "release_publication_authority_from_acknowledgement_derived",
+                "activation_authority_from_acknowledgement_derived",
+                "install_from_acknowledgement_executed",
+                "service_restart_from_acknowledgement_performed",
+                "active_binary_from_acknowledgement_mutated",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "live_kg_write_performed",
+                "provider_invoked",
+                "model_invoked",
+                "credential_read",
+                "secret_file_read",
+                "external_send_performed",
+            ] {
+                assert_eq!(surface[key], false, "{key}");
+            }
+        }
+
+        let denied = value[
+            "denied_by_artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement"
+        ]
+        .as_array()
+        .expect("artifact signing receipt final operator acknowledgement denials");
+        assert_eq!(denied.len(), 19);
+        assert_eq!(
+            value["denied_by_artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "prepare_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_terminal_decision_status_promotion_denial_gate"
+        );
+        for key in [
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_accepted",
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_recorded",
+            "artifact_distribution_signing_notarization_receipt_final_operator_acknowledgement_persisted",
+            "artifact_distribution_signing_notarization_receipt_operator_received_recorded",
+            "artifact_distribution_signing_notarization_receipt_operator_confirmed_recorded",
+            "artifact_distribution_signing_notarization_receipt_operator_read_recorded",
+            "artifact_distribution_signing_notarization_receipt_operator_seen_recorded",
+            "artifact_distribution_signing_notarization_receipt_final_response_recorded",
+            "artifact_distribution_signing_notarization_receipt_completion_acknowledgement_recorded",
+            "artifact_distribution_signing_notarization_receipt_status_acknowledgement_recorded",
+            "operator_acceptance_recorded",
+            "operator_approval_recorded",
+            "release_publication_authority_derived",
+            "activation_authority_derived",
+            "activation_allowed",
+            "activation_performed",
+            "download_link_rendered",
+            "install_command_rendered",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+            "external_send_performed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "filesystem_written",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("artifact signing receipt final operator acknowledgement side effects");
         assert!(
             side_effects
                 .values()
