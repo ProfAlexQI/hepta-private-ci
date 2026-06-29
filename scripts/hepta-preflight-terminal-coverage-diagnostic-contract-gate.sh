@@ -267,6 +267,7 @@ required_markers=(
   "scoped Memory canary durable receipt boundary route gate"
   "bounded Intelligence context handoff prompt preview boundary route gate"
   "activation evidence no-write provider-router dry-run boundary route gate"
+  "first-model invocation explicit approval evidence no-invocation boundary route gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"

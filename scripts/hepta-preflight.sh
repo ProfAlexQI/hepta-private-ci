@@ -909,6 +909,9 @@ scripts/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary-route
 echo "[hepta-preflight] activation evidence no-write provider-router dry-run boundary route gate"
 scripts/hepta-activation-evidence-no-write-provider-router-dry-run-boundary-route-gate.sh
 
+echo "[hepta-preflight] first-model invocation explicit approval evidence no-invocation boundary route gate"
+scripts/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
 
