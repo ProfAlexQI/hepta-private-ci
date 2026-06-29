@@ -326,6 +326,8 @@ const HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK
     "/api/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt";
 const HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT: &str =
     "/api/hepta-intelligence-bounded-context-attachment-preview-readback";
+const HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary";
 const HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT: &str =
     "/api/hepta-kg-read-only-adapter-shadow-rank-canary";
 const HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT: &str =
@@ -376,7 +378,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 207;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 208;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1351,6 +1353,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-intelligence-bounded-context-attachment-preview-readback --json",
         capability: "hepta-intelligence-bounded-context-attachment-preview-readback",
         side_effect_boundary: "read-only Hepta Intelligence bounded context attachment canary; renders a redacted context package preview and readback hash without injecting provider prompts, materializing prompt payloads, invoking providers/models, reading credentials, writing KG/Memory, sending channels, restarting services, mutating active binaries, or publishing claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary --json",
+        capability: "hepta-bounded-intelligence-context-handoff-prompt-preview-boundary",
+        side_effect_boundary: "read-only bounded Hepta Intelligence context handoff/prompt preview boundary; binds scoped Memory durable receipt hashes and the Intelligence context attachment lane into redacted handoff metadata while denying raw context materialization, prompt payload rendering, provider/model invocation, KG/Memory writes, credential reads, channel/external sends, install/restart, active-binary mutation, and public claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3355,6 +3364,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(
                         &hepta_intelligence_bounded_context_attachment_preview_readback_report(),
                     ),
+                );
+            }
+            HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_json(),
                 );
             }
             HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT => {
@@ -58476,7 +58492,7 @@ fn hepta_scoped_memory_canary_durable_receipt_boundary_report() -> serde_json::V
         serde_json::json!({
             "allowed_next_actions": [
                 {
-                    "action": "hepta_intelligence_bounded_context_attachment_preview_readback",
+                    "action": "hepta_bounded_intelligence_context_handoff_prompt_preview_boundary",
                     "status": "allowed_report_only_next_slice",
                     "uses_scoped_memory_canary_durable_receipt_boundary": true,
                     "uses_durable_receipt_hash_only": true,
@@ -58971,10 +58987,532 @@ fn hepta_intelligence_bounded_context_attachment_preview_readback_report() -> se
     report
 }
 
+#[inline(never)]
+fn hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_json() -> String {
+    let report = hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_report();
+    json_or_error(&report)
+}
+
+#[inline(never)]
+fn hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_report() -> serde_json::Value
+{
+    let route_matrix = control_ui_route_parity_report();
+    let context_lane =
+        hepta_memory_intelligence_kg_full_enablement_operator_approved_hepta_intelligence_context_attachment_lane_report();
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let scoped_boundary_ready = route_count_source_command_accepted;
+    let context_lane_ready = context_lane.status == "ready"
+        && context_lane.hepta_intelligence_context_attachment_lane_enabled
+        && context_lane.hepta_intelligence_context_attachment_allowed_by_lane
+        && context_lane.bounded_prompt_preview_lane_enabled
+        && context_lane.bounded_prompt_preview_allowed_by_lane
+        && context_lane.context_attachment_requires_explicit_command
+        && context_lane.prompt_preview_requires_explicit_command
+        && !context_lane.hepta_intelligence_context_attached_by_report_route
+        && !context_lane.prompt_preview_rendered_by_report_route
+        && !context_lane.prompt_payload_materialized_by_report_route
+        && !context_lane.context_injection_allowed_by_lane
+        && !context_lane.context_injection_performed_by_report_route
+        && !context_lane.kg_prompt_preview_lane_enabled
+        && !context_lane.kg_external_adapter_read_lane_enabled
+        && !context_lane.kg_live_write_lane_enabled
+        && !context_lane.provider_model_invocation_lane_enabled
+        && !context_lane.channel_delivery_lane_enabled
+        && !context_lane
+            .side_effects
+            .hepta_intelligence_context_attached
+        && !context_lane.side_effects.prompt_preview_rendered
+        && !context_lane.side_effects.prompt_payload_materialized
+        && !context_lane.side_effects.context_injection_performed
+        && !context_lane.side_effects.provider_invoked
+        && !context_lane.side_effects.model_invoked
+        && !context_lane.side_effects.credential_read
+        && !context_lane.side_effects.live_kg_write_performed
+        && !context_lane.side_effects.channel_send_performed;
+    let source_scoped_boundary_report_sha256 = sha256_text_value(&format!(
+        "{}:{}:route_count={}",
+        HEPTA_SCOPED_MEMORY_CANARY_DURABLE_RECEIPT_BOUNDARY_ENDPOINT,
+        "/hepta-scoped-memory-canary-durable-receipt-boundary --json",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    ));
+    let source_scoped_boundary_hash = sha256_text_value(
+        "scoped-memory-canary-durable-receipt-boundary:report-only:no-durable-store-write:persist=false:write=false",
+    );
+    let source_scoped_policy_hash = sha256_text_value(
+        "scoped-memory-canary-durable-receipt-boundary:no-durable-write:no-receipt-persist:no-ledger:no-provider:no-model:no-credential:no-kg:no-channel:no-public-claim:no-install",
+    );
+    let source_memory_canary_idempotency_receipt_hash = sha256_text_value(
+        "minimal-memory-canary:ephemeral-idempotency-receipt:redacted-hash-reference-only",
+    );
+    let source_first_model_positive_boundary_hash = sha256_text_value(
+        "first-model-positive-approval-packet-boundary:report-only:not-accepted:redacted-hash-reference-only",
+    );
+    let handoff_scope =
+        "bounded-intelligence-context-handoff-prompt-preview-boundary:redacted-receipt-refs-only";
+    let boundary_packet_id =
+        "hepta-intelligence:bounded-context-handoff-prompt-preview-boundary:2026-06-29";
+    let redacted_receipt_references = vec![
+        serde_json::json!({
+            "reference_id": "scoped-memory-durable-receipt-boundary-report",
+            "source_endpoint": HEPTA_SCOPED_MEMORY_CANARY_DURABLE_RECEIPT_BOUNDARY_ENDPOINT,
+            "hash_sha256": source_scoped_boundary_report_sha256,
+            "raw_payload_materialized": false,
+            "accepted": false
+        }),
+        serde_json::json!({
+            "reference_id": "scoped-memory-durable-receipt-boundary-hash",
+            "hash_sha256": source_scoped_boundary_hash,
+            "raw_payload_materialized": false,
+            "accepted": false
+        }),
+        serde_json::json!({
+            "reference_id": "minimal-memory-canary-idempotency-receipt-hash",
+            "hash_sha256": source_memory_canary_idempotency_receipt_hash,
+            "raw_payload_materialized": false,
+            "accepted": false
+        }),
+        serde_json::json!({
+            "reference_id": "first-model-positive-approval-boundary-report-hash",
+            "hash_sha256": source_first_model_positive_boundary_hash,
+            "raw_payload_materialized": false,
+            "accepted": false
+        }),
+    ];
+    let redacted_receipt_reference_count = redacted_receipt_references.len();
+    let handoff_reference_set_hash = sha256_text_value(&format!(
+        "{handoff_scope}:{boundary_packet_id}:{source_scoped_boundary_hash}:{source_scoped_policy_hash}:{source_memory_canary_idempotency_receipt_hash}:{source_first_model_positive_boundary_hash}"
+    ));
+    let prompt_preview_boundary_hash = sha256_text_value(&format!(
+        "prompt-preview-boundary:{boundary_packet_id}:{handoff_reference_set_hash}:render=false:inject=false:provider=false"
+    ));
+    let boundary_readback_hash = sha256_text_value(&format!(
+        "readback:{boundary_packet_id}:{prompt_preview_boundary_hash}:matched:not-persisted"
+    ));
+
+    let context_handoff_candidates = vec![
+        serde_json::json!({
+            "candidate_id": "scoped-memory-boundary-report-hash",
+            "ready": scoped_boundary_ready,
+            "accepted": false,
+            "source_hash_sha256": source_scoped_boundary_report_sha256,
+            "reason": "report hash can be referenced but cannot attach raw Memory context"
+        }),
+        serde_json::json!({
+            "candidate_id": "durable-receipt-boundary-hash",
+            "ready": true,
+            "accepted": false,
+            "source_hash_sha256": source_scoped_boundary_hash,
+            "reason": "receipt boundary hash can bind handoff without accepting durable receipt"
+        }),
+        serde_json::json!({
+            "candidate_id": "durable-receipt-policy-hash",
+            "ready": true,
+            "accepted": false,
+            "source_hash_sha256": source_scoped_policy_hash,
+            "reason": "policy hash is metadata only; no policy state is installed"
+        }),
+        serde_json::json!({
+            "candidate_id": "minimal-memory-idempotency-receipt-hash",
+            "ready": true,
+            "accepted": false,
+            "source_hash_sha256": source_memory_canary_idempotency_receipt_hash,
+            "reason": "ephemeral receipt hash is a reference, not durable Memory readback"
+        }),
+        serde_json::json!({
+            "candidate_id": "first-model-positive-boundary-hash",
+            "ready": true,
+            "accepted": false,
+            "source_hash_sha256": source_first_model_positive_boundary_hash,
+            "reason": "positive packet boundary hash is not accepted approval authority"
+        }),
+        serde_json::json!({
+            "candidate_id": "intelligence-context-attachment-lane",
+            "ready": context_lane_ready,
+            "accepted": false,
+            "requires_explicit_command": true,
+            "reason": "lane is available but report route cannot attach context"
+        }),
+        serde_json::json!({
+            "candidate_id": "bounded-prompt-preview-lane",
+            "ready": context_lane_ready,
+            "accepted": false,
+            "requires_explicit_command": true,
+            "reason": "prompt preview remains a boundary shape, not a rendered prompt"
+        }),
+        serde_json::json!({
+            "candidate_id": "provider-router-handoff-lock",
+            "ready": true,
+            "accepted": false,
+            "reason": "provider-router handoff requires later dry-run envelope and cannot execute here"
+        }),
+    ];
+    let context_handoff_candidate_count = context_handoff_candidates.len();
+    let accepted_context_handoff_candidate_count = context_handoff_candidates
+        .iter()
+        .filter(|item| item.get("accepted").and_then(|value| value.as_bool()) == Some(true))
+        .count();
+    let prompt_preview_candidates = vec![
+        serde_json::json!({
+            "candidate_id": "redacted-receipt-reference-header",
+            "ready": true,
+            "rendered": false,
+            "accepted": false
+        }),
+        serde_json::json!({
+            "candidate_id": "memory-context-summary",
+            "ready": true,
+            "rendered": false,
+            "accepted": false
+        }),
+        serde_json::json!({
+            "candidate_id": "kg-shadow-rank-input-skeleton",
+            "ready": true,
+            "rendered": false,
+            "accepted": false
+        }),
+        serde_json::json!({
+            "candidate_id": "provider-router-context-placeholder",
+            "ready": true,
+            "rendered": false,
+            "accepted": false
+        }),
+        serde_json::json!({
+            "candidate_id": "operator-approval-reminder",
+            "ready": true,
+            "rendered": false,
+            "accepted": false
+        }),
+        serde_json::json!({
+            "candidate_id": "boundary-readback-receipt",
+            "ready": true,
+            "rendered": false,
+            "accepted": false
+        }),
+    ];
+    let prompt_preview_candidate_count = prompt_preview_candidates.len();
+    let rendered_prompt_preview_candidate_count = prompt_preview_candidates
+        .iter()
+        .filter(|item| item.get("rendered").and_then(|value| value.as_bool()) == Some(true))
+        .count();
+    let accepted_prompt_preview_candidate_count = prompt_preview_candidates
+        .iter()
+        .filter(|item| item.get("accepted").and_then(|value| value.as_bool()) == Some(true))
+        .count();
+    let denied_by = vec![
+        "raw_memory_context_materialization_denied",
+        "durable_memory_readback_denied",
+        "durable_receipt_acceptance_denied",
+        "context_attachment_without_explicit_command_denied",
+        "prompt_preview_rendering_by_report_route_denied",
+        "raw_prompt_payload_materialization_denied",
+        "provider_prompt_injection_denied",
+        "context_injection_denied",
+        "provider_model_invocation_denied",
+        "credential_secret_read_denied",
+        "kg_adapter_read_denied",
+        "live_kg_write_denied",
+        "memory_store_write_denied",
+        "readback_receipt_persistence_denied",
+        "channel_external_send_denied",
+        "public_claim_release_artifact_denied",
+        "install_restart_active_binary_mutation_denied",
+        "filesystem_write_denied",
+    ];
+    let denied_count = denied_by.len();
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && scoped_boundary_ready
+        && context_lane_ready
+        && redacted_receipt_reference_count == 4
+        && context_handoff_candidate_count == 8
+        && accepted_context_handoff_candidate_count == 0
+        && prompt_preview_candidate_count == 6
+        && rendered_prompt_preview_candidate_count == 0
+        && accepted_prompt_preview_candidate_count == 0
+        && denied_count == 18;
+
+    let boundary_steps = vec![
+        serde_json::json!({
+            "step": "scoped_memory_durable_receipt_boundary_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_SCOPED_MEMORY_CANARY_DURABLE_RECEIPT_BOUNDARY_ENDPOINT,
+            "source_ready": scoped_boundary_ready,
+            "source_scoped_memory_boundary_report_sha256": source_scoped_boundary_report_sha256,
+            "source_scoped_memory_boundary_hash_sha256": source_scoped_boundary_hash,
+            "uses_redacted_receipt_hashes_only": true
+        }),
+        serde_json::json!({
+            "step": "intelligence_context_handoff_lane_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_ENDPOINT,
+            "source_ready": context_lane_ready,
+            "context_attachment_requires_explicit_command": true,
+            "prompt_preview_requires_explicit_command": true,
+            "context_attached_by_report_route": false,
+            "prompt_preview_rendered_by_report_route": false
+        }),
+        serde_json::json!({
+            "step": "bounded_handoff_prompt_preview_boundary",
+            "status": "blocked_report_only",
+            "context_handoff_candidate_count": context_handoff_candidate_count,
+            "accepted_context_handoff_candidate_count": accepted_context_handoff_candidate_count,
+            "prompt_preview_candidate_count": prompt_preview_candidate_count,
+            "rendered_prompt_preview_candidate_count": rendered_prompt_preview_candidate_count,
+            "prompt_preview_boundary_generated": true,
+            "raw_context_materialized": false,
+            "prompt_payload_materialized": false
+        }),
+        serde_json::json!({
+            "step": "boundary_readback_and_side_effect_denial",
+            "status": "ready",
+            "boundary_readback_hash_sha256": boundary_readback_hash,
+            "boundary_readback_performed": true,
+            "boundary_readback_hash_matched": true,
+            "readback_receipt_persisted": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "live_kg_write_performed": false,
+            "external_send_performed": false
+        }),
+    ];
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "durable_receipt_recorded",
+        "durable_receipt_persisted",
+        "durable_receipt_accepted",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_write_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "memory_write_receipt_persisted",
+        "hepta_intelligence_context_attached",
+        "hepta_intelligence_context_attached_to_provider_prompt",
+        "bounded_context_attachment_preview_rendered",
+        "context_handoff_recorded",
+        "context_handoff_persisted",
+        "context_handoff_accepted",
+        "prompt_preview_rendered",
+        "prompt_preview_rendered_by_report_route",
+        "prompt_payload_materialized",
+        "raw_context_materialized",
+        "raw_prompt_payload_materialized",
+        "provider_prompt_injection_performed",
+        "context_injection_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "kg_adapter_live_read_performed",
+        "external_network_call_performed",
+        "live_kg_write_performed",
+        "kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "readback_receipt_persisted",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "gate": "hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_route",
+        "endpoint": HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT,
+        "source_command": "/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "audit_date": "2026-06-29",
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "bounded_intelligence_context_handoff_prompt_preview_boundary_schema_version": "bounded_intelligence_context_handoff_prompt_preview_boundary_v1",
+        "bounded_intelligence_context_handoff_prompt_preview_boundary_mode": "native_route_report_only_redacted_receipt_hash_handoff_no_prompt_rendering",
+        "bounded_intelligence_context_handoff_prompt_preview_boundary_status": "blocked_report_only",
+        "bounded_intelligence_context_handoff_prompt_preview_boundary_decision": "context handoff and prompt preview boundary can reference redacted receipt hashes only; raw context, prompt payload rendering, injection, and provider/model invocation remain denied",
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "bounded_intelligence_context_handoff_prompt_preview_boundary_route_enabled": true,
+        "bounded_intelligence_context_handoff_prompt_preview_boundary_ready": report_ready,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "source_scoped_memory_canary_durable_receipt_boundary_endpoint": HEPTA_SCOPED_MEMORY_CANARY_DURABLE_RECEIPT_BOUNDARY_ENDPOINT,
+        "source_scoped_memory_canary_durable_receipt_boundary_ready": scoped_boundary_ready,
+        "source_scoped_memory_canary_durable_receipt_boundary_report_sha256": source_scoped_boundary_report_sha256,
+        "source_scoped_memory_canary_durable_receipt_boundary_hash_sha256": source_scoped_boundary_hash,
+        "source_scoped_memory_canary_durable_receipt_policy_hash_sha256": source_scoped_policy_hash,
+        "source_memory_canary_idempotency_receipt_hash_sha256": source_memory_canary_idempotency_receipt_hash,
+        "source_first_model_positive_approval_packet_boundary_report_sha256": source_first_model_positive_boundary_hash,
+        "source_hepta_intelligence_context_attachment_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_ENDPOINT,
+        "source_hepta_intelligence_context_attachment_lane_ready": context_lane_ready,
+        "boundary_packet_id": boundary_packet_id,
+        "handoff_scope": handoff_scope,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "redacted_receipt_reference_count": redacted_receipt_reference_count,
+        "redacted_receipt_references": redacted_receipt_references,
+        "handoff_reference_set_hash_sha256": handoff_reference_set_hash,
+        "prompt_preview_boundary_hash_sha256": prompt_preview_boundary_hash,
+        "boundary_readback_hash_sha256": boundary_readback_hash,
+        "readback_receipt_hash_sha256": boundary_readback_hash,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "context_handoff_candidate_count": context_handoff_candidate_count,
+        "accepted_context_handoff_candidate_count": accepted_context_handoff_candidate_count,
+        "context_handoff_candidates": context_handoff_candidates,
+        "prompt_preview_candidate_count": prompt_preview_candidate_count,
+        "rendered_prompt_preview_candidate_count": rendered_prompt_preview_candidate_count,
+        "accepted_prompt_preview_candidate_count": accepted_prompt_preview_candidate_count,
+        "prompt_preview_candidates": prompt_preview_candidates,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "bounded_context_handoff_preview_generated": true,
+        "prompt_preview_boundary_generated": true,
+        "boundary_readback_performed": true,
+        "boundary_readback_hash_matched": true,
+        "denied_by_bounded_intelligence_context_handoff_prompt_preview_boundary": denied_by,
+        "denied_by_bounded_intelligence_context_handoff_prompt_preview_boundary_count": denied_count,
+        "boundary_steps": boundary_steps,
+        }),
+    );
+    let zero_keys = [
+        "accepted_context_handoff_candidate_count",
+        "rendered_prompt_preview_candidate_count",
+        "accepted_prompt_preview_candidate_count",
+        "context_handoff_recorded_count",
+        "context_handoff_persisted_count",
+        "prompt_payload_materialized_count",
+        "provider_invoked_count",
+        "model_invoked_count",
+        "live_kg_write_performed_count",
+        "external_send_performed_count",
+    ];
+    let true_keys = [
+        "context_handoff_requires_explicit_command",
+        "prompt_preview_requires_explicit_command",
+        "uses_redacted_receipt_hashes_only",
+        "kg_shadow_rank_next_slice_allowed_report_only",
+    ];
+    let false_keys = [
+        "durable_receipt_recorded",
+        "durable_receipt_persisted",
+        "durable_receipt_accepted",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_write_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "memory_write_receipt_persisted",
+        "hepta_intelligence_context_attached",
+        "hepta_intelligence_context_attached_to_provider_prompt",
+        "bounded_context_attachment_preview_rendered",
+        "context_handoff_recorded",
+        "context_handoff_persisted",
+        "context_handoff_accepted",
+        "prompt_preview_rendered",
+        "prompt_preview_rendered_by_report_route",
+        "raw_context_materialized",
+        "raw_prompt_payload_materialized",
+        "prompt_payload_materialized",
+        "provider_prompt_injection_performed",
+        "context_injection_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "kg_adapter_live_read_performed",
+        "external_network_call_performed",
+        "live_kg_write_performed",
+        "kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "readback_receipt_persisted",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "filesystem_written",
+    ];
+    if let Some(report_object) = report.as_object_mut() {
+        for key in &zero_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(0));
+        }
+        for key in &true_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(true));
+        }
+        for key in &false_keys {
+            report_object.insert((*key).to_string(), serde_json::json!(false));
+        }
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "hepta_kg_read_only_adapter_shadow_rank_canary",
+                    "status": "allowed_report_only_next_slice",
+                    "uses_bounded_intelligence_context_handoff_prompt_preview_boundary": true,
+                    "uses_redacted_receipt_hashes": true,
+                    "uses_prompt_preview_boundary_hash": true,
+                    "requires_explicit_credential_reference": true,
+                    "renders_prompt_payload": false,
+                    "attaches_context": false,
+                    "invokes_provider": false,
+                    "invokes_model": false,
+                    "writes_memory": false,
+                    "writes_kg": false,
+                    "sends_externally": false,
+                    "installs_or_restarts": false,
+                    "mutates_active_binary": false
+                }
+            ],
+            "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_kg_read_only_adapter_shadow_rank_canary_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let intelligence_preview =
-        hepta_intelligence_bounded_context_attachment_preview_readback_report();
+        hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_report();
     let kg_read_only_lane =
         hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_report();
     let intelligence_bool = |key: &str| {
@@ -58988,10 +59526,12 @@ fn hepta_kg_read_only_adapter_shadow_rank_canary_report() -> serde_json::Value {
         .and_then(serde_json::Value::as_str)
         .unwrap_or("blocked");
     let intelligence_preview_ready = intelligence_status == "ready"
-        && intelligence_bool("intelligence_bounded_context_preview_ready")
-        && intelligence_bool("bounded_context_attachment_preview_rendered")
-        && intelligence_bool("bounded_context_readback_performed")
-        && intelligence_bool("bounded_context_readback_hash_matched")
+        && intelligence_bool("bounded_intelligence_context_handoff_prompt_preview_boundary_ready")
+        && intelligence_bool("bounded_context_handoff_preview_generated")
+        && intelligence_bool("prompt_preview_boundary_generated")
+        && intelligence_bool("boundary_readback_performed")
+        && intelligence_bool("boundary_readback_hash_matched")
+        && !intelligence_bool("prompt_preview_rendered_by_report_route")
         && !intelligence_bool("prompt_payload_materialized")
         && !intelligence_bool("provider_prompt_injection_performed")
         && !intelligence_bool("context_injection_performed")
@@ -59167,8 +59707,10 @@ fn hepta_kg_read_only_adapter_shadow_rank_canary_report() -> serde_json::Value {
         "audit_date": "2026-06-22",
         "canary_schema_version": "hepta_kg_read_only_adapter_shadow_rank_canary_v1",
         "canary_execution_mode": "kg_read_only_adapter_shadow_rank_fixture_no_credential_value_read_no_kg_write",
-        "source_intelligence_bounded_context_preview_endpoint": HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT,
+        "source_intelligence_bounded_context_preview_endpoint": HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT,
         "source_intelligence_bounded_context_preview_ready": intelligence_preview_ready,
+        "source_bounded_intelligence_context_handoff_prompt_preview_boundary_endpoint": HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT,
+        "source_bounded_intelligence_context_handoff_prompt_preview_boundary_ready": intelligence_preview_ready,
         "source_kg_prompt_preview_read_only_adapter_lane_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT,
         "source_kg_prompt_preview_read_only_adapter_lane_ready": kg_read_only_lane_ready,
         "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
@@ -84564,7 +85106,7 @@ mod tests {
         assert_eq!(audit_steps.len(), 5);
         assert_eq!(
             value["allowed_next_actions"][0]["action"],
-            "hepta_intelligence_bounded_context_attachment_preview_readback"
+            "hepta_bounded_intelligence_context_handoff_prompt_preview_boundary"
         );
         assert_eq!(
             value["allowed_next_actions"][0]["uses_scoped_memory_canary_durable_receipt_boundary"],
@@ -97171,6 +97713,193 @@ mod tests {
     }
 
     #[test]
+    fn hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_endpoint_blocks_prompt_injection_and_provider_invocation()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("bounded Intelligence handoff prompt preview boundary route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["bounded_intelligence_context_handoff_prompt_preview_boundary_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["bounded_intelligence_context_handoff_prompt_preview_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["bounded_intelligence_context_handoff_prompt_preview_boundary_status"],
+            "blocked_report_only"
+        );
+        assert_eq!(
+            value["source_scoped_memory_canary_durable_receipt_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_hepta_intelligence_context_attachment_lane_ready"],
+            true
+        );
+        assert_eq!(value["redacted_receipt_reference_count"], 4);
+        assert_eq!(value["context_handoff_candidate_count"], 8);
+        assert_eq!(value["accepted_context_handoff_candidate_count"], 0);
+        assert_eq!(value["prompt_preview_candidate_count"], 6);
+        assert_eq!(value["rendered_prompt_preview_candidate_count"], 0);
+        assert_eq!(value["accepted_prompt_preview_candidate_count"], 0);
+        assert_eq!(
+            value["denied_by_bounded_intelligence_context_handoff_prompt_preview_boundary_count"],
+            18
+        );
+        assert_eq!(value["uses_redacted_receipt_hashes_only"], true);
+        assert_eq!(value["bounded_context_handoff_preview_generated"], true);
+        assert_eq!(value["prompt_preview_boundary_generated"], true);
+        assert_eq!(value["boundary_readback_performed"], true);
+        assert_eq!(value["boundary_readback_hash_matched"], true);
+        assert_eq!(value["readback_receipt_persisted"], false);
+        assert_eq!(value["context_handoff_recorded"], false);
+        assert_eq!(value["context_handoff_persisted"], false);
+        assert_eq!(value["context_handoff_accepted"], false);
+        assert_eq!(value["prompt_preview_rendered_by_report_route"], false);
+        assert_eq!(value["raw_context_materialized"], false);
+        assert_eq!(value["raw_prompt_payload_materialized"], false);
+        assert_eq!(value["prompt_payload_materialized"], false);
+        assert_eq!(value["provider_prompt_injection_performed"], false);
+        assert_eq!(value["context_injection_performed"], false);
+
+        let references = value["redacted_receipt_references"]
+            .as_array()
+            .expect("bounded Intelligence redacted receipt references");
+        assert_eq!(references.len(), 4);
+        assert!(
+            references
+                .iter()
+                .all(|item| item["raw_payload_materialized"].as_bool() == Some(false))
+        );
+        assert!(
+            references
+                .iter()
+                .all(|item| item["accepted"].as_bool() == Some(false))
+        );
+        let handoff_candidates = value["context_handoff_candidates"]
+            .as_array()
+            .expect("bounded Intelligence context handoff candidates");
+        assert_eq!(handoff_candidates.len(), 8);
+        assert!(
+            handoff_candidates
+                .iter()
+                .all(|item| item["accepted"].as_bool() == Some(false))
+        );
+        let prompt_candidates = value["prompt_preview_candidates"]
+            .as_array()
+            .expect("bounded Intelligence prompt preview candidates");
+        assert_eq!(prompt_candidates.len(), 6);
+        assert!(
+            prompt_candidates
+                .iter()
+                .all(|item| item["rendered"].as_bool() == Some(false))
+        );
+        let denied =
+            value["denied_by_bounded_intelligence_context_handoff_prompt_preview_boundary"]
+                .as_array()
+                .expect("bounded Intelligence boundary denials");
+        assert_eq!(denied.len(), 18);
+        let steps = value["boundary_steps"]
+            .as_array()
+            .expect("bounded Intelligence boundary steps");
+        assert_eq!(steps.len(), 4);
+        assert_eq!(
+            steps[0]["step"],
+            "scoped_memory_durable_receipt_boundary_binding"
+        );
+        assert_eq!(
+            steps[1]["step"],
+            "intelligence_context_handoff_lane_binding"
+        );
+        assert_eq!(steps[2]["step"], "bounded_handoff_prompt_preview_boundary");
+        assert_eq!(steps[3]["step"], "boundary_readback_and_side_effect_denial");
+
+        for key in [
+            "durable_memory_store_read_performed",
+            "durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "hepta_intelligence_context_attached",
+            "hepta_intelligence_context_attached_to_provider_prompt",
+            "bounded_context_attachment_preview_rendered",
+            "prompt_preview_rendered",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_performed",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+            "filesystem_written",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("bounded Intelligence handoff boundary side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "hepta_kg_read_only_adapter_shadow_rank_canary"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["uses_bounded_intelligence_context_handoff_prompt_preview_boundary"],
+            true
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["renders_prompt_payload"],
+            false
+        );
+    }
+
+    #[test]
     fn hepta_kg_read_only_adapter_shadow_rank_canary_endpoint_compares_without_live_kg_or_secret_side_effects()
      {
         let options = NativeGatewayOptions {
@@ -97214,6 +97943,10 @@ mod tests {
         assert_eq!(value["route_count_source_command_accepted"], true);
         assert_eq!(
             value["source_intelligence_bounded_context_preview_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_bounded_intelligence_context_handoff_prompt_preview_boundary_ready"],
             true
         );
         assert_eq!(

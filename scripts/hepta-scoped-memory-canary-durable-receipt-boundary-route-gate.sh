@@ -164,7 +164,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
     and .install_executed == false
     and .service_restarted == false
     and .active_binary_mutated == false
-    and .allowed_next_actions[0].action == "hepta_intelligence_bounded_context_attachment_preview_readback"
+    and .allowed_next_actions[0].action == "hepta_bounded_intelligence_context_handoff_prompt_preview_boundary"
     and .allowed_next_actions[0].uses_scoped_memory_canary_durable_receipt_boundary == true
     and .allowed_next_actions[0].uses_durable_receipt_hash_only == true
     and .allowed_next_actions[0].accepts_durable_receipt == false
@@ -274,7 +274,7 @@ jq -n \
       active_binary_mutated: false,
       filesystem_written: false
     },
-    next_slice: "hepta_intelligence_bounded_context_attachment_preview_readback"
+    next_slice: "hepta_bounded_intelligence_context_handoff_prompt_preview_boundary"
   }'
 
 echo "Hepta scoped Memory canary durable receipt boundary route gate passed"

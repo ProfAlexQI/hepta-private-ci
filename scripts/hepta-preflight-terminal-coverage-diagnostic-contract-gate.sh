@@ -265,6 +265,7 @@ required_markers=(
   "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt release/public artifact publication denial route gate"
   "first-model positive approval packet boundary route gate"
   "scoped Memory canary durable receipt boundary route gate"
+  "bounded Intelligence context handoff prompt preview boundary route gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"

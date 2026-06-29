@@ -33,6 +33,9 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT' \
   "native gateway KG shadow-rank canary endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
+  'HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT' \
+  "native gateway bounded Intelligence context handoff prompt preview boundary source endpoint"
+require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-kg-read-only-adapter-shadow-rank-canary' \
   "native gateway KG shadow-rank canary endpoint path"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
@@ -71,6 +74,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .source_intelligence_bounded_context_preview_ready == true
+    and .source_bounded_intelligence_context_handoff_prompt_preview_boundary_ready == true
     and .source_kg_prompt_preview_read_only_adapter_lane_ready == true
     and .kg_read_only_adapter_shadow_rank_canary_ready == true
     and .canary_execution_mode == "kg_read_only_adapter_shadow_rank_fixture_no_credential_value_read_no_kg_write"
@@ -141,6 +145,7 @@ report="$(
       expected_route_count:$expected_route_count,
       route_gate_ready:true,
       kg_read_only_adapter_shadow_rank_canary_ready:true,
+      source_bounded_intelligence_context_handoff_prompt_preview_boundary_ready:true,
       canary_execution_mode:"kg_read_only_adapter_shadow_rank_fixture_no_credential_value_read_no_kg_write",
       kg_adapter_name:"graphiti",
       kg_adapter_allowlist_enforced:true,
