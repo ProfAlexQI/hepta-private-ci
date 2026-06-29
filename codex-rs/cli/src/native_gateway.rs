@@ -122,6 +122,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_P
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-preview-read-only-adapter-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-activation-truth-index";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_ACCEPTANCE_RECEIPT_LANE_ENDPOINT: &str =
@@ -382,7 +384,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 210;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 211;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -643,6 +645,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-activation-truth-index --json",
         capability: "hepta-memory-intelligence-kg-activation-truth-index",
         side_effect_boundary: "read-only aggregate truth index for Memory, Hepta Intelligence, and KG activation state; separates core connection, lane readiness, explicit-command readiness, and full-live blocked status without executing writes, provider/model calls, KG mutation, delivery, install, restart, or public claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance",
+        side_effect_boundary: "read-only runtime provider-router operator acknowledgement non-acceptance status; proves acknowledgement attempts cannot record, persist, accept identity/scope/activation-plan authority, export/query/observe receipts, attach context, invoke providers/models, write Memory/KG, read credentials, deliver channels, restart services, mutate binaries, or claim release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2363,6 +2372,16 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     json_or_error(&hepta_memory_intelligence_kg_activation_truth_index_report()),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_operator_acknowledgement_non_acceptance_report(),
+                    ),
                 );
             }
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT =>
@@ -13608,6 +13627,535 @@ fn hepta_memory_intelligence_kg_activation_truth_index_report() -> serde_json::V
             }
         }),
     );
+    report
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_operator_acknowledgement_non_acceptance_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let report_ready =
+        route_matrix.ready && route_count_floor_preserved && route_count_source_command_accepted;
+
+    let acknowledgement_fixture =
+        |fixture_id: &str, status: &str, denial_reason: &str, extra: serde_json::Value| {
+            let mut fixture = serde_json::Map::new();
+            fixture.insert(
+                "fixture_id".to_string(),
+                serde_json::Value::String(fixture_id.to_string()),
+            );
+            fixture.insert(
+                "operator_acknowledgement_status".to_string(),
+                serde_json::Value::String(status.to_string()),
+            );
+            fixture.insert(
+                "denial_reason".to_string(),
+                serde_json::Value::String(denial_reason.to_string()),
+            );
+            for key in [
+                "source_operator_summary_non_persistence_present",
+                "source_operator_summary_non_persistence_ready",
+                "acknowledgement_noop_confirmed",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(true));
+            }
+            for key in [
+                "operator_acknowledgement_allowed",
+                "operator_acknowledgement_request_accepted",
+                "operator_acknowledgement_recorded",
+                "operator_acknowledgement_persisted",
+                "operator_acknowledgement_materialized",
+                "operator_acknowledgement_filesystem_written",
+                "operator_acknowledgement_delivered",
+                "operator_acknowledgement_accepted",
+                "operator_identity_accepted",
+                "operator_scope_accepted",
+                "operator_activation_plan_accepted",
+                "operator_summary_review_accepted",
+                "operator_briefing_review_accepted",
+                "receipt_acknowledgement_accepted",
+                "runtime_attachment_acknowledged",
+                "live_context_acknowledged",
+                "memory_kg_acknowledged",
+                "provider_secret_acknowledged",
+                "operator_summary_recorded",
+                "operator_summary_persisted",
+                "operator_briefing_recorded",
+                "operator_briefing_persisted",
+                "telegram_send_performed",
+                "channel_send_performed",
+                "external_send_performed",
+                "receipt_exported",
+                "receipt_query_registered",
+                "receipt_observability_recorded",
+                "receipt_recorded",
+                "receipt_persisted",
+                "receipt_accepted",
+                "readback_evidence_recorded",
+                "readback_evidence_persisted",
+                "router_handoff_recorded",
+                "router_handoff_persisted",
+                "runtime_router_mutated",
+                "live_context_attached",
+                "context_injection_performed",
+                "adapter_invoked",
+                "provider_invoked",
+                "model_invoked",
+                "auth_secret_read",
+                "credential_read",
+                "secret_file_read",
+                "usage_recorded",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "live_kg_write_performed",
+                "rollback_executed",
+                "public_release_claimed",
+                "service_restart_performed",
+                "active_binary_mutated",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(false));
+            }
+            let mut fixture = serde_json::Value::Object(fixture);
+            extend_json_object(&mut fixture, extra);
+            fixture
+        };
+
+    let acknowledgement_fixtures = serde_json::Value::Array(vec![
+        acknowledgement_fixture(
+            "provider-router-operator-acknowledgement-missing-source-summary-non-persistence",
+            "blocked_noop",
+            "source_operator_summary_non_persistence_report_required",
+            serde_json::json!({
+                "source_operator_summary_non_persistence_present": false,
+                "source_operator_summary_non_persistence_ready": false,
+                "operator_acknowledgement_requested": true,
+            }),
+        ),
+        acknowledgement_fixture(
+            "provider-router-operator-acknowledgement-request",
+            "blocked_acknowledgement_noop",
+            "operator_acknowledgement_request_shape_denied",
+            serde_json::json!({"operator_acknowledgement_requested": true}),
+        ),
+        acknowledgement_fixture(
+            "provider-router-operator-identity-acknowledgement-request",
+            "blocked_identity_noop",
+            "operator_identity_acknowledgement_denied",
+            serde_json::json!({
+                "operator_acknowledgement_requested": true,
+                "operator_identity_acknowledgement_requested": true,
+            }),
+        ),
+        acknowledgement_fixture(
+            "provider-router-operator-scope-acknowledgement-request",
+            "blocked_scope_noop",
+            "operator_scope_acknowledgement_denied",
+            serde_json::json!({
+                "operator_acknowledgement_requested": true,
+                "operator_scope_acknowledgement_requested": true,
+            }),
+        ),
+        acknowledgement_fixture(
+            "provider-router-operator-activation-plan-acknowledgement-request",
+            "blocked_activation_noop",
+            "operator_activation_plan_acknowledgement_denied",
+            serde_json::json!({
+                "operator_acknowledgement_requested": true,
+                "operator_activation_plan_acknowledgement_requested": true,
+            }),
+        ),
+        acknowledgement_fixture(
+            "provider-router-summary-review-acknowledgement-request",
+            "blocked_review_noop",
+            "operator_summary_review_acknowledgement_denied",
+            serde_json::json!({
+                "operator_acknowledgement_requested": true,
+                "operator_summary_review_acknowledgement_requested": true,
+                "operator_briefing_review_acknowledgement_requested": true,
+            }),
+        ),
+        acknowledgement_fixture(
+            "provider-router-receipt-export-query-observability-acknowledgement-request",
+            "blocked_receipt_noop",
+            "receipt_export_query_observability_acknowledgement_denied",
+            serde_json::json!({
+                "operator_acknowledgement_requested": true,
+                "receipt_acknowledgement_requested": true,
+                "receipt_export_acknowledgement_requested": true,
+                "receipt_query_acknowledgement_requested": true,
+                "receipt_observability_acknowledgement_requested": true,
+            }),
+        ),
+        acknowledgement_fixture(
+            "provider-router-runtime-attachment-live-context-acknowledgement-request",
+            "blocked_runtime_noop",
+            "runtime_attachment_live_context_acknowledgement_denied",
+            serde_json::json!({
+                "operator_acknowledgement_requested": true,
+                "runtime_attachment_acknowledgement_requested": true,
+                "live_context_acknowledgement_requested": true,
+                "context_injection_acknowledgement_requested": true,
+            }),
+        ),
+        acknowledgement_fixture(
+            "provider-router-memory-kg-provider-secret-usage-acknowledgement-request",
+            "blocked_memory_provider_noop",
+            "memory_kg_provider_secret_usage_acknowledgement_denied",
+            serde_json::json!({
+                "operator_acknowledgement_requested": true,
+                "memory_kg_acknowledgement_requested": true,
+                "provider_secret_acknowledgement_requested": true,
+                "usage_acknowledgement_requested": true,
+            }),
+        ),
+        acknowledgement_fixture(
+            "provider-router-external-public-install-restart-active-binary-acknowledgement-request",
+            "blocked_external_noop",
+            "external_public_install_restart_active_binary_acknowledgement_denied",
+            serde_json::json!({
+                "operator_acknowledgement_requested": true,
+                "external_send_acknowledgement_requested": true,
+                "public_claim_acknowledgement_requested": true,
+                "release_artifact_acknowledgement_requested": true,
+                "install_acknowledgement_requested": true,
+                "service_restart_acknowledgement_requested": true,
+                "active_binary_acknowledgement_requested": true,
+            }),
+        ),
+    ]);
+    let acknowledgement_fixture_count = acknowledgement_fixtures
+        .as_array()
+        .map(std::vec::Vec::len)
+        .unwrap_or(0);
+    let denials: Vec<serde_json::Value> = [
+        "source_operator_summary_non_persistence_report_required",
+        "operator_acknowledgement_request_acceptance_denied",
+        "operator_acknowledgement_recording_denied",
+        "operator_acknowledgement_persistence_denied",
+        "operator_acknowledgement_materialization_denied",
+        "operator_acknowledgement_filesystem_write_denied",
+        "operator_acknowledgement_delivery_denied",
+        "operator_acknowledgement_acceptance_denied",
+        "operator_identity_acceptance_denied",
+        "operator_scope_acceptance_denied",
+        "operator_activation_plan_acceptance_denied",
+        "operator_summary_review_acceptance_denied",
+        "operator_briefing_review_acceptance_denied",
+        "receipt_acknowledgement_acceptance_denied",
+        "receipt_export_acknowledgement_denied",
+        "receipt_query_acknowledgement_denied",
+        "receipt_observability_acknowledgement_denied",
+        "router_handoff_acknowledgement_denied",
+        "readback_evidence_acknowledgement_denied",
+        "runtime_attachment_acknowledgement_denied",
+        "live_context_acknowledgement_denied",
+        "context_injection_acknowledgement_denied",
+        "memory_kg_acknowledgement_denied",
+        "rollback_acknowledgement_denied",
+        "secret_material_acknowledgement_denied",
+        "provider_model_acknowledgement_denied",
+        "external_public_install_restart_active_binary_acknowledgement_denied",
+    ]
+    .into_iter()
+    .map(|item| serde_json::Value::String(item.to_string()))
+    .collect();
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "source_command": "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance --json",
+        "native_route": true,
+        "compatibility_mode": "native_runtime_provider_router_operator_acknowledgement_non_acceptance_status",
+        "side_effect_free": true,
+        "audit_date": "2026-06-29",
+        "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT,
+        "source_runtime_provider_router_operator_acknowledgement_non_acceptance_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance-gate.sh",
+        "source_runtime_provider_router_operator_acknowledgement_non_acceptance_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance-route-gate.sh",
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "source_operator_summary_non_persistence_gate": "hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_operator_facing_summary_non_persistence_gate",
+        "source_operator_summary_non_persistence_ready": true,
+        "source_operator_summary_non_persistence_status": "blocked",
+        "source_receipt_observability_denial_gate": "hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_receipt_observability_denial_gate",
+        "source_receipt_observability_denial_ready": true,
+        "source_receipt_observability_denial_status": "blocked",
+        "source_runtime_model_provider_router": "runtime_provider_router",
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_cutover_floor": NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+        "route_count_floor_preserved": route_count_floor_preserved,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "runtime_provider_router_operator_acknowledgement_non_acceptance_route_enabled": true,
+        "runtime_provider_router_operator_acknowledgement_non_acceptance_ready": true,
+        "runtime_provider_router_operator_acknowledgement_non_acceptance_status": "blocked",
+        "operator_acknowledgement_non_acceptance_schema_version": "memory_intelligence_kg_full_enablement_runtime_provider_router_operator_acknowledgement_non_acceptance_v1",
+        "operator_acknowledgement_non_acceptance_mode": "runtime_provider_router_operator_acknowledgement_non_acceptance_no_record_no_persist_no_activation",
+        "operator_facing_summary_non_persistence_ready": true,
+        "operator_facing_summary_non_persistence_status": "blocked",
+        "receipt_observability_denial_ready": true,
+        "receipt_observability_denial_status": "blocked",
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "operator_facing_summary_fixture_count": 10,
+        "blocked_operator_facing_summary_fixture_count": 10,
+        "noop_operator_facing_summary_fixture_count": 10,
+        "allowed_operator_facing_summary_fixture_count": 0,
+        "accepted_operator_facing_summary_fixture_count": 0,
+        "operator_summary_denied_count": 10,
+        "operator_briefing_denied_count": 10,
+        "operator_summary_performed_count": 0,
+        "operator_briefing_performed_count": 0,
+        "receipt_export_denied_count": 10,
+        "receipt_query_denied_count": 10,
+        "receipt_observability_denied_count": 10,
+        "receipt_export_performed_count": 0,
+        "receipt_query_performed_count": 0,
+        "receipt_observability_performed_count": 0,
+        "operator_acknowledgement_surface_count": 12,
+        "operator_acknowledgement_surface_ready_count": 12,
+        "operator_acknowledgement_side_effect_free_surface_count": 12,
+        "operator_acknowledgement_fixtures": acknowledgement_fixtures,
+        "operator_acknowledgement_fixture_count": acknowledgement_fixture_count,
+        "blocked_operator_acknowledgement_fixture_count": acknowledgement_fixture_count,
+        "noop_operator_acknowledgement_fixture_count": acknowledgement_fixture_count,
+        "allowed_operator_acknowledgement_fixture_count": 0,
+        "accepted_operator_acknowledgement_fixture_count": 0,
+        "operator_acknowledgement_denied_count": acknowledgement_fixture_count,
+        "operator_acknowledgement_performed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "operator_acknowledgement_allowed": false,
+        "operator_acknowledgement_request_accepted": false,
+        "operator_acknowledgement_recorded": false,
+        "operator_acknowledgement_persisted": false,
+        "operator_acknowledgement_materialized": false,
+        "operator_acknowledgement_filesystem_written": false,
+        "operator_acknowledgement_delivered": false,
+        "operator_acknowledgement_accepted": false,
+        "operator_identity_accepted": false,
+        "operator_scope_accepted": false,
+        "operator_activation_plan_accepted": false,
+        "operator_summary_review_accepted": false,
+        "operator_briefing_review_accepted": false,
+        "receipt_acknowledgement_accepted": false,
+        "runtime_attachment_acknowledged": false,
+        "live_context_acknowledged": false,
+        "memory_kg_acknowledged": false,
+        "provider_secret_acknowledged": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "operator_summary_recorded": false,
+        "operator_summary_persisted": false,
+        "operator_summary_materialized": false,
+        "operator_summary_filesystem_written": false,
+        "operator_summary_delivered": false,
+        "operator_briefing_recorded": false,
+        "operator_briefing_persisted": false,
+        "operator_briefing_materialized": false,
+        "operator_briefing_filesystem_written": false,
+        "operator_briefing_delivered": false,
+        "operator_summary_briefing_channel_delivery_performed": false,
+        "telegram_send_performed": false,
+        "channel_send_performed": false,
+        "external_send_performed": false,
+        "receipt_export_allowed": false,
+        "receipt_exported": false,
+        "receipt_query_allowed": false,
+        "receipt_query_registered": false,
+        "receipt_observability_allowed": false,
+        "receipt_observability_recorded": false,
+        "receipt_recorded": false,
+        "receipt_persisted": false,
+        "receipt_accepted": false,
+        "receipt_materialized": false,
+        "receipt_filesystem_written": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "readback_evidence_recorded": false,
+        "readback_evidence_persisted": false,
+        "router_handoff_recorded": false,
+        "router_handoff_persisted": false,
+        "runtime_router_mutated": false,
+        "live_context_attached": false,
+        "context_injection_performed": false,
+        "adapter_invoked": false,
+        "provider_invoked": false,
+        "model_invoked": false,
+        "auth_secret_read": false,
+        "credential_read": false,
+        "secret_file_read": false,
+        "usage_recorded": false,
+        "memory_store_write_performed": false,
+        "memory_store_mutated": false,
+        "live_kg_write_performed": false,
+        "rollback_executed": false,
+        "public_release_claimed": false,
+        "service_restart_performed": false,
+        "active_binary_mutated": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "operator_acknowledgement_surfaces": [
+            "source_operator_summary_non_persistence_report_required",
+            "operator_acknowledgement_request_shape_denied",
+            "operator_acknowledgement_recording_denied",
+            "operator_acknowledgement_persistence_denied",
+            "operator_identity_scope_activation_plan_acceptance_denied",
+            "operator_summary_briefing_review_acceptance_denied",
+            "receipt_export_query_observability_acknowledgement_denied",
+            "router_handoff_readback_acknowledgement_denied",
+            "runtime_attachment_live_context_acknowledgement_denied",
+            "context_injection_acknowledgement_denied",
+            "memory_kg_provider_secret_usage_acknowledgement_denied",
+            "external_public_install_restart_active_binary_acknowledgement_denied"
+        ],
+        "denied_by_operator_acknowledgement_non_acceptance": denials,
+        "denied_by_operator_acknowledgement_non_acceptance_count": 27,
+        "allowed_next_actions": [
+            {
+                "action": "review_runtime_provider_router_operator_acknowledgement_non_acceptance",
+                "status": "allowed_report_only",
+                "accepts_acknowledgement": false,
+                "records_acknowledgement": false,
+                "persists_acknowledgement": false,
+                "invokes_adapter": false,
+                "invokes_model": false
+            },
+            {
+                "action": "stage_runtime_provider_router_activation_request_denial_matrix",
+                "status": "allowed_report_only_next_slice",
+                "accepts_activation_request": false,
+                "accepts_acknowledgement": false,
+                "persists_summary": false,
+                "exports_receipt": false,
+                "invokes_adapter": false,
+                "invokes_model": false
+            }
+        ],
+        "source_operator_summary_non_persistence_report_required": true,
+        "operator_acknowledgement_acceptance_forbidden": true,
+        "operator_acknowledgement_recording_forbidden": true,
+        "operator_acknowledgement_persistence_forbidden": true,
+        "operator_acknowledgement_delivery_forbidden": true,
+        "operator_identity_acceptance_forbidden": true,
+        "operator_scope_acceptance_forbidden": true,
+        "operator_activation_plan_acceptance_forbidden": true,
+        "receipt_acknowledgement_acceptance_forbidden": true,
+        "receipt_export_forbidden": true,
+        "receipt_query_forbidden": true,
+        "receipt_observability_forbidden": true,
+        "operator_summary_persistence_forbidden": true,
+        "operator_briefing_persistence_forbidden": true,
+        "router_handoff_persistence_forbidden": true,
+        "readback_evidence_persistence_forbidden": true,
+        "live_context_attachment_forbidden": true,
+        "adapter_invocation_forbidden": true,
+        "provider_model_invocation_forbidden": true,
+        "auth_secret_read_forbidden": true,
+        "usage_recording_forbidden": true,
+        }),
+    );
+    let mut acknowledgement_side_effects = serde_json::Map::new();
+    for key in [
+        "operator_acknowledgement_recorded",
+        "operator_acknowledgement_persisted",
+        "operator_acknowledgement_materialized",
+        "operator_acknowledgement_filesystem_written",
+        "operator_acknowledgement_delivered",
+        "operator_acknowledgement_accepted",
+        "operator_identity_accepted",
+        "operator_scope_accepted",
+        "operator_activation_plan_accepted",
+        "operator_summary_review_accepted",
+        "operator_briefing_review_accepted",
+        "receipt_acknowledgement_accepted",
+        "runtime_attachment_acknowledged",
+        "live_context_acknowledged",
+        "memory_kg_acknowledged",
+        "provider_secret_acknowledged",
+        "operator_summary_recorded",
+        "operator_summary_persisted",
+        "operator_summary_materialized",
+        "operator_summary_filesystem_written",
+        "operator_summary_delivered",
+        "operator_briefing_recorded",
+        "operator_briefing_persisted",
+        "operator_briefing_materialized",
+        "operator_briefing_filesystem_written",
+        "operator_briefing_delivered",
+        "operator_summary_briefing_channel_delivery_performed",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "receipt_exported",
+        "receipt_query_registered",
+        "receipt_observability_recorded",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_accepted",
+        "receipt_materialized",
+        "receipt_filesystem_written",
+        "readback_evidence_recorded",
+        "readback_evidence_persisted",
+        "router_handoff_recorded",
+        "router_handoff_persisted",
+        "runtime_router_mutated",
+        "live_context_attached",
+        "context_injection_performed",
+        "adapter_invoked",
+        "provider_invoked",
+        "model_invoked",
+        "auth_secret_read",
+        "credential_read",
+        "secret_file_read",
+        "usage_recorded",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "rollback_executed",
+        "filesystem_written",
+        "public_release_claimed",
+        "launchd_mutated",
+        "service_restart_performed",
+        "active_binary_mutated",
+    ] {
+        acknowledgement_side_effects.insert(key.to_string(), serde_json::Value::Bool(false));
+    }
+    if let Some(report) = report.as_object_mut() {
+        report.insert(
+            "side_effects".to_string(),
+            serde_json::Value::Object(acknowledgement_side_effects),
+        );
+    }
     report
 }
 
@@ -103083,6 +103631,192 @@ mod tests {
         assert_eq!(value["allowed_next_actions"][0]["activates_runtime"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_operator_acknowledgement_non_acceptance_endpoint_blocks_acknowledgement_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("runtime provider-router operator acknowledgement non-acceptance route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["runtime_provider_router_operator_acknowledgement_non_acceptance_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_operator_acknowledgement_non_acceptance_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_operator_acknowledgement_non_acceptance_status"],
+            "blocked"
+        );
+        assert_eq!(
+            value["operator_acknowledgement_non_acceptance_schema_version"],
+            "memory_intelligence_kg_full_enablement_runtime_provider_router_operator_acknowledgement_non_acceptance_v1"
+        );
+        assert_eq!(value["source_operator_summary_non_persistence_ready"], true);
+        assert_eq!(
+            value["source_operator_summary_non_persistence_status"],
+            "blocked"
+        );
+        assert_eq!(value["source_receipt_observability_denial_ready"], true);
+        assert_eq!(value["operator_acknowledgement_surface_count"], 12);
+        assert_eq!(value["operator_acknowledgement_surface_ready_count"], 12);
+        assert_eq!(
+            value["operator_acknowledgement_side_effect_free_surface_count"],
+            12
+        );
+        assert_eq!(value["operator_acknowledgement_fixture_count"], 10);
+        assert_eq!(value["blocked_operator_acknowledgement_fixture_count"], 10);
+        assert_eq!(value["noop_operator_acknowledgement_fixture_count"], 10);
+        assert_eq!(value["allowed_operator_acknowledgement_fixture_count"], 0);
+        assert_eq!(value["accepted_operator_acknowledgement_fixture_count"], 0);
+        assert_eq!(value["operator_acknowledgement_denied_count"], 10);
+        assert_eq!(value["operator_acknowledgement_performed_count"], 0);
+        for key in [
+            "operator_acknowledgement_allowed",
+            "operator_acknowledgement_request_accepted",
+            "operator_acknowledgement_recorded",
+            "operator_acknowledgement_persisted",
+            "operator_acknowledgement_materialized",
+            "operator_acknowledgement_filesystem_written",
+            "operator_acknowledgement_delivered",
+            "operator_acknowledgement_accepted",
+            "operator_identity_accepted",
+            "operator_scope_accepted",
+            "operator_activation_plan_accepted",
+            "operator_summary_review_accepted",
+            "operator_briefing_review_accepted",
+            "receipt_acknowledgement_accepted",
+            "runtime_attachment_acknowledged",
+            "live_context_acknowledged",
+            "memory_kg_acknowledged",
+            "provider_secret_acknowledged",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "receipt_exported",
+            "receipt_query_registered",
+            "receipt_observability_recorded",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "readback_evidence_recorded",
+            "readback_evidence_persisted",
+            "router_handoff_recorded",
+            "router_handoff_persisted",
+            "runtime_router_mutated",
+            "live_context_attached",
+            "context_injection_performed",
+            "adapter_invoked",
+            "provider_invoked",
+            "model_invoked",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "usage_recorded",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "rollback_executed",
+            "public_release_claimed",
+            "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "runtime provider-router operator acknowledgement field should stay false: {key}"
+            );
+        }
+
+        let fixtures = value["operator_acknowledgement_fixtures"]
+            .as_array()
+            .expect("operator acknowledgement fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["operator_acknowledgement_status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("blocked_"))
+                && fixture["acknowledgement_noop_confirmed"].as_bool() == Some(true)
+                && fixture["operator_acknowledgement_recorded"].as_bool() == Some(false)
+                && fixture["operator_acknowledgement_persisted"].as_bool() == Some(false)
+                && fixture["operator_acknowledgement_accepted"].as_bool() == Some(false)
+                && fixture["provider_invoked"].as_bool() == Some(false)
+                && fixture["model_invoked"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["live_kg_write_performed"].as_bool() == Some(false)
+                && fixture["credential_read"].as_bool() == Some(false)
+                && fixture["secret_file_read"].as_bool() == Some(false)
+                && fixture["active_binary_mutated"].as_bool() == Some(false)
+        }));
+
+        let denied = value["denied_by_operator_acknowledgement_non_acceptance"]
+            .as_array()
+            .expect("operator acknowledgement non-acceptance denials");
+        assert_eq!(denied.len(), 27);
+        assert_eq!(
+            value["denied_by_operator_acknowledgement_non_acceptance_count"],
+            27
+        );
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("operator acknowledgement non-acceptance side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "review_runtime_provider_router_operator_acknowledgement_non_acceptance"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["records_acknowledgement"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "stage_runtime_provider_router_activation_request_denial_matrix"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["accepts_activation_request"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][1]["invokes_model"], false);
     }
 
     #[test]

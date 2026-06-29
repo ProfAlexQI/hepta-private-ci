@@ -927,6 +927,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-ope
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator acknowledgement non-acceptance gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator acknowledgement non-acceptance route gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation request denial matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix-gate.sh
 
