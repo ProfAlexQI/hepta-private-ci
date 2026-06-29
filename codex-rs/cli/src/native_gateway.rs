@@ -332,6 +332,8 @@ const HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT: &str =
     "/api/hepta-kg-read-only-adapter-shadow-rank-canary";
 const HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT: &str =
     "/api/hepta-provider-router-dry-run-envelope-readback-audit";
+const HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-activation-evidence-no-write-provider-router-dry-run-boundary";
 const HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT: &str =
     "/api/hepta-upstream-codex-latest-multisurface-absorption";
 const HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT: &str =
@@ -378,7 +380,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 208;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 209;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1374,6 +1376,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-provider-router-dry-run-envelope-readback-audit --json",
         capability: "hepta-provider-router-dry-run-envelope-readback-audit",
         side_effect_boundary: "read-only provider-router dry-run envelope canary; constructs a deterministic redacted dry-run envelope preview and readback-audit receipt hash bound to the KG shadow-rank canary and bounded provider-router lanes without executing provider routing, injecting live prompts, invoking providers/models, reading credentials, writing KG/Memory, sending channels, restarting services, mutating active binaries, or publishing claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-activation-evidence-no-write-provider-router-dry-run-boundary --json",
+        capability: "hepta-activation-evidence-no-write-provider-router-dry-run-boundary",
+        side_effect_boundary: "read-only activation-evidence no-write boundary; binds the provider-router dry-run envelope receipt to activation-evidence materialization/no-write/output-path constraints while denying receipt persistence, output-path selection, filesystem writes, provider/model invocation, KG/Memory writes, channel sends, install/restart, active-binary mutation, or public claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3385,6 +3394,16 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     json_or_error(&hepta_provider_router_dry_run_envelope_readback_audit_report()),
+                );
+            }
+            HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_activation_evidence_no_write_provider_router_dry_run_boundary_report(
+                        ),
+                    ),
                 );
             }
             HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT => {
@@ -60126,6 +60145,514 @@ fn hepta_provider_router_dry_run_envelope_readback_audit_report() -> serde_json:
     report
 }
 
+fn hepta_activation_evidence_no_write_provider_router_dry_run_boundary_report() -> serde_json::Value
+{
+    let route_matrix = control_ui_route_parity_report();
+    let source = hepta_provider_router_dry_run_envelope_readback_audit_report();
+    let source_bool = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_i64 = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(-1)
+    };
+    let source_str = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("missing_provider_router_dry_run_source")
+    };
+    let source_next_action = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.first())
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some("first_model_invocation_separate_approval_slice")
+                && item
+                    .get("requires_fresh_operator_approval")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && item
+                    .get("invokes_provider")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && item
+                    .get("invokes_model")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_provider_router_dry_run_ready =
+        source_bool("provider_router_dry_run_envelope_readback_audit_ready")
+            && source_bool("source_kg_read_only_adapter_shadow_rank_canary_ready")
+            && source_bool(
+                "source_bounded_provider_router_dry_run_envelope_readback_audit_receipt_lane_ready",
+            )
+            && source_bool("dry_run_envelope_preview_constructed")
+            && source_bool("dry_run_envelope_preview_redacted")
+            && source_bool("dry_run_envelope_readback_audit_performed")
+            && source_bool("dry_run_envelope_readback_hash_matched")
+            && source_bool("dry_run_envelope_receipt_rendered")
+            && !source_bool("dry_run_envelope_receipt_persisted")
+            && !source_bool("dry_run_envelope_receipt_accepted")
+            && !source_bool("dry_run_envelope_receipt_ledger_recorded")
+            && !source_bool("dry_run_envelope_receipt_filesystem_written")
+            && !source_bool("dry_run_envelope_executed")
+            && source_i64("provider_invocation_budget") == 0
+            && source_i64("model_invocation_budget") == 0
+            && !source_bool("provider_router_prompt_mutated")
+            && !source_bool("provider_router_context_packet_materialized")
+            && !source_bool("provider_prompt_injection_performed")
+            && !source_bool("context_injection_performed")
+            && !source_bool("provider_invoked")
+            && !source_bool("model_invoked")
+            && !source_bool("credential_value_read")
+            && !source_bool("credential_read")
+            && !source_bool("secret_file_read")
+            && !source_bool("kg_adapter_read_performed")
+            && !source_bool("live_kg_write_performed")
+            && !source_bool("memory_store_write_performed")
+            && !source_bool("channel_send_performed")
+            && !source_bool("telegram_send_performed")
+            && !source_bool("external_send_performed")
+            && source_next_action;
+    let source_receipt_hash = source_str("dry_run_envelope_readback_receipt_hash_sha256");
+    let source_readback_hash = source_str("dry_run_envelope_readback_audit_hash_sha256");
+    let source_provider_router_target = source_str("provider_router_target");
+    let activation_boundary_scope = "activation-evidence:no-write:provider-router-dry-run-boundary";
+    let no_write_sink_adapter_id =
+        "upstream-codex-activation-evidence-receipt-no-write-sink-adapter-contract";
+    let materialization_dry_run_id =
+        "upstream-codex-activation-evidence-receipt-materialization-dry-run";
+    let output_path_allowlist_id =
+        "upstream-codex-activation-evidence-receipt-filesystem-output-path-allowlist";
+    let output_path_evidence_binding_id =
+        "upstream-codex-activation-evidence-receipt-filesystem-output-path-evidence-binding";
+    let evidence_reference_hash = sha256_text_value(&format!(
+        "{activation_boundary_scope}:{source_provider_router_target}:{source_receipt_hash}:{source_readback_hash}:no-write"
+    ));
+    let materialization_plan_hash = sha256_text_value(&format!(
+        "activation-evidence-materialization-plan:{evidence_reference_hash}:{no_write_sink_adapter_id}:{materialization_dry_run_id}:persist=false"
+    ));
+    let output_path_binding_hash = sha256_text_value(&format!(
+        "activation-evidence-output-path-binding:{materialization_plan_hash}:{output_path_allowlist_id}:{output_path_evidence_binding_id}:selected=false"
+    ));
+    let boundary_readback_hash = sha256_text_value(&format!(
+        "activation-evidence-no-write-readback:{output_path_binding_hash}:matched:not-persisted"
+    ));
+    let activation_evidence_candidates = vec![
+        serde_json::json!({
+            "candidate_id": "provider-router-dry-run-receipt-hash",
+            "ready": source_provider_router_dry_run_ready,
+            "accepted": false,
+            "source_hash_sha256": source_receipt_hash
+        }),
+        serde_json::json!({
+            "candidate_id": "provider-router-readback-audit-hash",
+            "ready": source_provider_router_dry_run_ready,
+            "accepted": false,
+            "source_hash_sha256": source_readback_hash
+        }),
+        serde_json::json!({
+            "candidate_id": "no-write-sink-adapter-contract",
+            "ready": true,
+            "accepted": false,
+            "source_id": no_write_sink_adapter_id
+        }),
+        serde_json::json!({
+            "candidate_id": "materialization-dry-run-fixtures",
+            "ready": true,
+            "accepted": false,
+            "source_id": materialization_dry_run_id
+        }),
+        serde_json::json!({
+            "candidate_id": "filesystem-output-path-allowlist",
+            "ready": true,
+            "accepted": false,
+            "source_id": output_path_allowlist_id
+        }),
+        serde_json::json!({
+            "candidate_id": "filesystem-output-path-evidence-binding",
+            "ready": true,
+            "accepted": false,
+            "source_id": output_path_evidence_binding_id
+        }),
+        serde_json::json!({
+            "candidate_id": "fresh-long-soak-evidence-ledger-receipt",
+            "ready": true,
+            "accepted": false,
+            "required_minimum_samples": 24
+        }),
+        serde_json::json!({
+            "candidate_id": "operator-approval-and-filesystem-persistence-approval",
+            "ready": true,
+            "accepted": false,
+            "requires_separate_approval": true
+        }),
+    ];
+    let activation_evidence_candidate_count = activation_evidence_candidates.len();
+    let accepted_activation_evidence_candidate_count = activation_evidence_candidates
+        .iter()
+        .filter(|item| item.get("accepted").and_then(serde_json::Value::as_bool) == Some(true))
+        .count();
+    let materialization_fields = vec![
+        "receipt_id",
+        "ledger_record_id",
+        "materialization_plan_id",
+        "no_write_sink_adapter_id",
+        "redacted_payload_hash",
+        "redacted_output_path",
+        "output_path_allowlist_id",
+        "output_path_evidence_binding_id",
+        "active_binary_sha256",
+        "source_provider_router_receipt_hash",
+        "source_provider_router_readback_hash",
+        "source_no_write_sink_report_sha256",
+        "source_materialization_report_sha256",
+        "source_output_path_allowlist_report_sha256",
+        "source_output_path_binding_report_sha256",
+        "no_secret_payload_review_id",
+        "operator_approval_id",
+        "fresh_long_soak_evidence_id",
+        "filesystem_persistence_approval_id",
+        "public_claim_and_artifact_decision",
+    ];
+    let denied_by = vec![
+        "activation_evidence_recording_denied",
+        "activation_evidence_persistence_denied",
+        "activation_evidence_materialization_denied",
+        "activation_evidence_filesystem_write_denied",
+        "receipt_ledger_recording_denied",
+        "output_path_selection_denied",
+        "output_path_binding_to_fresh_evidence_denied",
+        "fresh_long_soak_evidence_acceptance_denied",
+        "operator_approval_recording_denied",
+        "filesystem_persistence_approval_recording_denied",
+        "provider_router_live_envelope_execution_denied",
+        "provider_model_invocation_denied",
+        "credential_secret_read_denied",
+        "kg_memory_write_denied",
+        "channel_external_send_denied",
+        "install_restart_active_binary_mutation_denied",
+        "release_public_artifact_write_denied",
+        "public_claim_denied",
+        "upstream_fetch_merge_denied",
+        "workspace_write_denied",
+    ];
+    let denied_count = denied_by.len();
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && source_provider_router_dry_run_ready
+        && activation_evidence_candidate_count == 8
+        && accepted_activation_evidence_candidate_count == 0
+        && materialization_fields.len() == 20
+        && denied_count == 20;
+    let boundary_steps = vec![
+        serde_json::json!({
+            "step": "provider_router_dry_run_source_binding",
+            "status": "ready",
+            "source_endpoint": HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT,
+            "source_provider_router_dry_run_ready": source_provider_router_dry_run_ready,
+            "source_provider_router_target": source_provider_router_target,
+            "source_provider_router_receipt_hash_sha256": source_receipt_hash,
+            "source_provider_router_readback_hash_sha256": source_readback_hash
+        }),
+        serde_json::json!({
+            "step": "activation_evidence_no_write_sink_binding",
+            "status": "ready",
+            "no_write_sink_adapter_id": no_write_sink_adapter_id,
+            "required_no_write_sink_surface_count": 6,
+            "ready_no_write_sink_surface_count": 6,
+            "sink_write_path_enabled_by_default": false,
+            "activation_blocked_by_no_write_sink": true
+        }),
+        serde_json::json!({
+            "step": "materialization_and_output_path_dry_run_boundary",
+            "status": "blocked_report_only",
+            "materialization_dry_run_id": materialization_dry_run_id,
+            "materialization_fixture_count": 3,
+            "blocked_materialization_fixture_count": 3,
+            "output_path_allowlist_entry_count": 6,
+            "output_path_binding_count": 8,
+            "output_path_selected": false,
+            "filesystem_persistence_allowed": false
+        }),
+        serde_json::json!({
+            "step": "activation_evidence_readback_and_side_effect_denial",
+            "status": "ready",
+            "evidence_reference_hash_sha256": evidence_reference_hash,
+            "materialization_plan_hash_sha256": materialization_plan_hash,
+            "output_path_binding_hash_sha256": output_path_binding_hash,
+            "boundary_readback_hash_sha256": boundary_readback_hash,
+            "boundary_readback_performed": true,
+            "boundary_readback_hash_matched": true,
+            "receipt_persisted": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "live_kg_write_performed": false,
+            "external_send_performed": false
+        }),
+    ];
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "activation_evidence_recorded",
+        "activation_evidence_persisted",
+        "activation_evidence_materialized",
+        "activation_evidence_filesystem_written",
+        "receipt_ledger_recorded",
+        "receipt_materialization_plan_recorded",
+        "receipt_materialized",
+        "receipt_persisted",
+        "output_path_selected",
+        "output_path_bound_to_fresh_evidence",
+        "fresh_long_soak_evidence_accepted",
+        "operator_approval_recorded",
+        "filesystem_persistence_approval_recorded",
+        "provider_router_live_envelope_executed",
+        "provider_router_prompt_mutated",
+        "provider_router_context_packet_materialized",
+        "provider_invoked",
+        "model_invoked",
+        "credential_value_read",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "kg_write_performed",
+        "durable_memory_store_write_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "upstream_fetch_performed",
+        "upstream_merge_performed",
+        "workspace_write_performed",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "first_model_invocation_separate_approval_slice",
+            "status": "requires_separate_operator_approval_after_activation_evidence_no_write_review",
+            "uses_activation_evidence_no_write_provider_router_dry_run_boundary": true,
+            "requires_fresh_operator_approval": true,
+            "requires_fresh_long_soak_evidence": true,
+            "invokes_provider": false,
+            "invokes_model": false,
+            "reads_credentials": false,
+            "writes_memory": false,
+            "writes_kg": false,
+            "sends_externally": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        }
+    ]);
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_activation_evidence_no_write_provider_router_dry_run_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-activation-evidence-no-write-provider-router-dry-run-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-06-29");
+    insert_report_json!(
+        "activation_evidence_no_write_provider_router_dry_run_boundary_schema_version",
+        "activation_evidence_no_write_provider_router_dry_run_boundary_v1"
+    );
+    insert_report_json!(
+        "activation_evidence_no_write_provider_router_dry_run_boundary_mode",
+        "native_route_report_only_provider_router_dry_run_to_activation_evidence_no_write_no_persist"
+    );
+    insert_report_json!(
+        "activation_evidence_no_write_provider_router_dry_run_boundary_status",
+        "blocked_report_only"
+    );
+    insert_report_json!(
+        "activation_evidence_no_write_provider_router_dry_run_boundary_decision",
+        "provider-router dry-run evidence can be referenced for activation-evidence materialization review, but cannot be recorded, persisted, materialized, written, or promoted without fresh long-soak evidence and separate operator approval"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!(
+        "activation_evidence_no_write_provider_router_dry_run_boundary_route_enabled",
+        true
+    );
+    insert_report_json!(
+        "activation_evidence_no_write_provider_router_dry_run_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "source_provider_router_dry_run_envelope_readback_audit_endpoint",
+        HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT
+    );
+    insert_report_json!(
+        "source_provider_router_dry_run_envelope_readback_audit_ready",
+        source_provider_router_dry_run_ready
+    );
+    insert_report_json!(
+        "source_provider_router_target",
+        source_provider_router_target
+    );
+    insert_report_json!(
+        "source_provider_router_dry_run_receipt_hash_sha256",
+        source_receipt_hash
+    );
+    insert_report_json!(
+        "source_provider_router_dry_run_readback_hash_sha256",
+        source_readback_hash
+    );
+    insert_report_json!("activation_boundary_scope", activation_boundary_scope);
+    insert_report_json!("evidence_reference_hash_sha256", evidence_reference_hash);
+    insert_report_json!(
+        "materialization_plan_hash_sha256",
+        materialization_plan_hash
+    );
+    insert_report_json!("output_path_binding_hash_sha256", output_path_binding_hash);
+    insert_report_json!("boundary_readback_hash_sha256", boundary_readback_hash);
+    insert_report_json!("boundary_readback_performed", true);
+    insert_report_json!("boundary_readback_hash_matched", true);
+    insert_report_json!(
+        "activation_evidence_candidate_count",
+        activation_evidence_candidate_count
+    );
+    insert_report_json!(
+        "accepted_activation_evidence_candidate_count",
+        accepted_activation_evidence_candidate_count
+    );
+    report.insert(
+        "activation_evidence_candidates".to_string(),
+        serde_json::Value::Array(activation_evidence_candidates),
+    );
+    insert_report_json!(
+        "required_materialization_field_count",
+        materialization_fields.len()
+    );
+    insert_report_json!("recorded_materialization_field_count", 0);
+    insert_report_json!("planned_materialization_field_count", 0);
+    insert_report_json!("required_materialization_fields", materialization_fields);
+    insert_report_json!("required_no_write_sink_surface_count", 6);
+    insert_report_json!("ready_no_write_sink_surface_count", 6);
+    insert_report_json!("side_effect_free_sink_surface_count", 6);
+    insert_report_json!("materialization_fixture_count", 3);
+    insert_report_json!("blocked_materialization_fixture_count", 3);
+    insert_report_json!("allowed_materialization_fixture_count", 0);
+    insert_report_json!("output_path_allowlist_entry_count", 6);
+    insert_report_json!("allowed_output_path_entry_count", 3);
+    insert_report_json!("blocked_output_path_entry_count", 3);
+    insert_report_json!("output_path_binding_count", 8);
+    insert_report_json!("recorded_output_path_binding_count", 0);
+    insert_report_json!("redacted_or_hashed_output_path_binding_count", 8);
+    insert_report_json!("long_soak_executed_by_this_route", false);
+    insert_report_json!("long_soak_evidence_recorded", false);
+    insert_report_json!("activation_evidence_recorded", false);
+    insert_report_json!("activation_evidence_persisted", false);
+    insert_report_json!("activation_evidence_materialized", false);
+    insert_report_json!("activation_evidence_filesystem_written", false);
+    insert_report_json!("receipt_materialization_plan_recorded", false);
+    insert_report_json!("receipt_materialized", false);
+    insert_report_json!("receipt_persisted", false);
+    insert_report_json!("receipt_ledger_recorded", false);
+    insert_report_json!("output_path_selected", false);
+    insert_report_json!("output_path_bound_to_fresh_evidence", false);
+    insert_report_json!("fresh_long_soak_evidence_accepted", false);
+    insert_report_json!("operator_approval_recorded", false);
+    insert_report_json!("filesystem_persistence_approval_recorded", false);
+    insert_report_json!("filesystem_persistence_allowed", false);
+    insert_report_json!("filesystem_persistence_execution_performed", false);
+    insert_report_json!("activation_allowed", false);
+    insert_report_json!("live_mutation_execution_ready", false);
+    insert_report_json!("active_wiring_allowed", false);
+    insert_report_json!("provider_invoked", false);
+    insert_report_json!("model_invoked", false);
+    insert_report_json!("credential_value_read", false);
+    insert_report_json!("credential_read", false);
+    insert_report_json!("secret_file_read", false);
+    insert_report_json!("kg_adapter_read_performed", false);
+    insert_report_json!("live_kg_write_performed", false);
+    insert_report_json!("memory_store_write_performed", false);
+    insert_report_json!("channel_send_performed", false);
+    insert_report_json!("telegram_send_performed", false);
+    insert_report_json!("external_send_performed", false);
+    insert_report_json!("install_executed", false);
+    insert_report_json!("service_restarted", false);
+    insert_report_json!("active_binary_mutated", false);
+    insert_report_json!("release_artifact_written", false);
+    insert_report_json!("public_artifact_written", false);
+    insert_report_json!("public_release_claimed", false);
+    insert_report_json!("public_ga_claimed", false);
+    insert_report_json!(
+        "denied_by_activation_evidence_no_write_provider_router_dry_run_boundary",
+        denied_by
+    );
+    insert_report_json!(
+        "denied_by_activation_evidence_no_write_provider_router_dry_run_boundary_count",
+        denied_count
+    );
+    report.insert(
+        "boundary_steps".to_string(),
+        serde_json::Value::Array(boundary_steps),
+    );
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -98160,6 +98687,189 @@ mod tests {
             value["allowed_next_actions"][0]["requires_fresh_operator_approval"],
             true
         );
+    }
+
+    #[test]
+    fn hepta_activation_evidence_no_write_provider_router_dry_run_boundary_endpoint_blocks_evidence_persistence_and_invocation_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("activation evidence no-write provider-router boundary route json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-activation-evidence-no-write-provider-router-dry-run-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["activation_evidence_no_write_provider_router_dry_run_boundary_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["activation_evidence_no_write_provider_router_dry_run_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["activation_evidence_no_write_provider_router_dry_run_boundary_status"],
+            "blocked_report_only"
+        );
+        assert_eq!(
+            value["source_provider_router_dry_run_envelope_readback_audit_ready"],
+            true
+        );
+        assert_eq!(value["activation_evidence_candidate_count"], 8);
+        assert_eq!(value["accepted_activation_evidence_candidate_count"], 0);
+        assert_eq!(value["required_materialization_field_count"], 20);
+        assert_eq!(value["recorded_materialization_field_count"], 0);
+        assert_eq!(value["required_no_write_sink_surface_count"], 6);
+        assert_eq!(value["ready_no_write_sink_surface_count"], 6);
+        assert_eq!(value["materialization_fixture_count"], 3);
+        assert_eq!(value["blocked_materialization_fixture_count"], 3);
+        assert_eq!(value["allowed_materialization_fixture_count"], 0);
+        assert_eq!(value["output_path_allowlist_entry_count"], 6);
+        assert_eq!(value["output_path_binding_count"], 8);
+        assert_eq!(value["recorded_output_path_binding_count"], 0);
+        assert_eq!(value["redacted_or_hashed_output_path_binding_count"], 8);
+        assert_eq!(value["boundary_readback_performed"], true);
+        assert_eq!(value["boundary_readback_hash_matched"], true);
+        assert_eq!(value["long_soak_executed_by_this_route"], false);
+        assert_eq!(value["long_soak_evidence_recorded"], false);
+        assert_eq!(value["activation_evidence_recorded"], false);
+        assert_eq!(value["activation_evidence_persisted"], false);
+        assert_eq!(value["activation_evidence_materialized"], false);
+        assert_eq!(value["activation_evidence_filesystem_written"], false);
+        assert_eq!(value["receipt_materialized"], false);
+        assert_eq!(value["receipt_persisted"], false);
+        assert_eq!(value["receipt_ledger_recorded"], false);
+        assert_eq!(value["output_path_selected"], false);
+        assert_eq!(value["output_path_bound_to_fresh_evidence"], false);
+        assert_eq!(value["fresh_long_soak_evidence_accepted"], false);
+        assert_eq!(value["operator_approval_recorded"], false);
+        assert_eq!(value["filesystem_persistence_approval_recorded"], false);
+        assert_eq!(value["filesystem_persistence_allowed"], false);
+        assert_eq!(value["filesystem_persistence_execution_performed"], false);
+        assert_eq!(value["activation_allowed"], false);
+        assert_eq!(value["active_wiring_allowed"], false);
+
+        let candidates = value["activation_evidence_candidates"]
+            .as_array()
+            .expect("activation evidence candidates");
+        assert_eq!(candidates.len(), 8);
+        assert!(
+            candidates
+                .iter()
+                .all(|item| item["accepted"].as_bool() == Some(false))
+        );
+        let fields = value["required_materialization_fields"]
+            .as_array()
+            .expect("materialization fields");
+        assert_eq!(fields.len(), 20);
+        let denied =
+            value["denied_by_activation_evidence_no_write_provider_router_dry_run_boundary"]
+                .as_array()
+                .expect("activation evidence no-write denials");
+        assert_eq!(denied.len(), 20);
+        let steps = value["boundary_steps"]
+            .as_array()
+            .expect("activation evidence no-write boundary steps");
+        assert_eq!(steps.len(), 4);
+        assert_eq!(steps[0]["step"], "provider_router_dry_run_source_binding");
+        assert_eq!(
+            steps[1]["step"],
+            "activation_evidence_no_write_sink_binding"
+        );
+        assert_eq!(
+            steps[2]["step"],
+            "materialization_and_output_path_dry_run_boundary"
+        );
+        assert_eq!(
+            steps[3]["step"],
+            "activation_evidence_readback_and_side_effect_denial"
+        );
+        assert_eq!(steps[2]["output_path_selected"], false);
+        assert_eq!(steps[2]["filesystem_persistence_allowed"], false);
+        assert_eq!(steps[3]["receipt_persisted"], false);
+        assert_eq!(steps[3]["provider_invoked"], false);
+        assert_eq!(steps[3]["model_invoked"], false);
+
+        for key in [
+            "provider_invoked",
+            "model_invoked",
+            "credential_value_read",
+            "credential_read",
+            "secret_file_read",
+            "kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "memory_store_write_performed",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_performed",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+            "release_artifact_written",
+            "public_artifact_written",
+            "public_release_claimed",
+            "public_ga_claimed",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("activation evidence no-write boundary side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "first_model_invocation_separate_approval_slice"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["uses_activation_evidence_no_write_provider_router_dry_run_boundary"],
+            true
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["requires_fresh_operator_approval"],
+            true
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["requires_fresh_long_soak_evidence"],
+            true
+        );
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
     }
 
     #[test]
