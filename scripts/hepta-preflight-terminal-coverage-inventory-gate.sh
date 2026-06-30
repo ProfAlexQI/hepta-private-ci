@@ -289,6 +289,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router activation command result receipt replay idempotency denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt replay idempotency denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt ordering monotonicity denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt ordering monotonicity denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt cancellation supersession denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt audit trail immutable evidence denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial gate"
