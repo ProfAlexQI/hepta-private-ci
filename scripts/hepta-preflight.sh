@@ -939,6 +939,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-act
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command no-op handoff gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command no-op handoff route gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt no-persistence gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-no-persistence-gate.sh
 

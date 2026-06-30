@@ -126,6 +126,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERA
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_REQUEST_DENIAL_MATRIX_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_NOOP_HANDOFF_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_ACCEPTANCE_RECEIPT_LANE_ENDPOINT: &str =
@@ -386,7 +388,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 212;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 213;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -661,6 +663,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix",
         side_effect_boundary: "read-only runtime provider-router activation request denial matrix; proves acknowledgement-derived activation requests cannot be accepted, recorded, persisted, executed, attach context, invoke providers/models, write Memory/KG, read credentials, deliver channels, restart services, mutate binaries, or claim release",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_NOOP_HANDOFF_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff",
+        side_effect_boundary: "read-only runtime provider-router activation command no-op handoff; proves denied activation requests cannot register, enable, accept, invoke, dispatch, persist handoff state, record command receipts, attach context, invoke providers/models, write Memory/KG, read credentials, deliver channels, restart services, mutate binaries, or claim release",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2400,6 +2409,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_request_denial_matrix_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_NOOP_HANDOFF_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_report(),
                     ),
                 );
             }
@@ -14755,6 +14774,618 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
             "side_effects".to_string(),
             serde_json::Value::Object(side_effects),
         );
+    }
+    report
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_activation_request =
+        hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_request_denial_matrix_report();
+    let source_bool = |key: &str| {
+        source_activation_request
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source_activation_request
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_str = |key: &str| {
+        source_activation_request
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("blocked")
+            .to_string()
+    };
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_activation_request_ready = source_str("status") == "ready"
+        && source_bool("runtime_provider_router_activation_request_denial_matrix_ready")
+        && source_str("runtime_provider_router_activation_request_denial_matrix_status")
+            == "blocked"
+        && source_u64("activation_request_fixture_count") == 10
+        && source_u64("blocked_activation_request_fixture_count") == 10
+        && source_u64("noop_activation_request_fixture_count") == 10
+        && source_u64("accepted_activation_request_fixture_count") == 0
+        && source_u64("activation_request_performed_count") == 0
+        && source_u64("activation_execution_performed_count") == 0
+        && !source_bool("activation_request_accepted")
+        && !source_bool("activation_request_recorded")
+        && !source_bool("activation_request_persisted")
+        && !source_bool("activation_request_executed")
+        && !source_bool("activation_activated")
+        && !source_bool("runtime_router_mutated")
+        && !source_bool("runtime_attachment_performed")
+        && !source_bool("live_context_attached")
+        && !source_bool("context_injection_performed")
+        && !source_bool("adapter_invoked")
+        && !source_bool("provider_invoked")
+        && !source_bool("model_invoked")
+        && !source_bool("auth_secret_read")
+        && !source_bool("credential_read")
+        && !source_bool("secret_file_read")
+        && !source_bool("usage_recorded")
+        && !source_bool("memory_store_write_performed")
+        && !source_bool("live_kg_write_performed")
+        && !source_bool("receipt_recorded")
+        && !source_bool("receipt_persisted")
+        && !source_bool("receipt_accepted")
+        && !source_bool("readback_evidence_recorded")
+        && !source_bool("readback_evidence_persisted")
+        && !source_bool("router_handoff_recorded")
+        && !source_bool("router_handoff_persisted")
+        && !source_bool("telegram_send_performed")
+        && !source_bool("channel_send_performed")
+        && !source_bool("external_send_performed")
+        && !source_bool("service_restart_performed")
+        && !source_bool("active_binary_mutated");
+    let report_ready = route_matrix.ready
+        && route_count_floor_preserved
+        && route_count_source_command_accepted
+        && source_activation_request_ready;
+
+    let activation_command_fixture =
+        |id: &str, status: &str, reason: &str, extra: serde_json::Value| {
+            let mut fixture = serde_json::Map::new();
+            fixture.insert("id".to_string(), serde_json::Value::String(id.to_string()));
+            fixture.insert(
+                "activation_command_status".to_string(),
+                serde_json::Value::String(status.to_string()),
+            );
+            fixture.insert(
+                "reason".to_string(),
+                serde_json::Value::String(reason.to_string()),
+            );
+            for key in [
+                "source_activation_request_denial_matrix_present",
+                "source_activation_request_denial_matrix_ready",
+                "activation_command_requested",
+                "activation_command_noop_confirmed",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(true));
+            }
+            for key in [
+                "activation_command_shape_registered",
+                "activation_command_allowed",
+                "activation_command_accepted",
+                "activation_command_enabled",
+                "activation_command_invoked",
+                "activation_command_dispatched",
+                "activation_command_dispatch_performed",
+                "activation_command_noop_decision_recorded",
+                "activation_command_noop_decision_persisted",
+                "activation_command_noop_decision_accepted",
+                "activation_command_handoff_recorded",
+                "activation_command_handoff_persisted",
+                "activation_command_handoff_accepted",
+                "activation_command_handoff_materialized",
+                "activation_command_handoff_filesystem_written",
+                "activation_command_result_receipt_recorded",
+                "activation_command_result_receipt_persisted",
+                "activation_command_result_receipt_accepted",
+                "activation_command_result_receipt_exported",
+                "activation_command_result_receipt_query_registered",
+                "activation_command_result_receipt_observability_recorded",
+                "activation_request_allowed",
+                "activation_request_accepted",
+                "activation_request_recorded",
+                "activation_request_persisted",
+                "activation_request_materialized",
+                "activation_request_filesystem_written",
+                "activation_request_delivered",
+                "activation_request_executed",
+                "activation_activated",
+                "runtime_router_mutated",
+                "runtime_attachment_performed",
+                "live_context_attached",
+                "context_injection_performed",
+                "adapter_invoked",
+                "provider_invoked",
+                "model_invoked",
+                "auth_secret_read",
+                "credential_read",
+                "secret_file_read",
+                "usage_recorded",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "live_kg_write_performed",
+                "receipt_exported",
+                "receipt_query_registered",
+                "receipt_observability_recorded",
+                "receipt_recorded",
+                "receipt_persisted",
+                "receipt_accepted",
+                "readback_evidence_recorded",
+                "readback_evidence_persisted",
+                "router_handoff_recorded",
+                "router_handoff_persisted",
+                "rollback_executed",
+                "telegram_send_performed",
+                "channel_send_performed",
+                "external_send_performed",
+                "public_release_claimed",
+                "public_ga_claimed",
+                "release_artifact_written",
+                "install_executed",
+                "launchd_mutated",
+                "service_restart_performed",
+                "active_binary_mutated",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(false));
+            }
+            let mut fixture = serde_json::Value::Object(fixture);
+            extend_json_object(&mut fixture, extra);
+            fixture
+        };
+    let activation_command_fixtures = serde_json::Value::Array(vec![
+        activation_command_fixture(
+            "provider-router-activation-command-missing-source-activation-request-denial-matrix",
+            "blocked_noop",
+            "source_activation_request_denial_matrix_report_required",
+            serde_json::json!({
+                "source_activation_request_denial_matrix_present": false,
+                "source_activation_request_denial_matrix_ready": false,
+            }),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-handoff-request",
+            "blocked_command_noop",
+            "activation_command_handoff_shape_denied",
+            serde_json::json!({}),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-registration-enable-request",
+            "blocked_register_enable_noop",
+            "activation_command_registration_enablement_denied",
+            serde_json::json!({
+                "activation_command_registration_requested": true,
+                "activation_command_enable_requested": true,
+            }),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-direct-invocation-request",
+            "blocked_invocation_noop",
+            "activation_command_invocation_denied",
+            serde_json::json!({"activation_command_invocation_requested": true}),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-runtime-router-dispatch-request",
+            "blocked_dispatch_noop",
+            "runtime_router_dispatch_denied",
+            serde_json::json!({
+                "runtime_router_dispatch_requested": true,
+                "runtime_router_mutation_requested": true,
+            }),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-live-context-injection-request",
+            "blocked_context_noop",
+            "live_context_context_injection_command_denied",
+            serde_json::json!({
+                "live_context_attachment_requested": true,
+                "context_injection_requested": true,
+            }),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-adapter-provider-model-request",
+            "blocked_provider_noop",
+            "adapter_provider_model_command_denied",
+            serde_json::json!({
+                "adapter_invocation_requested": true,
+                "provider_invocation_requested": true,
+                "model_invocation_requested": true,
+            }),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-memory-kg-request",
+            "blocked_memory_kg_noop",
+            "memory_kg_command_denied",
+            serde_json::json!({
+                "memory_store_write_requested": true,
+                "live_kg_write_requested": true,
+            }),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-receipt-readback-router-handoff-request",
+            "blocked_receipt_router_noop",
+            "receipt_readback_router_handoff_command_denied",
+            serde_json::json!({
+                "receipt_record_requested": true,
+                "receipt_persist_requested": true,
+                "receipt_export_requested": true,
+                "receipt_query_requested": true,
+                "receipt_observability_requested": true,
+                "readback_evidence_requested": true,
+                "router_handoff_requested": true,
+            }),
+        ),
+        activation_command_fixture(
+            "provider-router-activation-command-external-public-install-restart-active-binary-request",
+            "blocked_external_noop",
+            "external_public_install_restart_active_binary_command_denied",
+            serde_json::json!({
+                "external_send_requested": true,
+                "public_claim_requested": true,
+                "public_ga_claim_requested": true,
+                "release_artifact_write_requested": true,
+                "install_requested": true,
+                "launchd_restart_requested": true,
+                "service_restart_requested": true,
+                "active_binary_mutation_requested": true,
+            }),
+        ),
+    ]);
+    let activation_command_fixture_count = activation_command_fixtures
+        .as_array()
+        .map(std::vec::Vec::len)
+        .unwrap_or(0);
+    let denials: Vec<serde_json::Value> = [
+        "source_activation_request_denial_matrix_report_required",
+        "activation_command_shape_registration_denied",
+        "activation_command_acceptance_denied",
+        "activation_command_enablement_denied",
+        "activation_command_invocation_denied",
+        "activation_command_dispatch_denied",
+        "activation_command_noop_decision_recording_denied",
+        "activation_command_noop_decision_persistence_denied",
+        "activation_command_handoff_recording_denied",
+        "activation_command_handoff_persistence_denied",
+        "activation_command_handoff_acceptance_denied",
+        "activation_command_handoff_materialization_denied",
+        "activation_command_handoff_filesystem_write_denied",
+        "activation_command_result_receipt_recording_denied",
+        "activation_command_result_receipt_persistence_denied",
+        "activation_request_acceptance_denied",
+        "activation_execution_denied",
+        "runtime_router_mutation_denied",
+        "runtime_attachment_denied",
+        "live_context_attachment_denied",
+        "context_injection_denied",
+        "adapter_invocation_denied",
+        "provider_model_invocation_denied",
+        "memory_store_write_denied",
+        "live_kg_write_denied",
+        "receipt_export_query_observability_denied",
+        "router_handoff_readback_persistence_denied",
+        "usage_recording_denied",
+        "secret_material_read_denied",
+        "external_public_install_restart_active_binary_denied",
+    ]
+    .into_iter()
+    .map(|item| serde_json::Value::String(item.to_string()))
+    .collect();
+    let source_report_sha256 = sha256_json_value(&source_activation_request);
+    let fixture_hash = sha256_json_value(&activation_command_fixtures);
+    let contract_hash = sha256_text_value(&format!(
+        "hepta-full-enablement-runtime-provider-router-activation-command-noop-handoff:native:source={source_report_sha256}:fixtures={fixture_hash}:route_count={}:command=0:dispatch=0:provider=0",
+        route_matrix.route_count
+    ));
+    let policy_hash = sha256_text_value(
+        "runtime-provider-router-activation-command-noop-handoff:report-only:no-command-register:no-command-enable:no-command-invoke:no-dispatch:no-handoff-persist:no-provider:no-model:no-secret-read",
+    );
+
+    let mut report = source_activation_request.clone();
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "status": if report_ready { "ready" } else { "blocked" },
+            "gate": "hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_route",
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff --json",
+            "native_route": true,
+            "compatibility_mode": "native_runtime_provider_router_activation_command_noop_handoff_status",
+            "side_effect_free": true,
+            "audit_date": "2026-06-30",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_NOOP_HANDOFF_ENDPOINT,
+            "source_activation_request_denial_matrix_route_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_REQUEST_DENIAL_MATRIX_ENDPOINT,
+            "source_activation_request_denial_matrix_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix-gate.sh",
+            "source_activation_request_denial_matrix_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix-route-gate.sh",
+            "source_activation_command_noop_handoff_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff-gate.sh",
+            "source_activation_command_noop_handoff_route_gate": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff-route-gate.sh",
+            "source_activation_request_denial_matrix_report_sha256": source_report_sha256,
+            "activation_command_fixtures_sha256": fixture_hash,
+            "activation_command_contract_hash_sha256": contract_hash,
+            "activation_command_policy_hash_sha256": policy_hash,
+            "minimum_required_samples": 24,
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_cutover_floor": NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+            "route_count_floor_preserved": route_count_floor_preserved,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+            "source_route_wired": true,
+            "source_activation_request_denial_matrix_ready": source_activation_request_ready,
+            "source_activation_request_denial_matrix_status": source_str("runtime_provider_router_activation_request_denial_matrix_status"),
+            "source_runtime_model_provider_router": source_str("source_runtime_model_provider_router"),
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "runtime_provider_router_activation_command_noop_handoff_route_enabled": true,
+            "runtime_provider_router_activation_command_noop_handoff_ready": true,
+            "runtime_provider_router_activation_command_noop_handoff_status": "blocked",
+            "activation_command_noop_handoff_schema_version": "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_v1",
+            "activation_command_noop_handoff_mode": "runtime_provider_router_activation_command_noop_handoff_no_register_no_enable_no_invoke_no_dispatch",
+            "activation_command_noop_handoff_decision": "runtime_provider_router_activation_request_denial_matrix_cannot_create_or_authorize_activation_commands",
+            "runtime_provider_router_activation_request_denial_matrix_ready": source_bool("runtime_provider_router_activation_request_denial_matrix_ready"),
+            "runtime_provider_router_activation_request_denial_matrix_status": source_str("runtime_provider_router_activation_request_denial_matrix_status"),
+            "source_activation_request_fixture_count": source_u64("activation_request_fixture_count"),
+            "source_blocked_activation_request_fixture_count": source_u64("blocked_activation_request_fixture_count"),
+            "source_noop_activation_request_fixture_count": source_u64("noop_activation_request_fixture_count"),
+            "source_accepted_activation_request_fixture_count": source_u64("accepted_activation_request_fixture_count"),
+            "source_activation_request_performed_count": source_u64("activation_request_performed_count"),
+            "activation_command_surface_count": 13,
+            "activation_command_surface_ready_count": 13,
+            "activation_command_side_effect_free_surface_count": 13,
+            "activation_command_fixtures": activation_command_fixtures,
+            "activation_command_fixture_count": activation_command_fixture_count,
+            "activation_command_requested_fixture_count": activation_command_fixture_count,
+            "blocked_activation_command_fixture_count": activation_command_fixture_count,
+            "noop_activation_command_fixture_count": activation_command_fixture_count,
+            "allowed_activation_command_fixture_count": 0,
+            "accepted_activation_command_fixture_count": 0,
+            "activation_command_denied_count": 10,
+            "activation_command_performed_count": 0,
+            "activation_command_dispatch_performed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "activation_command_shape_registered": false,
+            "activation_command_allowed": false,
+            "activation_command_accepted": false,
+            "activation_command_enabled": false,
+            "activation_command_invoked": false,
+            "activation_command_dispatched": false,
+            "activation_command_noop_decision_recorded": false,
+            "activation_command_noop_decision_persisted": false,
+            "activation_command_noop_decision_accepted": false,
+            "activation_command_handoff_recorded": false,
+            "activation_command_handoff_persisted": false,
+            "activation_command_handoff_accepted": false,
+            "activation_command_handoff_materialized": false,
+            "activation_command_handoff_filesystem_written": false,
+            "activation_command_result_receipt_recorded": false,
+            "activation_command_result_receipt_persisted": false,
+            "activation_command_result_receipt_accepted": false,
+            "activation_command_result_receipt_exported": false,
+            "activation_command_result_receipt_query_registered": false,
+            "activation_command_result_receipt_observability_recorded": false,
+        }),
+    );
+    for key in [
+        "activation_request_allowed",
+        "activation_request_accepted",
+        "activation_request_recorded",
+        "activation_request_persisted",
+        "activation_request_materialized",
+        "activation_request_filesystem_written",
+        "activation_request_delivered",
+        "activation_request_executed",
+        "activation_activated",
+        "activation_nonce_accepted",
+        "activation_generation_accepted",
+        "runtime_router_mutated",
+        "runtime_attachment_performed",
+        "live_context_attached",
+        "context_injection_performed",
+        "adapter_invoked",
+        "provider_invoked",
+        "model_invoked",
+        "auth_secret_read",
+        "credential_read",
+        "secret_file_read",
+        "usage_recorded",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "receipt_export_allowed",
+        "receipt_exported",
+        "receipt_query_allowed",
+        "receipt_query_registered",
+        "receipt_observability_allowed",
+        "receipt_observability_recorded",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_accepted",
+        "receipt_materialized",
+        "receipt_filesystem_written",
+        "readback_evidence_recorded",
+        "readback_evidence_persisted",
+        "router_handoff_recorded",
+        "router_handoff_persisted",
+        "rollback_executed",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restart_performed",
+        "active_binary_mutated",
+    ] {
+        if let Some(report) = report.as_object_mut() {
+            report.insert(key.to_string(), serde_json::Value::Bool(false));
+        }
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "activation_command_surfaces": [
+                "source_activation_request_denial_matrix_report_required",
+                "activation_command_handoff_shape_denied",
+                "activation_command_registration_denied",
+                "activation_command_enablement_denied",
+                "activation_command_invocation_denied",
+                "activation_command_dispatch_denied",
+                "activation_command_handoff_record_persist_denied",
+                "live_context_context_injection_command_denied",
+                "adapter_provider_model_command_denied",
+                "memory_kg_command_denied",
+                "receipt_readback_router_handoff_command_denied",
+                "command_result_receipt_export_query_observability_denied",
+                "external_public_install_restart_active_binary_command_denied"
+            ],
+            "denied_by_activation_command_noop_handoff": denials,
+            "denied_by_activation_command_noop_handoff_count": 30,
+            "allowed_next_actions": [
+                {
+                    "action": "review_runtime_provider_router_activation_command_noop_handoff",
+                    "status": "allowed_report_only",
+                    "registers_command": false,
+                    "enables_command": false,
+                    "invokes_command": false,
+                    "dispatches_command": false,
+                    "persists_handoff": false,
+                    "invokes_model": false
+                },
+                {
+                    "action": "stage_runtime_provider_router_activation_command_result_receipt_no_persistence",
+                    "status": "allowed_report_only_next_slice",
+                    "records_command_result": false,
+                    "persists_command_result": false,
+                    "exports_receipt": false,
+                    "registers_observability": false,
+                    "mutates_runtime": false,
+                    "invokes_model": false
+                },
+                {
+                    "action": "run_full_light_preflight",
+                    "status": "allowed_verification_only",
+                    "mutates_runtime": false,
+                    "dispatches_command": false,
+                    "attaches_live_context": false,
+                    "invokes_model": false,
+                    "writes_kg": false
+                }
+            ],
+            "source_activation_request_denial_matrix_report_required": true,
+            "activation_command_registration_forbidden": true,
+            "activation_command_enablement_forbidden": true,
+            "activation_command_invocation_forbidden": true,
+            "activation_command_dispatch_forbidden": true,
+            "activation_command_handoff_persistence_forbidden": true,
+            "activation_command_result_receipt_persistence_forbidden": true,
+            "activation_request_acceptance_forbidden": true,
+            "activation_request_execution_forbidden": true,
+            "runtime_router_mutation_forbidden": true,
+            "live_context_attachment_forbidden": true,
+            "context_injection_forbidden": true,
+            "adapter_invocation_forbidden": true,
+            "provider_model_invocation_forbidden": true,
+            "memory_kg_write_forbidden": true,
+            "auth_secret_read_forbidden": true,
+            "usage_recording_forbidden": true,
+        }),
+    );
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "activation_command_shape_registered",
+            "activation_command_accepted",
+            "activation_command_enabled",
+            "activation_command_invoked",
+            "activation_command_dispatched",
+            "activation_command_dispatch_performed",
+            "activation_command_noop_decision_recorded",
+            "activation_command_noop_decision_persisted",
+            "activation_command_noop_decision_accepted",
+            "activation_command_handoff_recorded",
+            "activation_command_handoff_persisted",
+            "activation_command_handoff_accepted",
+            "activation_command_handoff_materialized",
+            "activation_command_handoff_filesystem_written",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_exported",
+            "activation_command_result_receipt_query_registered",
+            "activation_command_result_receipt_observability_recorded",
+            "activation_request_recorded",
+            "activation_request_persisted",
+            "activation_request_materialized",
+            "activation_request_filesystem_written",
+            "activation_request_delivered",
+            "activation_request_executed",
+            "activation_activated",
+            "activation_nonce_accepted",
+            "activation_generation_accepted",
+            "runtime_router_mutated",
+            "runtime_attachment_performed",
+            "live_context_attached",
+            "context_injection_performed",
+            "adapter_invoked",
+            "provider_invoked",
+            "model_invoked",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "usage_recorded",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "receipt_exported",
+            "receipt_query_registered",
+            "receipt_observability_recorded",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "receipt_materialized",
+            "receipt_filesystem_written",
+            "readback_evidence_recorded",
+            "readback_evidence_persisted",
+            "router_handoff_recorded",
+            "router_handoff_persisted",
+            "rollback_executed",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "filesystem_written",
+            "public_release_claimed",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            side_effects.insert(key.to_string(), serde_json::Value::Bool(false));
+        }
     }
     report
 }
@@ -104607,6 +105238,203 @@ mod tests {
             value["allowed_next_actions"][1]["executes_activation"],
             false
         );
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_endpoint_blocks_activation_commands()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_NOOP_HANDOFF_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("runtime provider-router activation command no-op handoff json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_NOOP_HANDOFF_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["runtime_provider_router_activation_command_noop_handoff_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_noop_handoff_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_noop_handoff_status"],
+            "blocked"
+        );
+        assert_eq!(
+            value["activation_command_noop_handoff_schema_version"],
+            "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_v1"
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_request_denial_matrix_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_request_denial_matrix_status"],
+            "blocked"
+        );
+        assert_eq!(value["source_activation_request_fixture_count"], 10);
+        assert_eq!(value["source_accepted_activation_request_fixture_count"], 0);
+        assert_eq!(value["source_activation_request_performed_count"], 0);
+        assert_eq!(value["activation_command_surface_count"], 13);
+        assert_eq!(value["activation_command_surface_ready_count"], 13);
+        assert_eq!(
+            value["activation_command_side_effect_free_surface_count"],
+            13
+        );
+        assert_eq!(value["activation_command_fixture_count"], 10);
+        assert_eq!(value["activation_command_requested_fixture_count"], 10);
+        assert_eq!(value["blocked_activation_command_fixture_count"], 10);
+        assert_eq!(value["noop_activation_command_fixture_count"], 10);
+        assert_eq!(value["allowed_activation_command_fixture_count"], 0);
+        assert_eq!(value["accepted_activation_command_fixture_count"], 0);
+        assert_eq!(value["activation_command_denied_count"], 10);
+        assert_eq!(value["activation_command_performed_count"], 0);
+        assert_eq!(value["activation_command_dispatch_performed_count"], 0);
+        for key in [
+            "activation_command_shape_registered",
+            "activation_command_allowed",
+            "activation_command_accepted",
+            "activation_command_enabled",
+            "activation_command_invoked",
+            "activation_command_dispatched",
+            "activation_command_noop_decision_recorded",
+            "activation_command_noop_decision_persisted",
+            "activation_command_noop_decision_accepted",
+            "activation_command_handoff_recorded",
+            "activation_command_handoff_persisted",
+            "activation_command_handoff_accepted",
+            "activation_command_handoff_materialized",
+            "activation_command_handoff_filesystem_written",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_exported",
+            "activation_command_result_receipt_query_registered",
+            "activation_command_result_receipt_observability_recorded",
+            "activation_request_accepted",
+            "activation_request_recorded",
+            "activation_request_persisted",
+            "activation_request_executed",
+            "activation_activated",
+            "runtime_router_mutated",
+            "runtime_attachment_performed",
+            "live_context_attached",
+            "context_injection_performed",
+            "adapter_invoked",
+            "provider_invoked",
+            "model_invoked",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "usage_recorded",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "readback_evidence_recorded",
+            "readback_evidence_persisted",
+            "router_handoff_recorded",
+            "router_handoff_persisted",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "runtime provider-router activation command field should stay false: {key}"
+            );
+        }
+
+        let fixtures = value["activation_command_fixtures"]
+            .as_array()
+            .expect("activation command no-op fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["activation_command_status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("blocked_"))
+                && fixture["activation_command_requested"].as_bool() == Some(true)
+                && fixture["activation_command_allowed"].as_bool() == Some(false)
+                && fixture["activation_command_accepted"].as_bool() == Some(false)
+                && fixture["activation_command_enabled"].as_bool() == Some(false)
+                && fixture["activation_command_invoked"].as_bool() == Some(false)
+                && fixture["activation_command_dispatched"].as_bool() == Some(false)
+                && fixture["activation_command_handoff_recorded"].as_bool() == Some(false)
+                && fixture["activation_command_result_receipt_recorded"].as_bool() == Some(false)
+                && fixture["activation_request_accepted"].as_bool() == Some(false)
+                && fixture["activation_request_executed"].as_bool() == Some(false)
+                && fixture["runtime_router_mutated"].as_bool() == Some(false)
+                && fixture["context_injection_performed"].as_bool() == Some(false)
+                && fixture["provider_invoked"].as_bool() == Some(false)
+                && fixture["model_invoked"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["live_kg_write_performed"].as_bool() == Some(false)
+                && fixture["credential_read"].as_bool() == Some(false)
+                && fixture["secret_file_read"].as_bool() == Some(false)
+                && fixture["channel_send_performed"].as_bool() == Some(false)
+                && fixture["service_restart_performed"].as_bool() == Some(false)
+                && fixture["active_binary_mutated"].as_bool() == Some(false)
+                && fixture["activation_command_noop_confirmed"].as_bool() == Some(true)
+        }));
+
+        let denied = value["denied_by_activation_command_noop_handoff"]
+            .as_array()
+            .expect("activation command no-op denials");
+        assert_eq!(denied.len(), 30);
+        assert_eq!(value["denied_by_activation_command_noop_handoff_count"], 30);
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("activation command no-op side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "review_runtime_provider_router_activation_command_noop_handoff"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["registers_command"], false);
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "stage_runtime_provider_router_activation_command_result_receipt_no_persistence"
+        );
+        assert_eq!(value["allowed_next_actions"][1]["invokes_model"], false);
     }
 
     #[test]
