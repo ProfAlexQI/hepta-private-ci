@@ -963,6 +963,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-act
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt cancellation supersession denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt cancellation supersession denial route gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt audit trail immutable evidence denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-audit-trail-immutable-evidence-denial-gate.sh
 

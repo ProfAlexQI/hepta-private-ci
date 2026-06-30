@@ -134,6 +134,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIV
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_ACCEPTANCE_RECEIPT_LANE_ENDPOINT: &str =
@@ -394,7 +396,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 216;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 217;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -697,6 +699,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial",
         side_effect_boundary: "read-only runtime provider-router activation command result receipt ordering/monotonicity denial boundary; proves out-of-order, gap, rollback, latest-wins, sequence-cursor, monotonicity-state, stage, ledger/index/delivery, runtime/provider/model, Memory/KG, external, install, restart, binary mutation, and public claim ordering surfaces remain no-op and cannot derive activation authority",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial",
+        side_effect_boundary: "read-only runtime provider-router activation command result receipt cancellation/supersession denial boundary; proves cancellation, supersession, replacement receipt, replacement hash, tombstone, delete marker, completion-ack, ledger/index/delivery/export/query/observability, runtime/provider/model, Memory/KG, external, install, restart, binary mutation, and public claim lifecycle surfaces remain no-op and cannot derive activation authority",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2476,6 +2485,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_report(),
                     ),
                 );
             }
@@ -17371,6 +17390,599 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
             "activation_command_result_receipt_monotonicity_state_recorded",
             "activation_command_result_receipt_monotonicity_state_persisted",
             "activation_from_ordering_allowed",
+            "activation_command_enabled",
+            "activation_command_invoked",
+            "activation_command_dispatched",
+            "activation_request_recorded",
+            "activation_request_executed",
+            "runtime_router_mutated",
+            "context_injection_performed",
+            "provider_invoked",
+            "model_invoked",
+            "memory_store_write_performed",
+            "live_kg_write_performed",
+            "credential_read",
+            "secret_file_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "install_executed",
+            "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            side_effects.insert(key.to_string(), serde_json::Value::Bool(false));
+        }
+    }
+    report
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_ordering =
+        hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_report();
+    let source_bool = |key: &str| {
+        source_ordering
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source_ordering
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_str = |key: &str| {
+        source_ordering
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("blocked")
+            .to_string()
+    };
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_ordering_ready = source_str("status") == "ready"
+        && source_bool(
+            "runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_ready",
+        )
+        && source_str(
+            "runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_status",
+        ) == "blocked"
+        && source_u64("accepted_ordering_monotonicity_fixture_count") == 0
+        && source_u64("ordering_monotonicity_performed_count") == 0
+        && source_u64("sequence_cursor_recorded_count") == 0
+        && source_u64("monotonicity_state_recorded_count") == 0;
+    let report_ready = source_ordering_ready && route_count_source_command_accepted;
+
+    let cancellation_supersession_fixture =
+        |fixture_id: &str, status: &str, reason: &str, extra: serde_json::Value| {
+            let mut fixture = serde_json::Map::new();
+            fixture.insert(
+                "fixture_id".to_string(),
+                serde_json::Value::String(fixture_id.to_string()),
+            );
+            fixture.insert(
+                "id".to_string(),
+                serde_json::Value::String(fixture_id.to_string()),
+            );
+            fixture.insert(
+                "cancellation_supersession_status".to_string(),
+                serde_json::Value::String(status.to_string()),
+            );
+            fixture.insert(
+                "denial_reason".to_string(),
+                serde_json::Value::String(reason.to_string()),
+            );
+            for key in [
+                "source_ordering_monotonicity_present",
+                "source_ordering_monotonicity_ready",
+                "canonical_noop_result_receipt_lifecycle_identity_required",
+                "receipt_noop_confirmed",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(true));
+            }
+            for key in [
+                "cancellation_requested",
+                "supersession_requested",
+                "replacement_receipt_requested",
+                "replacement_hash_requested",
+                "tombstone_requested",
+                "delete_marker_requested",
+                "completion_ack_cancellation_requested",
+                "ledger_cancellation_requested",
+                "index_cancellation_requested",
+                "delivery_cancellation_requested",
+                "export_cancellation_requested",
+                "query_cancellation_requested",
+                "observability_cancellation_requested",
+                "runtime_router_supersession_requested",
+                "provider_supersession_requested",
+                "model_supersession_requested",
+                "memory_store_supersession_requested",
+                "live_kg_supersession_requested",
+                "rollback_supersession_requested",
+                "secret_material_supersession_requested",
+                "external_send_supersession_requested",
+                "public_claim_supersession_requested",
+                "install_supersession_requested",
+                "service_restart_supersession_requested",
+                "active_binary_mutation_supersession_requested",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(false));
+            }
+            for key in [
+                "activation_command_result_receipt_cancellation_allowed",
+                "activation_command_result_receipt_cancellation_recorded",
+                "activation_command_result_receipt_cancellation_persisted",
+                "activation_command_result_receipt_cancellation_request_accepted",
+                "activation_command_result_receipt_supersession_allowed",
+                "activation_command_result_receipt_supersession_recorded",
+                "activation_command_result_receipt_supersession_persisted",
+                "activation_command_result_receipt_supersession_request_accepted",
+                "activation_command_result_receipt_replacement_receipt_accepted",
+                "activation_command_result_receipt_replacement_receipt_recorded",
+                "activation_command_result_receipt_replacement_receipt_persisted",
+                "activation_command_result_receipt_replacement_hash_accepted",
+                "activation_command_result_receipt_tombstone_recorded",
+                "activation_command_result_receipt_tombstone_persisted",
+                "activation_command_result_receipt_delete_marker_recorded",
+                "activation_command_result_receipt_ack_cancellation_accepted",
+                "activation_command_result_receipt_ledger_cancellation_accepted",
+                "activation_command_result_receipt_index_cancellation_accepted",
+                "activation_command_result_receipt_delivery_cancellation_accepted",
+                "activation_command_result_receipt_export_cancellation_accepted",
+                "activation_command_result_receipt_query_cancellation_accepted",
+                "activation_command_result_receipt_observability_cancellation_accepted",
+                "activation_command_result_receipt_ordering_allowed",
+                "activation_command_result_receipt_ordering_recorded",
+                "activation_command_result_receipt_ordering_persisted",
+                "activation_command_result_receipt_sequence_cursor_accepted",
+                "activation_command_result_receipt_sequence_cursor_recorded",
+                "activation_command_result_receipt_sequence_cursor_persisted",
+                "activation_command_result_receipt_monotonicity_state_recorded",
+                "activation_command_result_receipt_monotonicity_state_persisted",
+                "activation_command_result_receipt_latest_wins_overwrite_accepted",
+                "activation_command_result_receipt_same_sequence_hash_override_accepted",
+                "activation_command_result_receipt_recorded",
+                "activation_command_result_receipt_persisted",
+                "activation_command_result_receipt_accepted",
+                "activation_command_result_receipt_materialized",
+                "activation_command_result_receipt_filesystem_written",
+                "activation_command_result_receipt_ledger_written",
+                "activation_command_result_receipt_indexed",
+                "activation_command_result_receipt_enqueued",
+                "activation_command_result_receipt_delivered",
+                "activation_command_result_receipt_exported",
+                "activation_command_result_receipt_query_registered",
+                "activation_command_result_receipt_observability_recorded",
+                "activation_command_completion_ack_recorded",
+                "activation_command_completion_ack_persisted",
+                "activation_command_completion_ack_accepted",
+                "activation_command_completion_ack_delivered",
+                "activation_from_cancellation_allowed",
+                "activation_from_supersession_allowed",
+                "activation_from_ordering_allowed",
+                "activation_from_replay_allowed",
+                "activation_from_receipt_allowed",
+                "activation_command_enabled",
+                "activation_command_invoked",
+                "activation_command_dispatched",
+                "activation_command_dispatch_performed",
+                "activation_request_accepted",
+                "activation_request_recorded",
+                "activation_request_persisted",
+                "activation_request_executed",
+                "activation_activated",
+                "runtime_router_mutated",
+                "runtime_attachment_performed",
+                "live_context_attached",
+                "context_injection_performed",
+                "adapter_invoked",
+                "provider_invoked",
+                "model_invoked",
+                "auth_secret_read",
+                "credential_read",
+                "secret_file_read",
+                "usage_recorded",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "live_kg_write_performed",
+                "readback_evidence_recorded",
+                "readback_evidence_persisted",
+                "router_handoff_recorded",
+                "router_handoff_persisted",
+                "rollback_executed",
+                "telegram_send_performed",
+                "channel_send_performed",
+                "external_send_performed",
+                "public_release_claimed",
+                "public_ga_claimed",
+                "release_artifact_written",
+                "install_executed",
+                "launchd_mutated",
+                "service_restart_performed",
+                "active_binary_mutated",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(false));
+            }
+            let mut fixture = serde_json::Value::Object(fixture);
+            extend_json_object(&mut fixture, extra);
+            fixture
+        };
+    let cancellation_supersession_fixtures = serde_json::Value::Array(vec![
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-cancellation-missing-source-ordering-report",
+            "blocked_noop",
+            "source_ordering_monotonicity_report_required",
+            serde_json::json!({
+                "source_ordering_monotonicity_present": false,
+                "source_ordering_monotonicity_ready": false,
+                "cancellation_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-cancel-blocked-noop",
+            "blocked_cancellation_noop",
+            "cancel_after_blocked_noop_denied",
+            serde_json::json!({
+                "cancellation_requested": true,
+                "cancel_after_blocked_noop_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-supersede-with-completed",
+            "blocked_supersession_noop",
+            "supersede_blocked_noop_with_completed_denied",
+            serde_json::json!({
+                "supersession_requested": true,
+                "supersede_with_completed_receipt_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-replacement-hash",
+            "blocked_replacement_noop",
+            "replacement_receipt_hash_denied",
+            serde_json::json!({
+                "replacement_receipt_requested": true,
+                "replacement_hash_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-tombstone-delete-marker",
+            "blocked_tombstone_noop",
+            "tombstone_delete_marker_denied",
+            serde_json::json!({
+                "tombstone_requested": true,
+                "delete_marker_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-completion-ack-cancel",
+            "blocked_cancellation_noop",
+            "completion_ack_cancellation_denied",
+            serde_json::json!({
+                "cancellation_requested": true,
+                "completion_ack_cancellation_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-ledger-index-delivery-export-cancel",
+            "blocked_cancellation_noop",
+            "ledger_index_delivery_export_cancellation_denied",
+            serde_json::json!({
+                "cancellation_requested": true,
+                "ledger_cancellation_requested": true,
+                "index_cancellation_requested": true,
+                "delivery_cancellation_requested": true,
+                "export_cancellation_requested": true,
+                "query_cancellation_requested": true,
+                "observability_cancellation_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-runtime-provider-model-supersede",
+            "blocked_supersession_noop",
+            "runtime_provider_model_supersession_denied",
+            serde_json::json!({
+                "supersession_requested": true,
+                "runtime_router_supersession_requested": true,
+                "provider_supersession_requested": true,
+                "model_supersession_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-memory-kg-rollback-secret-supersede",
+            "blocked_supersession_noop",
+            "memory_kg_rollback_secret_supersession_denied",
+            serde_json::json!({
+                "supersession_requested": true,
+                "memory_store_supersession_requested": true,
+                "live_kg_supersession_requested": true,
+                "rollback_supersession_requested": true,
+                "secret_material_supersession_requested": true,
+            }),
+        ),
+        cancellation_supersession_fixture(
+            "provider-router-activation-command-result-receipt-external-public-install-supersede",
+            "blocked_supersession_noop",
+            "external_public_install_supersession_denied",
+            serde_json::json!({
+                "supersession_requested": true,
+                "external_send_supersession_requested": true,
+                "public_claim_supersession_requested": true,
+                "install_supersession_requested": true,
+                "service_restart_supersession_requested": true,
+                "active_binary_mutation_supersession_requested": true,
+            }),
+        ),
+    ]);
+    let cancellation_supersession_fixture_count = cancellation_supersession_fixtures
+        .as_array()
+        .map(std::vec::Vec::len)
+        .unwrap_or(0);
+    let fixture_hash = sha256_json_value(&cancellation_supersession_fixtures);
+    let source_ordering_hash = sha256_json_value(&source_ordering);
+    let contract_hash = sha256_text_value(&format!(
+        "runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial:v1:source={source_ordering_hash}:fixtures={fixture_hash}:cancel=0:supersede=0:replacement=0:tombstone=0:delete=0:persist=0:authority=0"
+    ));
+    let policy_hash = sha256_text_value(
+        "runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial:v1:no-cancel:no-supersede:no-replacement:no-tombstone:no-delete:no-ack-cancel:no-ledger-index-delivery-export-query-observe:no-runtime-provider-model-memory-kg-external-install-restart-binary-public-authority",
+    );
+    let side_effect_hash = sha256_text_value(
+        "runtime-provider-router-cancellation-supersession-side-effects=false;fixtures=10;cancel=0;supersede=0;replacement=0;tombstone=0;delete=0;record=0;persist=0;activation=0;provider=0;model=0;memory=0;kg=0;secret=0",
+    );
+    let denials = vec![
+        "source_ordering_monotonicity_report_required",
+        "cancellation_request_acceptance_denied",
+        "cancellation_recording_denied",
+        "cancellation_persistence_denied",
+        "supersession_request_acceptance_denied",
+        "supersession_recording_denied",
+        "supersession_persistence_denied",
+        "replacement_receipt_acceptance_denied",
+        "replacement_receipt_recording_denied",
+        "replacement_receipt_persistence_denied",
+        "replacement_hash_acceptance_denied",
+        "tombstone_recording_denied",
+        "delete_marker_recording_denied",
+        "cancel_after_blocked_noop_denied",
+        "supersede_blocked_noop_with_completed_denied",
+        "completion_ack_cancellation_denied",
+        "ledger_cancellation_denied",
+        "index_cancellation_denied",
+        "delivery_cancellation_denied",
+        "export_query_observability_cancellation_denied",
+        "runtime_router_supersession_denied",
+        "live_context_supersession_denied",
+        "adapter_provider_model_supersession_denied",
+        "usage_memory_kg_supersession_denied",
+        "rollback_secret_material_supersession_denied",
+        "external_public_release_supersession_denied",
+        "install_restart_active_binary_supersession_denied",
+    ];
+    let denied_count = denials.len();
+    let denials_value = serde_json::Value::Array(
+        denials
+            .iter()
+            .map(|denial| serde_json::Value::String((*denial).to_string()))
+            .collect(),
+    );
+
+    let mut report = source_ordering.clone();
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "status": if report_ready { "ready" } else { "blocked" },
+            "gate": "hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_route",
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial --json",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT,
+            "native_route": true,
+            "compatibility_mode": "native_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_status",
+            "side_effect_free": true,
+            "source_activation_command_result_receipt_ordering_monotonicity_route_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
+            "source_activation_command_result_receipt_ordering_monotonicity_gate": source_str("gate"),
+            "source_activation_command_result_receipt_ordering_monotonicity_ready": source_ordering_ready,
+            "source_activation_command_result_receipt_ordering_monotonicity_status": source_str("runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_status"),
+            "source_activation_command_result_receipt_ordering_monotonicity_report_sha256": source_ordering_hash,
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_cutover_floor": NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+            "route_count_floor_preserved": route_count_floor_preserved,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+            "source_route_wired": true,
+            "operator_authorization_received": true,
+            "fresh_evidence_review_requested": true,
+            "explicit_command_path_reviewed": true,
+            "accepted_operator_approval_consumed": false,
+            "activation_authority_derived": false,
+            "runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_route_enabled": true,
+            "runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_ready": true,
+            "runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_status": "blocked",
+            "activation_command_result_receipt_cancellation_supersession_schema_version": "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_v1",
+            "activation_command_result_receipt_cancellation_supersession_mode": "runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_no_cancel_no_supersede_no_replacement_persist",
+            "activation_command_result_receipt_cancellation_supersession_decision": "runtime_provider_router_activation_command_result_receipt_cannot_cancel_supersede_replace_tombstone_delete_or_derive_activation_authority",
+            "minimum_required_samples": 24,
+            "cancellation_supersession_fixtures_sha256": fixture_hash,
+            "cancellation_supersession_contract_hash_sha256": contract_hash,
+            "cancellation_supersession_policy_hash_sha256": policy_hash,
+            "side_effect_hash_sha256": side_effect_hash,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "source_ordering_monotonicity_fixture_count": source_u64("ordering_monotonicity_fixture_count"),
+            "source_blocked_ordering_monotonicity_fixture_count": source_u64("blocked_ordering_monotonicity_fixture_count"),
+            "source_accepted_ordering_monotonicity_fixture_count": source_u64("accepted_ordering_monotonicity_fixture_count"),
+            "cancellation_supersession_surface_count": 14,
+            "cancellation_supersession_surface_ready_count": 14,
+            "cancellation_supersession_side_effect_free_surface_count": 14,
+            "cancellation_supersession_surfaces": [
+                "source_ordering_monotonicity_report_required",
+                "cancellation_request_shape_denied",
+                "supersession_request_shape_denied",
+                "replacement_receipt_hash_denied",
+                "tombstone_or_delete_marker_denied",
+                "cancel_after_blocked_noop_denied",
+                "supersede_blocked_noop_with_completed_denied",
+                "acknowledgement_cancellation_denied",
+                "ledger_index_delivery_export_query_observability_cancellation_denied",
+                "runtime_router_live_context_supersession_denied",
+                "adapter_provider_model_usage_supersession_denied",
+                "memory_kg_rollback_secret_supersession_denied",
+                "external_public_install_restart_active_binary_supersession_denied",
+                "activation_authority_from_cancellation_supersession_denied"
+            ],
+            "cancellation_supersession_fixtures": cancellation_supersession_fixtures,
+            "cancellation_supersession_fixture_count": cancellation_supersession_fixture_count,
+            "blocked_cancellation_supersession_fixture_count": cancellation_supersession_fixture_count,
+            "noop_cancellation_supersession_fixture_count": cancellation_supersession_fixture_count,
+            "allowed_cancellation_supersession_fixture_count": 0,
+            "accepted_cancellation_supersession_fixture_count": 0,
+            "cancellation_fixture_count": 5,
+            "supersession_fixture_count": 5,
+            "cancellation_denied_count": 5,
+            "supersession_denied_count": 5,
+            "cancellation_performed_count": 0,
+            "supersession_performed_count": 0,
+            "replacement_receipt_accepted_count": 0,
+            "replacement_receipt_recorded_count": 0,
+            "replacement_receipt_persisted_count": 0,
+            "tombstone_recorded_count": 0,
+            "delete_marker_recorded_count": 0,
+            "denied_by_cancellation_supersession": denials_value.clone(),
+            "denied_by_cancellation_supersession_count": denied_count,
+            "denied_by_activation_command_result_receipt_cancellation_supersession": denials_value,
+            "denied_by_activation_command_result_receipt_cancellation_supersession_count": denied_count,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "review_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial",
+                    "status": "allowed_report_only",
+                    "accepts_cancellation": false,
+                    "accepts_supersession": false,
+                    "persists_replacement_receipt": false,
+                    "mutates_runtime": false,
+                    "invokes_model": false
+                },
+                {
+                    "action": "stage_runtime_provider_router_activation_command_result_receipt_audit_trail_immutable_evidence_denial",
+                    "status": "allowed_report_only_next_slice",
+                    "accepts_cancellation": false,
+                    "accepts_supersession": false,
+                    "writes_audit_trail": false,
+                    "persists_evidence": false,
+                    "mutates_runtime": false,
+                    "invokes_model": false
+                },
+                {
+                    "action": "run_full_light_preflight",
+                    "status": "allowed_verification_only",
+                    "accepts_cancellation": false,
+                    "accepts_supersession": false,
+                    "persists_replacement_receipt": false,
+                    "mutates_runtime": false,
+                    "invokes_model": false,
+                    "writes_kg": false
+                }
+            ],
+        }),
+    );
+    if let Some(report_object) = report.as_object_mut() {
+        for key in [
+            "activation_command_result_receipt_cancellation_allowed",
+            "activation_command_result_receipt_cancellation_recorded",
+            "activation_command_result_receipt_cancellation_persisted",
+            "activation_command_result_receipt_cancellation_request_accepted",
+            "activation_command_result_receipt_supersession_allowed",
+            "activation_command_result_receipt_supersession_recorded",
+            "activation_command_result_receipt_supersession_persisted",
+            "activation_command_result_receipt_supersession_request_accepted",
+            "activation_command_result_receipt_replacement_receipt_accepted",
+            "activation_command_result_receipt_replacement_receipt_recorded",
+            "activation_command_result_receipt_replacement_receipt_persisted",
+            "activation_command_result_receipt_replacement_hash_accepted",
+            "activation_command_result_receipt_tombstone_recorded",
+            "activation_command_result_receipt_tombstone_persisted",
+            "activation_command_result_receipt_delete_marker_recorded",
+            "activation_command_result_receipt_ack_cancellation_accepted",
+            "activation_command_result_receipt_ledger_cancellation_accepted",
+            "activation_command_result_receipt_index_cancellation_accepted",
+            "activation_command_result_receipt_delivery_cancellation_accepted",
+            "activation_command_result_receipt_export_cancellation_accepted",
+            "activation_command_result_receipt_query_cancellation_accepted",
+            "activation_command_result_receipt_observability_cancellation_accepted",
+            "activation_from_cancellation_allowed",
+            "activation_from_supersession_allowed",
+            "activation_from_ordering_allowed",
+            "activation_from_replay_allowed",
+            "activation_from_receipt_allowed",
+            "activation_command_enabled",
+            "activation_command_invoked",
+            "activation_command_dispatched",
+            "activation_request_accepted",
+            "activation_request_recorded",
+            "activation_request_persisted",
+            "activation_request_executed",
+            "activation_activated",
+            "runtime_router_mutated",
+            "runtime_attachment_performed",
+            "live_context_attached",
+            "context_injection_performed",
+            "adapter_invoked",
+            "provider_invoked",
+            "model_invoked",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "usage_recorded",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "readback_evidence_recorded",
+            "readback_evidence_persisted",
+            "router_handoff_recorded",
+            "router_handoff_persisted",
+            "rollback_executed",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "public_release_claimed",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            report_object.insert(key.to_string(), serde_json::Value::Bool(false));
+        }
+    }
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "activation_command_result_receipt_cancellation_recorded",
+            "activation_command_result_receipt_cancellation_persisted",
+            "activation_command_result_receipt_supersession_recorded",
+            "activation_command_result_receipt_supersession_persisted",
+            "activation_command_result_receipt_replacement_receipt_recorded",
+            "activation_command_result_receipt_replacement_receipt_persisted",
+            "activation_command_result_receipt_tombstone_recorded",
+            "activation_command_result_receipt_delete_marker_recorded",
+            "activation_from_cancellation_allowed",
+            "activation_from_supersession_allowed",
             "activation_command_enabled",
             "activation_command_invoked",
             "activation_command_dispatched",
@@ -108292,6 +108904,360 @@ mod tests {
             value["allowed_next_actions"][1]["accepts_supersession"],
             false
         );
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_endpoint_blocks_lifecycle()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "runtime provider-router activation command result receipt cancellation/supersession json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_status"],
+            "blocked"
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_cancellation_supersession_schema_version"],
+            "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_v1"
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_ordering_monotonicity_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_ordering_monotonicity_status"],
+            "blocked"
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_status"],
+            "blocked"
+        );
+        assert_eq!(value["operator_authorization_received"], true);
+        assert_eq!(value["fresh_evidence_review_requested"], true);
+        assert_eq!(value["explicit_command_path_reviewed"], true);
+        assert_eq!(value["accepted_operator_approval_consumed"], false);
+        assert_eq!(value["activation_authority_derived"], false);
+        assert_eq!(value["source_ordering_monotonicity_fixture_count"], 10);
+        assert_eq!(
+            value["source_accepted_ordering_monotonicity_fixture_count"],
+            0
+        );
+        assert_eq!(value["cancellation_supersession_surface_count"], 14);
+        assert_eq!(value["cancellation_supersession_surface_ready_count"], 14);
+        assert_eq!(
+            value["cancellation_supersession_side_effect_free_surface_count"],
+            14
+        );
+        assert_eq!(value["cancellation_supersession_fixture_count"], 10);
+        assert_eq!(value["blocked_cancellation_supersession_fixture_count"], 10);
+        assert_eq!(value["noop_cancellation_supersession_fixture_count"], 10);
+        assert_eq!(value["allowed_cancellation_supersession_fixture_count"], 0);
+        assert_eq!(value["accepted_cancellation_supersession_fixture_count"], 0);
+        assert_eq!(value["cancellation_fixture_count"], 5);
+        assert_eq!(value["supersession_fixture_count"], 5);
+        assert_eq!(value["cancellation_denied_count"], 5);
+        assert_eq!(value["supersession_denied_count"], 5);
+        assert_eq!(value["cancellation_performed_count"], 0);
+        assert_eq!(value["supersession_performed_count"], 0);
+        assert_eq!(value["replacement_receipt_accepted_count"], 0);
+        assert_eq!(value["replacement_receipt_recorded_count"], 0);
+        assert_eq!(value["replacement_receipt_persisted_count"], 0);
+        assert_eq!(value["tombstone_recorded_count"], 0);
+        assert_eq!(value["delete_marker_recorded_count"], 0);
+        for key in [
+            "activation_command_result_receipt_cancellation_allowed",
+            "activation_command_result_receipt_cancellation_recorded",
+            "activation_command_result_receipt_cancellation_persisted",
+            "activation_command_result_receipt_cancellation_request_accepted",
+            "activation_command_result_receipt_supersession_allowed",
+            "activation_command_result_receipt_supersession_recorded",
+            "activation_command_result_receipt_supersession_persisted",
+            "activation_command_result_receipt_supersession_request_accepted",
+            "activation_command_result_receipt_replacement_receipt_accepted",
+            "activation_command_result_receipt_replacement_receipt_recorded",
+            "activation_command_result_receipt_replacement_receipt_persisted",
+            "activation_command_result_receipt_replacement_hash_accepted",
+            "activation_command_result_receipt_tombstone_recorded",
+            "activation_command_result_receipt_tombstone_persisted",
+            "activation_command_result_receipt_delete_marker_recorded",
+            "activation_command_result_receipt_ack_cancellation_accepted",
+            "activation_command_result_receipt_ledger_cancellation_accepted",
+            "activation_command_result_receipt_index_cancellation_accepted",
+            "activation_command_result_receipt_delivery_cancellation_accepted",
+            "activation_command_result_receipt_export_cancellation_accepted",
+            "activation_command_result_receipt_query_cancellation_accepted",
+            "activation_command_result_receipt_observability_cancellation_accepted",
+            "activation_command_result_receipt_ordering_allowed",
+            "activation_command_result_receipt_ordering_recorded",
+            "activation_command_result_receipt_ordering_persisted",
+            "activation_command_result_receipt_sequence_cursor_recorded",
+            "activation_command_result_receipt_monotonicity_state_recorded",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_completion_ack_recorded",
+            "activation_command_completion_ack_accepted",
+            "activation_from_cancellation_allowed",
+            "activation_from_supersession_allowed",
+            "activation_from_ordering_allowed",
+            "activation_from_replay_allowed",
+            "activation_from_receipt_allowed",
+            "activation_command_enabled",
+            "activation_command_invoked",
+            "activation_command_dispatched",
+            "activation_request_accepted",
+            "activation_request_recorded",
+            "activation_request_executed",
+            "activation_activated",
+            "runtime_router_mutated",
+            "runtime_attachment_performed",
+            "live_context_attached",
+            "context_injection_performed",
+            "adapter_invoked",
+            "provider_invoked",
+            "model_invoked",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "usage_recorded",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "readback_evidence_recorded",
+            "readback_evidence_persisted",
+            "router_handoff_recorded",
+            "router_handoff_persisted",
+            "rollback_executed",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "public_release_claimed",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "runtime provider-router cancellation/supersession field should stay false: {key}"
+            );
+        }
+
+        let fixtures = value["cancellation_supersession_fixtures"]
+            .as_array()
+            .expect("runtime provider-router cancellation/supersession fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["cancellation_supersession_status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("blocked_"))
+                && fixture["activation_command_result_receipt_cancellation_allowed"].as_bool()
+                    == Some(false)
+                && fixture["activation_command_result_receipt_cancellation_recorded"].as_bool()
+                    == Some(false)
+                && fixture["activation_command_result_receipt_supersession_allowed"].as_bool()
+                    == Some(false)
+                && fixture["activation_command_result_receipt_supersession_recorded"].as_bool()
+                    == Some(false)
+                && fixture["activation_command_result_receipt_replacement_receipt_accepted"]
+                    .as_bool()
+                    == Some(false)
+                && fixture["activation_command_result_receipt_replacement_receipt_recorded"]
+                    .as_bool()
+                    == Some(false)
+                && fixture["activation_command_result_receipt_tombstone_recorded"].as_bool()
+                    == Some(false)
+                && fixture["activation_command_result_receipt_delete_marker_recorded"].as_bool()
+                    == Some(false)
+                && fixture["activation_from_cancellation_allowed"].as_bool() == Some(false)
+                && fixture["activation_from_supersession_allowed"].as_bool() == Some(false)
+                && fixture["activation_command_enabled"].as_bool() == Some(false)
+                && fixture["activation_command_invoked"].as_bool() == Some(false)
+                && fixture["activation_command_dispatched"].as_bool() == Some(false)
+                && fixture["activation_request_accepted"].as_bool() == Some(false)
+                && fixture["activation_request_executed"].as_bool() == Some(false)
+                && fixture["runtime_router_mutated"].as_bool() == Some(false)
+                && fixture["context_injection_performed"].as_bool() == Some(false)
+                && fixture["provider_invoked"].as_bool() == Some(false)
+                && fixture["model_invoked"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["live_kg_write_performed"].as_bool() == Some(false)
+                && fixture["credential_read"].as_bool() == Some(false)
+                && fixture["secret_file_read"].as_bool() == Some(false)
+                && fixture["channel_send_performed"].as_bool() == Some(false)
+                && fixture["service_restart_performed"].as_bool() == Some(false)
+                && fixture["active_binary_mutated"].as_bool() == Some(false)
+                && fixture["receipt_noop_confirmed"].as_bool() == Some(true)
+        }));
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["source_ordering_monotonicity_present"] == false)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["cancellation_requested"] == true)
+                .count(),
+            4
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["supersession_requested"] == true)
+                .count(),
+            4
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["replacement_receipt_requested"] == true
+                    && fixture["replacement_hash_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["tombstone_requested"] == true
+                    && fixture["delete_marker_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["completion_ack_cancellation_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["ledger_cancellation_requested"] == true
+                    && fixture["index_cancellation_requested"] == true
+                    && fixture["delivery_cancellation_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(
+                    |fixture| fixture["runtime_router_supersession_requested"] == true
+                        && fixture["provider_supersession_requested"] == true
+                        && fixture["model_supersession_requested"] == true
+                )
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(
+                    |fixture| fixture["memory_store_supersession_requested"] == true
+                        && fixture["live_kg_supersession_requested"] == true
+                        && fixture["secret_material_supersession_requested"] == true
+                )
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(
+                    |fixture| fixture["external_send_supersession_requested"] == true
+                        && fixture["install_supersession_requested"] == true
+                        && fixture["active_binary_mutation_supersession_requested"] == true
+                )
+                .count(),
+            1
+        );
+
+        let denied = value["denied_by_activation_command_result_receipt_cancellation_supersession"]
+            .as_array()
+            .expect("runtime provider-router cancellation/supersession denials");
+        assert_eq!(denied.len(), 27);
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt_cancellation_supersession_count"],
+            27
+        );
+        assert_eq!(value["denied_by_cancellation_supersession_count"], 27);
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("runtime provider-router cancellation/supersession side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "review_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["persists_replacement_receipt"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "stage_runtime_provider_router_activation_command_result_receipt_audit_trail_immutable_evidence_denial"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["writes_audit_trail"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][1]["persists_evidence"], false);
     }
 
     #[test]
