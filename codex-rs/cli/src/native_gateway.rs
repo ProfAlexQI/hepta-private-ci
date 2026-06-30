@@ -144,6 +144,8 @@ const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIV
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-export-query-observability-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial";
+const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT: &str =
+    "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_MATERIALIZATION_LANE_ENDPOINT: &str =
     "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-materialization-lane";
 const HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_ACCEPTANCE_RECEIPT_LANE_ENDPOINT: &str =
@@ -404,7 +406,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 221;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 222;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -742,6 +744,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial --json",
         capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial",
         side_effect_boundary: "read-only runtime provider-router activation command result receipt operator-facing summary/briefing non-persistence denial boundary; proves denied result receipts cannot record, persist, materialize, deliver, or derive activation authority from operator summaries or briefings, invoke providers/models, write Memory/KG, read credentials, mutate binaries, or claim public release",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT,
+        source_command: "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial --json",
+        capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial",
+        side_effect_boundary: "read-only runtime provider-router activation command result receipt final operator acknowledgement non-acceptance denial boundary; proves denied result receipts cannot accept, record, persist, materialize, deliver, or promote final operator acknowledgement into activation authority, provider/model invocation, Memory/KG writes, credential reads, channel/external sends, install/restart, binary mutation, artifact publication, or public claim",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2571,6 +2580,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_report(),
                     ),
                 );
             }
@@ -21108,6 +21127,673 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
             "install_executed",
             "launchd_mutated",
             "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            side_effects.insert(key.to_string(), serde_json::Value::Bool(false));
+        }
+    }
+    report
+}
+
+fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_summary =
+        hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_report();
+    let source_bool = |key: &str| {
+        source_summary
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source_summary
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_str = |key: &str| {
+        source_summary
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("blocked")
+            .to_string()
+    };
+    let source_hash_str = |key: &str| {
+        source_summary
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let source_status = source_str(
+        "runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_status",
+    );
+    let source_ready = source_str("status") == "ready"
+        && source_status == "blocked"
+        && source_bool(
+            "runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_ready",
+        )
+        && source_u64("operator_facing_summary_briefing_surface_count") == 12
+        && source_u64("operator_facing_summary_briefing_fixture_count") == 10
+        && source_u64("accepted_operator_facing_summary_briefing_fixture_count") == 0
+        && source_u64("operator_summary_performed_count") == 0
+        && source_u64("operator_briefing_performed_count") == 0
+        && source_u64("operator_summary_briefing_delivery_performed_count") == 0
+        && !source_bool("activation_command_result_receipt_operator_summary_recorded")
+        && !source_bool("activation_command_result_receipt_operator_summary_persisted")
+        && !source_bool("activation_command_result_receipt_operator_summary_delivered")
+        && !source_bool("activation_command_result_receipt_operator_briefing_recorded")
+        && !source_bool("activation_command_result_receipt_operator_briefing_persisted")
+        && !source_bool("activation_command_result_receipt_operator_briefing_delivered")
+        && !source_bool(
+            "activation_command_result_receipt_operator_summary_briefing_channel_delivery_performed",
+        )
+        && !source_bool("telegram_send_performed")
+        && !source_bool("channel_send_performed")
+        && !source_bool("external_send_performed")
+        && !source_bool("activation_command_result_receipt_recorded")
+        && !source_bool("activation_command_result_receipt_persisted")
+        && !source_bool("activation_command_result_receipt_accepted")
+        && !source_bool("activation_allowed_by_result_receipt_summary_briefing")
+        && !source_bool("activation_allowed_by_result_receipt")
+        && !source_bool("activation_activated")
+        && !source_bool("runtime_router_mutated")
+        && !source_bool("provider_invoked")
+        && !source_bool("model_invoked")
+        && !source_bool("credential_read")
+        && !source_bool("secret_file_read")
+        && !source_bool("memory_store_write_performed")
+        && !source_bool("memory_store_mutated")
+        && !source_bool("live_kg_write_performed")
+        && !source_bool("install_executed")
+        && !source_bool("service_restart_performed")
+        && !source_bool("active_binary_mutated");
+    let route_count_floor_preserved =
+        route_matrix.route_count >= NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR;
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let report_ready = source_ready && route_count_source_command_accepted;
+    let source_report_sha256 = sha256_json_value(&source_summary);
+
+    let final_ack_fixture =
+        |fixture_id: &str, status: &str, reason: &str, extra: serde_json::Value| {
+            let mut fixture = serde_json::Map::new();
+            fixture.insert(
+                "fixture_id".to_string(),
+                serde_json::Value::String(fixture_id.to_string()),
+            );
+            fixture.insert(
+                "id".to_string(),
+                serde_json::Value::String(fixture_id.to_string()),
+            );
+            fixture.insert(
+                "final_operator_acknowledgement_requested".to_string(),
+                serde_json::Value::Bool(false),
+            );
+            fixture.insert(
+                "final_operator_acknowledgement_status".to_string(),
+                serde_json::Value::String(status.to_string()),
+            );
+            fixture.insert(
+                "reason".to_string(),
+                serde_json::Value::String(reason.to_string()),
+            );
+            for key in [
+                "source_summary_briefing_present",
+                "source_summary_briefing_ready",
+                "final_acknowledgement_noop_confirmed",
+                "receipt_noop_confirmed",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(true));
+            }
+            for key in [
+                "acknowledgement_acceptance_requested",
+                "acknowledgement_recording_requested",
+                "acknowledgement_persistence_requested",
+                "acknowledgement_filesystem_write_requested",
+                "operator_identity_acceptance_requested",
+                "operator_signature_acceptance_requested",
+                "operator_timestamp_acceptance_requested",
+                "acknowledgement_delivery_requested",
+                "telegram_send_requested",
+                "channel_delivery_requested",
+                "final_state_promotion_requested",
+                "completion_promotion_requested",
+                "activation_from_acknowledgement_requested",
+                "memory_store_acknowledgement_requested",
+                "live_kg_acknowledgement_requested",
+                "rollback_acknowledgement_requested",
+                "secret_material_acknowledgement_requested",
+                "provider_prompt_acknowledgement_requested",
+                "external_send_acknowledgement_requested",
+                "public_claim_acknowledgement_requested",
+                "release_artifact_acknowledgement_requested",
+                "install_acknowledgement_requested",
+                "service_restart_acknowledgement_requested",
+                "active_binary_acknowledgement_requested",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(false));
+            }
+            for key in [
+                "acknowledgement_allowed",
+                "acknowledgement_request_accepted",
+                "acknowledgement_accepted",
+                "acknowledgement_recorded",
+                "acknowledgement_persisted",
+                "acknowledgement_materialized",
+                "acknowledgement_filesystem_written",
+                "acknowledgement_delivered",
+                "acknowledgement_channel_delivery_performed",
+                "acknowledgement_identity_accepted",
+                "acknowledgement_signature_accepted",
+                "acknowledgement_timestamp_accepted",
+                "acknowledgement_final_state_promoted",
+                "acknowledgement_completion_promoted",
+                "operator_final_acceptance_recorded",
+                "operator_final_acceptance_persisted",
+                "operator_final_acceptance_materialized",
+                "telegram_send_performed",
+                "channel_send_performed",
+                "external_send_performed",
+                "activation_command_result_receipt_recorded",
+                "activation_command_result_receipt_persisted",
+                "activation_command_result_receipt_accepted",
+                "activation_command_result_receipt_materialized",
+                "activation_command_result_receipt_filesystem_written",
+                "activation_command_completion_ack_recorded",
+                "activation_command_completion_ack_persisted",
+                "activation_command_completion_ack_accepted",
+                "activation_command_completion_ack_delivered",
+                "activation_allowed",
+                "activation_performed",
+                "live_mutation_execution_performed",
+                "runtime_router_mutated",
+                "runtime_attachment_performed",
+                "live_context_attached",
+                "context_injection_performed",
+                "adapter_invoked",
+                "provider_invoked",
+                "model_invoked",
+                "provider_prompt_replayed",
+                "auth_secret_read",
+                "credential_read",
+                "secret_file_read",
+                "secret_material_read",
+                "memory_store_write_performed",
+                "memory_store_mutated",
+                "live_kg_write_performed",
+                "rollback_executed",
+                "public_release_claimed",
+                "public_release_published",
+                "public_ga_claimed",
+                "release_artifact_written",
+                "install_executed",
+                "launchd_mutated",
+                "service_restart_performed",
+                "service_restarted",
+                "active_binary_mutated",
+            ] {
+                fixture.insert(key.to_string(), serde_json::Value::Bool(false));
+            }
+            let mut fixture = serde_json::Value::Object(fixture);
+            extend_json_object(&mut fixture, extra);
+            fixture
+        };
+
+    let final_acknowledgement_fixtures = serde_json::Value::Array(vec![
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-missing-source-summary-briefing",
+            "blocked_noop",
+            "source_summary_briefing_report_required",
+            serde_json::json!({
+                "source_summary_briefing_present": false,
+                "source_summary_briefing_ready": false,
+                "final_operator_acknowledgement_requested": true
+            }),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-request",
+            "blocked_ack_noop",
+            "final_operator_acknowledgement_request_shape_denied",
+            serde_json::json!({"final_operator_acknowledgement_requested": true}),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-acceptance-request",
+            "blocked_acceptance_noop",
+            "final_operator_acknowledgement_acceptance_denied",
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "acknowledgement_acceptance_requested": true
+            }),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-recording-request",
+            "blocked_ack_noop",
+            "final_operator_acknowledgement_recording_denied",
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "acknowledgement_recording_requested": true
+            }),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-persistence-filesystem-write-request",
+            "blocked_ack_noop",
+            "final_operator_acknowledgement_persistence_filesystem_write_denied",
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "acknowledgement_persistence_requested": true,
+                "acknowledgement_filesystem_write_requested": true
+            }),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-identity-signature-timestamp-request",
+            "blocked_acceptance_noop",
+            "operator_identity_signature_timestamp_acknowledgement_acceptance_denied",
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "operator_identity_acceptance_requested": true,
+                "operator_signature_acceptance_requested": true,
+                "operator_timestamp_acceptance_requested": true
+            }),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-delivery-request",
+            "blocked_delivery_noop",
+            "final_operator_acknowledgement_delivery_denied",
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "acknowledgement_delivery_requested": true,
+                "telegram_send_requested": true,
+                "channel_delivery_requested": true
+            }),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-state-promotion-request",
+            "blocked_promotion_noop",
+            "final_state_completion_promotion_denied",
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "final_state_promotion_requested": true,
+                "completion_promotion_requested": true
+            }),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-activation-memory-kg-provider-request",
+            "blocked_ack_noop",
+            "activation_memory_kg_rollback_secret_provider_acknowledgement_denied",
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "activation_from_acknowledgement_requested": true,
+                "memory_store_acknowledgement_requested": true,
+                "live_kg_acknowledgement_requested": true,
+                "rollback_acknowledgement_requested": true,
+                "secret_material_acknowledgement_requested": true,
+                "provider_prompt_acknowledgement_requested": true
+            }),
+        ),
+        final_ack_fixture(
+            "provider-router-activation-result-receipt-final-ack-external-public-install-request",
+            "blocked_delivery_noop",
+            "external_public_install_restart_active_binary_acknowledgement_denied",
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "external_send_acknowledgement_requested": true,
+                "public_claim_acknowledgement_requested": true,
+                "release_artifact_acknowledgement_requested": true,
+                "install_acknowledgement_requested": true,
+                "service_restart_acknowledgement_requested": true,
+                "active_binary_acknowledgement_requested": true
+            }),
+        ),
+    ]);
+    let final_acknowledgement_fixture_count = final_acknowledgement_fixtures
+        .as_array()
+        .map(std::vec::Vec::len)
+        .unwrap_or(0);
+    let fixtures_hash = sha256_json_value(&final_acknowledgement_fixtures);
+    let contract_hash = sha256_text_value(&format!(
+        "runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial:v1:source={source_report_sha256}:fixtures={fixtures_hash}:ack=0:accept=0:record=0:persist=0:deliver=0:promote=0:live=0"
+    ));
+    let policy_hash = sha256_text_value(
+        "runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial:v1:no-ack:no-accept:no-record:no-persist:no-materialize:no-deliver:no-final-state:no-provider-model-memory-kg-secret-external-install-restart-binary-public-claim",
+    );
+    let side_effect_hash = sha256_text_value(
+        "runtime-provider-router-final-operator-acknowledgement-side-effects=false;ack=0;accept=0;record=0;persist=0;deliver=0;promotion=0;activation=0;provider=0;model=0;memory=0;kg=0;secret=0;external=0;install=0",
+    );
+    let mut denials = source_summary
+        .get("denied_by_activation_command_result_receipt_operator_facing_summary_briefing")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for denial in [
+        "source_operator_facing_summary_briefing_report_required",
+        "final_operator_acknowledgement_request_acceptance_denied",
+        "final_operator_acknowledgement_acceptance_denied",
+        "final_operator_acknowledgement_recording_denied",
+        "final_operator_acknowledgement_persistence_denied",
+        "final_operator_acknowledgement_materialization_denied",
+        "final_operator_acknowledgement_filesystem_write_denied",
+        "operator_identity_signature_timestamp_acknowledgement_acceptance_denied",
+        "final_operator_acknowledgement_delivery_denied",
+        "telegram_send_denied",
+        "final_state_completion_promotion_denied",
+        "activation_from_final_operator_acknowledgement_denied",
+        "memory_kg_acknowledgement_denied",
+        "rollback_acknowledgement_denied",
+        "secret_material_acknowledgement_denied",
+        "provider_prompt_acknowledgement_denied",
+        "external_public_install_restart_active_binary_acknowledgement_denied",
+    ] {
+        denials.push(serde_json::Value::String(denial.to_string()));
+    }
+    let denied_count = denials.len();
+
+    let mut report = source_summary.clone();
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "status": if report_ready { "ready" } else { "blocked" },
+            "gate": "hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_route",
+            "source_command": "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial --json",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT,
+            "native_route": true,
+            "compatibility_mode": "native_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_status",
+            "side_effect_free": true,
+            "base_url": "native",
+            "source_activation_command_result_receipt_operator_facing_summary_briefing_route_endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ENDPOINT,
+            "source_activation_command_result_receipt_operator_facing_summary_briefing_gate": source_str("gate"),
+            "source_activation_command_result_receipt_operator_facing_summary_briefing_ready": source_ready,
+            "source_activation_command_result_receipt_operator_facing_summary_briefing_status": source_status,
+            "source_activation_command_result_receipt_operator_facing_summary_briefing_report_sha256": source_report_sha256,
+            "source_operator_summary_briefing_contract_hash_sha256": source_hash_str("operator_summary_briefing_contract_hash_sha256"),
+            "source_operator_summary_briefing_policy_hash_sha256": source_hash_str("operator_summary_briefing_policy_hash_sha256"),
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_cutover_floor": NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR,
+            "route_count_floor_preserved": route_count_floor_preserved,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+            "source_route_wired": true,
+            "operator_authorization_received": true,
+            "fresh_evidence_review_requested": true,
+            "explicit_command_path_reviewed": true,
+            "accepted_operator_approval_consumed": false,
+            "activation_authority_derived": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_route_enabled": true,
+            "runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_ready": true,
+            "runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_status": "blocked",
+            "runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_ready": source_bool("runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_ready"),
+            "runtime_provider_router_activation_command_result_receipt_export_query_observability_denial_ready": source_bool("runtime_provider_router_activation_command_result_receipt_export_query_observability_denial_ready"),
+            "runtime_provider_router_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready": source_bool("runtime_provider_router_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready"),
+            "runtime_provider_router_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready": source_bool("runtime_provider_router_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready"),
+            "runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_ready": source_bool("runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_ready"),
+            "runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_ready": source_bool("runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_ready"),
+            "runtime_provider_router_activation_command_result_receipt_replay_idempotency_denial_ready": source_bool("runtime_provider_router_activation_command_result_receipt_replay_idempotency_denial_ready"),
+            "runtime_provider_router_activation_command_result_receipt_no_persistence_ready": source_bool("runtime_provider_router_activation_command_result_receipt_no_persistence_ready"),
+            "activation_command_result_receipt_final_operator_acknowledgement_schema_version": "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_v1",
+            "activation_command_result_receipt_final_operator_acknowledgement_mode": "native_route_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_no_ack_no_accept_no_record_no_deliver_no_authority_no_live",
+            "activation_command_result_receipt_final_operator_acknowledgement_decision": "runtime_provider_router_activation_command_result_receipt_cannot_accept_record_persist_deliver_or_promote_final_operator_acknowledgement_into_authority",
+            "source_operator_facing_summary_briefing_fixture_count": source_u64("operator_facing_summary_briefing_fixture_count"),
+            "source_blocked_operator_facing_summary_briefing_fixture_count": source_u64("blocked_operator_facing_summary_briefing_fixture_count"),
+            "source_accepted_operator_facing_summary_briefing_fixture_count": source_u64("accepted_operator_facing_summary_briefing_fixture_count"),
+            "source_operator_summary_performed_count": source_u64("operator_summary_performed_count"),
+            "source_operator_briefing_performed_count": source_u64("operator_briefing_performed_count"),
+            "final_acknowledgement_fixtures_sha256": fixtures_hash,
+            "final_acknowledgement_contract_hash_sha256": contract_hash,
+            "final_acknowledgement_policy_hash_sha256": policy_hash,
+            "side_effect_hash_sha256": side_effect_hash,
+            "required_activation_command_result_receipt_final_operator_acknowledgement_surface_count": 12,
+            "ready_activation_command_result_receipt_final_operator_acknowledgement_surface_count": 12,
+            "side_effect_free_activation_command_result_receipt_final_operator_acknowledgement_surface_count": 12,
+            "required_activation_command_result_receipt_final_operator_acknowledgement_fixture_count": 10,
+            "activation_command_result_receipt_final_operator_acknowledgement_surfaces": [
+                "source_operator_facing_summary_briefing_report_required",
+                "final_operator_acknowledgement_request_shape_denied",
+                "final_operator_acknowledgement_acceptance_denied",
+                "final_operator_acknowledgement_recording_denied",
+                "final_operator_acknowledgement_persistence_denied",
+                "final_operator_acknowledgement_materialization_denied",
+                "operator_identity_signature_timestamp_acknowledgement_acceptance_denied",
+                "final_operator_acknowledgement_delivery_denied",
+                "final_state_completion_promotion_denied",
+                "activation_from_final_operator_acknowledgement_denied",
+                "memory_kg_rollback_secret_provider_acknowledgement_denied",
+                "external_public_install_restart_active_binary_acknowledgement_denied"
+            ],
+            "activation_command_result_receipt_final_operator_acknowledgement_fixtures": final_acknowledgement_fixtures,
+            "activation_command_result_receipt_final_operator_acknowledgement_fixture_count": final_acknowledgement_fixture_count,
+            "blocked_activation_command_result_receipt_final_operator_acknowledgement_fixture_count": final_acknowledgement_fixture_count,
+            "noop_activation_command_result_receipt_final_operator_acknowledgement_fixture_count": final_acknowledgement_fixture_count,
+            "allowed_activation_command_result_receipt_final_operator_acknowledgement_fixture_count": 0,
+            "accepted_activation_command_result_receipt_final_operator_acknowledgement_fixture_count": 0,
+            "activation_command_result_receipt_final_operator_acknowledgement_denied_count": final_acknowledgement_fixture_count,
+            "activation_command_result_receipt_final_operator_acknowledgement_performed_count": 0,
+            "activation_command_result_receipt_final_operator_acknowledgement_recorded_count": 0,
+            "activation_command_result_receipt_final_operator_acknowledgement_persisted_count": 0,
+            "activation_command_result_receipt_final_operator_acknowledgement_delivered_count": 0,
+            "activation_command_result_receipt_final_operator_acknowledgement_final_state_promoted_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "live_mutation_execution_ready": false,
+            "live_mutation_execution_allowed": false,
+            "memory_write_execution_allowed": false,
+            "memory_write_execution_ready": false,
+            "memory_store_write_path_enabled": false,
+            "memory_store_write_allowed": false,
+            "memory_store_write_performed_count": 0,
+            "memory_store_mutation_allowed": false,
+            "rollback_execution_allowed": false,
+            "raw_payload_plaintext_recorded": false,
+            "raw_payload_plaintext_persisted": false,
+            "provider_prompt_replay_enabled": false,
+            "external_send_enabled": false,
+            "public_claim_or_release_artifact_write_enabled": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "denied_by_activation_command_result_receipt_final_operator_acknowledgement": denials,
+            "denied_by_activation_command_result_receipt_final_operator_acknowledgement_count": denied_count,
+            "source_operator_facing_summary_briefing_denial_count": source_u64("denied_by_activation_command_result_receipt_operator_facing_summary_briefing_count"),
+            "final_operator_acknowledgement_acceptance_forbidden": true,
+            "final_operator_acknowledgement_recording_forbidden": true,
+            "final_operator_acknowledgement_persistence_forbidden": true,
+            "final_operator_acknowledgement_delivery_forbidden": true,
+            "final_operator_acknowledgement_promotion_forbidden": true,
+            "activation_from_final_operator_acknowledgement_forbidden": true,
+            "runtime_provider_memory_kg_final_operator_acknowledgement_forbidden": true,
+            "external_public_install_restart_active_binary_final_operator_acknowledgement_forbidden": true,
+            "allowed_next_actions": [
+                {
+                    "action": "review_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial",
+                    "status": "allowed_report_only",
+                    "accepts_operator_acknowledgement": false,
+                    "persists_acknowledgement": false,
+                    "delivers_acknowledgement": false,
+                    "promotes_final_state": false,
+                    "activates_runtime": false,
+                    "invokes_model": false,
+                    "writes_memory_or_kg": false
+                },
+                {
+                    "action": "stage_runtime_provider_router_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial",
+                    "status": "allowed_report_only_next_slice",
+                    "accepts_terminal_decision": false,
+                    "claims_public_release": false,
+                    "writes_release_artifact": false,
+                    "activates_runtime": false,
+                    "invokes_model": false,
+                    "writes_memory_or_kg": false
+                },
+                {
+                    "action": "run_full_light_preflight",
+                    "status": "allowed_verification_only",
+                    "accepts_operator_acknowledgement": false,
+                    "promotes_final_state": false,
+                    "mutates_runtime": false,
+                    "invokes_model": false,
+                    "writes_kg": false
+                }
+            ],
+        }),
+    );
+
+    if let Some(report_object) = report.as_object_mut() {
+        for key in [
+            "activation_command_result_receipt_final_operator_acknowledgement_allowed",
+            "activation_command_result_receipt_final_operator_acknowledgement_request_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_recorded",
+            "activation_command_result_receipt_final_operator_acknowledgement_persisted",
+            "activation_command_result_receipt_final_operator_acknowledgement_materialized",
+            "activation_command_result_receipt_final_operator_acknowledgement_filesystem_written",
+            "activation_command_result_receipt_final_operator_acknowledgement_delivered",
+            "activation_command_result_receipt_final_operator_acknowledgement_channel_delivery_performed",
+            "activation_command_result_receipt_final_operator_acknowledgement_identity_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_signature_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_timestamp_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_final_state_promoted",
+            "activation_command_result_receipt_final_operator_acknowledgement_completion_promoted",
+            "activation_command_result_receipt_operator_final_acceptance_recorded",
+            "activation_command_result_receipt_operator_final_acceptance_persisted",
+            "activation_command_result_receipt_operator_final_acceptance_materialized",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_materialized",
+            "activation_command_result_receipt_filesystem_written",
+            "activation_command_completion_ack_recorded",
+            "activation_command_completion_ack_persisted",
+            "activation_command_completion_ack_accepted",
+            "activation_command_completion_ack_delivered",
+            "activation_allowed_by_result_receipt_final_operator_acknowledgement",
+            "activation_allowed_by_result_receipt_summary_briefing",
+            "activation_allowed_by_result_receipt",
+            "activation_allowed",
+            "activation_performed",
+            "activation_activated",
+            "live_mutation_execution_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "rollback_executed",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "secret_material_read",
+            "provider_invoked",
+            "model_invoked",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "public_release_claimed",
+            "public_release_published",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restart_performed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            report_object.insert(key.to_string(), serde_json::Value::Bool(false));
+        }
+        if !report_object
+            .get("side_effects")
+            .is_some_and(serde_json::Value::is_object)
+        {
+            report_object.insert("side_effects".to_string(), serde_json::json!({}));
+        }
+    }
+    if let Some(side_effects) = report
+        .get_mut("side_effects")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "activation_command_result_receipt_final_operator_acknowledgement_recorded",
+            "activation_command_result_receipt_final_operator_acknowledgement_persisted",
+            "activation_command_result_receipt_final_operator_acknowledgement_materialized",
+            "activation_command_result_receipt_final_operator_acknowledgement_filesystem_written",
+            "activation_command_result_receipt_final_operator_acknowledgement_delivered",
+            "activation_command_result_receipt_final_operator_acknowledgement_channel_delivery_performed",
+            "activation_command_result_receipt_final_operator_acknowledgement_identity_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_signature_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_timestamp_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_final_state_promoted",
+            "activation_command_result_receipt_final_operator_acknowledgement_completion_promoted",
+            "activation_command_result_receipt_operator_final_acceptance_recorded",
+            "activation_command_result_receipt_operator_final_acceptance_persisted",
+            "activation_command_result_receipt_operator_final_acceptance_materialized",
+            "activation_command_result_receipt_operator_summary_recorded",
+            "activation_command_result_receipt_operator_summary_persisted",
+            "activation_command_result_receipt_operator_summary_materialized",
+            "activation_command_result_receipt_operator_summary_filesystem_written",
+            "activation_command_result_receipt_operator_summary_delivered",
+            "activation_command_result_receipt_operator_briefing_recorded",
+            "activation_command_result_receipt_operator_briefing_persisted",
+            "activation_command_result_receipt_operator_briefing_materialized",
+            "activation_command_result_receipt_operator_briefing_filesystem_written",
+            "activation_command_result_receipt_operator_briefing_delivered",
+            "activation_command_result_receipt_operator_summary_briefing_channel_delivery_performed",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_materialized",
+            "activation_command_result_receipt_filesystem_written",
+            "activation_command_result_receipt_ledger_written",
+            "activation_command_result_receipt_indexed",
+            "activation_command_result_receipt_enqueued",
+            "activation_command_result_receipt_delivered",
+            "activation_command_completion_ack_recorded",
+            "activation_command_completion_ack_persisted",
+            "activation_command_completion_ack_accepted",
+            "activation_command_completion_ack_delivered",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "activation_performed",
+            "live_mutation_execution_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "rollback_executed",
+            "runtime_router_mutated",
+            "runtime_attachment_performed",
+            "live_context_attached",
+            "context_injection_performed",
+            "adapter_invoked",
+            "provider_invoked",
+            "model_invoked",
+            "provider_prompt_replayed",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "secret_material_read",
+            "filesystem_written",
+            "public_release_claimed",
+            "public_release_published",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restart_performed",
+            "service_restarted",
             "active_binary_mutated",
         ] {
             side_effects.insert(key.to_string(), serde_json::Value::Bool(false));
@@ -113686,6 +114372,370 @@ mod tests {
             false
         );
         assert_eq!(value["allowed_next_actions"][1]["writes_kg"], false);
+    }
+
+    #[test]
+    fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_endpoint_blocks_acceptance_and_authority()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "runtime provider-router activation command result receipt final operator acknowledgement json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_status"],
+            "blocked"
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_final_operator_acknowledgement_schema_version"],
+            "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_v1"
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_operator_facing_summary_briefing_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_operator_facing_summary_briefing_status"],
+            "blocked"
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_export_query_observability_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_replay_idempotency_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["runtime_provider_router_activation_command_result_receipt_no_persistence_ready"],
+            true
+        );
+        assert_eq!(value["operator_authorization_received"], true);
+        assert_eq!(value["fresh_evidence_review_requested"], true);
+        assert_eq!(value["explicit_command_path_reviewed"], true);
+        assert_eq!(value["accepted_operator_approval_consumed"], false);
+        assert_eq!(value["activation_authority_derived"], false);
+        assert_eq!(
+            value["source_operator_facing_summary_briefing_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["source_accepted_operator_facing_summary_briefing_fixture_count"],
+            0
+        );
+        assert_eq!(value["source_operator_summary_performed_count"], 0);
+        assert_eq!(value["source_operator_briefing_performed_count"], 0);
+        assert_eq!(
+            value["required_activation_command_result_receipt_final_operator_acknowledgement_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_activation_command_result_receipt_final_operator_acknowledgement_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["side_effect_free_activation_command_result_receipt_final_operator_acknowledgement_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["required_activation_command_result_receipt_final_operator_acknowledgement_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_final_operator_acknowledgement_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["blocked_activation_command_result_receipt_final_operator_acknowledgement_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["noop_activation_command_result_receipt_final_operator_acknowledgement_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["allowed_activation_command_result_receipt_final_operator_acknowledgement_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_activation_command_result_receipt_final_operator_acknowledgement_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_final_operator_acknowledgement_denied_count"],
+            10
+        );
+        for key in [
+            "activation_command_result_receipt_final_operator_acknowledgement_performed_count",
+            "activation_command_result_receipt_final_operator_acknowledgement_recorded_count",
+            "activation_command_result_receipt_final_operator_acknowledgement_persisted_count",
+            "activation_command_result_receipt_final_operator_acknowledgement_delivered_count",
+            "activation_command_result_receipt_final_operator_acknowledgement_final_state_promoted_count",
+            "memory_store_write_performed_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "runtime provider-router final acknowledgement count should stay zero: {key}"
+            );
+        }
+        for key in [
+            "activation_command_result_receipt_final_operator_acknowledgement_allowed",
+            "activation_command_result_receipt_final_operator_acknowledgement_request_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_recorded",
+            "activation_command_result_receipt_final_operator_acknowledgement_persisted",
+            "activation_command_result_receipt_final_operator_acknowledgement_materialized",
+            "activation_command_result_receipt_final_operator_acknowledgement_filesystem_written",
+            "activation_command_result_receipt_final_operator_acknowledgement_delivered",
+            "activation_command_result_receipt_final_operator_acknowledgement_channel_delivery_performed",
+            "activation_command_result_receipt_final_operator_acknowledgement_identity_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_signature_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_timestamp_accepted",
+            "activation_command_result_receipt_final_operator_acknowledgement_final_state_promoted",
+            "activation_command_result_receipt_final_operator_acknowledgement_completion_promoted",
+            "activation_command_result_receipt_operator_final_acceptance_recorded",
+            "activation_command_result_receipt_operator_final_acceptance_persisted",
+            "activation_command_result_receipt_operator_final_acceptance_materialized",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_materialized",
+            "activation_command_result_receipt_filesystem_written",
+            "activation_command_completion_ack_recorded",
+            "activation_command_completion_ack_persisted",
+            "activation_command_completion_ack_accepted",
+            "activation_command_completion_ack_delivered",
+            "activation_allowed_by_result_receipt_final_operator_acknowledgement",
+            "activation_allowed_by_result_receipt_summary_briefing",
+            "activation_allowed_by_result_receipt",
+            "activation_allowed",
+            "activation_performed",
+            "activation_activated",
+            "live_mutation_execution_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "rollback_executed",
+            "auth_secret_read",
+            "credential_read",
+            "secret_file_read",
+            "secret_material_read",
+            "provider_invoked",
+            "model_invoked",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "public_release_claimed",
+            "public_release_published",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restart_performed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "runtime provider-router final acknowledgement field should stay false: {key}"
+            );
+        }
+
+        let fixtures =
+            value["activation_command_result_receipt_final_operator_acknowledgement_fixtures"]
+                .as_array()
+                .expect("runtime provider-router final acknowledgement fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["final_operator_acknowledgement_status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("blocked"))
+                && fixture["acknowledgement_recorded"].as_bool() == Some(false)
+                && fixture["acknowledgement_persisted"].as_bool() == Some(false)
+                && fixture["acknowledgement_delivered"].as_bool() == Some(false)
+                && fixture["acknowledgement_final_state_promoted"].as_bool() == Some(false)
+                && fixture["operator_final_acceptance_recorded"].as_bool() == Some(false)
+                && fixture["operator_final_acceptance_persisted"].as_bool() == Some(false)
+                && fixture["telegram_send_performed"].as_bool() == Some(false)
+                && fixture["channel_send_performed"].as_bool() == Some(false)
+                && fixture["external_send_performed"].as_bool() == Some(false)
+                && fixture["activation_command_result_receipt_accepted"].as_bool() == Some(false)
+                && fixture["activation_performed"].as_bool() == Some(false)
+                && fixture["runtime_router_mutated"].as_bool() == Some(false)
+                && fixture["provider_invoked"].as_bool() == Some(false)
+                && fixture["model_invoked"].as_bool() == Some(false)
+                && fixture["credential_read"].as_bool() == Some(false)
+                && fixture["secret_file_read"].as_bool() == Some(false)
+                && fixture["secret_material_read"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["memory_store_mutated"].as_bool() == Some(false)
+                && fixture["live_kg_write_performed"].as_bool() == Some(false)
+                && fixture["final_acknowledgement_noop_confirmed"].as_bool() == Some(true)
+        }));
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["source_summary_briefing_present"] == false)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["final_operator_acknowledgement_requested"] == true)
+                .count(),
+            10
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(
+                    |fixture| fixture["acknowledgement_delivery_requested"] == true
+                        && fixture["telegram_send_requested"] == true
+                        && fixture["channel_delivery_requested"] == true
+                )
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["final_state_promotion_requested"] == true
+                    && fixture["completion_promotion_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(
+                    |fixture| fixture["activation_from_acknowledgement_requested"] == true
+                        && fixture["memory_store_acknowledgement_requested"] == true
+                        && fixture["live_kg_acknowledgement_requested"] == true
+                        && fixture["provider_prompt_acknowledgement_requested"] == true
+                )
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(
+                    |fixture| fixture["external_send_acknowledgement_requested"] == true
+                        && fixture["release_artifact_acknowledgement_requested"] == true
+                        && fixture["install_acknowledgement_requested"] == true
+                        && fixture["active_binary_acknowledgement_requested"] == true
+                )
+                .count(),
+            1
+        );
+
+        let denied =
+            value["denied_by_activation_command_result_receipt_final_operator_acknowledgement"]
+                .as_array()
+                .expect("runtime provider-router final acknowledgement denials");
+        assert_eq!(denied.len(), 38);
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt_final_operator_acknowledgement_count"],
+            38
+        );
+        assert_eq!(
+            value["source_operator_facing_summary_briefing_denial_count"],
+            21
+        );
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("runtime provider-router final acknowledgement side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "review_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["accepts_operator_acknowledgement"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["promotes_final_state"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "stage_runtime_provider_router_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["claims_public_release"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["writes_release_artifact"],
+            false
+        );
     }
 
     #[test]
