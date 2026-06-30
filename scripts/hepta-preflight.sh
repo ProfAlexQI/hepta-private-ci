@@ -945,6 +945,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-act
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt no-persistence gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-no-persistence-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt no-persistence route gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-no-persistence-route-gate.sh
+
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt replay idempotency denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial-gate.sh
 
