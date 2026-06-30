@@ -291,6 +291,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt operator-facing summary briefing non-persistence denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt final operator acknowledgement non-acceptance denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt terminal operator decision public-claim non-promotion denial gate"
