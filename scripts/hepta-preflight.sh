@@ -1005,6 +1005,9 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-act
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-release-artifact-publication-denial-gate.sh
 
+echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial route gate"
+scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-release-artifact-publication-denial-route-gate.sh
+
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
 
