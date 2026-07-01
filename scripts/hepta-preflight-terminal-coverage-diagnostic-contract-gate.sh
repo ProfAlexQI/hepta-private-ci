@@ -297,6 +297,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router activation command result receipt final operator acknowledgement non-acceptance denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt final operator acknowledgement non-acceptance denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt terminal operator decision public-claim non-promotion denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt terminal operator decision public-claim non-promotion denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
