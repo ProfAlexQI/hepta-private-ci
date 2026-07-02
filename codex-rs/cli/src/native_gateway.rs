@@ -410,6 +410,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_APPROVAL_PACKET_BOUNDARY_ENDPOIN
     "/api/hepta-memory-live-mutation-operator-write-approval-packet-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_PREFLIGHT_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-preflight-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-denial-matrix-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -420,7 +422,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 229;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 230;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1689,6 +1691,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-preflight-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-preflight-boundary",
         side_effect_boundary: "read-only Memory live mutation operator write execution preflight boundary; consumes the approval-packet boundary shape as source evidence while denying pre-execution validation recording, packet acceptance, durable Memory writes, rollback execution, KG writes, provider/model invocation, credential reads, channel/external sends, public claims, release/public artifacts, install/restart, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-denial-matrix-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-denial-matrix-boundary",
+        side_effect_boundary: "read-only Memory live mutation operator write execution denial matrix boundary; consumes the execution preflight boundary as source evidence while denying matrix recording, persistence, materialization, filesystem writes, durable Memory writes, rollback execution, KG writes, provider/model invocation, credential reads, channel/external sends, public claims, release/public artifacts, install/restart, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3759,6 +3768,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_preflight_boundary_report(
+                        ),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_denial_matrix_boundary_report(
                         ),
                     ),
                 );
@@ -72534,6 +72553,489 @@ fn hepta_memory_live_mutation_operator_write_execution_preflight_boundary_report
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_denial_matrix_boundary_report(
+) -> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let preflight_boundary =
+        hepta_memory_live_mutation_operator_write_execution_preflight_boundary_report();
+
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let side_effects_all_false = |value: &serde_json::Value| {
+        value
+            .get("side_effects")
+            .and_then(serde_json::Value::as_object)
+            .map(|effects| effects.values().all(|item| item.as_bool() == Some(false)))
+            .unwrap_or(false)
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let preflight_boundary_ready = json_bool(
+        &preflight_boundary,
+        "memory_write_execution_preflight_boundary_ready",
+    ) && json_bool(
+        &preflight_boundary,
+        "memory_write_execution_preflight_shape_ready",
+    ) && json_bool(&preflight_boundary, "pre_execution_validation_shape_ready")
+        && json_u64(
+            &preflight_boundary,
+            "required_pre_execution_validation_check_count",
+        ) == 17
+        && json_u64(
+            &preflight_boundary,
+            "recorded_pre_execution_validation_check_count",
+        ) == 0
+        && json_u64(
+            &preflight_boundary,
+            "denied_memory_write_execution_preflight_fixture_count",
+        ) == 9
+        && json_u64(
+            &preflight_boundary,
+            "denied_by_memory_write_execution_preflight_boundary_count",
+        ) == 22
+        && json_u64(&preflight_boundary, "required_before_memory_write_execution_count") == 17
+        && !json_bool(&preflight_boundary, "memory_write_execution_preflight_recorded")
+        && !json_bool(&preflight_boundary, "memory_write_execution_preflight_persisted")
+        && !json_bool(&preflight_boundary, "memory_write_execution_preflight_accepted")
+        && !json_bool(&preflight_boundary, "pre_execution_validation_recorded")
+        && !json_bool(&preflight_boundary, "pre_execution_validation_persisted")
+        && !json_bool(&preflight_boundary, "pre_execution_validation_accepted")
+        && !json_bool(&preflight_boundary, "memory_write_approval_packet_accepted")
+        && !json_bool(&preflight_boundary, "memory_write_request_accepted")
+        && !json_bool(&preflight_boundary, "memory_write_execution_allowed")
+        && !json_bool(&preflight_boundary, "memory_write_execution_ready")
+        && !json_bool(&preflight_boundary, "memory_store_mutated")
+        && !json_bool(&preflight_boundary, "rollback_executed")
+        && !json_bool(&preflight_boundary, "live_kg_write_performed")
+        && !json_bool(&preflight_boundary, "provider_invoked")
+        && !json_bool(&preflight_boundary, "model_invoked")
+        && !json_bool(&preflight_boundary, "credential_read")
+        && !json_bool(&preflight_boundary, "external_send_performed")
+        && !json_bool(&preflight_boundary, "release_artifact_written")
+        && !json_bool(&preflight_boundary, "public_release_claimed")
+        && !json_bool(&preflight_boundary, "active_binary_mutated")
+        && side_effects_all_false(&preflight_boundary);
+
+    let required_before_execution = preflight_boundary
+        .get("required_before_memory_write_execution")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let denied_by = vec![
+        "memory_write_execution_denial_matrix_recording_denied",
+        "memory_write_execution_denial_matrix_persistence_denied",
+        "memory_write_execution_denial_matrix_materialization_denied",
+        "memory_write_execution_denial_matrix_filesystem_write_denied",
+        "accepted_approval_packet_required",
+        "all_pre_execution_validation_checks_required",
+        "approval_packet_hash_binding_required",
+        "memory_write_request_hash_binding_required",
+        "operator_signature_and_timestamp_required",
+        "single_surface_scope_verification_required",
+        "namespace_operation_and_retention_allowlists_required",
+        "fresh_accepted_redaction_proof_required",
+        "payload_hash_binding_without_plaintext_required",
+        "source_report_hash_bindings_required",
+        "fresh_pre_activation_soak_verification_required",
+        "rollback_plan_verification_required",
+        "post_write_validation_plan_verification_required",
+        "no_public_claim_no_external_send_verification_required",
+        "memory_write_execution_denied",
+        "memory_store_mutation_denied",
+        "rollback_execution_denied",
+        "external_send_public_claim_release_artifact_denied",
+    ];
+    let execution_denial_fixtures = vec![
+        serde_json::json!({
+            "id": "missing-accepted-approval-packet-execution-attempt",
+            "execution_requested": true,
+            "accepted_approval_packet_present": false,
+            "accepted_pre_execution_validation_check_count": 0,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "memory_store_mutated": false,
+            "activation_allowed": false,
+            "reason": "accepted_approval_packet_required"
+        }),
+        serde_json::json!({
+            "id": "partial-pre-execution-validation-execution-attempt",
+            "execution_requested": true,
+            "accepted_approval_packet_present": true,
+            "accepted_pre_execution_validation_check_count": 8,
+            "required_pre_execution_validation_check_count": 17,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "memory_store_mutated": false,
+            "activation_allowed": false,
+            "reason": "all_pre_execution_validation_checks_required"
+        }),
+        serde_json::json!({
+            "id": "namespace-operation-retention-not-allowlisted-execution-attempt",
+            "execution_requested": true,
+            "accepted_pre_execution_validation_check_count": 17,
+            "memory_namespace_allowed": false,
+            "memory_write_operation_allowed": false,
+            "memory_retention_class_allowed": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "memory_store_mutated": false,
+            "activation_allowed": false,
+            "reason": "namespace_operation_and_retention_allowlists_required"
+        }),
+        serde_json::json!({
+            "id": "payload-hash-mismatch-or-plaintext-execution-attempt",
+            "execution_requested": true,
+            "accepted_pre_execution_validation_check_count": 17,
+            "raw_payload_sha256_bound": false,
+            "redacted_payload_summary_sha256_bound": false,
+            "raw_payload_plaintext_recorded": true,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "memory_store_mutated": false,
+            "activation_allowed": false,
+            "reason": "payload_hash_binding_without_plaintext_required"
+        }),
+        serde_json::json!({
+            "id": "stale-soak-or-missing-rollback-validation-execution-attempt",
+            "execution_requested": true,
+            "accepted_pre_execution_validation_check_count": 17,
+            "fresh_pre_activation_soak_evidence_recorded": false,
+            "rollback_plan_recorded": false,
+            "post_write_validation_plan_recorded": false,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "fresh_soak_rollback_and_validation_required"
+        }),
+        serde_json::json!({
+            "id": "external-send-public-claim-release-artifact-execution-attempt",
+            "execution_requested": true,
+            "accepted_pre_execution_validation_check_count": 17,
+            "external_send_requested": true,
+            "public_claim_requested": true,
+            "release_artifact_write_requested": true,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "memory_store_mutated": false,
+            "external_send_performed": false,
+            "public_release_published": false,
+            "release_artifact_written": false,
+            "activation_allowed": false,
+            "reason": "external_send_public_claim_and_release_artifact_denied"
+        }),
+        serde_json::json!({
+            "id": "direct-memory-store-mutation-or-rollback-execution-attempt",
+            "execution_requested": true,
+            "accepted_pre_execution_validation_check_count": 17,
+            "memory_store_mutation_requested": true,
+            "rollback_execution_requested": true,
+            "execution_allowed": false,
+            "execution_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "execution_denial_matrix_layer_cannot_mutate_memory_or_execute_rollback"
+        }),
+    ];
+
+    let source_memory_write_execution_preflight_boundary_report_sha256 =
+        sha256_json_value(&preflight_boundary);
+    let boundary_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-live-mutation-operator-write-execution-denial-matrix-boundary-v1:{}:{}",
+        route_matrix.route_count,
+        source_memory_write_execution_preflight_boundary_report_sha256,
+    ));
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "memory_store_mutated",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "memory_write_request_recorded",
+        "memory_write_request_persisted",
+        "memory_write_approval_packet_recorded",
+        "memory_write_approval_packet_persisted",
+        "memory_write_approval_packet_accepted",
+        "memory_write_execution_preflight_recorded",
+        "memory_write_execution_preflight_persisted",
+        "memory_write_execution_preflight_accepted",
+        "memory_write_execution_denial_matrix_recorded",
+        "memory_write_execution_denial_matrix_persisted",
+        "memory_write_execution_denial_matrix_materialized",
+        "memory_write_execution_denial_matrix_filesystem_written",
+        "pre_execution_validation_recorded",
+        "pre_execution_validation_persisted",
+        "pre_execution_validation_accepted",
+        "operator_approval_recorded",
+        "operator_identity_hash_recorded",
+        "operator_approval_signature_hash_recorded",
+        "payload_plaintext_persisted",
+        "raw_payload_inspected",
+        "capability_registry_mutated",
+        "plugin_registry_mutated",
+        "skill_workshop_written",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "provider_prompt_replayed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "runtime_store_mutated",
+        "gateway_event_enqueued",
+        "filesystem_written",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "approval_record_persisted",
+        "preflight_record_persisted",
+        "denial_matrix_persisted",
+        "receipt_persisted",
+        "launchd_mutated",
+        "service_restarted",
+        "install_executed",
+        "active_binary_mutated",
+        "rollback_executed",
+        "credential_read",
+        "secret_file_read",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && preflight_boundary_ready
+        && required_before_execution.len() == 17
+        && denied_by.len() == 22
+        && execution_denial_fixtures.len() == 7;
+
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "run_memory_write_execution_denial_matrix_boundary_require_live_gate",
+            "status": "allowed_verification_only",
+            "records_denial_matrix": false,
+            "writes_memory": false,
+            "executes_rollback": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "invokes_model": false,
+            "reads_credentials": false,
+            "sends_externally": false,
+            "publishes_artifacts": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        },
+        {
+            "action": "prepare_memory_write_execution_no_write_sink_contract_boundary",
+            "status": "allowed_report_only_next_slice",
+            "requires_accepted_operator_packet_before_execution": true,
+            "writes_memory": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "sends_externally": false
+        }
+    ]);
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_denial_matrix_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-denial-matrix-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-07-02");
+    insert_report_json!(
+        "memory_write_execution_denial_matrix_boundary_schema_version",
+        "memory_write_execution_denial_matrix_boundary_v1"
+    );
+    insert_report_json!(
+        "memory_write_execution_denial_matrix_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "execution_denial_matrix_mode",
+        "memory_write_execution_attempt_denial_matrix_no_store_mutation"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!("boundary_hash_sha256", boundary_hash_sha256);
+    insert_report_json!(
+        "source_memory_write_execution_preflight_boundary_endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_PREFLIGHT_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_memory_write_execution_preflight_boundary_ready",
+        preflight_boundary_ready
+    );
+    insert_report_json!(
+        "source_memory_write_execution_preflight_boundary_report_sha256",
+        source_memory_write_execution_preflight_boundary_report_sha256
+    );
+    insert_report_json!("minimum_required_samples", 24);
+    insert_report_json!("memory_write_execution_denial_matrix_ready", true);
+    insert_report_json!("memory_write_execution_denial_matrix_recorded", false);
+    insert_report_json!("memory_write_execution_denial_matrix_persisted", false);
+    insert_report_json!("memory_write_execution_denial_matrix_materialized", false);
+    insert_report_json!(
+        "memory_write_execution_denial_matrix_filesystem_written",
+        false
+    );
+    insert_report_json!("pre_execution_validation_shape_ready", true);
+    insert_report_json!(
+        "required_pre_execution_validation_check_count",
+        json_u64(
+            &preflight_boundary,
+            "required_pre_execution_validation_check_count"
+        )
+    );
+    insert_report_json!("recorded_pre_execution_validation_check_count", 0);
+    insert_report_json!("accepted_pre_execution_validation_check_count", 0);
+    insert_report_json!("future_pre_execution_validation_check_slot_count", 17);
+    insert_report_json!("memory_write_execution_attempt_requested_count", 7);
+    insert_report_json!("memory_write_execution_attempt_performed_count", 0);
+    insert_report_json!("memory_write_execution_allowed_count", 0);
+    insert_report_json!("memory_write_execution_denied_count", 7);
+    insert_report_json!("blocked_execution_fixture_count", 7);
+    insert_report_json!("allowed_execution_fixture_count", 0);
+    insert_report_json!("required_execution_denial_fixture_count", 7);
+    insert_report_json!("execution_denial_fixture_count", 7);
+    insert_report_json!("pre_execution_validation_recorded", false);
+    insert_report_json!("pre_execution_validation_persisted", false);
+    insert_report_json!("pre_execution_validation_accepted", false);
+    insert_report_json!("memory_write_approval_packet_recorded", false);
+    insert_report_json!("memory_write_approval_packet_persisted", false);
+    insert_report_json!("memory_write_approval_packet_accepted", false);
+    insert_report_json!("memory_write_request_recorded", false);
+    insert_report_json!("memory_write_request_accepted", false);
+    insert_report_json!("memory_write_request_persisted", false);
+    insert_report_json!("operator_approval_recorded", false);
+    insert_report_json!("operator_identity_hash_recorded", false);
+    insert_report_json!("operator_approval_signature_hash_recorded", false);
+    insert_report_json!("operator_approval_timestamp_recorded", false);
+    insert_report_json!("single_surface_activation_scope_recorded", false);
+    insert_report_json!("memory_namespace_recorded", false);
+    insert_report_json!("memory_write_operation_recorded", false);
+    insert_report_json!("memory_write_operation_allowed", false);
+    insert_report_json!("memory_retention_class_recorded", false);
+    insert_report_json!("accepted_redaction_proof_recorded", false);
+    insert_report_json!("accepted_redaction_proof_count", 0);
+    insert_report_json!("source_memory_write_approval_packet_hash_bound", false);
+    insert_report_json!("source_memory_write_request_hash_bound", false);
+    insert_report_json!("source_memory_write_execution_preflight_hash_bound", false);
+    insert_report_json!("source_memory_write_contract_hash_bound", false);
+    insert_report_json!("source_memory_intelligence_hash_bound", false);
+    insert_report_json!("source_payload_redaction_acceptance_matrix_hash_bound", false);
+    insert_report_json!("source_payload_redaction_proof_hash_bound", false);
+    insert_report_json!("raw_payload_sha256_bound", false);
+    insert_report_json!("redacted_payload_summary_sha256_bound", false);
+    insert_report_json!("raw_payload_plaintext_recorded", false);
+    insert_report_json!("raw_payload_plaintext_persisted", false);
+    insert_report_json!("fresh_pre_activation_soak_evidence_recorded", false);
+    insert_report_json!("rollback_plan_recorded", false);
+    insert_report_json!("post_write_validation_plan_recorded", false);
+    insert_report_json!(
+        "no_public_claim_no_external_send_decision_recorded",
+        false
+    );
+    insert_report_json!("memory_write_execution_allowed", false);
+    insert_report_json!("memory_write_execution_ready", false);
+    insert_report_json!("memory_write_execution_performed", false);
+    insert_report_json!("memory_store_mutation_allowed", false);
+    insert_report_json!("memory_store_mutated", false);
+    insert_report_json!("durable_memory_store_write_performed", false);
+    insert_report_json!("live_mutation_execution_ready", false);
+    insert_report_json!("rollback_execution_allowed", false);
+    insert_report_json!("rollback_executed", false);
+    insert_report_json!("provider_prompt_replay_enabled", false);
+    insert_report_json!("external_send_enabled", false);
+    insert_report_json!("external_send_performed", false);
+    insert_report_json!("public_claim_or_release_artifact_write_enabled", false);
+    insert_report_json!("public_release_published", false);
+    insert_report_json!("release_artifact_written", false);
+    report.insert(
+        "execution_denial_fixtures".to_string(),
+        serde_json::Value::Array(execution_denial_fixtures),
+    );
+    report.insert(
+        "denied_by_memory_write_execution_denial_matrix".to_string(),
+        serde_json::json!(denied_by),
+    );
+    insert_report_json!("denied_by_memory_write_execution_denial_matrix_count", 22);
+    report.insert(
+        "required_before_memory_write_execution".to_string(),
+        serde_json::Value::Array(required_before_execution),
+    );
+    insert_report_json!("required_before_memory_write_execution_count", 17);
+    insert_report_json!("provider_invoked", false);
+    insert_report_json!("model_invoked", false);
+    insert_report_json!("credential_read", false);
+    insert_report_json!("secret_file_read", false);
+    insert_report_json!("kg_adapter_read_performed", false);
+    insert_report_json!("live_kg_write_performed", false);
+    insert_report_json!("channel_send_performed", false);
+    insert_report_json!("telegram_send_performed", false);
+    insert_report_json!("external_send_performed", false);
+    insert_report_json!("public_artifact_written", false);
+    insert_report_json!("public_release_claimed", false);
+    insert_report_json!("install_executed", false);
+    insert_report_json!("service_restarted", false);
+    insert_report_json!("active_binary_mutated", false);
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -112289,6 +112791,182 @@ mod tests {
         let side_effects = value["side_effects"]
             .as_object()
             .expect("memory write execution preflight boundary side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_denial_matrix_boundary_endpoint_exposes_attempt_denials_without_execution()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("memory write execution denial matrix boundary json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-denial-matrix-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["memory_write_execution_denial_matrix_boundary_ready"], true);
+        assert_eq!(
+            value["execution_denial_matrix_mode"],
+            "memory_write_execution_attempt_denial_matrix_no_store_mutation"
+        );
+        assert_eq!(
+            value["source_memory_write_execution_preflight_boundary_ready"],
+            true
+        );
+        assert_eq!(value["minimum_required_samples"], 24);
+        assert_eq!(value["memory_write_execution_denial_matrix_ready"], true);
+        assert_eq!(value["memory_write_execution_denial_matrix_recorded"], false);
+        assert_eq!(value["memory_write_execution_denial_matrix_persisted"], false);
+        assert_eq!(
+            value["memory_write_execution_denial_matrix_materialized"],
+            false
+        );
+        assert_eq!(
+            value["memory_write_execution_denial_matrix_filesystem_written"],
+            false
+        );
+        assert_eq!(value["pre_execution_validation_shape_ready"], true);
+        assert_eq!(
+            value["required_pre_execution_validation_check_count"],
+            17
+        );
+        assert_eq!(
+            value["recorded_pre_execution_validation_check_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_pre_execution_validation_check_count"],
+            0
+        );
+        assert_eq!(
+            value["future_pre_execution_validation_check_slot_count"],
+            17
+        );
+        assert_eq!(value["memory_write_execution_attempt_requested_count"], 7);
+        assert_eq!(value["memory_write_execution_attempt_performed_count"], 0);
+        assert_eq!(value["memory_write_execution_allowed_count"], 0);
+        assert_eq!(value["memory_write_execution_denied_count"], 7);
+        assert_eq!(value["blocked_execution_fixture_count"], 7);
+        assert_eq!(value["allowed_execution_fixture_count"], 0);
+        assert_eq!(value["required_execution_denial_fixture_count"], 7);
+        assert_eq!(value["execution_denial_fixture_count"], 7);
+        assert_eq!(value["pre_execution_validation_recorded"], false);
+        assert_eq!(value["pre_execution_validation_persisted"], false);
+        assert_eq!(value["pre_execution_validation_accepted"], false);
+        assert_eq!(value["memory_write_approval_packet_accepted"], false);
+        assert_eq!(value["memory_write_request_accepted"], false);
+        assert_eq!(value["operator_approval_recorded"], false);
+        assert_eq!(
+            value["source_memory_write_execution_preflight_hash_bound"],
+            false
+        );
+        assert_eq!(value["raw_payload_sha256_bound"], false);
+        assert_eq!(value["redacted_payload_summary_sha256_bound"], false);
+        assert_eq!(value["raw_payload_plaintext_recorded"], false);
+        assert_eq!(value["raw_payload_plaintext_persisted"], false);
+        assert_eq!(value["fresh_pre_activation_soak_evidence_recorded"], false);
+        assert_eq!(value["rollback_plan_recorded"], false);
+        assert_eq!(value["post_write_validation_plan_recorded"], false);
+        assert_eq!(
+            value["no_public_claim_no_external_send_decision_recorded"],
+            false
+        );
+        assert_eq!(value["memory_write_execution_allowed"], false);
+        assert_eq!(value["memory_write_execution_ready"], false);
+        assert_eq!(value["memory_write_execution_performed"], false);
+        assert_eq!(value["memory_store_mutation_allowed"], false);
+        assert_eq!(value["memory_store_mutated"], false);
+        assert_eq!(value["durable_memory_store_write_performed"], false);
+        assert_eq!(value["live_mutation_execution_ready"], false);
+        assert_eq!(value["rollback_execution_allowed"], false);
+        assert_eq!(value["rollback_executed"], false);
+        assert_eq!(value["provider_prompt_replay_enabled"], false);
+        assert_eq!(value["external_send_enabled"], false);
+        assert_eq!(value["external_send_performed"], false);
+        assert_eq!(
+            value["public_claim_or_release_artifact_write_enabled"],
+            false
+        );
+        assert_eq!(value["public_release_published"], false);
+        assert_eq!(value["release_artifact_written"], false);
+        let fixtures = value["execution_denial_fixtures"]
+            .as_array()
+            .expect("execution denial fixtures");
+        assert_eq!(fixtures.len(), 7);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["execution_requested"].as_bool() == Some(true)
+                && fixture["execution_allowed"].as_bool() == Some(false)
+                && fixture["execution_performed"].as_bool() == Some(false)
+                && fixture["memory_store_mutated"].as_bool() == Some(false)
+                && fixture["activation_allowed"].as_bool() == Some(false)
+        }));
+        assert_eq!(
+            value["denied_by_memory_write_execution_denial_matrix_count"],
+            22
+        );
+        assert_eq!(value["required_before_memory_write_execution_count"], 17);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["secret_file_read"], false);
+        assert_eq!(value["kg_adapter_read_performed"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["channel_send_performed"], false);
+        assert_eq!(value["telegram_send_performed"], false);
+        assert_eq!(value["external_send_performed"], false);
+        assert_eq!(value["public_artifact_written"], false);
+        assert_eq!(value["public_release_claimed"], false);
+        assert_eq!(value["install_executed"], false);
+        assert_eq!(value["service_restarted"], false);
+        assert_eq!(value["active_binary_mutated"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_memory_write_execution_denial_matrix_boundary_require_live_gate"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["writes_memory"], false);
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_memory_write_execution_no_write_sink_contract_boundary"
+        );
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("memory write execution denial matrix boundary side effects");
         assert!(
             side_effects
                 .values()

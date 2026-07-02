@@ -305,6 +305,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial route gate"
   "memory live mutation operator write approval packet boundary route gate"
   "memory live mutation operator write execution preflight boundary route gate"
+  "memory live mutation operator write execution denial matrix boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -757,8 +758,8 @@ if [[ "$missing_phase_family_budget_rc" -eq 1 ]] \
     and .phase_family_budget_failure_count == 1
     and (.phase_family_budget_failures[] | select(
       .id == "live-mutation-denial"
-      and .current_count == 55
-      and .minimum_count == 56
+      and .current_count == 56
+      and .minimum_count == 57
     ))
   ' >/dev/null <<<"$missing_phase_family_budget_report"; then
   missing_phase_family_budget_fixture_ok=true
