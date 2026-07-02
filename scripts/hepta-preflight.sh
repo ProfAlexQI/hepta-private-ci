@@ -1071,6 +1071,9 @@ scripts/hepta-memory-live-mutation-operator-write-execution-denial-matrix-bounda
 echo "[hepta-preflight] memory live mutation operator write execution no-write sink contract gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-no-write-sink-contract-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution no-write sink contract boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-no-write-sink-contract-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution write-enable fixture gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-gate.sh
 
