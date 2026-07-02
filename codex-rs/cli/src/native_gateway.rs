@@ -364,6 +364,8 @@ const HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOI
     "/api/hepta-activation-evidence-no-write-provider-router-dry-run-boundary";
 const HEPTA_FIRST_MODEL_INVOCATION_EXPLICIT_APPROVAL_EVIDENCE_NO_INVOCATION_BOUNDARY_ENDPOINT:
     &str = "/api/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary";
+const HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT: &str =
+    "/api/hepta-full-live-activation-closure-index";
 const HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT: &str =
     "/api/hepta-upstream-codex-latest-multisurface-absorption";
 const HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT: &str =
@@ -414,7 +416,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 226;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 227;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1522,6 +1524,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary --json",
         capability: "hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary",
         side_effect_boundary: "read-only first-model invocation explicit approval evidence boundary; binds activation-evidence no-write review and first-model separate approval preflight into an approval-evidence review surface while denying approval acceptance, nonce consumption, explicit command acceptance, provider/model invocation, credential reads, KG/Memory writes, channel sends, install/restart, active-binary mutation, filesystem writes, or public claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT,
+        source_command: "/hepta-full-live-activation-closure-index --json",
+        capability: "hepta-full-live-activation-closure-index",
+        side_effect_boundary: "read-only consolidated full-live activation closure index; aggregates Memory, Intelligence, KG, provider-router, approval, activation-evidence, channel, publication, and install/restart blockers into a machine-readable canary plan while denying all execution, credential reads, writes, sends, public claims, artifact publication, service mutation, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3707,6 +3716,13 @@ fn route_native_gateway_request_with_body(
                     json_or_error(
                         &hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundary_report(),
                     ),
+                );
+            }
+            HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_full_live_activation_closure_index_report()),
                 );
             }
             HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT => {
@@ -70943,6 +70959,528 @@ fn hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundar
     serde_json::Value::Object(report)
 }
 
+fn hepta_full_live_activation_closure_index_report() -> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let truth_index = hepta_memory_intelligence_kg_activation_truth_index_report();
+    let positive_boundary = hepta_first_model_positive_approval_packet_boundary_report();
+    let memory_boundary = hepta_scoped_memory_canary_durable_receipt_boundary_report();
+    let intelligence_boundary =
+        hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_report();
+    let kg_canary = hepta_kg_read_only_adapter_shadow_rank_canary_report();
+    let provider_dry_run = hepta_provider_router_dry_run_envelope_readback_audit_report();
+    let activation_boundary =
+        hepta_activation_evidence_no_write_provider_router_dry_run_boundary_report();
+    let explicit_boundary =
+        hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundary_report();
+
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("missing")
+            .to_string()
+    };
+    let side_effects_all_false = |value: &serde_json::Value| {
+        value
+            .get("side_effects")
+            .and_then(serde_json::Value::as_object)
+            .map(|effects| effects.values().all(|item| item.as_bool() == Some(false)))
+            .unwrap_or(false)
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let truth_index_ready = truth_index.get("status").and_then(serde_json::Value::as_str)
+        == Some("ready")
+        && json_bool(&truth_index, "hepta_core_connected")
+        && json_bool(&truth_index, "hepta_core_full_fusion_complete")
+        && json_bool(&truth_index, "operator_approved_lanes_ready")
+        && json_bool(&truth_index, "full_live_activation_blocked")
+        && !json_bool(&truth_index, "full_live_activation_enabled")
+        && json_str(&truth_index, "full_live_activation_status") == "blocked_report_only"
+        && json_bool(&truth_index, "explicit_command_required_for_execution")
+        && json_bool(&truth_index, "readiness_index_side_effects_all_false")
+        && side_effects_all_false(&truth_index);
+    let positive_boundary_ready =
+        json_bool(&positive_boundary, "first_model_positive_approval_packet_boundary_ready")
+            && json_u64(&positive_boundary, "accepted_positive_approval_packet_item_count") == 0
+            && !json_bool(&positive_boundary, "positive_approval_packet_accepted")
+            && side_effects_all_false(&positive_boundary);
+    let memory_boundary_ready = json_bool(
+        &memory_boundary,
+        "scoped_memory_canary_durable_receipt_boundary_ready",
+    ) && json_u64(&memory_boundary, "accepted_durable_receipt_candidate_count") == 0
+        && !json_bool(&memory_boundary, "durable_receipt_accepted")
+        && !json_bool(&memory_boundary, "durable_memory_store_write_performed")
+        && side_effects_all_false(&memory_boundary);
+    let intelligence_boundary_ready = json_bool(
+        &intelligence_boundary,
+        "bounded_intelligence_context_handoff_prompt_preview_boundary_ready",
+    ) && json_u64(&intelligence_boundary, "accepted_context_handoff_candidate_count") == 0
+        && json_u64(
+            &intelligence_boundary,
+            "rendered_prompt_preview_candidate_count",
+        ) == 0
+        && !json_bool(&intelligence_boundary, "context_handoff_accepted")
+        && !json_bool(&intelligence_boundary, "prompt_preview_rendered_by_report_route")
+        && side_effects_all_false(&intelligence_boundary);
+    let kg_canary_ready = json_bool(&kg_canary, "kg_read_only_adapter_shadow_rank_canary_ready")
+        && !json_bool(&kg_canary, "kg_adapter_read_performed")
+        && !json_bool(&kg_canary, "live_kg_write_performed")
+        && side_effects_all_false(&kg_canary);
+    let provider_dry_run_ready = json_bool(
+        &provider_dry_run,
+        "provider_router_dry_run_envelope_readback_audit_ready",
+    ) && json_bool(&provider_dry_run, "dry_run_envelope_preview_constructed")
+        && json_bool(&provider_dry_run, "dry_run_envelope_readback_hash_matched")
+        && !json_bool(&provider_dry_run, "provider_router_live_envelope_executed")
+        && !json_bool(&provider_dry_run, "provider_invoked")
+        && !json_bool(&provider_dry_run, "model_invoked")
+        && side_effects_all_false(&provider_dry_run);
+    let activation_boundary_ready = json_bool(
+        &activation_boundary,
+        "activation_evidence_no_write_provider_router_dry_run_boundary_ready",
+    ) && json_u64(&activation_boundary, "accepted_activation_evidence_candidate_count") == 0
+        && json_u64(&activation_boundary, "recorded_materialization_field_count") == 0
+        && !json_bool(&activation_boundary, "activation_evidence_recorded")
+        && !json_bool(&activation_boundary, "activation_evidence_persisted")
+        && !json_bool(&activation_boundary, "activation_evidence_materialized")
+        && !json_bool(&activation_boundary, "filesystem_written")
+        && side_effects_all_false(&activation_boundary);
+    let explicit_boundary_ready = json_bool(
+        &explicit_boundary,
+        "first_model_invocation_explicit_approval_evidence_no_invocation_boundary_ready",
+    ) && json_u64(&explicit_boundary, "accepted_approval_evidence_candidate_count") == 0
+        && !json_bool(&explicit_boundary, "explicit_approval_evidence_accepted")
+        && !json_bool(&explicit_boundary, "provider_invocation_authorized")
+        && !json_bool(&explicit_boundary, "model_invocation_authorized")
+        && !json_bool(&explicit_boundary, "provider_invoked")
+        && !json_bool(&explicit_boundary, "model_invoked")
+        && side_effects_all_false(&explicit_boundary);
+
+    let closure_sources = vec![
+        serde_json::json!({
+            "source_id": "memory_intelligence_kg_truth_index",
+            "endpoint": HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT,
+            "ready": truth_index_ready,
+            "report_sha256": sha256_json_value(&truth_index)
+        }),
+        serde_json::json!({
+            "source_id": "first_model_positive_approval_packet_boundary",
+            "endpoint": HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT,
+            "ready": positive_boundary_ready,
+            "report_sha256": sha256_json_value(&positive_boundary)
+        }),
+        serde_json::json!({
+            "source_id": "scoped_memory_canary_durable_receipt_boundary",
+            "endpoint": HEPTA_SCOPED_MEMORY_CANARY_DURABLE_RECEIPT_BOUNDARY_ENDPOINT,
+            "ready": memory_boundary_ready,
+            "report_sha256": sha256_json_value(&memory_boundary)
+        }),
+        serde_json::json!({
+            "source_id": "bounded_intelligence_context_handoff_prompt_preview_boundary",
+            "endpoint": HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT,
+            "ready": intelligence_boundary_ready,
+            "report_sha256": sha256_json_value(&intelligence_boundary)
+        }),
+        serde_json::json!({
+            "source_id": "kg_read_only_adapter_shadow_rank_canary",
+            "endpoint": HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT,
+            "ready": kg_canary_ready,
+            "report_sha256": sha256_json_value(&kg_canary)
+        }),
+        serde_json::json!({
+            "source_id": "provider_router_dry_run_envelope_readback_audit",
+            "endpoint": HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT,
+            "ready": provider_dry_run_ready,
+            "report_sha256": sha256_json_value(&provider_dry_run)
+        }),
+        serde_json::json!({
+            "source_id": "activation_evidence_no_write_provider_router_dry_run_boundary",
+            "endpoint": HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT,
+            "ready": activation_boundary_ready,
+            "report_sha256": sha256_json_value(&activation_boundary)
+        }),
+        serde_json::json!({
+            "source_id": "first_model_invocation_explicit_approval_evidence_no_invocation_boundary",
+            "endpoint": HEPTA_FIRST_MODEL_INVOCATION_EXPLICIT_APPROVAL_EVIDENCE_NO_INVOCATION_BOUNDARY_ENDPOINT,
+            "ready": explicit_boundary_ready,
+            "report_sha256": sha256_json_value(&explicit_boundary)
+        }),
+    ];
+    let closure_source_count = closure_sources.len();
+    let ready_closure_source_count = closure_sources
+        .iter()
+        .filter(|source| source.get("ready").and_then(serde_json::Value::as_bool) == Some(true))
+        .count();
+
+    let canary_ladder = vec![
+        serde_json::json!({
+            "phase": "source_closure_index",
+            "status": "ready",
+            "accepted_for_execution": false,
+            "source_count": closure_source_count,
+            "ready_source_count": ready_closure_source_count
+        }),
+        serde_json::json!({
+            "phase": "scoped_live_canaries",
+            "status": "blocked_until_separate_explicit_command",
+            "memory_minimal_write_readback_rollback": "next_explicit_gate",
+            "intelligence_bounded_handoff": "hash_only_ready",
+            "kg_shadow_rank": "read_only_shadow_ready",
+            "accepted_for_execution": false
+        }),
+        serde_json::json!({
+            "phase": "provider_router_and_first_model",
+            "status": "blocked_no_invocation",
+            "provider_router_dry_run_ready": provider_dry_run_ready,
+            "first_model_explicit_approval_evidence_ready": explicit_boundary_ready,
+            "provider_model_invocation_authorized": false,
+            "accepted_for_execution": false
+        }),
+        serde_json::json!({
+            "phase": "activation_evidence_materialization",
+            "status": "blocked_no_write",
+            "activation_evidence_no_write_ready": activation_boundary_ready,
+            "evidence_persisted": false,
+            "filesystem_written": false,
+            "accepted_for_execution": false
+        }),
+        serde_json::json!({
+            "phase": "unrestricted_full_live",
+            "status": "blocked_report_only",
+            "enabled": false,
+            "accepted_for_execution": false
+        }),
+    ];
+
+    let closure_blockers = vec![
+        serde_json::json!({"blocker_id": "fresh_operator_approval_artifact", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "single_use_nonce_verified_and_consumed", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "operator_identity_session_binding", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "explicit_command_accepted", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "fresh_long_soak_evidence_accepted", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "activation_evidence_recorded_persisted_materialized", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "durable_memory_write_readback_rollback_receipt", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "bounded_intelligence_context_handoff_acceptance", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "kg_credential_reference_and_live_read_gate", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "kg_live_write_gate", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "provider_model_invocation_authority", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "channel_delivery_public_claim_authority", "accepted": false, "required": true}),
+        serde_json::json!({"blocker_id": "release_artifact_install_restart_active_binary_authority", "accepted": false, "required": true}),
+    ];
+    let closure_blocker_count = closure_blockers.len();
+    let accepted_closure_blocker_count = closure_blockers
+        .iter()
+        .filter(|blocker| {
+            blocker
+                .get("accepted")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+        })
+        .count();
+    let remaining_closure_blocker_count = closure_blocker_count - accepted_closure_blocker_count;
+    let truth_index_live_blocker_count = json_u64(&truth_index, "live_activation_blocker_count");
+
+    let closure_index_hash_sha256 = sha256_text_value(&format!(
+        "hepta-full-live-activation-closure-index-v1:route_count={}:sources={}:ready={}:blockers={}:accepted={}:truth={}:explicit={}",
+        route_matrix.route_count,
+        closure_source_count,
+        ready_closure_source_count,
+        closure_blocker_count,
+        accepted_closure_blocker_count,
+        sha256_json_value(&truth_index),
+        sha256_json_value(&explicit_boundary),
+    ));
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "full_live_activation_enabled",
+        "full_live_activation_performed",
+        "operator_approval_recorded",
+        "operator_consent_recorded",
+        "approval_authority_derived",
+        "activation_authority_derived",
+        "fresh_operator_approval_artifact_verified",
+        "single_use_nonce_consumed",
+        "operator_identity_session_bound",
+        "explicit_command_accepted",
+        "fresh_long_soak_evidence_accepted",
+        "activation_evidence_recorded",
+        "activation_evidence_persisted",
+        "activation_evidence_materialized",
+        "activation_evidence_filesystem_written",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "context_handoff_accepted",
+        "context_injection_performed",
+        "prompt_payload_materialized",
+        "provider_prompt_injection_performed",
+        "kg_adapter_read_performed",
+        "kg_credential_read",
+        "live_kg_write_performed",
+        "kg_write_performed",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_router_live_envelope_executed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && ready_closure_source_count == closure_source_count
+        && closure_source_count == 8
+        && closure_blocker_count == 13
+        && accepted_closure_blocker_count == 0
+        && truth_index_live_blocker_count >= 13
+        && truth_index_ready
+        && positive_boundary_ready
+        && memory_boundary_ready
+        && intelligence_boundary_ready
+        && kg_canary_ready
+        && provider_dry_run_ready
+        && activation_boundary_ready
+        && explicit_boundary_ready;
+
+    let canary_ladder_phase_count = canary_ladder.len();
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "run_full_live_activation_closure_index_require_live_gate",
+            "status": "allowed_verification_only",
+            "invokes_provider": false,
+            "invokes_model": false,
+            "reads_credentials": false,
+            "writes_memory": false,
+            "writes_kg": false,
+            "sends_externally": false,
+            "publishes_artifacts": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        },
+        {
+            "action": "prepare_scoped_live_canary_operator_packet",
+            "status": "requires_separate_explicit_command_and_accepted_receipts",
+            "memory_first": true,
+            "intelligence_second": true,
+            "kg_read_only_third": true,
+            "provider_dry_run_before_invocation": true,
+            "invokes_provider": false,
+            "invokes_model": false,
+            "writes_kg": false,
+            "sends_externally": false
+        },
+        {
+            "action": "continue_first_model_invocation_operator_approval_packet_review_acceptance_denial_preflight",
+            "status": "allowed_report_only_next_slice",
+            "requires_fresh_operator_approval": true,
+            "requires_explicit_command": true,
+            "invokes_provider": false,
+            "invokes_model": false,
+            "writes_memory": false,
+            "writes_kg": false,
+            "sends_externally": false
+        }
+    ]);
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!("gate", "hepta_full_live_activation_closure_index_route");
+    insert_report_json!("endpoint", HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT);
+    insert_report_json!("source_command", "/hepta-full-live-activation-closure-index --json");
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-07-02");
+    insert_report_json!(
+        "full_live_activation_closure_index_schema_version",
+        "full_live_activation_closure_index_v1"
+    );
+    insert_report_json!("full_live_activation_closure_index_ready", report_ready);
+    insert_report_json!(
+        "full_live_activation_closure_index_status",
+        "blocked_report_only"
+    );
+    insert_report_json!(
+        "closure_decision",
+        "pre-activation canary scaffolds are ready and side-effect-free, but unrestricted full-live remains blocked until every accepted evidence, identity, nonce, explicit-command, soak, rollback, provider, KG, channel, publication, and install authority gate is separately satisfied"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!("closure_index_hash_sha256", closure_index_hash_sha256);
+    insert_report_json!(
+        "hepta_core_connected",
+        json_bool(&truth_index, "hepta_core_connected")
+    );
+    insert_report_json!(
+        "hepta_core_full_fusion_complete",
+        json_bool(&truth_index, "hepta_core_full_fusion_complete")
+    );
+    insert_report_json!(
+        "operator_approved_lanes_ready",
+        json_bool(&truth_index, "operator_approved_lanes_ready")
+    );
+    insert_report_json!(
+        "memory_lane_ready",
+        json_bool(&truth_index, "operator_approved_lanes_ready")
+    );
+    insert_report_json!(
+        "hepta_intelligence_lane_ready",
+        json_bool(&truth_index, "operator_approved_lanes_ready")
+    );
+    insert_report_json!(
+        "kg_lane_ready",
+        json_bool(&truth_index, "operator_approved_lanes_ready")
+    );
+    insert_report_json!(
+        "source_full_live_activation_status",
+        json_str(&truth_index, "full_live_activation_status")
+    );
+    insert_report_json!("unrestricted_full_live_activation_enabled", false);
+    insert_report_json!("unrestricted_full_live_activation_allowed", false);
+    insert_report_json!("unrestricted_full_live_activation_status", "blocked_report_only");
+    insert_report_json!(
+        "truth_index_live_activation_blocker_count",
+        truth_index_live_blocker_count
+    );
+    insert_report_json!("closure_source_count", closure_source_count);
+    insert_report_json!("ready_closure_source_count", ready_closure_source_count);
+    report.insert(
+        "closure_sources".to_string(),
+        serde_json::Value::Array(closure_sources),
+    );
+    insert_report_json!("canary_ladder_phase_count", canary_ladder_phase_count);
+    report.insert(
+        "canary_ladder".to_string(),
+        serde_json::Value::Array(canary_ladder),
+    );
+    insert_report_json!(
+        "remaining_unrestricted_activation_blocker_count",
+        remaining_closure_blocker_count
+    );
+    insert_report_json!(
+        "accepted_unrestricted_activation_blocker_count",
+        accepted_closure_blocker_count
+    );
+    insert_report_json!("closure_blocker_count", closure_blocker_count);
+    report.insert(
+        "closure_blockers".to_string(),
+        serde_json::Value::Array(closure_blockers),
+    );
+    insert_report_json!(
+        "first_model_positive_approval_packet_boundary_ready",
+        positive_boundary_ready
+    );
+    insert_report_json!(
+        "scoped_memory_canary_durable_receipt_boundary_ready",
+        memory_boundary_ready
+    );
+    insert_report_json!(
+        "bounded_intelligence_context_handoff_prompt_preview_boundary_ready",
+        intelligence_boundary_ready
+    );
+    insert_report_json!("kg_read_only_adapter_shadow_rank_canary_ready", kg_canary_ready);
+    insert_report_json!(
+        "provider_router_dry_run_envelope_readback_audit_ready",
+        provider_dry_run_ready
+    );
+    insert_report_json!(
+        "activation_evidence_no_write_provider_router_dry_run_boundary_ready",
+        activation_boundary_ready
+    );
+    insert_report_json!(
+        "first_model_invocation_explicit_approval_evidence_no_invocation_boundary_ready",
+        explicit_boundary_ready
+    );
+    for key in [
+        "fresh_operator_approval_artifact_present",
+        "fresh_operator_approval_artifact_verified",
+        "single_use_nonce_consumed",
+        "operator_identity_session_bound",
+        "explicit_command_accepted",
+        "fresh_long_soak_evidence_accepted",
+        "activation_evidence_recorded",
+        "activation_evidence_persisted",
+        "durable_memory_store_write_performed",
+        "bounded_context_handoff_accepted",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "channel_send_performed",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "service_restarted",
+        "active_binary_mutated",
+    ] {
+        report.insert(key.to_string(), serde_json::json!(false));
+    }
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -110195,6 +110733,162 @@ mod tests {
         );
         assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
+    }
+
+    #[test]
+    fn hepta_full_live_activation_closure_index_endpoint_summarizes_blockers_without_side_effects()
+    {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("full live activation closure index json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-full-live-activation-closure-index --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(value["full_live_activation_closure_index_ready"], true);
+        assert_eq!(
+            value["full_live_activation_closure_index_status"],
+            "blocked_report_only"
+        );
+        assert_eq!(value["hepta_core_connected"], true);
+        assert_eq!(value["hepta_core_full_fusion_complete"], true);
+        assert_eq!(value["operator_approved_lanes_ready"], true);
+        assert_eq!(value["unrestricted_full_live_activation_enabled"], false);
+        assert_eq!(value["unrestricted_full_live_activation_allowed"], false);
+        assert_eq!(
+            value["unrestricted_full_live_activation_status"],
+            "blocked_report_only"
+        );
+        assert_eq!(value["closure_source_count"], 8);
+        assert_eq!(value["ready_closure_source_count"], 8);
+        assert_eq!(value["closure_blocker_count"], 13);
+        assert_eq!(value["accepted_unrestricted_activation_blocker_count"], 0);
+        assert_eq!(value["remaining_unrestricted_activation_blocker_count"], 13);
+        assert_eq!(value["canary_ladder_phase_count"], 5);
+        assert_eq!(
+            value["first_model_positive_approval_packet_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_memory_canary_durable_receipt_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["bounded_intelligence_context_handoff_prompt_preview_boundary_ready"],
+            true
+        );
+        assert_eq!(value["kg_read_only_adapter_shadow_rank_canary_ready"], true);
+        assert_eq!(
+            value["provider_router_dry_run_envelope_readback_audit_ready"],
+            true
+        );
+        assert_eq!(
+            value["activation_evidence_no_write_provider_router_dry_run_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["first_model_invocation_explicit_approval_evidence_no_invocation_boundary_ready"],
+            true
+        );
+        assert_eq!(value["fresh_operator_approval_artifact_verified"], false);
+        assert_eq!(value["single_use_nonce_consumed"], false);
+        assert_eq!(value["operator_identity_session_bound"], false);
+        assert_eq!(value["explicit_command_accepted"], false);
+        assert_eq!(value["fresh_long_soak_evidence_accepted"], false);
+        assert_eq!(value["activation_evidence_recorded"], false);
+        assert_eq!(value["activation_evidence_persisted"], false);
+        assert_eq!(value["durable_memory_store_write_performed"], false);
+        assert_eq!(value["bounded_context_handoff_accepted"], false);
+        assert_eq!(value["kg_adapter_read_performed"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["provider_invocation_authorized"], false);
+        assert_eq!(value["model_invocation_authorized"], false);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["channel_send_performed"], false);
+        assert_eq!(value["external_send_performed"], false);
+        assert_eq!(value["release_artifact_written"], false);
+        assert_eq!(value["public_artifact_written"], false);
+        assert_eq!(value["install_executed"], false);
+        assert_eq!(value["service_restarted"], false);
+        assert_eq!(value["active_binary_mutated"], false);
+
+        let sources = value["closure_sources"]
+            .as_array()
+            .expect("closure sources");
+        assert_eq!(sources.len(), 8);
+        assert!(
+            sources
+                .iter()
+                .all(|source| source["ready"].as_bool() == Some(true))
+        );
+        let blockers = value["closure_blockers"]
+            .as_array()
+            .expect("closure blockers");
+        assert_eq!(blockers.len(), 13);
+        assert!(
+            blockers
+                .iter()
+                .all(|blocker| blocker["accepted"].as_bool() == Some(false))
+        );
+        let ladder = value["canary_ladder"]
+            .as_array()
+            .expect("canary ladder");
+        assert_eq!(ladder.len(), 5);
+        assert_eq!(ladder[0]["phase"], "source_closure_index");
+        assert_eq!(ladder[4]["phase"], "unrestricted_full_live");
+        assert_eq!(ladder[4]["enabled"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_full_live_activation_closure_index_require_live_gate"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
+        assert_eq!(value["allowed_next_actions"][1]["action"], "prepare_scoped_live_canary_operator_packet");
+        assert_eq!(
+            value["allowed_next_actions"][2]["action"],
+            "continue_first_model_invocation_operator_approval_packet_review_acceptance_denial_preflight"
+        );
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("full live activation closure index side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
     }
 
     #[test]
