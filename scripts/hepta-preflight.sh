@@ -1095,6 +1095,9 @@ scripts/hepta-memory-live-mutation-operator-write-execution-post-write-operator-
 echo "[hepta-preflight] memory live mutation operator write execution activation closure denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-closure-denial-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution activation closure denial boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-activation-closure-denial-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution activation command no-op handoff gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-noop-handoff-gate.sh
 
