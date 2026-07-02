@@ -1077,6 +1077,9 @@ scripts/hepta-memory-live-mutation-operator-write-execution-no-write-sink-contra
 echo "[hepta-preflight] memory live mutation operator write execution write-enable fixture gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution write-enable fixture boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution post-write validation dry-run gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-gate.sh
 
