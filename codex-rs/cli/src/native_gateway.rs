@@ -416,6 +416,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_NO_WRITE_SINK_CONTRACT
     "/api/hepta-memory-live-mutation-operator-write-execution-no-write-sink-contract-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_WRITE_ENABLE_FIXTURE_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_VALIDATION_DRY_RUN_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -426,7 +428,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 232;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 233;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1716,6 +1718,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-boundary",
         side_effect_boundary: "read-only Memory live mutation operator write execution write-enable fixture boundary; consumes the no-write sink contract boundary as source evidence while exposing explicit-write-enable blocked fixtures and denying write-enable recording, persistence, durable Memory writes, rollback execution, KG writes, provider/model invocation, credential reads, channel/external sends, public claims, release/public artifacts, install/restart, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_VALIDATION_DRY_RUN_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary",
+        side_effect_boundary: "read-only Memory live mutation operator write execution post-write validation dry-run boundary; consumes the write-enable fixture boundary as source evidence while exposing post-write validation blocked fixtures and denying validation recording, persistence, durable Memory writes, rollback execution, KG writes, provider/model invocation, credential reads, channel/external sends, public claims, release/public artifacts, install/restart, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3816,6 +3825,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_write_enable_fixture_boundary_report(
+                        ),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_VALIDATION_DRY_RUN_BOUNDARY_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_post_write_validation_dry_run_boundary_report(
                         ),
                     ),
                 );
@@ -74164,6 +74183,506 @@ fn hepta_memory_live_mutation_operator_write_execution_write_enable_fixture_boun
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_post_write_validation_dry_run_boundary_report(
+) -> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let write_enable =
+        hepta_memory_live_mutation_operator_write_execution_write_enable_fixture_boundary_report();
+
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let side_effects_all_false = |value: &serde_json::Value| {
+        value
+            .get("side_effects")
+            .and_then(serde_json::Value::as_object)
+            .map(|effects| effects.values().all(|item| item.as_bool() == Some(false)))
+            .unwrap_or(false)
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let write_enable_ready = json_bool(
+        &write_enable,
+        "memory_write_execution_write_enable_fixture_boundary_ready",
+    ) && json_bool(
+        &write_enable,
+        "memory_write_execution_write_enable_fixture_ready",
+    ) && json_u64(&write_enable, "required_write_enable_surface_count") == 10
+        && json_u64(&write_enable, "ready_write_enable_surface_count") == 10
+        && json_u64(&write_enable, "write_enable_fixture_count") == 7
+        && json_u64(&write_enable, "blocked_write_enable_fixture_count") == 7
+        && json_u64(&write_enable, "allowed_write_enable_fixture_count") == 0
+        && json_u64(&write_enable, "denied_by_write_enable_fixture_count") == 13
+        && !json_bool(&write_enable, "memory_write_execution_allowed")
+        && !json_bool(&write_enable, "memory_write_execution_performed")
+        && !json_bool(&write_enable, "memory_store_write_path_enabled")
+        && json_u64(&write_enable, "memory_store_write_performed_count") == 0
+        && !json_bool(&write_enable, "memory_store_mutated")
+        && !json_bool(&write_enable, "rollback_executed")
+        && !json_bool(&write_enable, "live_kg_write_performed")
+        && !json_bool(&write_enable, "provider_invoked")
+        && !json_bool(&write_enable, "model_invoked")
+        && !json_bool(&write_enable, "credential_read")
+        && !json_bool(&write_enable, "external_send_performed")
+        && !json_bool(&write_enable, "release_artifact_written")
+        && !json_bool(&write_enable, "public_release_claimed")
+        && !json_bool(&write_enable, "active_binary_mutated")
+        && side_effects_all_false(&write_enable);
+
+    let post_write_validation_surfaces = vec![
+        "pre_write_memory_store_baseline_hash_required",
+        "accepted_write_result_receipt_hash_required",
+        "post_write_memory_store_hash_and_diff_scope_required",
+        "route_readiness_regression_check_required",
+        "active_dependency_isolation_regression_check_required",
+        "post_write_watchdog_soak_plan_required",
+        "rollback_validation_plan_required",
+        "audit_redaction_validation_required",
+        "operator_post_write_acceptance_required",
+    ];
+    let post_write_validation_fixtures = serde_json::json!([
+        {
+            "id": "post-write-missing-pre-write-baseline",
+            "post_write_validation_requested": true,
+            "validation_status": "blocked",
+            "pre_write_memory_store_hash_recorded": false,
+            "write_result_receipt_hash_recorded": false,
+            "post_write_memory_store_hash_recorded": false,
+            "validation_allowed": false,
+            "validation_performed": false,
+            "validation_passed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "pre_write_baseline_and_write_receipt_required"
+        },
+        {
+            "id": "post-write-missing-write-result-receipt",
+            "post_write_validation_requested": true,
+            "validation_status": "blocked",
+            "pre_write_memory_store_hash_recorded": true,
+            "write_result_receipt_hash_recorded": false,
+            "write_result_receipt_accepted": false,
+            "post_write_memory_store_hash_recorded": true,
+            "validation_allowed": false,
+            "validation_performed": false,
+            "validation_passed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "accepted_write_result_receipt_hash_required"
+        },
+        {
+            "id": "post-write-store-hash-mismatch",
+            "post_write_validation_requested": true,
+            "validation_status": "blocked",
+            "pre_write_memory_store_hash_recorded": true,
+            "write_result_receipt_hash_recorded": true,
+            "write_result_receipt_accepted": true,
+            "post_write_memory_store_hash_recorded": true,
+            "post_write_memory_store_hash_changed": true,
+            "diff_scope_allowlisted": false,
+            "validation_allowed": false,
+            "validation_performed": false,
+            "validation_passed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "post_write_store_hash_change_requires_allowlisted_diff_scope"
+        },
+        {
+            "id": "post-write-route-or-dependency-regression",
+            "post_write_validation_requested": true,
+            "validation_status": "blocked",
+            "route_readiness_regression_detected": true,
+            "active_dependency_isolation_regression_detected": true,
+            "validation_allowed": false,
+            "validation_performed": false,
+            "validation_passed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "route_readiness_and_dependency_isolation_must_remain_ready"
+        },
+        {
+            "id": "post-write-watchdog-soak-missing-or-failed",
+            "post_write_validation_requested": true,
+            "validation_status": "blocked",
+            "post_write_watchdog_soak_plan_recorded": false,
+            "post_write_watchdog_soak_performed": false,
+            "post_write_watchdog_soak_passed": false,
+            "validation_allowed": false,
+            "validation_performed": false,
+            "validation_passed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "post_write_watchdog_soak_plan_and_success_required"
+        },
+        {
+            "id": "post-write-rollback-validation-missing",
+            "post_write_validation_requested": true,
+            "validation_status": "blocked",
+            "rollback_validation_plan_recorded": false,
+            "rollback_validation_performed": false,
+            "rollback_validation_passed": false,
+            "rollback_execution_requested": true,
+            "validation_allowed": false,
+            "validation_performed": false,
+            "validation_passed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "rollback_validation_plan_required_without_executing_rollback"
+        },
+        {
+            "id": "post-write-audit-redaction-or-secret-leak",
+            "post_write_validation_requested": true,
+            "validation_status": "blocked",
+            "audit_redaction_validation_recorded": false,
+            "raw_payload_plaintext_recorded": true,
+            "secret_material_read": true,
+            "validation_allowed": false,
+            "validation_performed": false,
+            "validation_passed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "audit_redaction_validation_required_and_secret_material_forbidden"
+        },
+        {
+            "id": "post-write-external-send-or-release-artifact-attempt",
+            "post_write_validation_requested": true,
+            "validation_status": "blocked",
+            "external_send_requested": true,
+            "public_claim_requested": true,
+            "release_artifact_write_requested": true,
+            "validation_allowed": false,
+            "validation_performed": false,
+            "validation_passed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "external_send_performed": false,
+            "public_release_published": false,
+            "release_artifact_written": false,
+            "rollback_executed": false,
+            "activation_allowed": false,
+            "reason": "post_write_validation_cannot_send_publish_or_write_release_artifacts"
+        }
+    ]);
+    let denied_by = vec![
+        "pre_write_memory_store_baseline_hash_required",
+        "accepted_write_result_receipt_hash_required",
+        "post_write_memory_store_hash_required",
+        "allowlisted_diff_scope_required",
+        "route_readiness_regression_denied",
+        "active_dependency_isolation_regression_denied",
+        "post_write_watchdog_soak_plan_required",
+        "post_write_watchdog_soak_success_required",
+        "rollback_validation_plan_required",
+        "rollback_execution_denied",
+        "audit_redaction_validation_required",
+        "secret_material_read_denied",
+        "external_send_public_claim_release_artifact_denied",
+        "live_mutation_execution_denied",
+    ];
+
+    let source_write_enable_boundary_report_sha256 = sha256_json_value(&write_enable);
+    let boundary_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary-v1:{}:{}",
+        route_matrix.route_count,
+        source_write_enable_boundary_report_sha256,
+    ));
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && write_enable_ready
+        && post_write_validation_surfaces.len() == 9
+        && post_write_validation_fixtures
+            .as_array()
+            .map(std::vec::Vec::len)
+            == Some(8)
+        && denied_by.len() == 14;
+
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "run_memory_write_execution_post_write_validation_dry_run_boundary_require_live_gate",
+            "status": "allowed_verification_only",
+            "records_post_write_validation": false,
+            "writes_memory": false,
+            "executes_rollback": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "invokes_model": false,
+            "reads_credentials": false,
+            "sends_externally": false,
+            "publishes_artifacts": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        },
+        {
+            "action": "prepare_memory_write_execution_post_write_operator_acceptance_denial_boundary",
+            "status": "allowed_report_only_next_slice",
+            "writes_memory": false,
+            "executes_rollback": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "sends_externally": false
+        }
+    ]);
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "memory_store_mutated",
+        "memory_store_write_performed",
+        "memory_write_execution_performed",
+        "post_write_validation_recorded",
+        "post_write_validation_persisted",
+        "post_write_validation_accepted",
+        "post_write_validation_performed",
+        "post_write_validation_report_written",
+        "post_write_watchdog_soak_performed",
+        "post_write_route_regression_check_performed",
+        "post_write_dependency_isolation_check_performed",
+        "rollback_validation_performed",
+        "rollback_executed",
+        "write_result_receipt_recorded",
+        "write_result_receipt_persisted",
+        "write_result_receipt_accepted",
+        "pre_write_memory_store_hash_recorded",
+        "post_write_memory_store_hash_recorded",
+        "audit_redaction_validation_recorded",
+        "raw_payload_inspected",
+        "payload_plaintext_persisted",
+        "secret_file_read",
+        "credential_read",
+        "capability_registry_mutated",
+        "plugin_registry_mutated",
+        "skill_workshop_written",
+        "provider_invoked",
+        "model_invoked",
+        "provider_prompt_replayed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "runtime_store_mutated",
+        "gateway_event_enqueued",
+        "filesystem_written",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_published",
+        "launchd_mutated",
+        "service_restarted",
+        "install_executed",
+        "active_binary_mutated",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_post_write_validation_dry_run_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_VALIDATION_DRY_RUN_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-07-02");
+    insert_report_json!(
+        "memory_write_execution_post_write_validation_dry_run_boundary_schema_version",
+        "memory_write_execution_post_write_validation_dry_run_boundary_v1"
+    );
+    insert_report_json!(
+        "memory_write_execution_post_write_validation_dry_run_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "post_write_validation_mode",
+        "memory_write_execution_post_write_validation_dry_run_non_activation"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!("boundary_hash_sha256", boundary_hash_sha256);
+    insert_report_json!(
+        "source_memory_write_execution_write_enable_fixture_boundary_endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_WRITE_ENABLE_FIXTURE_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_memory_write_execution_write_enable_fixture_boundary_ready",
+        write_enable_ready
+    );
+    insert_report_json!(
+        "source_memory_write_execution_write_enable_fixture_boundary_report_sha256",
+        source_write_enable_boundary_report_sha256
+    );
+    report.insert(
+        "source_memory_write_execution_no_write_sink_contract_boundary_report_sha256".to_string(),
+        write_enable
+            .get("source_memory_write_execution_no_write_sink_contract_boundary_report_sha256")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!("")),
+    );
+    report.insert(
+        "source_memory_write_execution_denial_matrix_boundary_report_sha256".to_string(),
+        write_enable
+            .get("source_memory_write_execution_denial_matrix_boundary_report_sha256")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!("")),
+    );
+    insert_report_json!("minimum_required_samples", 24);
+    insert_report_json!("memory_write_execution_post_write_validation_dry_run_ready", true);
+    insert_report_json!("memory_write_execution_write_enable_fixture_ready", true);
+    insert_report_json!("memory_write_execution_no_write_sink_contract_ready", true);
+    insert_report_json!(
+        "required_write_enable_surface_count",
+        json_u64(&write_enable, "required_write_enable_surface_count")
+    );
+    insert_report_json!(
+        "ready_write_enable_surface_count",
+        json_u64(&write_enable, "ready_write_enable_surface_count")
+    );
+    insert_report_json!("required_post_write_validation_surface_count", 9);
+    insert_report_json!("ready_post_write_validation_surface_count", 9);
+    insert_report_json!("side_effect_free_post_write_validation_surface_count", 9);
+    insert_report_json!("required_post_write_validation_fixture_count", 8);
+    insert_report_json!("post_write_validation_fixture_count", 8);
+    insert_report_json!("blocked_post_write_validation_fixture_count", 8);
+    insert_report_json!("allowed_post_write_validation_fixture_count", 0);
+    insert_report_json!("passed_post_write_validation_fixture_count", 0);
+    insert_report_json!("post_write_validation_denied_count", 8);
+    insert_report_json!("post_write_validation_performed_count", 0);
+
+    for key in [
+        "post_write_validation_recorded",
+        "post_write_validation_persisted",
+        "post_write_validation_accepted",
+        "post_write_validation_performed",
+        "post_write_validation_report_written",
+        "post_write_watchdog_soak_plan_recorded",
+        "post_write_watchdog_soak_plan_persisted",
+        "post_write_watchdog_soak_performed",
+        "post_write_watchdog_soak_passed",
+        "post_write_route_regression_check_performed",
+        "post_write_route_regression_passed",
+        "post_write_dependency_isolation_check_performed",
+        "post_write_dependency_isolation_passed",
+        "post_write_memory_store_hash_recorded",
+        "post_write_memory_store_hash_persisted",
+        "post_write_memory_store_hash_changed",
+        "pre_write_memory_store_hash_recorded",
+        "write_result_receipt_hash_recorded",
+        "write_result_receipt_accepted",
+        "rollback_validation_plan_recorded",
+        "rollback_validation_performed",
+        "rollback_validation_passed",
+        "audit_redaction_validation_recorded",
+        "audit_redaction_validation_passed",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "memory_write_execution_allowed",
+        "memory_write_execution_ready",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "live_mutation_execution_ready",
+        "rollback_execution_allowed",
+        "rollback_executed",
+        "provider_prompt_replay_enabled",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_enabled",
+        "external_send_performed",
+        "public_claim_or_release_artifact_write_enabled",
+        "public_release_published",
+        "public_release_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "service_restarted",
+        "active_binary_mutated",
+    ] {
+        report.insert(key.to_string(), serde_json::json!(false));
+    }
+    insert_report_json!("memory_store_write_performed_count", 0);
+    report.insert(
+        "post_write_validation_surfaces".to_string(),
+        serde_json::json!(post_write_validation_surfaces),
+    );
+    report.insert(
+        "post_write_validation_fixtures".to_string(),
+        post_write_validation_fixtures,
+    );
+    report.insert(
+        "denied_by_post_write_validation".to_string(),
+        serde_json::json!(denied_by),
+    );
+    insert_report_json!("denied_by_post_write_validation_count", 14);
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -114520,6 +115039,214 @@ mod tests {
         let side_effects = value["side_effects"]
             .as_object()
             .expect("memory write execution write-enable fixture boundary side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_post_write_validation_dry_run_boundary_endpoint_blocks_validation_without_store_write()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_VALIDATION_DRY_RUN_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("memory write execution post-write validation dry-run boundary json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_VALIDATION_DRY_RUN_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(
+            value["route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(
+            value["implemented_route_count"],
+            serde_json::json!(NATIVE_GATEWAY_SOURCE_COMMAND_COUNT)
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_post_write_validation_dry_run_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["post_write_validation_mode"],
+            "memory_write_execution_post_write_validation_dry_run_non_activation"
+        );
+        assert_eq!(
+            value["source_memory_write_execution_write_enable_fixture_boundary_ready"],
+            true
+        );
+        assert_eq!(value["minimum_required_samples"], 24);
+        assert_eq!(
+            value["memory_write_execution_post_write_validation_dry_run_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_write_enable_fixture_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_no_write_sink_contract_ready"],
+            true
+        );
+        assert_eq!(value["required_write_enable_surface_count"], 10);
+        assert_eq!(value["ready_write_enable_surface_count"], 10);
+        assert_eq!(value["required_post_write_validation_surface_count"], 9);
+        assert_eq!(value["ready_post_write_validation_surface_count"], 9);
+        assert_eq!(
+            value["side_effect_free_post_write_validation_surface_count"],
+            9
+        );
+        assert_eq!(value["required_post_write_validation_fixture_count"], 8);
+        assert_eq!(value["post_write_validation_fixture_count"], 8);
+        assert_eq!(value["blocked_post_write_validation_fixture_count"], 8);
+        assert_eq!(value["allowed_post_write_validation_fixture_count"], 0);
+        assert_eq!(value["passed_post_write_validation_fixture_count"], 0);
+        assert_eq!(value["post_write_validation_denied_count"], 8);
+        assert_eq!(value["post_write_validation_performed_count"], 0);
+
+        for key in [
+            "post_write_validation_recorded",
+            "post_write_validation_persisted",
+            "post_write_validation_accepted",
+            "post_write_validation_performed",
+            "post_write_validation_report_written",
+            "post_write_watchdog_soak_performed",
+            "post_write_watchdog_soak_passed",
+            "post_write_route_regression_check_performed",
+            "post_write_dependency_isolation_check_performed",
+            "post_write_memory_store_hash_recorded",
+            "post_write_memory_store_hash_changed",
+            "write_result_receipt_hash_recorded",
+            "rollback_validation_performed",
+            "rollback_validation_passed",
+            "audit_redaction_validation_recorded",
+            "secret_material_read",
+            "memory_write_execution_allowed",
+            "memory_write_execution_ready",
+            "memory_write_execution_performed",
+            "memory_store_write_path_enabled",
+            "memory_store_write_allowed",
+            "memory_store_write_performed",
+            "memory_store_mutation_allowed",
+            "memory_store_mutated",
+            "live_mutation_execution_ready",
+            "rollback_execution_allowed",
+            "rollback_executed",
+            "external_send_enabled",
+            "external_send_performed",
+            "public_claim_or_release_artifact_write_enabled",
+            "public_release_published",
+            "release_artifact_written",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        assert_eq!(value["memory_store_write_performed_count"], 0);
+
+        let surfaces = value["post_write_validation_surfaces"]
+            .as_array()
+            .expect("post-write validation surfaces");
+        assert_eq!(surfaces.len(), 9);
+        let fixtures = value["post_write_validation_fixtures"]
+            .as_array()
+            .expect("post-write validation fixtures");
+        assert_eq!(fixtures.len(), 8);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["post_write_validation_requested"].as_bool() == Some(true)
+                && fixture["validation_status"].as_str() == Some("blocked")
+                && fixture["validation_allowed"].as_bool() == Some(false)
+                && fixture["validation_performed"].as_bool() == Some(false)
+                && fixture["validation_passed"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["memory_store_mutated"].as_bool() == Some(false)
+                && fixture["rollback_executed"].as_bool() == Some(false)
+                && fixture["activation_allowed"].as_bool() == Some(false)
+        }));
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["route_readiness_regression_detected"] == true)
+                .count(),
+            1
+        );
+        assert!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["post_write_watchdog_soak_passed"] == false)
+                .count()
+                >= 1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["raw_payload_plaintext_recorded"] == true
+                        && fixture["secret_material_read"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["external_send_requested"] == true
+                        && fixture["release_artifact_write_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(value["denied_by_post_write_validation_count"], 14);
+        assert_eq!(value["provider_invoked"], false);
+        assert_eq!(value["model_invoked"], false);
+        assert_eq!(value["credential_read"], false);
+        assert_eq!(value["secret_file_read"], false);
+        assert_eq!(value["kg_adapter_read_performed"], false);
+        assert_eq!(value["live_kg_write_performed"], false);
+        assert_eq!(value["channel_send_performed"], false);
+        assert_eq!(value["telegram_send_performed"], false);
+        assert_eq!(value["external_send_performed"], false);
+        assert_eq!(value["public_artifact_written"], false);
+        assert_eq!(value["public_release_claimed"], false);
+        assert_eq!(value["install_executed"], false);
+        assert_eq!(value["service_restarted"], false);
+        assert_eq!(value["active_binary_mutated"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_memory_write_execution_post_write_validation_dry_run_boundary_require_live_gate"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["writes_memory"], false);
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_memory_write_execution_post_write_operator_acceptance_denial_boundary"
+        );
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("memory write execution post-write validation dry-run boundary side effects");
         assert!(
             side_effects
                 .values()
