@@ -1107,6 +1107,9 @@ scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-n
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt no-persistence gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt no-persistence boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt replay idempotency denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-gate.sh
 

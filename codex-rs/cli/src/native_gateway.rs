@@ -424,6 +424,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_CLOSURE_DEN
     "/api/hepta-memory-live-mutation-operator-write-execution-activation-closure-denial-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_NOOP_HANDOFF_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-no-op-handoff-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -434,7 +436,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 236;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 237;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1752,6 +1754,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-activation-command-no-op-handoff-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-no-op-handoff-boundary",
         side_effect_boundary: "read-only Memory live mutation operator write execution activation command no-op handoff boundary; consumes the activation closure denial boundary as source evidence while exposing blocked activation command handoff fixtures and denying command registration, enablement, invocation, dispatch, handoff recording/persistence, durable Memory writes, rollback execution, KG writes, provider/model invocation, credential reads, channel/external sends, public claims, release/public artifacts, install/restart, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-boundary",
+        side_effect_boundary: "read-only Memory live mutation operator write execution activation command result receipt no-persistence boundary; consumes the activation command no-op handoff boundary as source evidence while exposing blocked result-receipt fixtures and denying receipt recording, persistence, acceptance, materialization, filesystem/ledger/index/delivery writes, completion acknowledgement, durable Memory writes, rollback execution, KG writes, provider/model invocation, credential reads, channel/external sends, public claims, release/public artifacts, install/restart, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3898,6 +3907,17 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_activation_command_noop_handoff_boundary_report(
+                        ),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_no_persistence_boundary_report(
                         ),
                     ),
                 );
@@ -76796,6 +76816,708 @@ fn hepta_memory_live_mutation_operator_write_execution_activation_command_noop_h
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_no_persistence_boundary_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let noop_handoff =
+        hepta_memory_live_mutation_operator_write_execution_activation_command_noop_handoff_boundary_report();
+
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let side_effects_all_false = |value: &serde_json::Value| {
+        value
+            .get("side_effects")
+            .and_then(serde_json::Value::as_object)
+            .map(|effects| effects.values().all(|item| item.as_bool() == Some(false)))
+            .unwrap_or(false)
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let noop_handoff_ready = json_str(&noop_handoff, "status") == "ready"
+        && json_bool(
+            &noop_handoff,
+            "memory_write_execution_activation_command_noop_handoff_boundary_ready",
+        )
+        && json_bool(
+            &noop_handoff,
+            "memory_write_execution_activation_command_noop_handoff_ready",
+        )
+        && json_bool(
+            &noop_handoff,
+            "memory_write_execution_activation_closure_denial_ready",
+        )
+        && json_u64(
+            &noop_handoff,
+            "required_activation_command_handoff_surface_count",
+        ) == 13
+        && json_u64(
+            &noop_handoff,
+            "ready_activation_command_handoff_surface_count",
+        ) == 13
+        && json_u64(&noop_handoff, "activation_command_fixture_count") == 10
+        && json_u64(&noop_handoff, "blocked_activation_command_fixture_count") == 10
+        && json_u64(&noop_handoff, "noop_activation_command_fixture_count") == 10
+        && json_u64(&noop_handoff, "accepted_activation_command_fixture_count") == 0
+        && json_u64(&noop_handoff, "activation_command_performed_count") == 0
+        && json_u64(&noop_handoff, "denied_by_activation_command_handoff_count") == 26
+        && !json_bool(&noop_handoff, "activation_command_shape_registered")
+        && !json_bool(&noop_handoff, "activation_command_enabled")
+        && !json_bool(&noop_handoff, "activation_command_invoked")
+        && !json_bool(&noop_handoff, "activation_command_dispatched")
+        && !json_bool(&noop_handoff, "activation_command_result_receipt_recorded")
+        && !json_bool(&noop_handoff, "activation_command_result_receipt_persisted")
+        && !json_bool(&noop_handoff, "activation_allowed")
+        && !json_bool(&noop_handoff, "memory_write_execution_performed")
+        && !json_bool(&noop_handoff, "memory_store_mutated")
+        && !json_bool(&noop_handoff, "rollback_executed")
+        && !json_bool(&noop_handoff, "live_kg_write_performed")
+        && !json_bool(&noop_handoff, "provider_invoked")
+        && !json_bool(&noop_handoff, "model_invoked")
+        && !json_bool(&noop_handoff, "credential_read")
+        && !json_bool(&noop_handoff, "external_send_performed")
+        && !json_bool(&noop_handoff, "release_artifact_written")
+        && !json_bool(&noop_handoff, "active_binary_mutated")
+        && side_effects_all_false(&noop_handoff);
+
+    let receipt_surfaces = vec![
+        "source_noop_handoff_report_required",
+        "accepted_activation_closure_packet_required",
+        "activation_command_disabled_and_not_invoked_required",
+        "receipt_schema_and_request_id_required",
+        "receipt_hash_signature_timestamp_required",
+        "receipt_status_must_remain_blocked_noop_required",
+        "receipt_record_persist_materialize_denied",
+        "receipt_filesystem_ledger_index_delivery_denied",
+        "completion_ack_denied",
+        "activation_from_receipt_denied",
+        "memory_write_live_mutation_rollback_denied",
+        "external_public_release_install_restart_denied",
+    ];
+    let receipt_fixtures = serde_json::json!([
+        {
+            "id": "activation-result-receipt-missing-source-noop-handoff",
+            "receipt_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": false,
+            "source_noop_handoff_ready": false,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "source_activation_command_noop_handoff_required"
+        },
+        {
+            "id": "activation-result-receipt-record-attempt",
+            "receipt_requested": true,
+            "receipt_record_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "activation_command_result_receipt_recording_denied"
+        },
+        {
+            "id": "activation-result-receipt-persist-attempt",
+            "receipt_requested": true,
+            "receipt_persist_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "activation_command_result_receipt_persistence_denied"
+        },
+        {
+            "id": "activation-result-receipt-materialize-filesystem-attempt",
+            "receipt_requested": true,
+            "receipt_materialize_requested": true,
+            "receipt_filesystem_write_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "result_receipt_materialization_and_filesystem_write_denied"
+        },
+        {
+            "id": "activation-result-receipt-ledger-index-delivery-attempt",
+            "receipt_requested": true,
+            "receipt_ledger_write_requested": true,
+            "receipt_index_requested": true,
+            "receipt_delivery_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_ledger_written": false,
+            "receipt_indexed": false,
+            "receipt_delivered": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "result_receipt_ledger_index_delivery_denied"
+        },
+        {
+            "id": "activation-result-receipt-acceptance-as-approval-attempt",
+            "receipt_requested": true,
+            "receipt_acceptance_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "result_receipt_cannot_become_operator_approval"
+        },
+        {
+            "id": "activation-result-receipt-completion-ack-attempt",
+            "receipt_requested": true,
+            "completion_ack_requested": true,
+            "activation_completion_ack_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "completion_ack_persisted": false,
+            "completion_ack_accepted": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "activation_completion_ack_denied"
+        },
+        {
+            "id": "activation-result-receipt-non-noop-status-attempt",
+            "receipt_requested": true,
+            "receipt_status_requested": "completed",
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "result_receipt_status_must_remain_blocked_noop"
+        },
+        {
+            "id": "activation-result-receipt-memory-write-rollback-attempt",
+            "receipt_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "memory_store_write_requested": true,
+            "rollback_execution_requested": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "reason": "result_receipt_cannot_enable_memory_write_or_rollback"
+        },
+        {
+            "id": "activation-result-receipt-external-public-install-attempt",
+            "receipt_requested": true,
+            "receipt_status": "blocked_noop",
+            "source_noop_handoff_present": true,
+            "external_send_requested": true,
+            "public_claim_requested": true,
+            "release_artifact_write_requested": true,
+            "install_requested": true,
+            "launchd_restart_requested": true,
+            "active_binary_mutation_requested": true,
+            "receipt_allowed": false,
+            "receipt_recorded": false,
+            "receipt_persisted": false,
+            "receipt_accepted": false,
+            "receipt_materialized": false,
+            "receipt_filesystem_written": false,
+            "receipt_noop_confirmed": true,
+            "completion_ack_recorded": false,
+            "activation_allowed": false,
+            "live_mutation_execution_performed": false,
+            "memory_store_write_performed": false,
+            "memory_store_mutated": false,
+            "rollback_executed": false,
+            "external_send_performed": false,
+            "public_release_published": false,
+            "release_artifact_written": false,
+            "install_executed": false,
+            "launchd_mutated": false,
+            "service_restarted": false,
+            "active_binary_mutated": false,
+            "reason": "result_receipt_cannot_send_publish_install_restart_or_mutate_active_binary"
+        }
+    ]);
+    let denied_by = vec![
+        "source_activation_command_noop_handoff_required",
+        "accepted_activation_closure_packet_required",
+        "activation_command_enabled_denied",
+        "activation_command_invocation_denied",
+        "activation_command_dispatch_denied",
+        "receipt_schema_acceptance_denied",
+        "receipt_recording_denied",
+        "receipt_persistence_denied",
+        "receipt_acceptance_denied",
+        "receipt_materialization_denied",
+        "receipt_filesystem_write_denied",
+        "receipt_ledger_write_denied",
+        "receipt_indexing_denied",
+        "receipt_delivery_denied",
+        "completion_ack_recording_denied",
+        "completion_ack_persistence_denied",
+        "completion_ack_acceptance_denied",
+        "activation_from_receipt_denied",
+        "memory_store_write_denied",
+        "live_mutation_execution_denied",
+        "rollback_execution_denied",
+        "secret_material_read_denied",
+        "provider_prompt_replay_denied",
+        "external_send_public_claim_release_artifact_denied",
+        "install_restart_active_binary_mutation_denied",
+    ];
+
+    let source_noop_handoff_report_sha256 = sha256_json_value(&noop_handoff);
+    let boundary_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-boundary-v1:{}:{}",
+        route_matrix.route_count, source_noop_handoff_report_sha256,
+    ));
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && noop_handoff_ready
+        && receipt_surfaces.len() == 12
+        && receipt_fixtures.as_array().map(std::vec::Vec::len) == Some(10)
+        && denied_by.len() == 25;
+
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "run_memory_write_execution_activation_command_result_receipt_no_persistence_boundary_require_live_gate",
+            "status": "allowed_verification_only",
+            "records_command_result": false,
+            "persists_result_receipt": false,
+            "accepts_result_receipt": false,
+            "records_completion_ack": false,
+            "accepts_activation": false,
+            "writes_memory": false,
+            "executes_rollback": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "sends_externally": false,
+            "publishes_artifacts": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        },
+        {
+            "action": "prepare_memory_write_execution_activation_command_result_receipt_replay_idempotency_denial_boundary",
+            "status": "allowed_report_only_next_slice",
+            "accepts_duplicate_receipt": false,
+            "records_idempotency": false,
+            "persists_replay_state": false,
+            "mutates_runtime": false,
+            "invokes_model": false,
+            "writes_memory_or_kg": false
+        }
+    ]);
+
+    let mut side_effects = serde_json::Map::new();
+    for key in [
+        "activation_command_result_receipt_recorded",
+        "activation_command_result_receipt_persisted",
+        "activation_command_result_receipt_accepted",
+        "activation_command_result_receipt_materialized",
+        "activation_command_result_receipt_filesystem_written",
+        "activation_command_result_receipt_ledger_written",
+        "activation_command_result_receipt_indexed",
+        "activation_command_result_receipt_enqueued",
+        "activation_command_result_receipt_delivered",
+        "activation_command_completion_ack_recorded",
+        "activation_command_completion_ack_persisted",
+        "activation_command_completion_ack_accepted",
+        "activation_command_completion_ack_delivered",
+        "activation_command_shape_registered",
+        "activation_command_enabled",
+        "activation_command_invoked",
+        "activation_command_dispatched",
+        "activation_command_noop_decision_recorded",
+        "activation_command_noop_decision_persisted",
+        "activation_command_handoff_recorded",
+        "activation_command_handoff_persisted",
+        "activation_command_handoff_materialized",
+        "activation_closure_packet_recorded",
+        "activation_closure_packet_persisted",
+        "live_mutation_execution_performed",
+        "memory_write_execution_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "rollback_executed",
+        "raw_payload_inspected",
+        "payload_plaintext_persisted",
+        "secret_file_read",
+        "credential_read",
+        "provider_invoked",
+        "model_invoked",
+        "provider_prompt_replayed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed",
+        "runtime_store_mutated",
+        "gateway_event_enqueued",
+        "capability_registry_mutated",
+        "plugin_registry_mutated",
+        "skill_workshop_written",
+        "filesystem_written",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_published",
+        "public_ga_claimed",
+        "install_executed",
+        "active_binary_mutated",
+        "launchd_mutated",
+        "service_restarted",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_no_persistence_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-07-02");
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_no_persistence_boundary_schema_version",
+        "memory_write_execution_activation_command_result_receipt_no_persistence_boundary_v1"
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_no_persistence_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_no_persistence_mode",
+        "memory_write_execution_activation_command_result_receipt_no_persistence_denial"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!("boundary_hash_sha256", boundary_hash_sha256);
+    insert_report_json!(
+        "source_activation_command_noop_handoff_boundary_endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_NOOP_HANDOFF_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_activation_command_noop_handoff_boundary_ready",
+        noop_handoff_ready
+    );
+    insert_report_json!(
+        "source_activation_command_noop_handoff_ready",
+        json_bool(
+            &noop_handoff,
+            "memory_write_execution_activation_command_noop_handoff_ready"
+        )
+    );
+    insert_report_json!(
+        "source_activation_command_noop_handoff_boundary_report_sha256",
+        source_noop_handoff_report_sha256
+    );
+    for key in [
+        "source_memory_write_execution_activation_closure_denial_boundary_report_sha256",
+        "source_memory_write_execution_post_write_operator_acceptance_denial_boundary_report_sha256",
+        "source_memory_write_execution_post_write_validation_dry_run_boundary_report_sha256",
+        "source_memory_write_execution_write_enable_fixture_boundary_report_sha256",
+        "source_memory_write_execution_no_write_sink_contract_boundary_report_sha256",
+        "source_memory_write_execution_denial_matrix_boundary_report_sha256",
+    ] {
+        report.insert(
+            key.to_string(),
+            noop_handoff
+                .get(key)
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!("")),
+        );
+    }
+    insert_report_json!("minimum_required_samples", 24);
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_no_persistence_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_noop_handoff_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_closure_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_post_write_operator_acceptance_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_post_write_validation_dry_run_ready",
+        true
+    );
+    insert_report_json!("memory_write_execution_write_enable_fixture_ready", true);
+    insert_report_json!("memory_write_execution_no_write_sink_contract_ready", true);
+    insert_report_json!("required_activation_command_handoff_surface_count", 13);
+    insert_report_json!("ready_activation_command_handoff_surface_count", 13);
+    insert_report_json!(
+        "required_activation_command_result_receipt_surface_count",
+        12
+    );
+    insert_report_json!("ready_activation_command_result_receipt_surface_count", 12);
+    insert_report_json!(
+        "side_effect_free_activation_command_result_receipt_surface_count",
+        12
+    );
+    insert_report_json!(
+        "required_activation_command_result_receipt_fixture_count",
+        10
+    );
+    insert_report_json!("activation_command_result_receipt_fixture_count", 10);
+    insert_report_json!(
+        "blocked_activation_command_result_receipt_fixture_count",
+        10
+    );
+    insert_report_json!("noop_activation_command_result_receipt_fixture_count", 10);
+    insert_report_json!("allowed_activation_command_result_receipt_fixture_count", 0);
+    insert_report_json!(
+        "accepted_activation_command_result_receipt_fixture_count",
+        0
+    );
+    insert_report_json!("activation_command_result_receipt_denied_count", 10);
+    insert_report_json!("activation_command_result_receipt_performed_count", 0);
+
+    for key in [
+        "activation_command_result_receipt_shape_registered",
+        "activation_command_result_receipt_allowed",
+        "activation_command_result_receipt_schema_accepted",
+        "activation_command_result_receipt_recorded",
+        "activation_command_result_receipt_persisted",
+        "activation_command_result_receipt_accepted",
+        "activation_command_result_receipt_materialized",
+        "activation_command_result_receipt_filesystem_written",
+        "activation_command_result_receipt_ledger_written",
+        "activation_command_result_receipt_indexed",
+        "activation_command_result_receipt_enqueued",
+        "activation_command_result_receipt_delivered",
+        "activation_command_result_receipt_hash_bound",
+        "activation_command_result_receipt_signature_hash_recorded",
+        "activation_command_result_receipt_timestamp_recorded",
+        "activation_command_result_receipt_operator_identity_accepted",
+        "activation_command_result_receipt_status_accepted",
+        "activation_command_result_receipt_blocked_noop_status_accepted",
+        "activation_command_completion_ack_recorded",
+        "activation_command_completion_ack_persisted",
+        "activation_command_completion_ack_accepted",
+        "activation_command_completion_ack_materialized",
+        "activation_command_completion_ack_delivered",
+        "activation_command_shape_registered",
+        "activation_command_enabled",
+        "activation_command_invoked",
+        "activation_command_dispatched",
+        "activation_command_noop_decision_recorded",
+        "activation_command_noop_decision_persisted",
+        "activation_command_handoff_recorded",
+        "activation_command_handoff_persisted",
+        "activation_command_handoff_accepted",
+        "activation_command_handoff_materialized",
+        "activation_allowed_by_result_receipt",
+        "activation_allowed_by_command_handoff",
+        "activation_allowed",
+        "activation_performed",
+        "live_mutation_execution_ready",
+        "live_mutation_execution_allowed",
+        "live_mutation_execution_performed",
+        "memory_write_execution_allowed",
+        "memory_write_execution_ready",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "rollback_validation_accepted",
+        "rollback_execution_allowed",
+        "rollback_executed",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "provider_prompt_replay_enabled",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_enabled",
+        "external_send_performed",
+        "public_claim_or_release_artifact_write_enabled",
+        "public_release_published",
+        "public_ga_claimed",
+        "public_release_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+    ] {
+        report.insert(key.to_string(), serde_json::json!(false));
+    }
+    insert_report_json!("memory_store_write_performed_count", 0);
+    report.insert(
+        "activation_command_result_receipt_surfaces".to_string(),
+        serde_json::json!(receipt_surfaces),
+    );
+    report.insert(
+        "activation_command_result_receipt_fixtures".to_string(),
+        receipt_fixtures,
+    );
+    report.insert(
+        "denied_by_activation_command_result_receipt".to_string(),
+        serde_json::json!(denied_by),
+    );
+    insert_report_json!("denied_by_activation_command_result_receipt_count", 25);
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -118060,6 +118782,295 @@ mod tests {
         );
         let side_effects = value["side_effects"].as_object().expect(
             "memory write execution activation command no-op handoff boundary side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_activation_command_result_receipt_no_persistence_boundary_endpoint_blocks_receipt_persistence()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "memory write execution activation command result receipt no-persistence boundary json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_no_persistence_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_no_persistence_mode"],
+            "memory_write_execution_activation_command_result_receipt_no_persistence_denial"
+        );
+        assert_eq!(
+            value["source_activation_command_noop_handoff_boundary_ready"],
+            true
+        );
+        assert_eq!(value["source_activation_command_noop_handoff_ready"], true);
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_no_persistence_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_noop_handoff_ready"],
+            true
+        );
+        assert_eq!(
+            value["required_activation_command_handoff_surface_count"],
+            13
+        );
+        assert_eq!(value["ready_activation_command_handoff_surface_count"], 13);
+        assert_eq!(
+            value["required_activation_command_result_receipt_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_activation_command_result_receipt_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["side_effect_free_activation_command_result_receipt_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["required_activation_command_result_receipt_fixture_count"],
+            10
+        );
+        assert_eq!(value["activation_command_result_receipt_fixture_count"], 10);
+        assert_eq!(
+            value["blocked_activation_command_result_receipt_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["noop_activation_command_result_receipt_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["allowed_activation_command_result_receipt_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_activation_command_result_receipt_fixture_count"],
+            0
+        );
+        assert_eq!(value["activation_command_result_receipt_denied_count"], 10);
+        assert_eq!(
+            value["activation_command_result_receipt_performed_count"],
+            0
+        );
+
+        for key in [
+            "activation_command_result_receipt_shape_registered",
+            "activation_command_result_receipt_allowed",
+            "activation_command_result_receipt_schema_accepted",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_materialized",
+            "activation_command_result_receipt_filesystem_written",
+            "activation_command_result_receipt_ledger_written",
+            "activation_command_result_receipt_indexed",
+            "activation_command_result_receipt_enqueued",
+            "activation_command_result_receipt_delivered",
+            "activation_command_completion_ack_recorded",
+            "activation_command_completion_ack_persisted",
+            "activation_command_completion_ack_accepted",
+            "activation_command_enabled",
+            "activation_command_invoked",
+            "activation_command_dispatched",
+            "activation_command_handoff_recorded",
+            "activation_command_handoff_persisted",
+            "activation_allowed_by_result_receipt",
+            "activation_allowed",
+            "activation_performed",
+            "live_mutation_execution_ready",
+            "live_mutation_execution_allowed",
+            "live_mutation_execution_performed",
+            "memory_write_execution_allowed",
+            "memory_write_execution_ready",
+            "memory_write_execution_performed",
+            "memory_store_write_path_enabled",
+            "memory_store_write_allowed",
+            "memory_store_write_performed",
+            "memory_store_mutation_allowed",
+            "memory_store_mutated",
+            "rollback_execution_allowed",
+            "rollback_executed",
+            "secret_material_read",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_performed",
+            "public_release_published",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+        assert_eq!(value["memory_store_write_performed_count"], 0);
+
+        let surfaces = value["activation_command_result_receipt_surfaces"]
+            .as_array()
+            .expect("activation command result receipt surfaces");
+        assert_eq!(surfaces.len(), 12);
+        let fixtures = value["activation_command_result_receipt_fixtures"]
+            .as_array()
+            .expect("activation command result receipt fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["receipt_requested"].as_bool() == Some(true)
+                && fixture["receipt_status"].as_str() == Some("blocked_noop")
+                && fixture["receipt_allowed"].as_bool() == Some(false)
+                && fixture["receipt_recorded"].as_bool() == Some(false)
+                && fixture["receipt_persisted"].as_bool() == Some(false)
+                && fixture["receipt_accepted"].as_bool() == Some(false)
+                && fixture["receipt_materialized"].as_bool() == Some(false)
+                && fixture["receipt_filesystem_written"].as_bool() == Some(false)
+                && fixture["receipt_noop_confirmed"].as_bool() == Some(true)
+                && fixture["completion_ack_recorded"].as_bool() == Some(false)
+                && fixture["activation_allowed"].as_bool() == Some(false)
+                && fixture["live_mutation_execution_performed"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["memory_store_mutated"].as_bool() == Some(false)
+                && fixture["rollback_executed"].as_bool() == Some(false)
+        }));
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["receipt_record_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["receipt_persist_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["receipt_materialize_requested"] == true
+                        && fixture["receipt_filesystem_write_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["receipt_ledger_write_requested"] == true
+                        && fixture["receipt_index_requested"] == true
+                        && fixture["receipt_delivery_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["completion_ack_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["receipt_status_requested"] == "completed")
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["memory_store_write_requested"] == true
+                        && fixture["rollback_execution_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["external_send_requested"] == true
+                        && fixture["install_requested"] == true
+                        && fixture["active_binary_mutation_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt_count"],
+            25
+        );
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt"]
+                .as_array()
+                .expect("activation command result receipt denials")
+                .len(),
+            25
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_memory_write_execution_activation_command_result_receipt_no_persistence_boundary_require_live_gate"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["writes_memory"], false);
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_memory_write_execution_activation_command_result_receipt_replay_idempotency_denial_boundary"
+        );
+        let side_effects = value["side_effects"].as_object().expect(
+            "memory write execution activation command result receipt no-persistence boundary side effects",
         );
         assert!(
             side_effects

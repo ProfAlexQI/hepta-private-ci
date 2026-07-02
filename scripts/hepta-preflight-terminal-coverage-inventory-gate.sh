@@ -318,6 +318,7 @@ required_markers=(
   "memory live mutation operator write execution post-write operator acceptance denial boundary route gate"
   "memory live mutation operator write execution activation closure denial boundary route gate"
   "memory live mutation operator write execution activation command no-op handoff boundary route gate"
+  "memory live mutation operator write execution activation command result receipt no-persistence boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -380,7 +381,7 @@ phase_family_min_counts=(
   7
   11
   10
-  62
+  63
   1
   44
   11
