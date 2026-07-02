@@ -1059,6 +1059,9 @@ scripts/hepta-memory-live-mutation-operator-write-approval-packet-boundary-route
 echo "[hepta-preflight] memory live mutation operator write execution preflight gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-preflight-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution preflight boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-preflight-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution denial matrix gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-denial-matrix-gate.sh
 

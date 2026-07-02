@@ -310,6 +310,7 @@ required_markers=(
   "memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial route gate"
   "memory live mutation operator write approval packet boundary route gate"
+  "memory live mutation operator write execution preflight boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -372,7 +373,7 @@ phase_family_min_counts=(
   7
   11
   10
-  55
+  56
   1
   44
   11
