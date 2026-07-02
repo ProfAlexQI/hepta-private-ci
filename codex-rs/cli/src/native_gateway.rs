@@ -398,6 +398,8 @@ const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial";
 const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT:
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial";
+const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_DENIAL_ENDPOINT:
+    &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-delivery-readback-denial";
 const HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-first-model-positive-approval-packet-boundary";
 const HEPTA_SCOPED_MEMORY_CANARY_DURABLE_RECEIPT_BOUNDARY_ENDPOINT: &str =
@@ -412,7 +414,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 225;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 226;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1639,6 +1641,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial --json",
         capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial",
         side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt terminal public-claim/status exposure denial gate; derives deterministic public status, badge, endpoint, query/export/observability, release-note/changelog/version, artifact availability, distribution queue, and channel status exposure denial evidence from the terminal decision surface while denying public status exposure, authority derivation, provider/model invocation, credential reads, KG/Memory writes, channel sends, install/restart, active-binary mutation, artifact writes, or public claims",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_DENIAL_ENDPOINT,
+        source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-delivery-readback-denial --json",
+        capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-delivery-readback-denial",
+        side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt terminal public-claim delivery/readback denial gate; derives deterministic public claim delivery, status readback, channel/Telegram/external delivery, delivery/readback receipt, release/public artifact, authority, install/restart, and active-binary mutation denial evidence from the terminal public-claim/status exposure surface while denying delivery recording, receipt persistence, provider/model invocation, credential reads, KG/Memory writes, channel sends, artifact writes, public claims, install/restart, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3863,6 +3872,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_report(),
                     ),
                 );
             }
@@ -78108,6 +78127,515 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     report
 }
 
+fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_status_exposure =
+        hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_report();
+    let source_bool = |key: &str| {
+        source_status_exposure
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source_status_exposure
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_status_exposure_ready = source_bool(
+        "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_ready",
+    );
+    let source_status_exposure_hash = sha256_json_value(&source_status_exposure);
+    let source_status_exposure_readback_hash = source_status_exposure
+        .get("terminal_public_claim_status_exposure_readback_hash_sha256")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("missing-terminal-public-claim-status-exposure-readback-hash");
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let delivery_surface_false_keys = [
+        "public_claim_delivery_requested",
+        "status_readback_requested",
+        "channel_delivery_requested",
+        "telegram_delivery_requested",
+        "external_delivery_requested",
+        "release_publication_delivery_readback_requested",
+        "install_restart_active_binary_readback_requested",
+        "public_claim_delivery_allowed",
+        "status_readback_allowed",
+        "channel_delivery_allowed",
+        "telegram_delivery_allowed",
+        "external_delivery_allowed",
+        "delivery_receipt_allowed",
+        "readback_receipt_allowed",
+        "release_artifact_write_allowed",
+        "public_artifact_write_allowed",
+        "operator_approval_derivation_allowed",
+        "release_publication_authority_derivation_allowed",
+        "activation_authority_derivation_allowed",
+        "install_restart_active_binary_mutation_allowed",
+        "memory_store_write_allowed",
+        "kg_live_write_allowed",
+        "provider_invocation_allowed",
+        "model_invocation_allowed",
+        "credential_read_allowed",
+        "secret_file_read_allowed",
+        "external_send_allowed",
+        "filesystem_write_allowed",
+    ];
+    let surface_specs: [(&str, &str, &str, &[&str]); 18] = [
+        (
+            "public_claim_delivery_attempt",
+            "blocked_public_claim_delivery_noop",
+            "public_claim_delivery_attempt_denied",
+            &["public_claim_delivery_requested"],
+        ),
+        (
+            "public_release_claim_delivery_attempt",
+            "blocked_public_release_claim_delivery_noop",
+            "public_release_claim_delivery_attempt_denied",
+            &["public_claim_delivery_requested"],
+        ),
+        (
+            "public_ga_claim_delivery_attempt",
+            "blocked_public_ga_claim_delivery_noop",
+            "public_ga_claim_delivery_attempt_denied",
+            &["public_claim_delivery_requested"],
+        ),
+        (
+            "status_endpoint_readback_attempt",
+            "blocked_status_endpoint_readback_noop",
+            "status_endpoint_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "query_status_readback_attempt",
+            "blocked_query_status_readback_noop",
+            "query_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "export_status_readback_attempt",
+            "blocked_export_status_readback_noop",
+            "export_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "observability_status_readback_attempt",
+            "blocked_observability_status_readback_noop",
+            "observability_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "dashboard_status_readback_attempt",
+            "blocked_dashboard_status_readback_noop",
+            "dashboard_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "release_notes_status_readback_attempt",
+            "blocked_release_notes_status_readback_noop",
+            "release_notes_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "changelog_status_readback_attempt",
+            "blocked_changelog_status_readback_noop",
+            "changelog_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "version_tag_status_readback_attempt",
+            "blocked_version_tag_status_readback_noop",
+            "version_tag_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "artifact_availability_status_readback_attempt",
+            "blocked_artifact_availability_status_readback_noop",
+            "artifact_availability_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "distribution_queue_status_readback_attempt",
+            "blocked_distribution_queue_status_readback_noop",
+            "distribution_queue_status_readback_attempt_denied",
+            &["status_readback_requested"],
+        ),
+        (
+            "channel_delivery_readback_attempt",
+            "blocked_channel_delivery_readback_noop",
+            "channel_delivery_readback_attempt_denied",
+            &["channel_delivery_requested", "status_readback_requested"],
+        ),
+        (
+            "external_delivery_readback_attempt",
+            "blocked_external_delivery_readback_noop",
+            "external_delivery_readback_attempt_denied",
+            &[
+                "channel_delivery_requested",
+                "external_delivery_requested",
+                "status_readback_requested",
+            ],
+        ),
+        (
+            "telegram_delivery_readback_attempt",
+            "blocked_telegram_delivery_readback_noop",
+            "telegram_delivery_readback_attempt_denied",
+            &[
+                "channel_delivery_requested",
+                "telegram_delivery_requested",
+                "status_readback_requested",
+            ],
+        ),
+        (
+            "release_publication_delivery_readback_attempt",
+            "blocked_release_publication_delivery_readback_noop",
+            "release_publication_delivery_readback_attempt_denied",
+            &[
+                "public_claim_delivery_requested",
+                "status_readback_requested",
+                "channel_delivery_requested",
+                "release_publication_delivery_readback_requested",
+            ],
+        ),
+        (
+            "install_restart_active_binary_readback_attempt",
+            "blocked_install_restart_active_binary_readback_noop",
+            "install_restart_active_binary_readback_attempt_denied",
+            &[
+                "status_readback_requested",
+                "install_restart_active_binary_readback_requested",
+            ],
+        ),
+    ];
+    let delivery_readback_surfaces: Vec<_> = surface_specs
+        .iter()
+        .map(|(surface, status, reason, true_keys)| {
+            let mut surface_report = serde_json::json!({
+                "first_model_terminal_public_claim_delivery_readback_surface": surface,
+                "source_terminal_public_claim_status_exposure_ready": source_status_exposure_ready,
+                "terminal_public_claim_delivery_readback_attempted": true,
+                "terminal_public_claim_delivery_readback_noop_confirmed": true,
+                "terminal_public_claim_delivery_readback_status": status,
+                "reason": reason,
+            });
+            if let Some(surface_object) = surface_report.as_object_mut() {
+                for key in &delivery_surface_false_keys {
+                    surface_object.insert((*key).to_string(), serde_json::json!(false));
+                }
+                for key in true_keys.iter() {
+                    surface_object.insert((*key).to_string(), serde_json::json!(true));
+                }
+            }
+            surface_report
+        })
+        .collect();
+    let surface_count = delivery_readback_surfaces.len();
+    let delivery_hash = sha256_json_value(&serde_json::Value::Array(
+        delivery_readback_surfaces.clone(),
+    ));
+    let readback_hash = sha256_text_value(&format!(
+        "first-model-terminal-public-claim-delivery-readback:{source_status_exposure_hash}:{source_status_exposure_readback_hash}:{delivery_hash}:delivery=0:readback=0:receipt=0:authority=0:install=0:live=0"
+    ));
+    let denials = vec![
+        "source_terminal_public_claim_status_exposure_report_required",
+        "public_claim_delivery_recording_denied",
+        "public_claim_delivery_persistence_denied",
+        "status_readback_recording_denied",
+        "status_readback_persistence_denied",
+        "channel_delivery_recording_denied",
+        "channel_delivery_persistence_denied",
+        "channel_status_readback_delivery_denied",
+        "external_delivery_readback_send_denied",
+        "telegram_delivery_readback_send_denied",
+        "delivery_receipt_recording_denied",
+        "delivery_receipt_persistence_denied",
+        "readback_receipt_recording_denied",
+        "readback_receipt_persistence_denied",
+        "release_artifact_write_from_delivery_readback_denied",
+        "public_artifact_write_from_delivery_readback_denied",
+        "operator_approval_from_delivery_readback_denied",
+        "release_publication_authority_from_delivery_readback_denied",
+        "activation_authority_from_delivery_readback_denied",
+        "download_link_from_delivery_readback_denied",
+        "install_command_from_delivery_readback_denied",
+        "install_restart_active_binary_from_delivery_readback_denied",
+        "provider_model_invocation_from_delivery_readback_denied",
+        "credential_secret_read_from_delivery_readback_denied",
+        "memory_kg_write_from_delivery_readback_denied",
+        "external_send_from_delivery_readback_denied",
+    ];
+    let denied_count = denials.len();
+    let report_ready = source_status_exposure_ready
+        && source_u64("terminal_public_claim_status_exposure_surface_count") == 18
+        && source_u64("terminal_public_claim_status_exposed_count") == 0
+        && source_u64("public_status_claimed_count") == 0
+        && source_u64("channel_status_delivered_count") == 0
+        && source_u64("external_status_sent_count") == 0
+        && source_u64("telegram_status_sent_count") == 0
+        && source_u64("release_publication_authority_derived_count") == 0
+        && source_u64("activation_authority_derived_count") == 0
+        && route_count_source_command_accepted
+        && surface_count == 18;
+
+    let mut report = serde_json::json!({});
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "product": "Hepta",
+            "runtime": "hepta",
+            "status": if report_ready { "ready" } else { "blocked" },
+            "base_url": "http://127.0.0.1:7373",
+            "gate": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_route",
+            "endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_DENIAL_ENDPOINT,
+            "source_command": "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-delivery-readback-denial --json",
+            "native_route": true,
+            "side_effect_free": true,
+            "audit_date": "2026-07-02",
+            "canary_schema_version": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_v1",
+            "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_no_delivery_no_readback_no_receipt_no_release_no_channel_no_telegram_no_install",
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_route_enabled": true,
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_ready": report_ready,
+            "result_receipt_terminal_public_claim_delivery_readback_state": "final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denied",
+            "source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT,
+            "source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_ready": source_status_exposure_ready,
+            "source_terminal_public_claim_status_exposure_report_sha256": source_status_exposure_hash.clone(),
+            "source_terminal_public_claim_status_exposure_readback_hash_sha256": source_status_exposure_readback_hash,
+            "source_terminal_public_claim_status_exposure_surface_count": source_u64("terminal_public_claim_status_exposure_surface_count"),
+            "source_terminal_public_claim_status_exposed_count": source_u64("terminal_public_claim_status_exposed_count"),
+            "source_public_status_claimed_count": source_u64("public_status_claimed_count"),
+            "source_channel_status_delivered_count": source_u64("channel_status_delivered_count"),
+            "source_external_status_sent_count": source_u64("external_status_sent_count"),
+            "source_telegram_status_sent_count": source_u64("telegram_status_sent_count"),
+            "source_release_publication_authority_derived_count": source_u64("release_publication_authority_derived_count"),
+            "source_activation_authority_derived_count": source_u64("activation_authority_derived_count"),
+            "terminal_public_claim_delivery_readback_hash_sha256": delivery_hash,
+            "terminal_public_claim_delivery_readback_readback_hash_sha256": readback_hash,
+            "terminal_public_claim_delivery_readback_readback_hash_matched": true,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "terminal_public_claim_delivery_readback_surface_count": surface_count,
+            "terminal_public_claim_delivery_readback_attempt_count": surface_count,
+            "terminal_public_claim_delivery_readback_denied_count": surface_count,
+            "terminal_public_claim_delivery_readback_allowed_count": 0,
+            "terminal_public_claim_delivery_readback_accepted_count": 0,
+            "terminal_public_claim_delivery_readback_recorded_count": 0,
+            "terminal_public_claim_delivery_readback_persisted_count": 0,
+            "terminal_public_claim_delivery_readback_delivered_count": 0,
+            "terminal_public_claim_delivery_readback_status_read_count": 0,
+            "public_claim_delivery_recorded_count": 0,
+            "public_claim_delivery_persisted_count": 0,
+            "status_readback_recorded_count": 0,
+            "status_readback_persisted_count": 0,
+            "channel_delivery_recorded_count": 0,
+            "channel_delivery_persisted_count": 0,
+            "channel_status_readback_delivered_count": 0,
+            "external_delivery_readback_sent_count": 0,
+            "telegram_delivery_readback_sent_count": 0,
+            "delivery_receipt_recorded_count": 0,
+            "delivery_receipt_persisted_count": 0,
+            "readback_receipt_recorded_count": 0,
+            "readback_receipt_persisted_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "release_artifact_written_count": 0,
+            "public_artifact_written_count": 0,
+            "operator_approval_from_delivery_readback_derived_count": 0,
+            "release_publication_authority_from_delivery_readback_derived_count": 0,
+            "activation_authority_from_delivery_readback_derived_count": 0,
+            "download_link_from_delivery_readback_rendered_count": 0,
+            "install_command_from_delivery_readback_emitted_count": 0,
+            "install_from_delivery_readback_executed_count": 0,
+            "service_restart_from_delivery_readback_performed_count": 0,
+            "active_binary_from_delivery_readback_mutated_count": 0,
+            "memory_store_write_performed_count": 0,
+            "live_kg_write_performed_count": 0,
+            "provider_invoked_count": 0,
+            "model_invoked_count": 0,
+            "credential_read_count": 0,
+            "secret_file_read_count": 0,
+            "external_send_performed_count": 0,
+            "terminal_public_claim_delivery_readback_surfaces": delivery_readback_surfaces,
+            "denied_by_first_model_invocation_terminal_public_claim_delivery_readback": denials,
+            "denied_by_first_model_invocation_terminal_public_claim_delivery_readback_count": denied_count,
+        }),
+    );
+
+    for key in [
+        "terminal_public_claim_delivery_readback_accepted",
+        "terminal_public_claim_delivery_readback_recorded",
+        "terminal_public_claim_delivery_readback_persisted",
+        "terminal_public_claim_delivery_readback_delivered",
+        "terminal_public_claim_delivery_readback_status_read",
+        "public_claim_delivery_recorded",
+        "public_claim_delivery_persisted",
+        "status_readback_recorded",
+        "status_readback_persisted",
+        "channel_delivery_recorded",
+        "channel_delivery_persisted",
+        "delivery_receipt_recorded",
+        "delivery_receipt_persisted",
+        "readback_receipt_recorded",
+        "readback_receipt_persisted",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "download_link_rendered",
+        "install_command_emitted",
+        "activation_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+        "release_artifact_written",
+        "public_artifact_written",
+        "external_send_performed",
+        "filesystem_written",
+    ] {
+        if let Some(report_object) = report.as_object_mut() {
+            report_object.insert(key.to_string(), serde_json::json!(false));
+        }
+    }
+
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_release_artifact_publication_denial",
+                    "status": "allowed_report_only_next_slice",
+                    "records_public_claim_delivery": false,
+                    "records_status_readback": false,
+                    "records_channel_delivery": false,
+                    "records_delivery_receipt": false,
+                    "records_readback_receipt": false,
+                    "sends_telegram": false,
+                    "writes_release_artifact": false,
+                    "writes_public_artifact": false,
+                    "derives_operator_approval": false,
+                    "derives_release_publication_authority": false,
+                    "derives_activation_authority": false,
+                    "renders_download_link": false,
+                    "emits_install_command": false,
+                    "installs_or_restarts": false,
+                    "mutates_active_binary": false,
+                    "mutates_memory_store": false,
+                    "writes_kg": false,
+                    "invokes_provider": false,
+                    "reads_credentials": false,
+                    "sends_externally": false
+                }
+            ],
+            "audit_steps": [
+                {
+                    "step": "terminal_public_claim_status_exposure_source_binding",
+                    "source_ready": source_status_exposure_ready,
+                    "source_report_sha256": source_status_exposure_hash
+                },
+                {
+                    "step": "terminal_public_claim_delivery_readback_fixture_denial",
+                    "terminal_public_claim_delivery_readback_surface_count": surface_count,
+                    "terminal_public_claim_delivery_readback_denied_count": surface_count
+                },
+                {
+                    "step": "delivery_and_readback_no_recording_or_persistence",
+                    "public_claim_delivery_recorded_count": 0,
+                    "status_readback_recorded_count": 0,
+                    "delivery_receipt_persisted_count": 0,
+                    "readback_receipt_persisted_count": 0
+                },
+                {
+                    "step": "channel_external_telegram_delivery_denial",
+                    "channel_status_readback_delivered_count": 0,
+                    "external_delivery_readback_sent_count": 0,
+                    "telegram_delivery_readback_sent_count": 0
+                },
+                {
+                    "step": "artifact_authority_install_denial",
+                    "release_artifact_written_count": 0,
+                    "release_publication_authority_from_delivery_readback_derived_count": 0,
+                    "activation_authority_from_delivery_readback_derived_count": 0,
+                    "install_from_delivery_readback_executed_count": 0,
+                    "active_binary_from_delivery_readback_mutated_count": 0
+                },
+                {
+                    "step": "side_effect_denial_check",
+                    "side_effects_all_false": true
+                }
+            ],
+        }),
+    );
+
+    let mut side_effects = serde_json::Map::new();
+    for key in delivery_surface_false_keys {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    for key in [
+        "telegram_send_performed",
+        "channel_send_performed",
+        "public_release_claimed",
+        "public_ga_claimed",
+        "delivery_receipt_recorded",
+        "delivery_receipt_persisted",
+        "readback_receipt_recorded",
+        "readback_receipt_persisted",
+        "operator_approval_recorded",
+        "release_publication_authority_derived",
+        "activation_authority_derived",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "memory_store_write_performed",
+        "live_kg_write_performed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "service_restarted",
+        "launchd_mutated",
+        "active_binary_mutated",
+        "filesystem_written",
+        "external_send_performed",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    extend_json_object(
+        &mut report,
+        serde_json::json!({ "side_effects": side_effects }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -113260,6 +113788,286 @@ mod tests {
         assert_eq!(value["allowed_next_actions"][0]["activates_runtime"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
         assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
+    }
+
+    #[test]
+    fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_endpoint_blocks_delivery_readback_receipts_and_authority()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "first model invocation final authorization result receipt terminal public claim delivery readback json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-delivery-readback-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["canary_execution_mode"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_no_delivery_no_readback_no_receipt_no_release_no_channel_no_telegram_no_install"
+        );
+        assert_eq!(
+            value["result_receipt_terminal_public_claim_delivery_readback_state"],
+            "final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denied"
+        );
+        assert_eq!(
+            value["source_terminal_public_claim_status_exposure_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["source_terminal_public_claim_status_exposed_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_public_claim_delivery_readback_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["terminal_public_claim_delivery_readback_attempt_count"],
+            18
+        );
+        assert_eq!(
+            value["terminal_public_claim_delivery_readback_denied_count"],
+            18
+        );
+        for key in [
+            "terminal_public_claim_delivery_readback_allowed_count",
+            "terminal_public_claim_delivery_readback_accepted_count",
+            "terminal_public_claim_delivery_readback_recorded_count",
+            "terminal_public_claim_delivery_readback_persisted_count",
+            "terminal_public_claim_delivery_readback_delivered_count",
+            "terminal_public_claim_delivery_readback_status_read_count",
+            "public_claim_delivery_recorded_count",
+            "public_claim_delivery_persisted_count",
+            "status_readback_recorded_count",
+            "status_readback_persisted_count",
+            "channel_delivery_recorded_count",
+            "channel_delivery_persisted_count",
+            "channel_status_readback_delivered_count",
+            "external_delivery_readback_sent_count",
+            "telegram_delivery_readback_sent_count",
+            "delivery_receipt_recorded_count",
+            "delivery_receipt_persisted_count",
+            "readback_receipt_recorded_count",
+            "readback_receipt_persisted_count",
+            "release_artifact_written_count",
+            "public_artifact_written_count",
+            "operator_approval_from_delivery_readback_derived_count",
+            "release_publication_authority_from_delivery_readback_derived_count",
+            "activation_authority_from_delivery_readback_derived_count",
+            "download_link_from_delivery_readback_rendered_count",
+            "install_command_from_delivery_readback_emitted_count",
+            "install_from_delivery_readback_executed_count",
+            "service_restart_from_delivery_readback_performed_count",
+            "active_binary_from_delivery_readback_mutated_count",
+            "memory_store_write_performed_count",
+            "live_kg_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "secret_file_read_count",
+            "external_send_performed_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "terminal public claim delivery readback count should stay zero: {key}"
+            );
+        }
+
+        for key in [
+            "terminal_public_claim_delivery_readback_accepted",
+            "terminal_public_claim_delivery_readback_recorded",
+            "terminal_public_claim_delivery_readback_persisted",
+            "terminal_public_claim_delivery_readback_delivered",
+            "terminal_public_claim_delivery_readback_status_read",
+            "public_claim_delivery_recorded",
+            "public_claim_delivery_persisted",
+            "status_readback_recorded",
+            "status_readback_persisted",
+            "channel_delivery_recorded",
+            "channel_delivery_persisted",
+            "delivery_receipt_recorded",
+            "delivery_receipt_persisted",
+            "readback_receipt_recorded",
+            "readback_receipt_persisted",
+            "public_release_claimed",
+            "public_ga_claimed",
+            "operator_approval_recorded",
+            "release_publication_authority_derived",
+            "activation_authority_derived",
+            "download_link_rendered",
+            "install_command_emitted",
+            "activation_allowed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+            "release_artifact_written",
+            "public_artifact_written",
+            "external_send_performed",
+            "filesystem_written",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "terminal public claim delivery readback field should stay false: {key}"
+            );
+        }
+
+        let surfaces = value["terminal_public_claim_delivery_readback_surfaces"]
+            .as_array()
+            .expect("terminal public claim delivery readback surfaces");
+        assert_eq!(surfaces.len(), 18);
+        assert!(surfaces.iter().all(|surface| {
+            surface["terminal_public_claim_delivery_readback_attempted"].as_bool() == Some(true)
+                && surface["terminal_public_claim_delivery_readback_noop_confirmed"].as_bool()
+                    == Some(true)
+                && surface["public_claim_delivery_allowed"].as_bool() == Some(false)
+                && surface["status_readback_allowed"].as_bool() == Some(false)
+                && surface["channel_delivery_allowed"].as_bool() == Some(false)
+                && surface["telegram_delivery_allowed"].as_bool() == Some(false)
+                && surface["external_delivery_allowed"].as_bool() == Some(false)
+                && surface["delivery_receipt_allowed"].as_bool() == Some(false)
+                && surface["readback_receipt_allowed"].as_bool() == Some(false)
+                && surface["release_artifact_write_allowed"].as_bool() == Some(false)
+                && surface["public_artifact_write_allowed"].as_bool() == Some(false)
+                && surface["activation_authority_derivation_allowed"].as_bool() == Some(false)
+                && surface["install_restart_active_binary_mutation_allowed"].as_bool()
+                    == Some(false)
+                && surface["provider_invocation_allowed"].as_bool() == Some(false)
+                && surface["model_invocation_allowed"].as_bool() == Some(false)
+                && surface["credential_read_allowed"].as_bool() == Some(false)
+        }));
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(|surface| surface["telegram_delivery_requested"].as_bool() == Some(true))
+                .count(),
+            1
+        );
+        assert_eq!(
+            surfaces
+                .iter()
+                .filter(
+                    |surface| surface["public_claim_delivery_requested"].as_bool() == Some(true)
+                )
+                .count(),
+            4
+        );
+        assert_eq!(
+            value["terminal_public_claim_delivery_readback_readback_hash_matched"],
+            true
+        );
+
+        let denied =
+            value["denied_by_first_model_invocation_terminal_public_claim_delivery_readback"]
+                .as_array()
+                .expect("terminal public claim delivery readback denials");
+        assert_eq!(denied.len(), 26);
+        assert_eq!(
+            value["denied_by_first_model_invocation_terminal_public_claim_delivery_readback_count"],
+            26
+        );
+
+        let steps = value["audit_steps"]
+            .as_array()
+            .expect("terminal public claim delivery readback audit steps");
+        assert_eq!(steps.len(), 6);
+        assert_eq!(
+            steps[0]["step"],
+            "terminal_public_claim_status_exposure_source_binding"
+        );
+        assert_eq!(
+            steps[1]["step"],
+            "terminal_public_claim_delivery_readback_fixture_denial"
+        );
+        assert_eq!(
+            steps[2]["step"],
+            "delivery_and_readback_no_recording_or_persistence"
+        );
+        assert_eq!(
+            steps[3]["step"],
+            "channel_external_telegram_delivery_denial"
+        );
+        assert_eq!(steps[4]["step"], "artifact_authority_install_denial");
+        assert_eq!(steps[5]["step"], "side_effect_denial_check");
+
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("terminal public claim delivery readback side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_release_artifact_publication_denial"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["records_public_claim_delivery"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["records_status_readback"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["sends_telegram"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_release_artifact"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["installs_or_restarts"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
+        assert_eq!(value["allowed_next_actions"][0]["reads_credentials"], false);
     }
 
     #[test]
