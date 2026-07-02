@@ -1113,6 +1113,9 @@ scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-r
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt replay idempotency denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt replay idempotency denial boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt ordering monotonicity denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh
 
