@@ -1089,6 +1089,9 @@ scripts/hepta-memory-live-mutation-operator-write-execution-post-write-validatio
 echo "[hepta-preflight] memory live mutation operator write execution post-write operator acceptance denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-post-write-operator-acceptance-denial-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution post-write operator acceptance denial boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-post-write-operator-acceptance-denial-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution activation closure denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-closure-denial-gate.sh
 
