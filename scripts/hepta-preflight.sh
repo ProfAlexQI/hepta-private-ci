@@ -1053,6 +1053,9 @@ scripts/hepta-memory-live-mutation-operator-write-contract-gate.sh
 echo "[hepta-preflight] memory live mutation operator write approval packet gate"
 scripts/hepta-memory-live-mutation-operator-write-approval-packet-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write approval packet boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-approval-packet-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution preflight gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-preflight-gate.sh
 
