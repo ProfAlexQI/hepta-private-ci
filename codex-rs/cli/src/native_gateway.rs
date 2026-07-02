@@ -396,6 +396,8 @@ const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-final-operator-acknowledgement-non-acceptance-denial";
 const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT:
     &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial";
+const HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT:
+    &str = "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial";
 const HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-first-model-positive-approval-packet-boundary";
 const HEPTA_SCOPED_MEMORY_CANARY_DURABLE_RECEIPT_BOUNDARY_ENDPOINT: &str =
@@ -410,7 +412,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 224;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 225;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1630,6 +1632,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial --json",
         capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial",
         side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt terminal operator decision/public-claim non-promotion denial gate; derives deterministic terminal decision, status, public claim, release, artifact, activation, install, and publication denial evidence from the final acknowledgement surface while denying terminal decision acceptance, public claim promotion, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public exposure",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT,
+        source_command: "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial --json",
+        capability: "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial",
+        side_effect_boundary: "read-only first model invocation final authorization dry-run result receipt terminal public-claim/status exposure denial gate; derives deterministic public status, badge, endpoint, query/export/observability, release-note/changelog/version, artifact availability, distribution queue, and channel status exposure denial evidence from the terminal decision surface while denying public status exposure, authority derivation, provider/model invocation, credential reads, KG/Memory writes, channel sends, install/restart, active-binary mutation, artifact writes, or public claims",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3844,6 +3853,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_report(),
+                    ),
+                );
+            }
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_report(),
                     ),
                 );
             }
@@ -77743,6 +77762,352 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     report
 }
 
+fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_report()
+-> serde_json::Value {
+    let route_matrix = control_ui_route_parity_report();
+    let source_terminal_decision =
+        hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_report();
+    let source_terminal_decision_ready = source_terminal_decision
+        .get("first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_ready")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let source_terminal_decision_hash = sha256_json_value(&source_terminal_decision);
+    let source_terminal_decision_readback_hash = source_terminal_decision
+        .get("final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_readback_hash_sha256")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("missing-terminal-decision-readback-hash");
+    let route_count_source_command_accepted = route_matrix.route_count
+        == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+
+    let status_surfaces = [
+        "first_model_public_status_claim",
+        "first_model_public_release_claim",
+        "first_model_public_ga_claim",
+        "first_model_dashboard_status",
+        "first_model_public_badge_status",
+        "first_model_status_endpoint",
+        "first_model_query_status",
+        "first_model_export_status",
+        "first_model_observability_status",
+        "first_model_release_notes_status",
+        "first_model_changelog_status",
+        "first_model_version_tag_status",
+        "first_model_artifact_availability_status",
+        "first_model_distribution_queue_status",
+        "first_model_channel_status_delivery",
+        "first_model_external_status_send",
+        "first_model_telegram_status_send",
+        "first_model_activation_authority_status",
+    ];
+    let terminal_public_claim_status_exposure_surfaces: Vec<_> = status_surfaces
+        .iter()
+        .map(|surface| {
+            serde_json::json!({
+                "first_model_terminal_public_claim_status_exposure_surface": surface,
+                "public_claim_status_exposure_attempted": true,
+                "public_claim_status_exposure_allowed": false,
+                "public_claim_status_exposure_request_accepted": false,
+                "public_claim_status_exposure_accepted": false,
+                "public_claim_status_exposure_recorded": false,
+                "public_claim_status_exposure_persisted": false,
+                "public_claim_status_exposure_materialized": false,
+                "public_claim_status_exposure_filesystem_written": false,
+                "public_claim_status_exposure_delivered": false,
+                "public_claim_status_exposed": false,
+                "public_status_claimed": false,
+                "public_release_claimed": false,
+                "public_ga_claimed": false,
+                "dashboard_status_exposed": false,
+                "public_badge_exposed": false,
+                "status_endpoint_exposed": false,
+                "query_status_exposed": false,
+                "export_status_exposed": false,
+                "observability_status_exposed": false,
+                "release_notes_status_exposed": false,
+                "changelog_status_exposed": false,
+                "version_tag_status_exposed": false,
+                "artifact_availability_status_exposed": false,
+                "distribution_queue_status_exposed": false,
+                "channel_status_delivered": false,
+                "external_status_sent": false,
+                "telegram_status_sent": false,
+                "release_publication_authority_derived": false,
+                "activation_authority_derived": false,
+                "live_execution_allowed": false,
+                "public_claim_status_exposure_noop_confirmed": true,
+                "public_claim_status_exposure_status": "public_claim_status_exposure_denied"
+            })
+        })
+        .collect();
+    let surface_count = terminal_public_claim_status_exposure_surfaces.len();
+    let exposure_hash = sha256_json_value(&serde_json::Value::Array(
+        terminal_public_claim_status_exposure_surfaces.clone(),
+    ));
+    let readback_hash = sha256_text_value(&format!(
+        "first-model-terminal-public-claim-status-exposure:{source_terminal_decision_hash}:{source_terminal_decision_readback_hash}:{exposure_hash}:public=0:status=0:authority=0"
+    ));
+    let denials = vec![
+        "public_claim_status_request_acceptance_denied",
+        "public_claim_status_acceptance_denied",
+        "public_claim_status_recording_denied",
+        "public_claim_status_persistence_denied",
+        "public_claim_status_materialization_denied",
+        "public_claim_status_filesystem_write_denied",
+        "public_claim_status_delivery_denied",
+        "public_claim_status_exposure_denied",
+        "public_status_claim_denied",
+        "public_release_claim_denied",
+        "public_ga_claim_denied",
+        "dashboard_status_exposure_denied",
+        "public_badge_status_exposure_denied",
+        "status_endpoint_exposure_denied",
+        "query_status_exposure_denied",
+        "export_status_exposure_denied",
+        "observability_status_exposure_denied",
+        "release_notes_status_exposure_denied",
+        "changelog_status_exposure_denied",
+        "version_tag_status_exposure_denied",
+        "artifact_availability_status_exposure_denied",
+        "distribution_queue_status_exposure_denied",
+        "channel_status_delivery_denied",
+        "external_status_send_denied",
+        "telegram_status_send_denied",
+        "operator_approval_from_public_status_denied",
+        "terminal_decision_from_public_status_denied",
+        "release_publication_authority_from_status_denied",
+        "activation_authority_from_status_denied",
+        "activation_command_from_status_denied",
+        "live_execution_from_status_denied",
+        "provider_model_invocation_from_status_denied",
+        "memory_kg_write_from_status_denied",
+        "install_restart_active_binary_mutation_from_status_denied",
+    ];
+    let report_ready = source_terminal_decision_ready
+        && route_count_source_command_accepted
+        && surface_count == 18;
+
+    let mut report = serde_json::json!({});
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "product": "Hepta",
+            "runtime": "hepta",
+            "status": if report_ready { "ready" } else { "blocked" },
+            "base_url": "http://127.0.0.1:7373",
+            "gate": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_route",
+            "endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT,
+            "source_command": "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial --json",
+            "native_route": true,
+            "side_effect_free": true,
+            "audit_date": "2026-07-02",
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "canary_schema_version": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_v1",
+            "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_no_status_exposure_no_public_claim_no_release_no_artifact_no_provider_model_invocation",
+            "source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT,
+            "source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_ready": source_terminal_decision_ready,
+            "source_terminal_operator_decision_public_claim_report_sha256": source_terminal_decision_hash.clone(),
+            "source_terminal_operator_decision_public_claim_readback_hash_sha256": source_terminal_decision_readback_hash,
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_route_enabled": true,
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_ready": report_ready,
+            "result_receipt_terminal_public_claim_status_exposure_state": "final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denied",
+            "terminal_public_claim_status_exposure_hash_sha256": exposure_hash,
+            "terminal_public_claim_status_exposure_readback_hash_sha256": readback_hash,
+            "terminal_public_claim_status_exposure_readback_hash_matched": true,
+            "terminal_public_claim_status_exposure_surface_count": surface_count,
+            "terminal_public_claim_status_exposure_attempt_count": surface_count,
+            "terminal_public_claim_status_exposure_allowed_count": 0,
+            "terminal_public_claim_status_exposure_request_accepted_count": 0,
+            "terminal_public_claim_status_exposure_accepted_count": 0,
+            "terminal_public_claim_status_exposure_recorded_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "terminal_public_claim_status_exposure_persisted_count": 0,
+            "terminal_public_claim_status_exposure_materialized_count": 0,
+            "terminal_public_claim_status_exposure_filesystem_written_count": 0,
+            "terminal_public_claim_status_exposure_delivered_count": 0,
+            "terminal_public_claim_status_exposed_count": 0,
+            "public_status_claimed_count": 0,
+            "public_release_claimed_count": 0,
+            "public_ga_claimed_count": 0,
+            "dashboard_status_exposed_count": 0,
+            "public_badge_exposed_count": 0,
+            "status_endpoint_exposed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "query_status_exposed_count": 0,
+            "export_status_exposed_count": 0,
+            "observability_status_exposed_count": 0,
+            "release_notes_status_exposed_count": 0,
+            "changelog_status_exposed_count": 0,
+            "version_tag_status_exposed_count": 0,
+            "artifact_availability_status_exposed_count": 0,
+            "distribution_queue_status_exposed_count": 0,
+            "channel_status_delivered_count": 0,
+            "external_status_sent_count": 0,
+            "telegram_status_sent_count": 0,
+            "release_publication_authority_derived_count": 0,
+            "activation_authority_derived_count": 0,
+            "live_execution_allowed_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "terminal_public_claim_status_exposure_surfaces": terminal_public_claim_status_exposure_surfaces,
+        "denied_by_first_model_invocation_terminal_public_claim_status_exposure": denials,
+        "denied_by_first_model_invocation_terminal_public_claim_status_exposure_count": denials.len(),
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "terminal_public_claim_status_exposure_accepted": false,
+        "terminal_public_claim_status_exposed": false,
+        "status_endpoint_exposed": false,
+        "query_status_exposed": false,
+        "export_status_exposed": false,
+        "observability_status_exposed": false,
+        "operator_approval_recorded": false,
+        "release_publication_authority_derived": false,
+        "activation_authority_derived": false,
+        "activation_performed": false,
+        "memory_store_write_performed": false,
+        "live_kg_write_performed": false,
+        "provider_invoked": false,
+        "model_invoked": false,
+        "credential_read": false,
+        "install_executed": false,
+        "service_restarted": false,
+        "active_binary_mutated": false,
+        "external_send_performed": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "allowed_next_actions": [
+            {
+                "action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial",
+                "status": "allowed_report_only_next_slice",
+                "accepts_public_status": false,
+                "claims_public_release": false,
+                "delivers_channel": false,
+                "writes_release_artifact": false,
+                "activates_runtime": false,
+                "invokes_provider": false,
+                "invokes_model": false,
+                "reads_credentials": false,
+                "writes_kg": false,
+                "mutates_durable_memory": false
+            }
+        ],
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "audit_steps": [
+            {
+                "step": "terminal_operator_decision_public_claim_source_binding",
+                "source_ready": source_terminal_decision_ready,
+                "source_report_sha256": source_terminal_decision_hash
+            },
+            {
+                "step": "terminal_public_claim_status_exposure_fixture_denial",
+                "terminal_public_claim_status_exposure_surface_count": surface_count,
+                "terminal_public_claim_status_exposure_allowed_count": 0
+            },
+            {
+                "step": "public_status_no_recording_or_materialization",
+                "terminal_public_claim_status_exposure_recorded_count": 0,
+                "terminal_public_claim_status_exposure_materialized_count": 0
+            },
+            {
+                "step": "public_status_no_delivery_or_endpoint",
+                "status_endpoint_exposed_count": 0,
+                "channel_status_delivered_count": 0
+            },
+            {
+                "step": "authority_and_invocation_denial",
+                "activation_authority_derived_count": 0,
+                "provider_invoked": false,
+                "model_invoked": false
+            },
+            {
+                "step": "side_effect_denial_check",
+                "side_effects_all_false": true
+            }
+        ],
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "side_effects": {
+            "terminal_public_claim_status_exposure_recorded": false,
+            "terminal_public_claim_status_exposure_persisted": false,
+            "terminal_public_claim_status_exposure_materialized": false,
+            "terminal_public_claim_status_exposure_filesystem_written": false,
+            "terminal_public_claim_status_exposure_delivered": false,
+            "terminal_public_claim_status_exposed": false,
+            "status_endpoint_exposed": false,
+            "query_status_exposed": false,
+            "export_status_exposed": false,
+            "observability_status_exposed": false,
+            "release_notes_status_exposed": false,
+            "changelog_status_exposed": false,
+            "version_tag_status_exposed": false,
+            "artifact_availability_status_exposed": false,
+            "distribution_queue_status_exposed": false,
+            "operator_approval_recorded": false,
+            "release_publication_authority_derived": false,
+            "activation_authority_derived": false,
+            "activation_command_derived": false,
+            "activation_performed": false,
+            "live_execution_allowed": false,
+            "provider_invoked": false,
+            "model_invoked": false,
+            "credential_read": false,
+            "secret_file_read": false,
+            "live_kg_write_performed": false,
+            "memory_store_write_performed": false,
+            "channel_send_performed": false,
+            "telegram_send_performed": false,
+            "external_send_performed": false,
+            "release_artifact_written": false,
+            "public_artifact_written": false,
+            "install_executed": false,
+            "service_restarted": false,
+            "active_binary_mutated": false,
+            "filesystem_written": false
+        }
+        }),
+    );
+    report
+}
+
 fn hepta_release_hardening_status_gate_report() -> HeptaReleaseHardeningStatusGateResponse {
     let route_matrix = control_ui_route_parity_report();
     let release_artifact_pack_verified = env_truthy("HEPTA_RELEASE_ARTIFACT_PACK_VERIFIED");
@@ -112634,6 +112999,260 @@ mod tests {
             value["allowed_next_actions"][0]["exposes_public_status"],
             false
         );
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_release_artifact"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["activates_runtime"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_provider"], false);
+        assert_eq!(value["allowed_next_actions"][0]["invokes_model"], false);
+    }
+
+    #[test]
+    fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_endpoint_blocks_public_status_exposure_and_authority()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "first model invocation final authorization result receipt terminal public claim status exposure json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_route_enabled"],
+            true
+        );
+        assert_eq!(
+            value["first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["canary_execution_mode"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_no_status_exposure_no_public_claim_no_release_no_artifact_no_provider_model_invocation"
+        );
+        assert_eq!(
+            value["result_receipt_terminal_public_claim_status_exposure_state"],
+            "final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denied"
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_surface_count"],
+            18
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_attempt_count"],
+            18
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_allowed_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_request_accepted_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_accepted_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_recorded_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_persisted_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_materialized_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_filesystem_written_count"],
+            0
+        );
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_delivered_count"],
+            0
+        );
+        assert_eq!(value["terminal_public_claim_status_exposed_count"], 0);
+        assert_eq!(value["public_status_claimed_count"], 0);
+        assert_eq!(value["public_release_claimed_count"], 0);
+        assert_eq!(value["public_ga_claimed_count"], 0);
+        assert_eq!(value["dashboard_status_exposed_count"], 0);
+        assert_eq!(value["public_badge_exposed_count"], 0);
+        assert_eq!(value["status_endpoint_exposed_count"], 0);
+        assert_eq!(value["query_status_exposed_count"], 0);
+        assert_eq!(value["export_status_exposed_count"], 0);
+        assert_eq!(value["observability_status_exposed_count"], 0);
+        assert_eq!(value["release_notes_status_exposed_count"], 0);
+        assert_eq!(value["changelog_status_exposed_count"], 0);
+        assert_eq!(value["version_tag_status_exposed_count"], 0);
+        assert_eq!(value["artifact_availability_status_exposed_count"], 0);
+        assert_eq!(value["distribution_queue_status_exposed_count"], 0);
+        assert_eq!(value["channel_status_delivered_count"], 0);
+        assert_eq!(value["external_status_sent_count"], 0);
+        assert_eq!(value["telegram_status_sent_count"], 0);
+        assert_eq!(value["release_publication_authority_derived_count"], 0);
+        assert_eq!(value["activation_authority_derived_count"], 0);
+        assert_eq!(value["live_execution_allowed_count"], 0);
+        for key in [
+            "terminal_public_claim_status_exposure_accepted",
+            "terminal_public_claim_status_exposed",
+            "status_endpoint_exposed",
+            "query_status_exposed",
+            "export_status_exposed",
+            "observability_status_exposed",
+            "operator_approval_recorded",
+            "release_publication_authority_derived",
+            "activation_authority_derived",
+            "activation_performed",
+            "memory_store_write_performed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+            "external_send_performed",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "terminal public claim status exposure field should stay false: {key}"
+            );
+        }
+        assert_eq!(
+            value["terminal_public_claim_status_exposure_readback_hash_matched"],
+            true
+        );
+
+        let surfaces = value["terminal_public_claim_status_exposure_surfaces"]
+            .as_array()
+            .expect("terminal public claim status exposure surfaces");
+        assert_eq!(surfaces.len(), 18);
+        assert!(surfaces.iter().all(|surface| {
+            surface["public_claim_status_exposure_attempted"].as_bool() == Some(true)
+                && surface["public_claim_status_exposure_allowed"].as_bool() == Some(false)
+                && surface["public_claim_status_exposure_request_accepted"].as_bool() == Some(false)
+                && surface["public_claim_status_exposure_recorded"].as_bool() == Some(false)
+                && surface["public_claim_status_exposure_persisted"].as_bool() == Some(false)
+                && surface["public_claim_status_exposure_materialized"].as_bool() == Some(false)
+                && surface["public_claim_status_exposure_filesystem_written"].as_bool()
+                    == Some(false)
+                && surface["public_claim_status_exposure_delivered"].as_bool() == Some(false)
+                && surface["public_claim_status_exposed"].as_bool() == Some(false)
+                && surface["public_status_claimed"].as_bool() == Some(false)
+                && surface["public_release_claimed"].as_bool() == Some(false)
+                && surface["public_ga_claimed"].as_bool() == Some(false)
+                && surface["status_endpoint_exposed"].as_bool() == Some(false)
+                && surface["query_status_exposed"].as_bool() == Some(false)
+                && surface["export_status_exposed"].as_bool() == Some(false)
+                && surface["observability_status_exposed"].as_bool() == Some(false)
+                && surface["channel_status_delivered"].as_bool() == Some(false)
+                && surface["external_status_sent"].as_bool() == Some(false)
+                && surface["telegram_status_sent"].as_bool() == Some(false)
+                && surface["release_publication_authority_derived"].as_bool() == Some(false)
+                && surface["activation_authority_derived"].as_bool() == Some(false)
+                && surface["live_execution_allowed"].as_bool() == Some(false)
+                && surface["public_claim_status_exposure_noop_confirmed"].as_bool() == Some(true)
+        }));
+
+        let denied =
+            value["denied_by_first_model_invocation_terminal_public_claim_status_exposure"]
+                .as_array()
+                .expect("terminal public claim status exposure denials");
+        assert_eq!(denied.len(), 34);
+        assert_eq!(
+            value["denied_by_first_model_invocation_terminal_public_claim_status_exposure_count"],
+            34
+        );
+
+        let steps = value["audit_steps"]
+            .as_array()
+            .expect("terminal public claim status exposure audit steps");
+        assert_eq!(steps.len(), 6);
+        assert_eq!(
+            steps[0]["step"],
+            "terminal_operator_decision_public_claim_source_binding"
+        );
+        assert_eq!(
+            steps[1]["step"],
+            "terminal_public_claim_status_exposure_fixture_denial"
+        );
+        assert_eq!(
+            steps[2]["step"],
+            "public_status_no_recording_or_materialization"
+        );
+        assert_eq!(steps[3]["step"], "public_status_no_delivery_or_endpoint");
+        assert_eq!(steps[4]["step"], "authority_and_invocation_denial");
+        assert_eq!(steps[5]["step"], "side_effect_denial_check");
+        assert_eq!(
+            steps[1]["terminal_public_claim_status_exposure_allowed_count"],
+            0
+        );
+        assert_eq!(
+            steps[2]["terminal_public_claim_status_exposure_materialized_count"],
+            0
+        );
+        assert_eq!(steps[3]["status_endpoint_exposed_count"], 0);
+        assert_eq!(steps[4]["activation_authority_derived_count"], 0);
+        assert_eq!(steps[4]["provider_invoked"], false);
+        assert_eq!(steps[4]["model_invoked"], false);
+
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("terminal public claim status exposure side effects");
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["accepts_public_status"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["claims_public_release"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["delivers_channel"], false);
         assert_eq!(
             value["allowed_next_actions"][0]["writes_release_artifact"],
             false
