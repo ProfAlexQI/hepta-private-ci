@@ -446,6 +446,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RES
     "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-release-artifact-publication-denial-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_MEMORY_REAL_WRITE_CANARY_OPERATOR_APPROVAL_PACKET_NONCE_COMMAND_DRY_RUN_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -456,7 +458,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 247;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 248;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1851,6 +1853,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-release-artifact-publication-denial-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-release-artifact-publication-denial-boundary",
         side_effect_boundary: "read-only Memory live mutation operator write execution activation command result receipt release-artifact publication denial boundary; consumes the terminal operator decision / public-claim denial boundary as source evidence while exposing blocked release artifact, public artifact, signing/notarization, publication queue/manifest, public distribution, release notes/changelog, activation-from-publication, Memory/rollback/secret/provider, external/public/install/restart, and active-binary publication fixtures without writing artifacts, publishing release claims, deriving activation authority, Memory/KG writes, provider/model calls, sends, installs/restarts, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_MEMORY_REAL_WRITE_CANARY_OPERATOR_APPROVAL_PACKET_NONCE_COMMAND_DRY_RUN_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary",
+        side_effect_boundary: "read-only scoped Memory real-write canary operator approval packet / nonce / explicit command dry-run boundary; consumes the release-artifact publication denial boundary as source evidence while exposing fresh approval packet, single-use nonce, operator identity/session, scope/store/payload digest, binary SHA/route-count binding, rollback/readback/WAL plans, and explicit command admission fixtures without accepting approval, consuming nonce, dispatching commands, writing durable Memory, writing WAL/receipts, reading credentials, writing KG, invoking providers/models, sending channels, publishing claims/artifacts, installing/restarting, or mutating the active binary",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4119,6 +4128,16 @@ fn route_native_gateway_request_with_body(
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_release_artifact_publication_denial_boundary_report(
                         ),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_MEMORY_REAL_WRITE_CANARY_OPERATOR_APPROVAL_PACKET_NONCE_COMMAND_DRY_RUN_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_report(),
                     ),
                 );
             }
@@ -85353,6 +85372,745 @@ fn hepta_memory_live_mutation_operator_write_execution_activation_command_result
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_report()
+-> serde_json::Value {
+    const SCOPED_CANARY_SURFACES: &[&str] = &[
+        "fresh_operator_approval_packet_required",
+        "single_use_nonce_required",
+        "operator_identity_session_binding_required",
+        "explicit_command_path_required",
+        "canary_scope_namespace_store_binding_required",
+        "payload_digest_redaction_binding_required",
+        "active_binary_sha_route_count_binding_required",
+        "release_artifact_denial_source_binding_required",
+        "wal_receipt_persistence_plan_required",
+        "post_write_readback_validation_plan_required",
+        "rollback_tombstone_plan_required",
+        "external_kg_provider_public_install_active_binary_side_effects_forbidden",
+    ];
+    const SCOPED_CANARY_DENIALS: &[&str] = &[
+        "source_release_artifact_publication_denial_boundary_required",
+        "fresh_operator_approval_packet_not_recorded",
+        "fresh_operator_approval_packet_not_persisted",
+        "fresh_operator_approval_packet_not_accepted",
+        "operator_identity_not_bound",
+        "operator_session_not_bound",
+        "operator_signature_not_verified",
+        "single_use_nonce_not_issued",
+        "single_use_nonce_not_consumed",
+        "nonce_replay_window_not_closed",
+        "explicit_command_not_accepted",
+        "explicit_command_not_dispatched",
+        "canary_scope_not_bound",
+        "canary_namespace_not_bound",
+        "canary_store_not_bound",
+        "payload_digest_not_bound",
+        "redaction_proof_not_accepted",
+        "active_binary_sha_not_bound",
+        "route_count_not_bound",
+        "fresh_long_soak_evidence_not_accepted",
+        "wal_receipt_plan_not_accepted",
+        "receipt_persistence_not_allowed",
+        "post_write_readback_plan_not_accepted",
+        "rollback_tombstone_plan_not_accepted",
+        "durable_memory_write_denied",
+        "memory_store_mutation_denied",
+        "kg_live_write_denied",
+        "provider_model_invocation_denied",
+        "credential_read_denied",
+        "channel_external_send_denied",
+        "public_claim_release_artifact_denied",
+        "install_restart_active_binary_mutation_denied",
+    ];
+    const FALSE_KEYS: &[&str] = &[
+        "fresh_operator_approval_packet_recorded",
+        "fresh_operator_approval_packet_persisted",
+        "fresh_operator_approval_packet_accepted",
+        "operator_identity_bound",
+        "operator_session_bound",
+        "operator_signature_verified",
+        "operator_timestamp_accepted",
+        "operator_scope_bound",
+        "single_use_nonce_issued",
+        "single_use_nonce_consumed",
+        "single_use_nonce_replayed",
+        "nonce_replay_allowed",
+        "explicit_command_accepted",
+        "explicit_command_dispatched",
+        "explicit_command_performed",
+        "canary_scope_bound",
+        "canary_namespace_bound",
+        "canary_store_bound",
+        "payload_digest_bound",
+        "redaction_proof_accepted",
+        "active_binary_sha_bound",
+        "route_count_bound",
+        "fresh_long_soak_evidence_accepted",
+        "wal_receipt_plan_accepted",
+        "wal_write_performed",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_accepted",
+        "post_write_readback_plan_accepted",
+        "post_write_readback_performed",
+        "post_write_validation_performed",
+        "rollback_plan_accepted",
+        "rollback_tombstone_plan_accepted",
+        "rollback_executed",
+        "tombstone_written",
+        "activation_allowed_by_scoped_canary_approval",
+        "activation_allowed",
+        "activation_performed",
+        "live_mutation_execution_ready",
+        "live_mutation_execution_allowed",
+        "live_mutation_execution_performed",
+        "memory_write_execution_allowed",
+        "memory_write_execution_ready",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_prompt_replay_enabled",
+        "provider_invoked",
+        "model_invoked",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_claim_promoted",
+        "public_release_published",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "service_restart_performed",
+        "active_binary_mutated",
+        "filesystem_written",
+    ];
+
+    fn scoped_canary_fixture(
+        id: &str,
+        status: &str,
+        reason: &str,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut base = serde_json::Map::new();
+        macro_rules! insert_fixture_json {
+            ($key:literal, $value:expr) => {
+                base.insert($key.to_string(), serde_json::json!($value));
+            };
+        }
+        insert_fixture_json!("id", id);
+        insert_fixture_json!("fixture_id", id);
+        insert_fixture_json!("scoped_memory_real_write_canary_status", status);
+        insert_fixture_json!("source_release_artifact_publication_denial_present", true);
+        insert_fixture_json!("source_release_artifact_publication_denial_ready", true);
+        insert_fixture_json!("scoped_canary_dry_run_noop_confirmed", true);
+        insert_fixture_json!("reason", reason);
+        for key in [
+            "approval_packet_requested",
+            "nonce_issue_requested",
+            "nonce_consume_requested",
+            "explicit_command_requested",
+            "canary_scope_requested",
+            "canary_namespace_requested",
+            "canary_store_requested",
+            "payload_digest_binding_requested",
+            "active_binary_sha_binding_requested",
+            "route_count_binding_requested",
+            "wal_receipt_plan_requested",
+            "post_write_readback_plan_requested",
+            "rollback_tombstone_plan_requested",
+            "durable_memory_write_requested",
+            "memory_store_mutation_requested",
+            "kg_live_write_requested",
+            "provider_model_invocation_requested",
+            "credential_read_requested",
+            "channel_external_send_requested",
+            "public_claim_requested",
+            "release_artifact_write_requested",
+            "install_restart_requested",
+            "active_binary_mutation_requested",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        for key in [
+            "approval_packet_recorded",
+            "approval_packet_persisted",
+            "approval_packet_accepted",
+            "operator_identity_bound",
+            "operator_session_bound",
+            "operator_signature_verified",
+            "single_use_nonce_issued",
+            "single_use_nonce_consumed",
+            "explicit_command_accepted",
+            "explicit_command_dispatched",
+            "canary_scope_bound",
+            "canary_namespace_bound",
+            "canary_store_bound",
+            "payload_digest_bound",
+            "active_binary_sha_bound",
+            "route_count_bound",
+            "wal_receipt_plan_accepted",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "post_write_readback_plan_accepted",
+            "post_write_readback_performed",
+            "rollback_tombstone_plan_accepted",
+            "rollback_executed",
+            "tombstone_written",
+            "activation_allowed",
+            "live_mutation_execution_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "durable_memory_store_write_performed",
+            "kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "public_claim_promoted",
+            "public_release_published",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        if let Some(extra) = extra.as_object() {
+            for (key, value) in extra {
+                base.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(base)
+    }
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-scoped-real-write-canary-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_release_artifact_publication_denial_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_activation_command_result_receipt_release_artifact_publication_denial_boundary_ready": false,
+                "memory_write_execution_activation_command_result_receipt_release_artifact_publication_denial_ready": false,
+                "source_release_artifact_publication_source_report_thread_failed": true
+            })
+        });
+
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let side_effects_all_false = |value: &serde_json::Value| {
+        value
+            .get("side_effects")
+            .and_then(serde_json::Value::as_object)
+            .map(|effects| effects.values().all(|item| item.as_bool() == Some(false)))
+            .unwrap_or(false)
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_next_action_scoped_canary = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.get(1))
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some("prepare_scoped_memory_real_write_canary_operator_approval_packet")
+                && item
+                    .get("requires_explicit_operator_acceptance")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+        })
+        .unwrap_or(false);
+    let source_ready = json_str(&source, "status") == "ready"
+        && json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_release_artifact_publication_denial_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_release_artifact_publication_denial_ready",
+        )
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_release_artifact_publication_fixture_count",
+        ) == 10
+        && json_u64(
+            &source,
+            "accepted_activation_command_result_receipt_release_artifact_publication_fixture_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_release_artifact_publication_performed_count",
+        ) == 0
+        && json_u64(&source, "release_artifact_written_count") == 0
+        && json_u64(&source, "public_artifact_written_count") == 0
+        && json_u64(&source, "memory_store_write_performed_count") == 0
+        && json_u64(
+            &source,
+            "denied_by_activation_command_result_receipt_release_artifact_publication_count",
+        ) == 69
+        && !json_bool(&source, "release_artifact_publication_accepted")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "public_artifact_written")
+        && !json_bool(&source, "public_release_published")
+        && !json_bool(&source, "public_ga_claimed")
+        && !json_bool(&source, "activation_allowed")
+        && !json_bool(&source, "activation_performed")
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "memory_store_mutated")
+        && !json_bool(&source, "live_kg_write_performed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "credential_read")
+        && !json_bool(&source, "telegram_send_performed")
+        && !json_bool(&source, "channel_send_performed")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "install_executed")
+        && !json_bool(&source, "service_restarted")
+        && !json_bool(&source, "active_binary_mutated")
+        && source_next_action_scoped_canary
+        && side_effects_all_false(&source);
+
+    let fixtures = serde_json::Value::Array(vec![
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-missing-release-artifact-source",
+            "blocked_source_noop",
+            "release_artifact_publication_denial_boundary_source_required",
+            serde_json::json!({
+                "source_release_artifact_publication_denial_present": false,
+                "source_release_artifact_publication_denial_ready": false,
+                "approval_packet_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-fresh-approval-packet-required",
+            "blocked_approval_noop",
+            "fresh_operator_approval_packet_required",
+            serde_json::json!({
+                "approval_packet_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-operator-identity-session-required",
+            "blocked_identity_noop",
+            "operator_identity_session_signature_required",
+            serde_json::json!({
+                "approval_packet_requested": true,
+                "operator_identity_requested": true,
+                "operator_session_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-single-use-nonce-required",
+            "blocked_nonce_noop",
+            "single_use_nonce_required_and_not_consumed",
+            serde_json::json!({
+                "nonce_issue_requested": true,
+                "nonce_consume_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-explicit-command-dry-run-only",
+            "blocked_command_noop",
+            "explicit_command_path_required_but_dry_run_only",
+            serde_json::json!({
+                "explicit_command_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-scope-namespace-store-binding",
+            "blocked_scope_noop",
+            "canary_scope_namespace_store_binding_required",
+            serde_json::json!({
+                "canary_scope_requested": true,
+                "canary_namespace_requested": true,
+                "canary_store_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-payload-digest-redaction-binding",
+            "blocked_payload_noop",
+            "payload_digest_and_redaction_proof_required",
+            serde_json::json!({
+                "payload_digest_binding_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-binary-route-count-binding",
+            "blocked_binary_noop",
+            "active_binary_sha_and_route_count_binding_required",
+            serde_json::json!({
+                "active_binary_sha_binding_requested": true,
+                "route_count_binding_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-wal-readback-rollback-plans",
+            "blocked_receipt_noop",
+            "wal_receipt_readback_and_rollback_plans_required",
+            serde_json::json!({
+                "wal_receipt_plan_requested": true,
+                "post_write_readback_plan_requested": true,
+                "rollback_tombstone_plan_requested": true
+            }),
+        ),
+        scoped_canary_fixture(
+            "scoped-memory-real-write-canary-direct-side-effect-attempt",
+            "blocked_execution_noop",
+            "direct_memory_kg_provider_channel_release_install_active_binary_side_effects_denied",
+            serde_json::json!({
+                "durable_memory_write_requested": true,
+                "memory_store_mutation_requested": true,
+                "kg_live_write_requested": true,
+                "provider_model_invocation_requested": true,
+                "credential_read_requested": true,
+                "channel_external_send_requested": true,
+                "public_claim_requested": true,
+                "release_artifact_write_requested": true,
+                "install_restart_requested": true,
+                "active_binary_mutation_requested": true
+            }),
+        ),
+    ]);
+    let fixture_count = fixtures.as_array().map(std::vec::Vec::len).unwrap_or(0);
+    let source_report_sha256 = sha256_json_value(&source);
+    let fixtures_hash_sha256 = sha256_json_value(&fixtures);
+    let boundary_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary-v1:{}:{}:{}",
+        route_matrix.route_count, source_report_sha256, fixtures_hash_sha256
+    ));
+    let policy_hash_sha256 = sha256_text_value(
+        "scoped-memory-real-write-canary-approval-packet-nonce-command-dry-run:no-approval-accept:no-nonce-consume:no-command-dispatch:no-durable-write",
+    );
+    let denials = SCOPED_CANARY_DENIALS
+        .iter()
+        .map(|reason| {
+            serde_json::json!({
+                "reason": reason,
+                "accepted": false,
+                "performed": false,
+                "writes_memory": false,
+                "writes_kg": false,
+                "invokes_provider": false,
+                "sends_externally": false
+            })
+        })
+        .collect::<Vec<_>>();
+    let denied_count = denials.len();
+    let required_fields = serde_json::json!([
+        "fresh_operator_approval_packet_id",
+        "operator_identity_hash",
+        "operator_session_id",
+        "operator_signature_hash",
+        "operator_timestamp",
+        "single_use_nonce_id",
+        "explicit_command_id",
+        "canary_scope",
+        "canary_namespace",
+        "canary_store",
+        "payload_digest_sha256",
+        "redaction_proof_id",
+        "active_binary_sha256",
+        "native_route_count",
+        "source_release_artifact_publication_denial_report_sha256",
+        "wal_receipt_plan_id",
+        "post_write_readback_validation_plan_id",
+        "rollback_tombstone_plan_id",
+    ]);
+
+    let mut side_effects = serde_json::Map::new();
+    for &key in FALSE_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && source_ready
+        && SCOPED_CANARY_SURFACES.len() == 12
+        && fixture_count == 10
+        && denied_count == 32;
+
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "run_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_require_live_gate",
+            "status": "allowed_verification_only",
+            "accepts_operator_approval_packet": false,
+            "consumes_nonce": false,
+            "dispatches_command": false,
+            "writes_memory": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "reads_credentials": false,
+            "sends_externally": false,
+            "publishes_artifacts": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        },
+        {
+            "action": "prepare_scoped_memory_real_write_canary_readback_rollback_tombstone_dry_run_boundary",
+            "status": "allowed_report_only_next_slice",
+            "requires_accepted_operator_approval_packet": true,
+            "requires_consumed_single_use_nonce": true,
+            "requires_explicit_command": true,
+            "writes_memory": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "sends_externally": false
+        }
+    ]);
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_MEMORY_REAL_WRITE_CANARY_OPERATOR_APPROVAL_PACKET_NONCE_COMMAND_DRY_RUN_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-07-03");
+    insert_report_json!(
+        "scoped_memory_real_write_canary_boundary_schema_version",
+        "scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_v1"
+    );
+    insert_report_json!(
+        "scoped_memory_real_write_canary_mode",
+        "scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_no_write"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!(
+        "memory_write_execution_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_release_artifact_publication_boundary_ready",
+        source_ready
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_release_artifact_publication_ready",
+        json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_release_artifact_publication_denial_ready"
+        )
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_release_artifact_publication_report_sha256",
+        source_report_sha256
+    );
+    insert_report_json!(
+        "source_release_artifact_publication_fixture_count",
+        json_u64(
+            &source,
+            "activation_command_result_receipt_release_artifact_publication_fixture_count"
+        )
+    );
+    insert_report_json!(
+        "source_accepted_release_artifact_publication_fixture_count",
+        json_u64(
+            &source,
+            "accepted_activation_command_result_receipt_release_artifact_publication_fixture_count"
+        )
+    );
+    insert_report_json!(
+        "source_release_artifact_publication_performed_count",
+        json_u64(
+            &source,
+            "activation_command_result_receipt_release_artifact_publication_performed_count"
+        )
+    );
+    insert_report_json!(
+        "source_release_artifact_publication_denial_count",
+        json_u64(
+            &source,
+            "denied_by_activation_command_result_receipt_release_artifact_publication_count"
+        )
+    );
+    insert_report_json!("minimum_required_samples", 24);
+    insert_report_json!(
+        "scoped_memory_real_write_canary_boundary_hash_sha256",
+        boundary_hash_sha256
+    );
+    insert_report_json!(
+        "scoped_memory_real_write_canary_policy_hash_sha256",
+        policy_hash_sha256
+    );
+    insert_report_json!(
+        "required_scoped_memory_real_write_canary_operator_approval_surface_count",
+        12
+    );
+    insert_report_json!(
+        "ready_scoped_memory_real_write_canary_operator_approval_surface_count",
+        12
+    );
+    insert_report_json!(
+        "side_effect_free_scoped_memory_real_write_canary_operator_approval_surface_count",
+        12
+    );
+    insert_report_json!(
+        "required_scoped_memory_real_write_canary_operator_approval_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "scoped_memory_real_write_canary_operator_approval_fixture_count",
+        fixture_count
+    );
+    insert_report_json!(
+        "blocked_scoped_memory_real_write_canary_operator_approval_fixture_count",
+        fixture_count
+    );
+    insert_report_json!(
+        "noop_scoped_memory_real_write_canary_operator_approval_fixture_count",
+        fixture_count
+    );
+    insert_report_json!(
+        "allowed_scoped_memory_real_write_canary_operator_approval_fixture_count",
+        0
+    );
+    insert_report_json!(
+        "accepted_scoped_memory_real_write_canary_operator_approval_fixture_count",
+        0
+    );
+    insert_report_json!(
+        "scoped_memory_real_write_canary_approval_packet_accepted_count",
+        0
+    );
+    insert_report_json!("single_use_nonce_consumed_count", 0);
+    insert_report_json!("explicit_command_dispatched_count", 0);
+    insert_report_json!("wal_write_performed_count", 0);
+    insert_report_json!("receipt_persisted_count", 0);
+    insert_report_json!("post_write_readback_performed_count", 0);
+    insert_report_json!("rollback_tombstone_performed_count", 0);
+    insert_report_json!("memory_store_write_performed_count", 0);
+    insert_report_json!(
+        "required_before_scoped_memory_real_write_canary_acceptance_count",
+        18
+    );
+    report.insert(
+        "required_scoped_memory_real_write_canary_operator_approval_fields".to_string(),
+        required_fields,
+    );
+    report.insert(
+        "scoped_memory_real_write_canary_operator_approval_surfaces".to_string(),
+        serde_json::json!(SCOPED_CANARY_SURFACES),
+    );
+    report.insert(
+        "scoped_memory_real_write_canary_operator_approval_fixtures".to_string(),
+        fixtures,
+    );
+    report.insert(
+        "denied_by_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run"
+            .to_string(),
+        serde_json::Value::Array(denials),
+    );
+    insert_report_json!(
+        "denied_by_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_count",
+        denied_count
+    );
+    insert_report_json!("fresh_operator_approval_packet_required", true);
+    insert_report_json!("single_use_nonce_required", true);
+    insert_report_json!("explicit_command_required", true);
+    insert_report_json!("durable_memory_write_forbidden", true);
+    insert_report_json!("memory_store_mutation_forbidden", true);
+    insert_report_json!("kg_live_write_forbidden", true);
+    insert_report_json!("provider_model_invocation_forbidden", true);
+    insert_report_json!("credential_read_forbidden", true);
+    insert_report_json!("channel_external_send_forbidden", true);
+    insert_report_json!("public_claim_release_artifact_forbidden", true);
+    insert_report_json!("install_restart_active_binary_mutation_forbidden", true);
+    for &key in FALSE_KEYS {
+        report.insert(key.to_string(), serde_json::json!(false));
+    }
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -130491,6 +131249,327 @@ mod tests {
         let side_effects = value["side_effects"].as_object().expect(
             "memory write execution activation command result receipt release artifact publication side effects",
         );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_blocks_real_write()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_MEMORY_REAL_WRITE_CANARY_OPERATOR_APPROVAL_PACKET_NONCE_COMMAND_DRY_RUN_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "scoped memory real-write canary operator approval packet nonce command dry-run boundary json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_MEMORY_REAL_WRITE_CANARY_OPERATOR_APPROVAL_PACKET_NONCE_COMMAND_DRY_RUN_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_memory_real_write_canary_mode"],
+            "scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_no_write"
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_release_artifact_publication_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_release_artifact_publication_ready"],
+            true
+        );
+        assert_ne!(
+            value["source_activation_command_result_receipt_release_artifact_publication_report_sha256"],
+            ""
+        );
+        assert_eq!(
+            value["source_release_artifact_publication_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["source_accepted_release_artifact_publication_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["source_release_artifact_publication_performed_count"],
+            0
+        );
+        assert_eq!(
+            value["source_release_artifact_publication_denial_count"],
+            69
+        );
+        assert_eq!(value["minimum_required_samples"], 24);
+        assert_eq!(
+            value["required_scoped_memory_real_write_canary_operator_approval_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_scoped_memory_real_write_canary_operator_approval_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["side_effect_free_scoped_memory_real_write_canary_operator_approval_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["required_scoped_memory_real_write_canary_operator_approval_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["scoped_memory_real_write_canary_operator_approval_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["blocked_scoped_memory_real_write_canary_operator_approval_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["noop_scoped_memory_real_write_canary_operator_approval_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["allowed_scoped_memory_real_write_canary_operator_approval_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_scoped_memory_real_write_canary_operator_approval_fixture_count"],
+            0
+        );
+        for key in [
+            "scoped_memory_real_write_canary_approval_packet_accepted_count",
+            "single_use_nonce_consumed_count",
+            "explicit_command_dispatched_count",
+            "wal_write_performed_count",
+            "receipt_persisted_count",
+            "post_write_readback_performed_count",
+            "rollback_tombstone_performed_count",
+            "memory_store_write_performed_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "scoped Memory canary dry-run count should stay zero: {key}"
+            );
+        }
+        assert_eq!(
+            value["required_before_scoped_memory_real_write_canary_acceptance_count"],
+            18
+        );
+        assert_eq!(
+            value["required_scoped_memory_real_write_canary_operator_approval_fields"]
+                .as_array()
+                .expect("required scoped Memory canary approval fields")
+                .len(),
+            18
+        );
+
+        for key in [
+            "fresh_operator_approval_packet_recorded",
+            "fresh_operator_approval_packet_persisted",
+            "fresh_operator_approval_packet_accepted",
+            "operator_identity_bound",
+            "operator_session_bound",
+            "operator_signature_verified",
+            "single_use_nonce_issued",
+            "single_use_nonce_consumed",
+            "explicit_command_accepted",
+            "explicit_command_dispatched",
+            "explicit_command_performed",
+            "canary_scope_bound",
+            "canary_namespace_bound",
+            "canary_store_bound",
+            "payload_digest_bound",
+            "active_binary_sha_bound",
+            "route_count_bound",
+            "fresh_long_soak_evidence_accepted",
+            "wal_receipt_plan_accepted",
+            "wal_write_performed",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "post_write_readback_plan_accepted",
+            "post_write_readback_performed",
+            "rollback_tombstone_plan_accepted",
+            "rollback_executed",
+            "tombstone_written",
+            "activation_allowed",
+            "activation_performed",
+            "live_mutation_execution_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "durable_memory_store_write_performed",
+            "durable_memory_store_read_performed",
+            "durable_memory_store_rollback_performed",
+            "raw_payload_plaintext_recorded",
+            "raw_payload_plaintext_persisted",
+            "secret_material_read",
+            "credential_read",
+            "secret_file_read",
+            "kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "public_claim_promoted",
+            "public_release_published",
+            "public_ga_claimed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "scoped Memory canary dry-run field should stay false: {key}"
+            );
+        }
+
+        let surfaces = value["scoped_memory_real_write_canary_operator_approval_surfaces"]
+            .as_array()
+            .expect("scoped Memory canary approval surfaces");
+        assert_eq!(surfaces.len(), 12);
+        let fixtures = value["scoped_memory_real_write_canary_operator_approval_fixtures"]
+            .as_array()
+            .expect("scoped Memory canary approval fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert!(fixtures.iter().all(|fixture| {
+            fixture["scoped_memory_real_write_canary_status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("blocked"))
+                && fixture["approval_packet_accepted"].as_bool() == Some(false)
+                && fixture["single_use_nonce_consumed"].as_bool() == Some(false)
+                && fixture["explicit_command_dispatched"].as_bool() == Some(false)
+                && fixture["receipt_persisted"].as_bool() == Some(false)
+                && fixture["post_write_readback_performed"].as_bool() == Some(false)
+                && fixture["rollback_executed"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["memory_store_mutated"].as_bool() == Some(false)
+                && fixture["durable_memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["live_kg_write_performed"].as_bool() == Some(false)
+                && fixture["provider_invoked"].as_bool() == Some(false)
+                && fixture["model_invoked"].as_bool() == Some(false)
+                && fixture["credential_read"].as_bool() == Some(false)
+                && fixture["channel_send_performed"].as_bool() == Some(false)
+                && fixture["external_send_performed"].as_bool() == Some(false)
+                && fixture["release_artifact_written"].as_bool() == Some(false)
+                && fixture["install_executed"].as_bool() == Some(false)
+                && fixture["active_binary_mutated"].as_bool() == Some(false)
+                && fixture["scoped_canary_dry_run_noop_confirmed"].as_bool() == Some(true)
+        }));
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["source_release_artifact_publication_denial_present"] == false
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["nonce_consume_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["explicit_command_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["durable_memory_write_requested"] == true)
+                .count(),
+            1
+        );
+        let denied = value
+            ["denied_by_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run"]
+            .as_array()
+            .expect("scoped Memory canary approval denials");
+        assert_eq!(denied.len(), 32);
+        assert_eq!(
+            value["denied_by_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_count"],
+            32
+        );
+        assert_eq!(value["fresh_operator_approval_packet_required"], true);
+        assert_eq!(value["single_use_nonce_required"], true);
+        assert_eq!(value["explicit_command_required"], true);
+        assert_eq!(value["durable_memory_write_forbidden"], true);
+        assert_eq!(value["kg_live_write_forbidden"], true);
+        assert_eq!(value["provider_model_invocation_forbidden"], true);
+        assert_eq!(value["credential_read_forbidden"], true);
+        assert_eq!(value["channel_external_send_forbidden"], true);
+        assert_eq!(value["public_claim_release_artifact_forbidden"], true);
+        assert_eq!(
+            value["install_restart_active_binary_mutation_forbidden"],
+            true
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["accepts_operator_approval_packet"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["consumes_nonce"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["dispatches_command"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_scoped_memory_real_write_canary_readback_rollback_tombstone_dry_run_boundary"
+        );
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("scoped Memory canary dry-run side effects");
         assert!(
             side_effects
                 .values()
