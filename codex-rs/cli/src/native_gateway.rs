@@ -434,6 +434,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RES
     "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-audit-trail-immutable-evidence-denial-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -444,7 +446,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 241;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 242;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1797,6 +1799,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-audit-trail-immutable-evidence-denial-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-audit-trail-immutable-evidence-denial-boundary",
         side_effect_boundary: "read-only Memory live mutation operator write execution activation command result receipt audit-trail/immutable-evidence denial boundary; consumes the cancellation/supersession denial boundary as source evidence while exposing blocked audit trail, immutable evidence, hash-chain, merkle-root, attestation, witness, notary, ledger/index/delivery evidence, activation-from-evidence, Memory/live-mutation, rollback/secret/provider, external/public/install/restart, and active-binary evidence fixtures without recording audit trails, immutable evidence, evidence receipts, Memory/KG writes, provider/model calls, sends, artifacts, restarts, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary",
+        side_effect_boundary: "read-only Memory live mutation operator write execution activation command result receipt retention/expiry/garbage-collection denial boundary; consumes the audit-trail/immutable-evidence denial boundary as source evidence while exposing blocked retention policy, retention index, expiry scheduler, TTL update, garbage-collection scan, delete/tombstone/sweep, archive/compaction, ledger/index/delivery retention, activation-from-retention, Memory/rollback/secret/provider, external/public/install/restart, and active-binary GC evidence fixtures without recording retention policy, starting expiry timers, scanning or deleting stores, archiving, compacting, writing receipts, Memory/KG writes, provider/model calls, sends, artifacts, restarts, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -3998,6 +4007,17 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_boundary_report(
+                        ),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_report(
                         ),
                     ),
                 );
@@ -80523,6 +80543,797 @@ fn hepta_memory_live_mutation_operator_write_execution_activation_command_result
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_report()
+-> serde_json::Value {
+    const RETENTION_GC_SURFACES: &[&str] = &[
+        "source_audit_trail_immutable_evidence_report_required",
+        "retention_policy_request_shape_denied",
+        "retention_index_recording_denied",
+        "expiry_scheduler_registration_denied",
+        "ttl_update_extension_denied",
+        "garbage_collection_scan_denied",
+        "delete_tombstone_sweep_denied",
+        "archive_compaction_denied",
+        "ledger_index_delivery_retention_evidence_denied",
+        "activation_from_retention_expiry_gc_denied",
+        "memory_write_rollback_secret_provider_gc_denied",
+        "external_public_install_restart_active_binary_gc_denied",
+    ];
+    const DENIED_BY: &[&str] = &[
+        "source_audit_trail_immutable_evidence_report_required",
+        "retention_policy_request_acceptance_denied",
+        "retention_policy_recording_denied",
+        "retention_policy_persistence_denied",
+        "retention_index_recording_denied",
+        "expiry_request_acceptance_denied",
+        "expiry_recording_denied",
+        "expiry_scheduler_registration_denied",
+        "expiry_timer_start_denied",
+        "ttl_update_denied",
+        "ttl_extension_denied",
+        "garbage_collection_request_acceptance_denied",
+        "garbage_collection_scan_denied",
+        "garbage_collection_candidate_recording_denied",
+        "garbage_collection_decision_recording_denied",
+        "delete_marker_recording_denied",
+        "tombstone_recording_denied",
+        "sweep_execution_denied",
+        "archive_write_denied",
+        "compaction_execution_denied",
+        "ledger_retention_recording_denied",
+        "index_retention_recording_denied",
+        "delivery_retention_recording_denied",
+        "activation_from_retention_expiry_gc_denied",
+        "memory_write_gc_denied",
+        "rollback_gc_denied",
+        "secret_material_gc_denied",
+        "provider_prompt_gc_denied",
+        "external_public_install_restart_active_binary_gc_denied",
+    ];
+    const FALSE_KEYS: &[&str] = &[
+        "activation_command_result_receipt_retention_policy_allowed",
+        "activation_command_result_receipt_retention_policy_recorded",
+        "activation_command_result_receipt_retention_policy_persisted",
+        "activation_command_result_receipt_retention_policy_materialized",
+        "activation_command_result_receipt_retention_index_allowed",
+        "activation_command_result_receipt_retention_index_recorded",
+        "activation_command_result_receipt_retention_index_persisted",
+        "activation_command_result_receipt_expiry_allowed",
+        "activation_command_result_receipt_expiry_recorded",
+        "activation_command_result_receipt_expiry_persisted",
+        "activation_command_result_receipt_expiry_scheduler_registered",
+        "activation_command_result_receipt_expiry_timer_started",
+        "activation_command_result_receipt_expiry_materialized",
+        "activation_command_result_receipt_ttl_update_allowed",
+        "activation_command_result_receipt_ttl_update_recorded",
+        "activation_command_result_receipt_ttl_extension_allowed",
+        "activation_command_result_receipt_ttl_extension_recorded",
+        "activation_command_result_receipt_garbage_collection_allowed",
+        "activation_command_result_receipt_garbage_collection_scan_performed",
+        "activation_command_result_receipt_garbage_collection_candidate_recorded",
+        "activation_command_result_receipt_garbage_collection_decision_recorded",
+        "activation_command_result_receipt_garbage_collection_persisted",
+        "activation_command_result_receipt_delete_allowed",
+        "activation_command_result_receipt_delete_performed",
+        "activation_command_result_receipt_delete_marker_recorded",
+        "activation_command_result_receipt_tombstone_recorded",
+        "activation_command_result_receipt_sweep_allowed",
+        "activation_command_result_receipt_sweep_performed",
+        "activation_command_result_receipt_archive_allowed",
+        "activation_command_result_receipt_archive_written",
+        "activation_command_result_receipt_compaction_allowed",
+        "activation_command_result_receipt_compaction_performed",
+        "activation_command_result_receipt_compaction_artifact_written",
+        "activation_command_result_receipt_ledger_retention_recorded",
+        "activation_command_result_receipt_ledger_retention_persisted",
+        "activation_command_result_receipt_index_retention_recorded",
+        "activation_command_result_receipt_delivery_retention_recorded",
+        "activation_command_result_receipt_audit_trail_recorded",
+        "activation_command_result_receipt_audit_trail_persisted",
+        "activation_command_result_receipt_immutable_evidence_recorded",
+        "activation_command_result_receipt_immutable_evidence_persisted",
+        "activation_command_result_receipt_hash_chain_recorded",
+        "activation_command_result_receipt_merkle_root_recorded",
+        "activation_command_result_receipt_attestation_recorded",
+        "activation_command_result_receipt_witness_recorded",
+        "activation_command_result_receipt_notary_recorded",
+        "activation_command_result_receipt_cancellation_allowed",
+        "activation_command_result_receipt_cancellation_recorded",
+        "activation_command_result_receipt_supersession_allowed",
+        "activation_command_result_receipt_supersession_recorded",
+        "activation_command_result_receipt_ordering_allowed",
+        "activation_command_result_receipt_ordering_recorded",
+        "activation_command_result_receipt_recorded",
+        "activation_command_result_receipt_persisted",
+        "activation_command_result_receipt_accepted",
+        "activation_command_result_receipt_materialized",
+        "activation_command_result_receipt_filesystem_written",
+        "activation_command_result_receipt_ledger_written",
+        "activation_command_result_receipt_indexed",
+        "activation_command_result_receipt_enqueued",
+        "activation_command_result_receipt_delivered",
+        "activation_command_completion_ack_recorded",
+        "activation_command_completion_ack_persisted",
+        "activation_command_completion_ack_accepted",
+        "activation_command_completion_ack_delivered",
+        "activation_command_enabled",
+        "activation_command_invoked",
+        "activation_command_dispatched",
+        "activation_allowed_by_result_receipt_retention",
+        "activation_allowed_by_result_receipt_expiry",
+        "activation_allowed_by_result_receipt_garbage_collection",
+        "activation_allowed_by_result_receipt_audit_trail",
+        "activation_allowed_by_result_receipt_immutable_evidence",
+        "activation_allowed_by_result_receipt_cancellation",
+        "activation_allowed_by_result_receipt_supersession",
+        "activation_allowed_by_result_receipt_ordering",
+        "activation_allowed_by_result_receipt_replay",
+        "activation_allowed_by_result_receipt",
+        "activation_allowed",
+        "activation_performed",
+        "live_mutation_execution_ready",
+        "live_mutation_execution_allowed",
+        "live_mutation_execution_performed",
+        "memory_write_execution_allowed",
+        "memory_write_execution_ready",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "rollback_execution_allowed",
+        "rollback_executed",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "provider_prompt_replay_enabled",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_enabled",
+        "external_send_performed",
+        "public_claim_or_release_artifact_write_enabled",
+        "public_release_published",
+        "public_ga_claimed",
+        "public_release_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+    ];
+
+    fn retention_gc_fixture(
+        id: &str,
+        status: &str,
+        reason: &str,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut base = serde_json::Map::new();
+        macro_rules! insert_fixture_json {
+            ($key:literal, $value:expr) => {
+                base.insert($key.to_string(), serde_json::json!($value));
+            };
+        }
+        insert_fixture_json!("id", id);
+        insert_fixture_json!("retention_gc_status", status);
+        insert_fixture_json!("reason", reason);
+        insert_fixture_json!("retention_requested", true);
+        insert_fixture_json!("expiry_requested", false);
+        insert_fixture_json!("garbage_collection_requested", false);
+        insert_fixture_json!("source_audit_evidence_present", true);
+        insert_fixture_json!("source_audit_evidence_ready", true);
+        for key in [
+            "retention_index_requested",
+            "expiry_schedule_requested",
+            "expiry_timer_requested",
+            "ttl_update_requested",
+            "ttl_extension_requested",
+            "garbage_collection_scan_requested",
+            "delete_requested",
+            "tombstone_requested",
+            "sweep_requested",
+            "archive_requested",
+            "compaction_requested",
+            "activation_from_retention_gc_requested",
+            "memory_write_gc_evidence_requested",
+            "rollback_gc_evidence_requested",
+            "secret_material_gc_evidence_requested",
+            "provider_prompt_gc_evidence_requested",
+            "ledger_retention_requested",
+            "index_retention_requested",
+            "delivery_retention_requested",
+            "external_send_gc_evidence_requested",
+            "public_claim_gc_evidence_requested",
+            "release_artifact_gc_evidence_requested",
+            "install_gc_evidence_requested",
+            "service_restart_gc_evidence_requested",
+            "active_binary_gc_evidence_requested",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        for key in [
+            "retention_policy_allowed",
+            "retention_policy_recorded",
+            "retention_policy_persisted",
+            "retention_policy_materialized",
+            "retention_index_allowed",
+            "retention_index_recorded",
+            "retention_index_persisted",
+            "expiry_allowed",
+            "expiry_recorded",
+            "expiry_persisted",
+            "expiry_scheduler_registered",
+            "expiry_timer_started",
+            "expiry_materialized",
+            "ttl_update_allowed",
+            "ttl_update_recorded",
+            "ttl_extension_allowed",
+            "ttl_extension_recorded",
+            "garbage_collection_allowed",
+            "garbage_collection_scan_performed",
+            "garbage_collection_candidate_recorded",
+            "garbage_collection_decision_recorded",
+            "garbage_collection_persisted",
+            "delete_allowed",
+            "delete_performed",
+            "delete_marker_recorded",
+            "tombstone_recorded",
+            "sweep_allowed",
+            "sweep_performed",
+            "archive_allowed",
+            "archive_written",
+            "compaction_allowed",
+            "compaction_performed",
+            "compaction_artifact_written",
+            "ledger_retention_recorded",
+            "ledger_retention_persisted",
+            "index_retention_recorded",
+            "delivery_retention_recorded",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "receipt_materialized",
+            "receipt_filesystem_written",
+            "completion_ack_recorded",
+            "completion_ack_persisted",
+            "completion_ack_accepted",
+            "completion_ack_delivered",
+            "activation_allowed",
+            "live_mutation_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "rollback_executed",
+            "secret_material_read",
+            "provider_invoked",
+            "model_invoked",
+            "external_send_performed",
+            "public_release_published",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        insert_fixture_json!("receipt_noop_confirmed", true);
+        if let Some(extra) = extra.as_object() {
+            for (key, value) in extra {
+                base.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(base)
+    }
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-write-result-receipt-audit-evidence-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_boundary_ready": false,
+                "memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready": false,
+                "source_audit_evidence_source_report_thread_failed": true
+            })
+        });
+
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let side_effects_all_false = |value: &serde_json::Value| {
+        value
+            .get("side_effects")
+            .and_then(serde_json::Value::as_object)
+            .map(|effects| effects.values().all(|item| item.as_bool() == Some(false)))
+            .unwrap_or(false)
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_ready = json_str(&source, "status") == "ready"
+        && json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready",
+        )
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_audit_trail_immutable_evidence_fixture_count",
+        ) == 10
+        && json_u64(
+            &source,
+            "blocked_activation_command_result_receipt_audit_trail_immutable_evidence_fixture_count",
+        ) == 10
+        && json_u64(
+            &source,
+            "accepted_activation_command_result_receipt_audit_trail_immutable_evidence_fixture_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_audit_trail_performed_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_immutable_evidence_performed_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "denied_by_activation_command_result_receipt_audit_trail_immutable_evidence_count",
+        ) == 24
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_audit_trail_recorded",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_immutable_evidence_recorded",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_hash_chain_recorded",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_merkle_root_recorded",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_attestation_recorded",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_witness_recorded",
+        )
+        && !json_bool(&source, "activation_command_result_receipt_notary_recorded")
+        && !json_bool(&source, "activation_command_result_receipt_recorded")
+        && !json_bool(&source, "activation_command_result_receipt_persisted")
+        && !json_bool(&source, "activation_allowed")
+        && !json_bool(&source, "live_mutation_execution_performed")
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "memory_store_mutated")
+        && !json_bool(&source, "rollback_executed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "active_binary_mutated")
+        && side_effects_all_false(&source);
+
+    let retention_gc_fixtures = serde_json::Value::Array(vec![
+        retention_gc_fixture(
+            "activation-result-receipt-retention-missing-source-audit-evidence",
+            "blocked_noop",
+            "source_audit_trail_immutable_evidence_report_required",
+            serde_json::json!({
+                "source_audit_evidence_present": false,
+                "source_audit_evidence_ready": false
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-retention-policy-write-request",
+            "blocked_noop",
+            "retention_policy_write_request_denied",
+            serde_json::json!({
+                "retention_policy_request_shape": "record_blocked_noop_receipt_retention_policy"
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-retention-index-record",
+            "blocked_noop",
+            "retention_index_recording_denied",
+            serde_json::json!({
+                "retention_index_requested": true
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-expiry-scheduler-timer",
+            "blocked_expiry_noop",
+            "expiry_scheduler_timer_denied",
+            serde_json::json!({
+                "retention_requested": false,
+                "expiry_requested": true,
+                "expiry_schedule_requested": true,
+                "expiry_timer_requested": true
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-ttl-update-extension",
+            "blocked_expiry_noop",
+            "ttl_update_extension_denied",
+            serde_json::json!({
+                "retention_requested": false,
+                "expiry_requested": true,
+                "ttl_update_requested": true,
+                "ttl_extension_requested": true
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-garbage-collection-scan",
+            "blocked_gc_noop",
+            "garbage_collection_scan_denied",
+            serde_json::json!({
+                "retention_requested": false,
+                "garbage_collection_requested": true,
+                "garbage_collection_scan_requested": true
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-delete-tombstone-sweep",
+            "blocked_gc_noop",
+            "delete_tombstone_sweep_denied",
+            serde_json::json!({
+                "retention_requested": false,
+                "garbage_collection_requested": true,
+                "delete_requested": true,
+                "tombstone_requested": true,
+                "sweep_requested": true
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-archive-compaction",
+            "blocked_gc_noop",
+            "archive_compaction_denied",
+            serde_json::json!({
+                "retention_requested": false,
+                "garbage_collection_requested": true,
+                "archive_requested": true,
+                "compaction_requested": true
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-activation-memory-provider-retention-gc",
+            "blocked_gc_noop",
+            "activation_memory_provider_retention_gc_denied",
+            serde_json::json!({
+                "retention_requested": false,
+                "expiry_requested": true,
+                "garbage_collection_requested": true,
+                "activation_from_retention_gc_requested": true,
+                "memory_write_gc_evidence_requested": true,
+                "rollback_gc_evidence_requested": true,
+                "secret_material_gc_evidence_requested": true,
+                "provider_prompt_gc_evidence_requested": true
+            }),
+        ),
+        retention_gc_fixture(
+            "activation-result-receipt-external-public-install-retention-gc",
+            "blocked_gc_noop",
+            "external_public_install_restart_active_binary_retention_gc_denied",
+            serde_json::json!({
+                "retention_requested": false,
+                "expiry_requested": true,
+                "garbage_collection_requested": true,
+                "ledger_retention_requested": true,
+                "index_retention_requested": true,
+                "delivery_retention_requested": true,
+                "external_send_gc_evidence_requested": true,
+                "public_claim_gc_evidence_requested": true,
+                "release_artifact_gc_evidence_requested": true,
+                "install_gc_evidence_requested": true,
+                "service_restart_gc_evidence_requested": true,
+                "active_binary_gc_evidence_requested": true
+            }),
+        ),
+    ]);
+
+    let source_report_sha256 = sha256_json_value(&source);
+    let boundary_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary-v1:{}:{}",
+        route_matrix.route_count, source_report_sha256,
+    ));
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && source_ready
+        && RETENTION_GC_SURFACES.len() == 12
+        && retention_gc_fixtures.as_array().map(std::vec::Vec::len) == Some(10)
+        && DENIED_BY.len() == 29;
+
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "run_memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_require_live_gate",
+            "status": "allowed_verification_only",
+            "records_retention_policy": false,
+            "executes_expiry_or_gc": false,
+            "deletes_memory": false,
+            "writes_memory": false,
+            "executes_rollback": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "sends_externally": false,
+            "publishes_artifacts": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        },
+        {
+            "action": "prepare_memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary",
+            "status": "allowed_report_only_next_slice",
+            "exports_receipt": false,
+            "registers_query": false,
+            "records_observability": false,
+            "mutates_runtime": false,
+            "invokes_model": false,
+            "writes_memory_or_kg": false
+        }
+    ]);
+
+    let mut side_effects = serde_json::Map::new();
+    for &key in FALSE_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-07-03");
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_schema_version",
+        "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_v1"
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_retention_expiry_garbage_collection_mode",
+        "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!("boundary_hash_sha256", boundary_hash_sha256);
+    insert_report_json!(
+        "source_activation_command_result_receipt_audit_trail_immutable_evidence_boundary_endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_audit_trail_immutable_evidence_boundary_ready",
+        source_ready
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_audit_trail_immutable_evidence_ready",
+        json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready"
+        )
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_audit_trail_immutable_evidence_boundary_report_sha256",
+        source_report_sha256
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_audit_trail_immutable_evidence_report_sha256",
+        source_report_sha256
+    );
+    for key in [
+        "source_activation_command_result_receipt_cancellation_supersession_boundary_report_sha256",
+        "source_activation_command_result_receipt_cancellation_supersession_report_sha256",
+        "source_activation_command_result_receipt_ordering_monotonicity_boundary_report_sha256",
+        "source_activation_command_result_receipt_ordering_monotonicity_report_sha256",
+        "source_activation_command_result_receipt_replay_idempotency_boundary_report_sha256",
+        "source_activation_command_result_receipt_no_persistence_boundary_report_sha256",
+        "source_activation_command_noop_handoff_boundary_report_sha256",
+        "source_memory_write_execution_activation_closure_denial_boundary_report_sha256",
+        "source_memory_write_execution_post_write_operator_acceptance_denial_boundary_report_sha256",
+        "source_memory_write_execution_post_write_validation_dry_run_boundary_report_sha256",
+        "source_memory_write_execution_write_enable_fixture_boundary_report_sha256",
+        "source_memory_write_execution_no_write_sink_contract_boundary_report_sha256",
+        "source_memory_write_execution_denial_matrix_boundary_report_sha256",
+    ] {
+        report.insert(
+            key.to_string(),
+            source
+                .get(key)
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!("")),
+        );
+    }
+    insert_report_json!("minimum_required_samples", 24);
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_cancellation_supersession_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_ordering_monotonicity_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_replay_idempotency_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_no_persistence_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_noop_handoff_ready",
+        true
+    );
+    insert_report_json!(
+        "required_activation_command_result_receipt_retention_expiry_garbage_collection_surface_count",
+        12
+    );
+    insert_report_json!(
+        "ready_activation_command_result_receipt_retention_expiry_garbage_collection_surface_count",
+        12
+    );
+    insert_report_json!(
+        "side_effect_free_activation_command_result_receipt_retention_expiry_garbage_collection_surface_count",
+        12
+    );
+    insert_report_json!(
+        "required_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "blocked_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "noop_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "allowed_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        0
+    );
+    insert_report_json!(
+        "accepted_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        0
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_retention_denied_count",
+        10
+    );
+    insert_report_json!("activation_command_result_receipt_expiry_denied_count", 10);
+    insert_report_json!(
+        "activation_command_result_receipt_garbage_collection_denied_count",
+        10
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_retention_performed_count",
+        0
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_expiry_performed_count",
+        0
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_garbage_collection_performed_count",
+        0
+    );
+    insert_report_json!("memory_store_write_performed_count", 0);
+
+    for &key in FALSE_KEYS {
+        report.insert(key.to_string(), serde_json::json!(false));
+    }
+    report.insert(
+        "activation_command_result_receipt_retention_expiry_garbage_collection_surfaces"
+            .to_string(),
+        serde_json::json!(RETENTION_GC_SURFACES),
+    );
+    report.insert(
+        "activation_command_result_receipt_retention_expiry_garbage_collection_fixtures"
+            .to_string(),
+        retention_gc_fixtures,
+    );
+    report.insert(
+        "denied_by_activation_command_result_receipt_retention_expiry_garbage_collection"
+            .to_string(),
+        serde_json::json!(DENIED_BY),
+    );
+    insert_report_json!(
+        "denied_by_activation_command_result_receipt_retention_expiry_garbage_collection_count",
+        29
+    );
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -123461,6 +124272,388 @@ mod tests {
         );
         let side_effects = value["side_effects"].as_object().expect(
             "memory write execution activation command result receipt audit trail/immutable evidence boundary side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_endpoint_blocks_lifecycle()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "memory write execution activation command result receipt retention/expiry/garbage-collection denial boundary json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_retention_expiry_garbage_collection_mode"],
+            "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial"
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_audit_trail_immutable_evidence_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_audit_trail_immutable_evidence_ready"],
+            true
+        );
+        assert_ne!(
+            value["source_activation_command_result_receipt_audit_trail_immutable_evidence_boundary_report_sha256"],
+            ""
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_cancellation_supersession_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_ordering_monotonicity_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_replay_idempotency_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["required_activation_command_result_receipt_retention_expiry_garbage_collection_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_activation_command_result_receipt_retention_expiry_garbage_collection_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["side_effect_free_activation_command_result_receipt_retention_expiry_garbage_collection_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["blocked_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["noop_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["allowed_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_retention_denied_count"],
+            10
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_expiry_denied_count"],
+            10
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_garbage_collection_denied_count"],
+            10
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_retention_performed_count"],
+            0
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_expiry_performed_count"],
+            0
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_garbage_collection_performed_count"],
+            0
+        );
+        assert_eq!(value["memory_store_write_performed_count"], 0);
+
+        for key in [
+            "activation_command_result_receipt_retention_policy_allowed",
+            "activation_command_result_receipt_retention_policy_recorded",
+            "activation_command_result_receipt_retention_policy_persisted",
+            "activation_command_result_receipt_retention_index_allowed",
+            "activation_command_result_receipt_retention_index_recorded",
+            "activation_command_result_receipt_expiry_allowed",
+            "activation_command_result_receipt_expiry_recorded",
+            "activation_command_result_receipt_expiry_scheduler_registered",
+            "activation_command_result_receipt_expiry_timer_started",
+            "activation_command_result_receipt_ttl_update_allowed",
+            "activation_command_result_receipt_ttl_extension_allowed",
+            "activation_command_result_receipt_garbage_collection_allowed",
+            "activation_command_result_receipt_garbage_collection_scan_performed",
+            "activation_command_result_receipt_garbage_collection_candidate_recorded",
+            "activation_command_result_receipt_garbage_collection_decision_recorded",
+            "activation_command_result_receipt_delete_allowed",
+            "activation_command_result_receipt_delete_performed",
+            "activation_command_result_receipt_delete_marker_recorded",
+            "activation_command_result_receipt_tombstone_recorded",
+            "activation_command_result_receipt_sweep_allowed",
+            "activation_command_result_receipt_sweep_performed",
+            "activation_command_result_receipt_archive_allowed",
+            "activation_command_result_receipt_archive_written",
+            "activation_command_result_receipt_compaction_allowed",
+            "activation_command_result_receipt_compaction_performed",
+            "activation_command_result_receipt_compaction_artifact_written",
+            "activation_command_result_receipt_ledger_retention_recorded",
+            "activation_command_result_receipt_index_retention_recorded",
+            "activation_command_result_receipt_delivery_retention_recorded",
+            "activation_command_result_receipt_audit_trail_recorded",
+            "activation_command_result_receipt_immutable_evidence_recorded",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_materialized",
+            "activation_command_completion_ack_recorded",
+            "activation_command_completion_ack_persisted",
+            "activation_allowed_by_result_receipt_retention",
+            "activation_allowed_by_result_receipt_expiry",
+            "activation_allowed_by_result_receipt_garbage_collection",
+            "activation_allowed_by_result_receipt_audit_trail",
+            "activation_allowed_by_result_receipt_immutable_evidence",
+            "activation_allowed_by_result_receipt",
+            "activation_allowed",
+            "activation_performed",
+            "live_mutation_execution_ready",
+            "live_mutation_execution_allowed",
+            "live_mutation_execution_performed",
+            "memory_write_execution_allowed",
+            "memory_write_execution_ready",
+            "memory_write_execution_performed",
+            "memory_store_write_path_enabled",
+            "memory_store_write_allowed",
+            "memory_store_write_performed",
+            "memory_store_mutation_allowed",
+            "memory_store_mutated",
+            "rollback_execution_allowed",
+            "rollback_executed",
+            "secret_material_read",
+            "provider_prompt_replay_enabled",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_enabled",
+            "external_send_performed",
+            "public_claim_or_release_artifact_write_enabled",
+            "public_release_published",
+            "public_ga_claimed",
+            "public_release_claimed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+
+        let surfaces =
+            value["activation_command_result_receipt_retention_expiry_garbage_collection_surfaces"]
+                .as_array()
+                .expect("activation command result receipt retention/expiry/garbage-collection surfaces");
+        assert_eq!(surfaces.len(), 12);
+        let fixtures =
+            value["activation_command_result_receipt_retention_expiry_garbage_collection_fixtures"]
+                .as_array()
+                .expect("activation command result receipt retention/expiry/garbage-collection fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert!(fixtures.iter().all(|fixture| {
+            (fixture["retention_gc_status"].as_str() == Some("blocked_noop")
+                || fixture["retention_gc_status"].as_str() == Some("blocked_expiry_noop")
+                || fixture["retention_gc_status"].as_str() == Some("blocked_gc_noop"))
+                && fixture["retention_policy_recorded"].as_bool() == Some(false)
+                && fixture["retention_policy_persisted"].as_bool() == Some(false)
+                && fixture["expiry_recorded"].as_bool() == Some(false)
+                && fixture["expiry_scheduler_registered"].as_bool() == Some(false)
+                && fixture["garbage_collection_allowed"].as_bool() == Some(false)
+                && fixture["garbage_collection_scan_performed"].as_bool() == Some(false)
+                && fixture["delete_performed"].as_bool() == Some(false)
+                && fixture["tombstone_recorded"].as_bool() == Some(false)
+                && fixture["sweep_performed"].as_bool() == Some(false)
+                && fixture["archive_written"].as_bool() == Some(false)
+                && fixture["compaction_performed"].as_bool() == Some(false)
+                && fixture["receipt_recorded"].as_bool() == Some(false)
+                && fixture["receipt_persisted"].as_bool() == Some(false)
+                && fixture["receipt_accepted"].as_bool() == Some(false)
+                && fixture["activation_allowed"].as_bool() == Some(false)
+                && fixture["live_mutation_execution_performed"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["memory_store_mutated"].as_bool() == Some(false)
+                && fixture["rollback_executed"].as_bool() == Some(false)
+                && fixture["receipt_noop_confirmed"].as_bool() == Some(true)
+        }));
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["source_audit_evidence_present"] == false)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["retention_policy_request_shape"]
+                        == "record_blocked_noop_receipt_retention_policy"
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["retention_index_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["expiry_schedule_requested"] == true
+                        && fixture["expiry_timer_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["ttl_update_requested"] == true
+                        && fixture["ttl_extension_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["garbage_collection_scan_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["delete_requested"] == true
+                        && fixture["tombstone_requested"] == true
+                        && fixture["sweep_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["archive_requested"] == true && fixture["compaction_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["activation_from_retention_gc_requested"] == true
+                        && fixture["memory_write_gc_evidence_requested"] == true
+                        && fixture["rollback_gc_evidence_requested"] == true
+                        && fixture["provider_prompt_gc_evidence_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["external_send_gc_evidence_requested"] == true
+                        && fixture["install_gc_evidence_requested"] == true
+                        && fixture["active_binary_gc_evidence_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt_retention_expiry_garbage_collection_count"],
+            29
+        );
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt_retention_expiry_garbage_collection"]
+                .as_array()
+                .expect("activation command result receipt retention/expiry/garbage-collection denials")
+                .len(),
+            29
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_require_live_gate"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["deletes_memory"], false);
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary"
+        );
+        let side_effects = value["side_effects"].as_object().expect(
+            "memory write execution activation command result receipt retention/expiry/garbage-collection boundary side effects",
         );
         assert!(
             side_effects
