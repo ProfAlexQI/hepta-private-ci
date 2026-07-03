@@ -436,6 +436,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RES
     "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-audit-trail-immutable-evidence-denial-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-export-query-observability-denial-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -446,7 +448,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 242;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 243;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1806,6 +1808,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary",
         side_effect_boundary: "read-only Memory live mutation operator write execution activation command result receipt retention/expiry/garbage-collection denial boundary; consumes the audit-trail/immutable-evidence denial boundary as source evidence while exposing blocked retention policy, retention index, expiry scheduler, TTL update, garbage-collection scan, delete/tombstone/sweep, archive/compaction, ledger/index/delivery retention, activation-from-retention, Memory/rollback/secret/provider, external/public/install/restart, and active-binary GC evidence fixtures without recording retention policy, starting expiry timers, scanning or deleting stores, archiving, compacting, writing receipts, Memory/KG writes, provider/model calls, sends, artifacts, restarts, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-export-query-observability-denial-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-export-query-observability-denial-boundary",
+        side_effect_boundary: "read-only Memory live mutation operator write execution activation command result receipt export/query/observability denial boundary; consumes the retention/expiry/garbage-collection denial boundary as source evidence while exposing blocked export artifact/stream, query endpoint/index/cache/result, metrics, logs, traces, spans, events, dashboards, alerts, SLOs, ledger/index/delivery observability, activation-from-observability, Memory/rollback/secret/provider, external/public/install/restart, and active-binary observability fixtures without writing export artifacts, opening streams, registering query endpoints, emitting telemetry, materializing dashboards, writing receipts, Memory/KG writes, provider/model calls, sends, artifacts, restarts, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4018,6 +4027,17 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_report(
+                        ),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_report(
                         ),
                     ),
                 );
@@ -81334,6 +81354,803 @@ fn hepta_memory_live_mutation_operator_write_execution_activation_command_result
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_report()
+-> serde_json::Value {
+    const EXPORT_QUERY_OBSERVABILITY_SURFACES: &[&str] = &[
+        "source_retention_expiry_garbage_collection_report_required",
+        "export_request_shape_denied",
+        "export_artifact_write_denied",
+        "query_endpoint_materialization_denied",
+        "query_index_cache_recording_denied",
+        "observability_metric_emission_denied",
+        "trace_span_log_event_recording_denied",
+        "dashboard_alert_slo_materialization_denied",
+        "ledger_index_delivery_observability_evidence_denied",
+        "activation_from_export_query_observability_denied",
+        "memory_write_rollback_secret_provider_observability_denied",
+        "external_public_install_restart_active_binary_observability_denied",
+    ];
+    const DENIED_BY: &[&str] = &[
+        "source_retention_expiry_garbage_collection_report_required",
+        "export_request_acceptance_denied",
+        "export_recording_denied",
+        "export_persistence_denied",
+        "export_artifact_write_denied",
+        "export_stream_open_denied",
+        "query_request_acceptance_denied",
+        "query_registration_denied",
+        "query_endpoint_materialization_denied",
+        "query_index_recording_denied",
+        "query_cache_write_denied",
+        "query_result_materialization_denied",
+        "observability_request_acceptance_denied",
+        "metric_emission_denied",
+        "log_recording_denied",
+        "trace_recording_denied",
+        "span_recording_denied",
+        "event_recording_denied",
+        "dashboard_materialization_denied",
+        "alert_registration_denied",
+        "slo_recording_denied",
+        "ledger_observability_recording_denied",
+        "index_observability_recording_denied",
+        "delivery_observability_recording_denied",
+        "activation_from_export_query_observability_denied",
+        "memory_write_observability_denied",
+        "rollback_observability_denied",
+        "secret_material_observability_denied",
+        "provider_prompt_observability_denied",
+        "external_public_install_restart_active_binary_observability_denied",
+    ];
+    const FALSE_KEYS: &[&str] = &[
+        "activation_command_result_receipt_export_allowed",
+        "activation_command_result_receipt_export_request_accepted",
+        "activation_command_result_receipt_export_recorded",
+        "activation_command_result_receipt_export_persisted",
+        "activation_command_result_receipt_export_artifact_written",
+        "activation_command_result_receipt_export_stream_opened",
+        "activation_command_result_receipt_export_filesystem_written",
+        "activation_command_result_receipt_query_allowed",
+        "activation_command_result_receipt_query_request_accepted",
+        "activation_command_result_receipt_query_registered",
+        "activation_command_result_receipt_query_endpoint_materialized",
+        "activation_command_result_receipt_query_index_recorded",
+        "activation_command_result_receipt_query_cache_written",
+        "activation_command_result_receipt_query_result_materialized",
+        "activation_command_result_receipt_observability_allowed",
+        "activation_command_result_receipt_observability_request_accepted",
+        "activation_command_result_receipt_observability_metric_emitted",
+        "activation_command_result_receipt_observability_log_recorded",
+        "activation_command_result_receipt_observability_trace_recorded",
+        "activation_command_result_receipt_observability_span_recorded",
+        "activation_command_result_receipt_observability_event_recorded",
+        "activation_command_result_receipt_observability_dashboard_materialized",
+        "activation_command_result_receipt_observability_alert_registered",
+        "activation_command_result_receipt_observability_slo_recorded",
+        "activation_command_result_receipt_ledger_observability_recorded",
+        "activation_command_result_receipt_index_observability_recorded",
+        "activation_command_result_receipt_delivery_observability_recorded",
+        "export_request_accepted",
+        "export_recorded",
+        "export_persisted",
+        "export_artifact_written",
+        "export_stream_opened",
+        "export_filesystem_written",
+        "query_allowed",
+        "query_registered",
+        "query_endpoint_materialized",
+        "query_index_recorded",
+        "query_cache_written",
+        "query_result_materialized",
+        "observability_allowed",
+        "observability_metric_emitted",
+        "observability_log_recorded",
+        "observability_trace_recorded",
+        "observability_span_recorded",
+        "observability_event_recorded",
+        "observability_dashboard_materialized",
+        "observability_alert_registered",
+        "observability_slo_recorded",
+        "ledger_observability_recorded",
+        "index_observability_recorded",
+        "delivery_observability_recorded",
+        "activation_command_result_receipt_retention_policy_recorded",
+        "activation_command_result_receipt_retention_policy_persisted",
+        "activation_command_result_receipt_retention_index_recorded",
+        "activation_command_result_receipt_expiry_recorded",
+        "activation_command_result_receipt_expiry_scheduler_registered",
+        "activation_command_result_receipt_expiry_timer_started",
+        "activation_command_result_receipt_garbage_collection_scan_performed",
+        "activation_command_result_receipt_delete_performed",
+        "activation_command_result_receipt_tombstone_recorded",
+        "activation_command_result_receipt_sweep_performed",
+        "activation_command_result_receipt_archive_written",
+        "activation_command_result_receipt_compaction_performed",
+        "activation_command_result_receipt_audit_trail_recorded",
+        "activation_command_result_receipt_immutable_evidence_recorded",
+        "activation_command_result_receipt_cancellation_allowed",
+        "activation_command_result_receipt_supersession_allowed",
+        "activation_command_result_receipt_ordering_allowed",
+        "activation_command_result_receipt_recorded",
+        "activation_command_result_receipt_persisted",
+        "activation_command_result_receipt_accepted",
+        "activation_command_result_receipt_materialized",
+        "activation_command_result_receipt_filesystem_written",
+        "activation_command_result_receipt_ledger_written",
+        "activation_command_result_receipt_indexed",
+        "activation_command_result_receipt_enqueued",
+        "activation_command_result_receipt_delivered",
+        "activation_command_completion_ack_recorded",
+        "activation_command_completion_ack_persisted",
+        "activation_command_completion_ack_accepted",
+        "activation_command_completion_ack_delivered",
+        "activation_command_enabled",
+        "activation_command_invoked",
+        "activation_command_dispatched",
+        "activation_allowed_by_result_receipt_export",
+        "activation_allowed_by_result_receipt_query",
+        "activation_allowed_by_result_receipt_observability",
+        "activation_allowed_by_result_receipt_retention",
+        "activation_allowed_by_result_receipt_expiry",
+        "activation_allowed_by_result_receipt_garbage_collection",
+        "activation_allowed_by_result_receipt_audit_trail",
+        "activation_allowed_by_result_receipt_immutable_evidence",
+        "activation_allowed_by_result_receipt_cancellation",
+        "activation_allowed_by_result_receipt_supersession",
+        "activation_allowed_by_result_receipt_ordering",
+        "activation_allowed_by_result_receipt_replay",
+        "activation_allowed_by_result_receipt",
+        "activation_allowed",
+        "activation_performed",
+        "live_mutation_execution_ready",
+        "live_mutation_execution_allowed",
+        "live_mutation_execution_performed",
+        "memory_write_execution_allowed",
+        "memory_write_execution_ready",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "rollback_execution_allowed",
+        "rollback_executed",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "provider_prompt_replay_enabled",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_enabled",
+        "external_send_performed",
+        "public_claim_or_release_artifact_write_enabled",
+        "public_release_published",
+        "public_ga_claimed",
+        "public_release_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "active_binary_mutated",
+    ];
+
+    fn export_query_observability_fixture(
+        id: &str,
+        status: &str,
+        reason: &str,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut base = serde_json::Map::new();
+        macro_rules! insert_fixture_json {
+            ($key:literal, $value:expr) => {
+                base.insert($key.to_string(), serde_json::json!($value));
+            };
+        }
+        insert_fixture_json!("id", id);
+        insert_fixture_json!("export_query_observability_status", status);
+        insert_fixture_json!("reason", reason);
+        insert_fixture_json!("source_retention_expiry_gc_present", true);
+        insert_fixture_json!("source_retention_expiry_gc_ready", true);
+        for key in [
+            "export_requested",
+            "export_file_requested",
+            "export_stream_requested",
+            "query_requested",
+            "query_endpoint_requested",
+            "query_index_requested",
+            "query_cache_requested",
+            "observability_requested",
+            "metric_requested",
+            "log_requested",
+            "trace_requested",
+            "span_requested",
+            "dashboard_requested",
+            "alert_requested",
+            "slo_requested",
+            "ledger_observability_requested",
+            "index_observability_requested",
+            "delivery_observability_requested",
+            "activation_from_observability_requested",
+            "memory_write_observability_requested",
+            "rollback_observability_requested",
+            "secret_material_observability_requested",
+            "provider_prompt_observability_requested",
+            "external_send_observability_requested",
+            "public_claim_observability_requested",
+            "release_artifact_observability_requested",
+            "install_observability_requested",
+            "service_restart_observability_requested",
+            "active_binary_observability_requested",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        for key in [
+            "export_allowed",
+            "export_request_accepted",
+            "export_recorded",
+            "export_persisted",
+            "export_artifact_written",
+            "export_stream_opened",
+            "export_filesystem_written",
+            "query_allowed",
+            "query_registered",
+            "query_endpoint_materialized",
+            "query_index_recorded",
+            "query_cache_written",
+            "query_result_materialized",
+            "observability_allowed",
+            "observability_metric_emitted",
+            "observability_log_recorded",
+            "observability_trace_recorded",
+            "observability_span_recorded",
+            "observability_event_recorded",
+            "observability_dashboard_materialized",
+            "observability_alert_registered",
+            "observability_slo_recorded",
+            "ledger_observability_recorded",
+            "index_observability_recorded",
+            "delivery_observability_recorded",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "receipt_materialized",
+            "receipt_filesystem_written",
+            "completion_ack_recorded",
+            "completion_ack_persisted",
+            "completion_ack_accepted",
+            "completion_ack_delivered",
+            "activation_allowed",
+            "live_mutation_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "rollback_executed",
+            "secret_material_read",
+            "provider_invoked",
+            "model_invoked",
+            "external_send_performed",
+            "public_release_published",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        insert_fixture_json!("receipt_noop_confirmed", true);
+        if let Some(extra) = extra.as_object() {
+            for (key, value) in extra {
+                base.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(base)
+    }
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-write-result-receipt-retention-gc-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_ready": false,
+                "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready": false,
+                "source_retention_expiry_gc_source_report_thread_failed": true
+            })
+        });
+
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let side_effects_all_false = |value: &serde_json::Value| {
+        value
+            .get("side_effects")
+            .and_then(serde_json::Value::as_object)
+            .map(|effects| effects.values().all(|item| item.as_bool() == Some(false)))
+            .unwrap_or(false)
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_ready = json_str(&source, "status") == "ready"
+        && json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready",
+        )
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        ) == 10
+        && json_u64(
+            &source,
+            "blocked_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        ) == 10
+        && json_u64(
+            &source,
+            "accepted_activation_command_result_receipt_retention_expiry_garbage_collection_fixture_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_retention_performed_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_expiry_performed_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "activation_command_result_receipt_garbage_collection_performed_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "denied_by_activation_command_result_receipt_retention_expiry_garbage_collection_count",
+        ) == 29
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_retention_policy_recorded",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_expiry_scheduler_registered",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_garbage_collection_scan_performed",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_delete_performed",
+        )
+        && !json_bool(
+            &source,
+            "activation_command_result_receipt_compaction_performed",
+        )
+        && !json_bool(&source, "activation_command_result_receipt_recorded")
+        && !json_bool(&source, "activation_command_result_receipt_persisted")
+        && !json_bool(&source, "activation_allowed")
+        && !json_bool(&source, "live_mutation_execution_performed")
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "memory_store_mutated")
+        && !json_bool(&source, "rollback_executed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "active_binary_mutated")
+        && side_effects_all_false(&source);
+
+    let export_query_observability_fixtures = serde_json::Value::Array(vec![
+        export_query_observability_fixture(
+            "activation-result-receipt-export-missing-source-retention-gc",
+            "blocked_noop",
+            "source_retention_expiry_gc_report_required",
+            serde_json::json!({
+                "source_retention_expiry_gc_present": false,
+                "source_retention_expiry_gc_ready": false,
+                "export_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-export-artifact-request",
+            "blocked_export_noop",
+            "export_artifact_write_denied",
+            serde_json::json!({
+                "export_requested": true,
+                "export_file_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-export-stream-request",
+            "blocked_export_noop",
+            "export_stream_open_denied",
+            serde_json::json!({
+                "export_requested": true,
+                "export_stream_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-query-endpoint-request",
+            "blocked_query_noop",
+            "query_endpoint_materialization_denied",
+            serde_json::json!({
+                "query_requested": true,
+                "query_endpoint_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-query-index-cache-request",
+            "blocked_query_noop",
+            "query_index_cache_recording_denied",
+            serde_json::json!({
+                "query_requested": true,
+                "query_index_requested": true,
+                "query_cache_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-observability-metric-request",
+            "blocked_observability_noop",
+            "observability_metric_emission_denied",
+            serde_json::json!({
+                "observability_requested": true,
+                "metric_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-observability-trace-log-request",
+            "blocked_observability_noop",
+            "trace_span_log_recording_denied",
+            serde_json::json!({
+                "observability_requested": true,
+                "trace_requested": true,
+                "span_requested": true,
+                "log_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-dashboard-alert-slo-request",
+            "blocked_observability_noop",
+            "dashboard_alert_slo_materialization_denied",
+            serde_json::json!({
+                "observability_requested": true,
+                "dashboard_requested": true,
+                "alert_requested": true,
+                "slo_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-activation-memory-provider-observability",
+            "blocked_observability_noop",
+            "activation_memory_provider_observability_denied",
+            serde_json::json!({
+                "observability_requested": true,
+                "activation_from_observability_requested": true,
+                "memory_write_observability_requested": true,
+                "rollback_observability_requested": true,
+                "secret_material_observability_requested": true,
+                "provider_prompt_observability_requested": true
+            }),
+        ),
+        export_query_observability_fixture(
+            "activation-result-receipt-external-public-install-observability",
+            "blocked_observability_noop",
+            "external_public_install_restart_active_binary_observability_denied",
+            serde_json::json!({
+                "observability_requested": true,
+                "ledger_observability_requested": true,
+                "index_observability_requested": true,
+                "delivery_observability_requested": true,
+                "external_send_observability_requested": true,
+                "public_claim_observability_requested": true,
+                "release_artifact_observability_requested": true,
+                "install_observability_requested": true,
+                "service_restart_observability_requested": true,
+                "active_binary_observability_requested": true
+            }),
+        ),
+    ]);
+
+    let source_report_sha256 = sha256_json_value(&source);
+    let boundary_hash_sha256 = sha256_text_value(&format!(
+        "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-export-query-observability-denial-boundary-v1:{}:{}",
+        route_matrix.route_count, source_report_sha256,
+    ));
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && source_ready
+        && EXPORT_QUERY_OBSERVABILITY_SURFACES.len() == 12
+        && export_query_observability_fixtures
+            .as_array()
+            .map(std::vec::Vec::len)
+            == Some(10)
+        && DENIED_BY.len() == 30;
+
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "run_memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_require_live_gate",
+            "status": "allowed_verification_only",
+            "exports_receipt": false,
+            "writes_export_artifact": false,
+            "opens_export_stream": false,
+            "registers_query": false,
+            "writes_query_index_or_cache": false,
+            "emits_observability": false,
+            "materializes_dashboard_or_alert": false,
+            "writes_memory": false,
+            "executes_rollback": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "sends_externally": false,
+            "publishes_artifacts": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        },
+        {
+            "action": "prepare_memory_write_execution_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary",
+            "status": "allowed_report_only_next_slice",
+            "records_operator_summary": false,
+            "persists_briefing": false,
+            "delivers_notification": false,
+            "mutates_runtime": false,
+            "invokes_model": false,
+            "writes_memory_or_kg": false
+        }
+    ]);
+
+    let mut side_effects = serde_json::Map::new();
+    for &key in FALSE_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-export-query-observability-denial-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-07-03");
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_schema_version",
+        "memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_v1"
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_export_query_observability_mode",
+        "memory_write_execution_activation_command_result_receipt_export_query_observability_denial"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!("boundary_hash_sha256", boundary_hash_sha256);
+    insert_report_json!(
+        "source_activation_command_result_receipt_retention_expiry_garbage_collection_boundary_endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_retention_expiry_garbage_collection_boundary_ready",
+        source_ready
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_retention_expiry_garbage_collection_ready",
+        json_bool(
+            &source,
+            "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready"
+        )
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_retention_expiry_garbage_collection_boundary_report_sha256",
+        source_report_sha256
+    );
+    insert_report_json!(
+        "source_activation_command_result_receipt_retention_expiry_garbage_collection_report_sha256",
+        source_report_sha256
+    );
+    for key in [
+        "source_activation_command_result_receipt_audit_trail_immutable_evidence_boundary_report_sha256",
+        "source_activation_command_result_receipt_audit_trail_immutable_evidence_report_sha256",
+        "source_activation_command_result_receipt_cancellation_supersession_boundary_report_sha256",
+        "source_activation_command_result_receipt_cancellation_supersession_report_sha256",
+        "source_activation_command_result_receipt_ordering_monotonicity_boundary_report_sha256",
+        "source_activation_command_result_receipt_ordering_monotonicity_report_sha256",
+        "source_activation_command_result_receipt_replay_idempotency_boundary_report_sha256",
+        "source_activation_command_result_receipt_no_persistence_boundary_report_sha256",
+        "source_activation_command_noop_handoff_boundary_report_sha256",
+        "source_memory_write_execution_activation_closure_denial_boundary_report_sha256",
+        "source_memory_write_execution_post_write_operator_acceptance_denial_boundary_report_sha256",
+        "source_memory_write_execution_post_write_validation_dry_run_boundary_report_sha256",
+        "source_memory_write_execution_write_enable_fixture_boundary_report_sha256",
+        "source_memory_write_execution_no_write_sink_contract_boundary_report_sha256",
+        "source_memory_write_execution_denial_matrix_boundary_report_sha256",
+    ] {
+        report.insert(
+            key.to_string(),
+            source
+                .get(key)
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!("")),
+        );
+    }
+    insert_report_json!("minimum_required_samples", 24);
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_export_query_observability_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_cancellation_supersession_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_ordering_monotonicity_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_replay_idempotency_denial_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_result_receipt_no_persistence_ready",
+        true
+    );
+    insert_report_json!(
+        "memory_write_execution_activation_command_noop_handoff_ready",
+        true
+    );
+    insert_report_json!(
+        "required_activation_command_result_receipt_export_query_observability_surface_count",
+        12
+    );
+    insert_report_json!(
+        "ready_activation_command_result_receipt_export_query_observability_surface_count",
+        12
+    );
+    insert_report_json!(
+        "side_effect_free_activation_command_result_receipt_export_query_observability_surface_count",
+        12
+    );
+    insert_report_json!(
+        "required_activation_command_result_receipt_export_query_observability_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_export_query_observability_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "blocked_activation_command_result_receipt_export_query_observability_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "noop_activation_command_result_receipt_export_query_observability_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "allowed_activation_command_result_receipt_export_query_observability_fixture_count",
+        0
+    );
+    insert_report_json!(
+        "accepted_activation_command_result_receipt_export_query_observability_fixture_count",
+        0
+    );
+    insert_report_json!("activation_command_result_receipt_export_denied_count", 10);
+    insert_report_json!("activation_command_result_receipt_query_denied_count", 10);
+    insert_report_json!(
+        "activation_command_result_receipt_observability_denied_count",
+        10
+    );
+    insert_report_json!(
+        "activation_command_result_receipt_export_performed_count",
+        0
+    );
+    insert_report_json!("activation_command_result_receipt_query_performed_count", 0);
+    insert_report_json!(
+        "activation_command_result_receipt_observability_performed_count",
+        0
+    );
+    insert_report_json!("memory_store_write_performed_count", 0);
+
+    for &key in FALSE_KEYS {
+        report.insert(key.to_string(), serde_json::json!(false));
+    }
+    report.insert(
+        "activation_command_result_receipt_export_query_observability_surfaces".to_string(),
+        serde_json::json!(EXPORT_QUERY_OBSERVABILITY_SURFACES),
+    );
+    report.insert(
+        "activation_command_result_receipt_export_query_observability_fixtures".to_string(),
+        export_query_observability_fixtures,
+    );
+    report.insert(
+        "denied_by_activation_command_result_receipt_export_query_observability".to_string(),
+        serde_json::json!(DENIED_BY),
+    );
+    insert_report_json!(
+        "denied_by_activation_command_result_receipt_export_query_observability_count",
+        30
+    );
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -124654,6 +125471,414 @@ mod tests {
         );
         let side_effects = value["side_effects"].as_object().expect(
             "memory write execution activation command result receipt retention/expiry/garbage-collection boundary side effects",
+        );
+        assert!(
+            side_effects
+                .values()
+                .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_endpoint_blocks_visibility()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "memory write execution activation command result receipt export/query/observability denial boundary json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_COMMAND_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-export-query-observability-denial-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_export_query_observability_mode"],
+            "memory_write_execution_activation_command_result_receipt_export_query_observability_denial"
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_retention_expiry_garbage_collection_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_activation_command_result_receipt_retention_expiry_garbage_collection_ready"],
+            true
+        );
+        assert_ne!(
+            value["source_activation_command_result_receipt_retention_expiry_garbage_collection_boundary_report_sha256"],
+            ""
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_export_query_observability_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_retention_expiry_garbage_collection_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_audit_trail_immutable_evidence_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_cancellation_supersession_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_ordering_monotonicity_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["memory_write_execution_activation_command_result_receipt_replay_idempotency_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["required_activation_command_result_receipt_export_query_observability_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_activation_command_result_receipt_export_query_observability_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["side_effect_free_activation_command_result_receipt_export_query_observability_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_export_query_observability_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["blocked_activation_command_result_receipt_export_query_observability_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["noop_activation_command_result_receipt_export_query_observability_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["allowed_activation_command_result_receipt_export_query_observability_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["accepted_activation_command_result_receipt_export_query_observability_fixture_count"],
+            0
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_export_denied_count"],
+            10
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_query_denied_count"],
+            10
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_observability_denied_count"],
+            10
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_export_performed_count"],
+            0
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_query_performed_count"],
+            0
+        );
+        assert_eq!(
+            value["activation_command_result_receipt_observability_performed_count"],
+            0
+        );
+        assert_eq!(value["memory_store_write_performed_count"], 0);
+
+        for key in [
+            "activation_command_result_receipt_export_allowed",
+            "activation_command_result_receipt_export_request_accepted",
+            "activation_command_result_receipt_export_recorded",
+            "activation_command_result_receipt_export_persisted",
+            "activation_command_result_receipt_export_artifact_written",
+            "activation_command_result_receipt_export_stream_opened",
+            "activation_command_result_receipt_export_filesystem_written",
+            "activation_command_result_receipt_query_allowed",
+            "activation_command_result_receipt_query_registered",
+            "activation_command_result_receipt_query_endpoint_materialized",
+            "activation_command_result_receipt_query_index_recorded",
+            "activation_command_result_receipt_query_cache_written",
+            "activation_command_result_receipt_query_result_materialized",
+            "activation_command_result_receipt_observability_allowed",
+            "activation_command_result_receipt_observability_metric_emitted",
+            "activation_command_result_receipt_observability_log_recorded",
+            "activation_command_result_receipt_observability_trace_recorded",
+            "activation_command_result_receipt_observability_span_recorded",
+            "activation_command_result_receipt_observability_event_recorded",
+            "activation_command_result_receipt_observability_dashboard_materialized",
+            "activation_command_result_receipt_observability_alert_registered",
+            "activation_command_result_receipt_observability_slo_recorded",
+            "activation_command_result_receipt_ledger_observability_recorded",
+            "activation_command_result_receipt_index_observability_recorded",
+            "activation_command_result_receipt_delivery_observability_recorded",
+            "export_request_accepted",
+            "export_recorded",
+            "export_persisted",
+            "export_artifact_written",
+            "export_stream_opened",
+            "query_registered",
+            "query_endpoint_materialized",
+            "query_index_recorded",
+            "query_cache_written",
+            "query_result_materialized",
+            "observability_metric_emitted",
+            "observability_log_recorded",
+            "observability_trace_recorded",
+            "observability_span_recorded",
+            "observability_event_recorded",
+            "observability_dashboard_materialized",
+            "observability_alert_registered",
+            "observability_slo_recorded",
+            "ledger_observability_recorded",
+            "index_observability_recorded",
+            "delivery_observability_recorded",
+            "activation_command_result_receipt_retention_policy_recorded",
+            "activation_command_result_receipt_garbage_collection_scan_performed",
+            "activation_command_result_receipt_recorded",
+            "activation_command_result_receipt_persisted",
+            "activation_command_result_receipt_accepted",
+            "activation_command_result_receipt_materialized",
+            "activation_allowed_by_result_receipt_export",
+            "activation_allowed_by_result_receipt_query",
+            "activation_allowed_by_result_receipt_observability",
+            "activation_allowed_by_result_receipt_retention",
+            "activation_allowed_by_result_receipt",
+            "activation_allowed",
+            "activation_performed",
+            "live_mutation_execution_ready",
+            "live_mutation_execution_allowed",
+            "live_mutation_execution_performed",
+            "memory_write_execution_allowed",
+            "memory_write_execution_ready",
+            "memory_write_execution_performed",
+            "memory_store_write_path_enabled",
+            "memory_store_write_allowed",
+            "memory_store_write_performed",
+            "memory_store_mutation_allowed",
+            "memory_store_mutated",
+            "rollback_execution_allowed",
+            "rollback_executed",
+            "secret_material_read",
+            "provider_prompt_replay_enabled",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "kg_adapter_read_performed",
+            "live_kg_write_performed",
+            "channel_send_performed",
+            "telegram_send_performed",
+            "external_send_enabled",
+            "external_send_performed",
+            "public_claim_or_release_artifact_write_enabled",
+            "public_release_published",
+            "public_ga_claimed",
+            "public_release_claimed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(value[key], false, "{key}");
+        }
+
+        let surfaces =
+            value["activation_command_result_receipt_export_query_observability_surfaces"]
+                .as_array()
+                .expect("activation command result receipt export/query/observability surfaces");
+        assert_eq!(surfaces.len(), 12);
+        let fixtures =
+            value["activation_command_result_receipt_export_query_observability_fixtures"]
+                .as_array()
+                .expect("activation command result receipt export/query/observability fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert!(fixtures.iter().all(|fixture| {
+            (fixture["export_query_observability_status"].as_str() == Some("blocked_noop")
+                || fixture["export_query_observability_status"].as_str()
+                    == Some("blocked_export_noop")
+                || fixture["export_query_observability_status"].as_str()
+                    == Some("blocked_query_noop")
+                || fixture["export_query_observability_status"].as_str()
+                    == Some("blocked_observability_noop"))
+                && fixture["export_request_accepted"].as_bool() == Some(false)
+                && fixture["export_artifact_written"].as_bool() == Some(false)
+                && fixture["export_stream_opened"].as_bool() == Some(false)
+                && fixture["query_registered"].as_bool() == Some(false)
+                && fixture["query_endpoint_materialized"].as_bool() == Some(false)
+                && fixture["query_index_recorded"].as_bool() == Some(false)
+                && fixture["query_cache_written"].as_bool() == Some(false)
+                && fixture["observability_metric_emitted"].as_bool() == Some(false)
+                && fixture["observability_log_recorded"].as_bool() == Some(false)
+                && fixture["observability_trace_recorded"].as_bool() == Some(false)
+                && fixture["observability_dashboard_materialized"].as_bool() == Some(false)
+                && fixture["observability_alert_registered"].as_bool() == Some(false)
+                && fixture["observability_slo_recorded"].as_bool() == Some(false)
+                && fixture["ledger_observability_recorded"].as_bool() == Some(false)
+                && fixture["index_observability_recorded"].as_bool() == Some(false)
+                && fixture["delivery_observability_recorded"].as_bool() == Some(false)
+                && fixture["receipt_recorded"].as_bool() == Some(false)
+                && fixture["receipt_persisted"].as_bool() == Some(false)
+                && fixture["receipt_accepted"].as_bool() == Some(false)
+                && fixture["activation_allowed"].as_bool() == Some(false)
+                && fixture["live_mutation_execution_performed"].as_bool() == Some(false)
+                && fixture["memory_store_write_performed"].as_bool() == Some(false)
+                && fixture["memory_store_mutated"].as_bool() == Some(false)
+                && fixture["rollback_executed"].as_bool() == Some(false)
+                && fixture["receipt_noop_confirmed"].as_bool() == Some(true)
+        }));
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["source_retention_expiry_gc_present"] == false)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["export_file_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["export_stream_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["query_endpoint_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["query_index_requested"] == true
+                        && fixture["query_cache_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["metric_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["trace_requested"] == true
+                        && fixture["span_requested"] == true
+                        && fixture["log_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["dashboard_requested"] == true
+                        && fixture["alert_requested"] == true
+                        && fixture["slo_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["activation_from_observability_requested"] == true
+                        && fixture["memory_write_observability_requested"] == true
+                        && fixture["rollback_observability_requested"] == true
+                        && fixture["provider_prompt_observability_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["external_send_observability_requested"] == true
+                        && fixture["install_observability_requested"] == true
+                        && fixture["active_binary_observability_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt_export_query_observability_count"],
+            30
+        );
+        assert_eq!(
+            value["denied_by_activation_command_result_receipt_export_query_observability"]
+                .as_array()
+                .expect("activation command result receipt export/query/observability denials")
+                .len(),
+            30
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_memory_write_execution_activation_command_result_receipt_export_query_observability_denial_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_export_artifact"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_memory_write_execution_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary"
+        );
+        let side_effects = value["side_effects"].as_object().expect(
+            "memory write execution activation command result receipt export/query/observability boundary side effects",
         );
         assert!(
             side_effects
