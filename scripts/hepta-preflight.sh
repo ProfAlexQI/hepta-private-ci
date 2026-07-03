@@ -1194,6 +1194,12 @@ scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memor
 echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary operator approval nonce command accepted gate boundary route gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-operator-approval-nonce-command-accepted-gate-boundary-route-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-wal-receipt-binding-boundary-gate.sh
+
+echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-wal-receipt-binding-boundary-route-gate.sh
+
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance receipt command contract gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-command-contract-gate.sh
 

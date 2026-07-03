@@ -334,6 +334,8 @@ required_markers=(
   "memory live mutation operator write execution scoped memory real write canary rollback tombstone dry-run boundary route gate"
   "memory live mutation operator write execution minimal scoped memory real write canary operator approval nonce command accepted gate boundary gate"
   "memory live mutation operator write execution minimal scoped memory real write canary operator approval nonce command accepted gate boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -396,7 +398,7 @@ phase_family_min_counts=(
   7
   11
   10
-  78
+  80
   1
   44
   11
