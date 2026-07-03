@@ -1125,6 +1125,9 @@ scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-r
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt cancellation supersession denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt cancellation supersession denial boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt audit trail immutable evidence denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-audit-trail-immutable-evidence-denial-gate.sh
 
