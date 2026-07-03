@@ -330,6 +330,8 @@ required_markers=(
   "memory live mutation operator write execution minimal scoped memory real write canary operator approval nonce command accepted gate boundary route gate"
   "memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary gate"
   "memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary post-write readback binding boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary post-write readback binding boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -782,8 +784,8 @@ if [[ "$missing_phase_family_budget_rc" -eq 1 ]] \
     and .phase_family_budget_failure_count == 1
     and (.phase_family_budget_failures[] | select(
       .id == "live-mutation-denial"
-      and .current_count == 79
-      and .minimum_count == 80
+      and .current_count == 81
+      and .minimum_count == 82
     ))
   ' >/dev/null <<<"$missing_phase_family_budget_report"; then
   missing_phase_family_budget_fixture_ok=true
