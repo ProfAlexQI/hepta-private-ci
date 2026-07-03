@@ -1176,6 +1176,12 @@ scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-w
 echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary operator approval packet nonce command dry-run boundary route gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary-route-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary readback validation dry-run gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-readback-validation-dry-run-gate.sh
+
+echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary readback validation dry-run boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-readback-validation-dry-run-boundary-route-gate.sh
+
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance receipt command contract gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-command-contract-gate.sh
 
