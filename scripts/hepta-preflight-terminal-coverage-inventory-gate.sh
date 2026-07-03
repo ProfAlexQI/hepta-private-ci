@@ -325,6 +325,7 @@ required_markers=(
   "memory live mutation operator write execution activation command result receipt audit trail immutable evidence denial boundary route gate"
   "memory live mutation operator write execution activation command result receipt retention expiry garbage collection denial boundary route gate"
   "memory live mutation operator write execution activation command result receipt export query observability denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt operator-facing summary briefing non-persistence denial boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -387,7 +388,7 @@ phase_family_min_counts=(
   7
   11
   10
-  69
+  70
   1
   44
   11

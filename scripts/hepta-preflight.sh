@@ -1149,6 +1149,9 @@ scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-r
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt operator-facing summary briefing non-persistence denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial-gate.sh
 
+echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt operator-facing summary briefing non-persistence denial boundary route gate"
+scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary-route-gate.sh
+
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt final operator acknowledgement non-acceptance denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial-gate.sh
 
