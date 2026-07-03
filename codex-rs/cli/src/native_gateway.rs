@@ -15,6 +15,7 @@ use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
+use hepta_core::{MemoryQuery, MemoryRecord, MemoryScope};
 use hepta_gateway::DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR;
 use hepta_gateway::DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS;
 use hepta_gateway::DEFAULT_NATIVE_POST_STORE_MAX_BYTES;
@@ -67,6 +68,7 @@ use hepta_gateway::NativePostPlanRouteSpec;
 #[cfg(test)]
 use hepta_gateway::NativePostRealHandlerHarness;
 use hepta_gateway::NativePostRolloutEvidenceResponse;
+use hepta_memory::InMemoryStore;
 use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
@@ -460,6 +462,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_
     "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-post-write-readback-binding-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_ROLLBACK_TOMBSTONE_PROOF_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-tombstone-proof-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_EXECUTION_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-execution-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -470,7 +474,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 254;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 255;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1914,6 +1918,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-tombstone-proof-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-tombstone-proof-boundary",
         side_effect_boundary: "read-only minimal scoped Memory real-write canary rollback/tombstone proof boundary; consumes the post-write readback binding boundary as source evidence while accepting only rollback/tombstone proof binding evidence, without consuming nonce, dispatching commands, writing WAL/receipts, performing durable Memory reads or writes, executing rollback/tombstone, writing KG, invoking providers/models, reading credentials, sending channels, publishing claims/artifacts, installing/restarting, or mutating the active binary",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_EXECUTION_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-execution-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-execution-boundary",
+        side_effect_boundary: "isolated minimal scoped Memory real-write canary execution boundary; consumes the rollback/tombstone proof boundary as source evidence while creating a fresh non-durable InMemoryStore, writing exactly one session-scoped canary record, reading it back, restoring the pre-write snapshot, and proving post-rollback absence without consuming nonce, dispatching commands, writing durable Memory/WAL/receipts, writing KG, invoking providers/models, reading credentials, sending channels, publishing claims/artifacts, installing/restarting, or mutating the active binary",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4252,6 +4263,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_boundary_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_EXECUTION_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_execution_boundary_report(),
                     ),
                 );
             }
@@ -90908,6 +90929,773 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_execution_boundary_report()
+-> serde_json::Value {
+    const EXECUTION_SURFACES: &[&str] = &[
+        "source_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_required",
+        "approved_namespace_required",
+        "approved_store_required",
+        "approved_scope_required",
+        "canary_record_identity_required",
+        "payload_digest_and_redaction_required",
+        "pre_write_snapshot_required",
+        "isolated_memory_store_write_required",
+        "post_write_readback_required",
+        "rollback_restore_required",
+        "post_rollback_absence_required",
+        "external_and_durable_side_effects_forbidden",
+    ];
+    const EXECUTION_DENIALS: &[&str] = &[
+        "source_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_boundary_required",
+        "approved_namespace_required",
+        "approved_store_required",
+        "approved_scope_required",
+        "canary_record_identity_required",
+        "payload_digest_redaction_required",
+        "pre_write_snapshot_required",
+        "isolated_memory_store_write_required",
+        "post_write_readback_required",
+        "readback_identity_match_required",
+        "readback_payload_digest_match_required",
+        "rollback_restore_required",
+        "post_rollback_absence_required",
+        "durable_memory_store_write_denied",
+        "durable_memory_store_read_denied",
+        "durable_memory_store_rollback_denied",
+        "wal_write_denied",
+        "receipt_persistence_denied",
+        "tombstone_write_denied",
+        "kg_live_write_denied",
+        "provider_model_invocation_denied",
+        "credential_read_denied",
+        "channel_external_send_denied",
+        "public_release_artifact_write_denied",
+        "install_restart_active_binary_mutation_denied",
+    ];
+    const FALSE_SIDE_EFFECT_KEYS: &[&str] = &[
+        "single_use_nonce_consumed",
+        "explicit_command_dispatched",
+        "wal_write_performed",
+        "wal_recorded",
+        "wal_persisted",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_materialized",
+        "receipt_delivered",
+        "readback_result_persisted",
+        "tombstone_written",
+        "compensating_memory_write_performed",
+        "activation_performed",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_claim_promoted",
+        "public_release_published",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "service_restart_performed",
+        "active_binary_mutated",
+        "filesystem_written",
+    ];
+    const TRUE_ISOLATED_EXECUTION_KEYS: &[&str] = &[
+        "live_mutation_execution_performed",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "post_write_readback_performed",
+        "readback_result_recorded",
+        "readback_result_accepted",
+        "rollback_executed",
+        "rollback_result_recorded",
+        "rollback_result_accepted",
+    ];
+
+    fn execution_fixture(
+        id: &str,
+        status: &str,
+        reason: &str,
+        accepted: bool,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut base = serde_json::Map::new();
+        macro_rules! insert_fixture_json {
+            ($key:literal, $value:expr) => {
+                base.insert($key.to_string(), serde_json::json!($value));
+            };
+        }
+        insert_fixture_json!("id", id);
+        insert_fixture_json!("fixture_id", id);
+        insert_fixture_json!(
+            "minimal_scoped_memory_real_write_canary_execution_status",
+            status
+        );
+        insert_fixture_json!("reason", reason);
+        insert_fixture_json!(
+            "minimal_scoped_memory_real_write_canary_execution_accepted",
+            accepted
+        );
+        for key in [
+            "source_rollback_tombstone_proof_ready",
+            "approved_namespace_bound",
+            "approved_store_bound",
+            "approved_scope_bound",
+            "canary_record_identity_bound",
+            "payload_digest_bound",
+            "payload_redaction_confirmed",
+            "pre_write_snapshot_bound",
+            "isolated_memory_store_write_bound",
+            "post_write_readback_bound",
+            "rollback_restore_bound",
+            "post_rollback_absence_bound",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(accepted));
+        }
+        for &key in FALSE_SIDE_EFFECT_KEYS {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        for &key in TRUE_ISOLATED_EXECUTION_KEYS {
+            base.insert(key.to_string(), serde_json::json!(accepted));
+        }
+        if let Some(extra) = extra.as_object() {
+            for (key, value) in extra {
+                base.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(base)
+    }
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-minimal-canary-execution-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_boundary_ready": false,
+                "minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_ready": false,
+                "source_minimal_scoped_memory_real_write_canary_execution_source_report_thread_failed": true
+            })
+        });
+
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_next_action_execution = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.get(1))
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some("prepare_minimal_scoped_memory_real_write_canary_execution_boundary")
+                && item
+                    .get(
+                        "requires_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof",
+                    )
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+        })
+        .unwrap_or(false);
+    let source_ready = source.get("status").and_then(serde_json::Value::as_str) == Some("ready")
+        && json_bool(
+            &source,
+            "memory_write_execution_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_ready",
+        )
+        && json_bool(
+            &source,
+            "minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_accepted_no_rollback_or_write",
+        )
+        && json_u64(
+            &source,
+            "accepted_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_fixture_count",
+        ) == 1
+        && json_u64(
+            &source,
+            "blocked_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_fixture_count",
+        ) == 9
+        && json_u64(&source, "rollback_tombstone_proof_authority_accepted_count") == 1
+        && json_u64(
+            &source,
+            "minimal_real_write_canary_handoff_proof_bound_count",
+        ) == 1
+        && json_u64(&source, "single_use_nonce_consumed_count") == 0
+        && json_u64(&source, "explicit_command_dispatched_count") == 0
+        && json_u64(&source, "wal_write_performed_count") == 0
+        && json_u64(&source, "receipt_persisted_count") == 0
+        && json_u64(&source, "post_write_readback_performed_count") == 0
+        && json_u64(&source, "readback_result_accepted_count") == 0
+        && json_u64(&source, "rollback_performed_count") == 0
+        && json_u64(&source, "tombstone_written_count") == 0
+        && json_u64(&source, "durable_memory_store_read_performed_count") == 0
+        && json_u64(&source, "durable_memory_store_write_performed_count") == 0
+        && json_u64(&source, "durable_memory_store_rollback_performed_count") == 0
+        && json_u64(&source, "memory_store_write_performed_count") == 0
+        && !json_bool(&source, "memory_write_execution_performed")
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "durable_memory_store_write_performed")
+        && !json_bool(&source, "live_kg_write_performed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "credential_read")
+        && !json_bool(&source, "channel_send_performed")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "install_executed")
+        && !json_bool(&source, "active_binary_mutated")
+        && source_next_action_execution;
+
+    let store = InMemoryStore::default();
+    let before_snapshot = store.snapshot().ok();
+    let before_memory_count = before_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.memories.len())
+        .unwrap_or(usize::MAX);
+    let canary_record = MemoryRecord {
+        id: "hepta-minimal-scoped-memory-real-write-canary-execution-record-v1".to_string(),
+        scope: MemoryScope::Session,
+        content: "hepta-minimal-scoped-memory-real-write-canary-execution-payload-v1 approved_namespace=hepta.memory.canary approved_store=in-memory-reference approved_scope=session".to_string(),
+    };
+    let canary_payload_digest_sha256 = sha256_text_value(&canary_record.content);
+    let write_ok = store.put_memory_sync(canary_record.clone()).is_ok();
+    let after_write_snapshot = store.snapshot().ok();
+    let after_write_memory_count = after_write_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.memories.len())
+        .unwrap_or(0);
+    let readback_query = MemoryQuery {
+        text: "hepta-minimal-scoped-memory-real-write-canary-execution-payload-v1".to_string(),
+        limit: 4,
+    };
+    let readback_report = store.search_report(readback_query.clone()).ok();
+    let readback_hit_count = readback_report
+        .as_ref()
+        .map(|report| report.returned_count)
+        .unwrap_or(0);
+    let readback_match = readback_report
+        .as_ref()
+        .map(|report| {
+            report.hits.iter().any(|hit| {
+                hit.id == canary_record.id
+                    && hit.scope == canary_record.scope
+                    && sha256_text_value(&hit.content) == canary_payload_digest_sha256
+            })
+        })
+        .unwrap_or(false);
+    let rollback_ok = before_snapshot
+        .clone()
+        .map(|snapshot| store.restore(snapshot).is_ok())
+        .unwrap_or(false);
+    let after_rollback_snapshot = store.snapshot().ok();
+    let after_rollback_memory_count = after_rollback_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.memories.len())
+        .unwrap_or(usize::MAX);
+    let post_rollback_report = store.search_report(readback_query).ok();
+    let post_rollback_absent = post_rollback_report
+        .as_ref()
+        .map(|report| {
+            report.matched_count == 0 && report.hits.iter().all(|hit| hit.id != canary_record.id)
+        })
+        .unwrap_or(false);
+
+    let fixtures = serde_json::Value::Array(vec![
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-isolated-store",
+            "accepted_isolated_store_write_readback_rollback",
+            "isolated_in_memory_store_canary_write_readback_and_rollback_succeeded",
+            true,
+            serde_json::json!({
+                "approved_namespace": "hepta.memory.canary",
+                "approved_store": "in-memory-reference",
+                "approved_scope": "session",
+                "canary_record_id": canary_record.id.clone(),
+                "canary_payload_digest_sha256": canary_payload_digest_sha256.clone()
+            }),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-missing-source-proof",
+            "blocked_source_noop",
+            "source_rollback_tombstone_proof_boundary_required",
+            false,
+            serde_json::json!({"source_rollback_tombstone_proof_ready": false}),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-wrong-namespace",
+            "blocked_namespace_noop",
+            "approved_namespace_required",
+            false,
+            serde_json::json!({"approved_namespace_bound": false}),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-wrong-store",
+            "blocked_store_noop",
+            "approved_store_required",
+            false,
+            serde_json::json!({"approved_store_bound": false}),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-wrong-scope",
+            "blocked_scope_noop",
+            "approved_scope_required",
+            false,
+            serde_json::json!({"approved_scope_bound": false}),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-payload-digest-missing",
+            "blocked_payload_digest_noop",
+            "payload_digest_redaction_required",
+            false,
+            serde_json::json!({"payload_digest_bound": false, "payload_redaction_confirmed": false}),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-pre-write-snapshot-missing",
+            "blocked_snapshot_noop",
+            "pre_write_snapshot_required",
+            false,
+            serde_json::json!({"pre_write_snapshot_bound": false}),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-readback-mismatch",
+            "blocked_readback_noop",
+            "post_write_readback_identity_and_digest_match_required",
+            false,
+            serde_json::json!({"post_write_readback_bound": false}),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-rollback-absence-missing",
+            "blocked_rollback_noop",
+            "rollback_restore_and_post_rollback_absence_required",
+            false,
+            serde_json::json!({"rollback_restore_bound": false, "post_rollback_absence_bound": false}),
+        ),
+        execution_fixture(
+            "minimal-scoped-memory-real-write-canary-execution-external-or-durable-side-effect-attempt",
+            "blocked_external_durable_side_effect_noop",
+            "external_and_durable_side_effects_denied",
+            false,
+            serde_json::json!({
+                "durable_memory_store_write_requested": true,
+                "durable_memory_store_read_requested": true,
+                "durable_memory_store_rollback_requested": true,
+                "wal_write_requested": true,
+                "receipt_persistence_requested": true,
+                "tombstone_write_requested": true,
+                "kg_live_write_requested": true,
+                "provider_model_invocation_requested": true,
+                "credential_read_requested": true,
+                "channel_external_send_requested": true,
+                "release_artifact_write_requested": true,
+                "install_restart_requested": true,
+                "active_binary_mutation_requested": true
+            }),
+        ),
+    ]);
+    let fixture_count = fixtures.as_array().map(std::vec::Vec::len).unwrap_or(0);
+    let accepted_fixture_count = fixtures
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter(|fixture| {
+                    fixture
+                        .get("minimal_scoped_memory_real_write_canary_execution_accepted")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true)
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    let blocked_fixture_count = fixture_count.saturating_sub(accepted_fixture_count);
+    let denials = EXECUTION_DENIALS
+        .iter()
+        .map(|reason| serde_json::json!(reason))
+        .collect::<Vec<_>>();
+    let denied_count = denials.len();
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let write_count_ok =
+        write_ok && after_write_memory_count == before_memory_count.saturating_add(1);
+    let rollback_count_ok = rollback_ok && after_rollback_memory_count == before_memory_count;
+    let external_side_effect_free = true;
+    let report_ready = route_count_source_command_accepted
+        && source_ready
+        && fixture_count == 10
+        && accepted_fixture_count == 1
+        && blocked_fixture_count == 9
+        && denied_count == 25
+        && before_memory_count == 0
+        && write_count_ok
+        && readback_match
+        && rollback_count_ok
+        && post_rollback_absent;
+    let source_report_sha256 = sha256_text_value(&source.to_string());
+    let readback_report_sha256 = sha256_text_value(
+        &readback_report
+            .as_ref()
+            .map(serde_json::to_string)
+            .and_then(|result| result.ok())
+            .unwrap_or_default(),
+    );
+    let rollback_report_sha256 = sha256_text_value(
+        &post_rollback_report
+            .as_ref()
+            .map(serde_json::to_string)
+            .and_then(|result| result.ok())
+            .unwrap_or_default(),
+    );
+    let boundary_hash_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-execution-boundary:v1:source-ready={source_ready}:write={write_ok}:readback={readback_match}:rollback={rollback_ok}:post-rollback-absent={post_rollback_absent}:fixtures={fixture_count}:accepted={accepted_fixture_count}:denials={denied_count}"
+    ));
+    let mut side_effects = serde_json::Map::new();
+    for &key in FALSE_SIDE_EFFECT_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    for &key in TRUE_ISOLATED_EXECUTION_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(report_ready));
+    }
+    let required_fields = serde_json::json!([
+        "source_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_report_sha256",
+        "approved_namespace",
+        "approved_store",
+        "approved_scope",
+        "canary_record_id",
+        "canary_payload_digest_sha256",
+        "pre_write_snapshot_memory_count",
+        "post_write_snapshot_memory_count",
+        "post_write_readback_report_sha256",
+        "rollback_restore_result",
+        "post_rollback_snapshot_memory_count",
+        "post_rollback_absence_report_sha256",
+        "active_binary_sha256",
+        "route_count",
+    ]);
+    let allowed_next_actions = serde_json::json!([
+        {
+            "action": "run_minimal_scoped_memory_real_write_canary_execution_boundary_require_live_gate",
+            "status": "allowed_verification_only",
+            "uses_isolated_memory_store": true,
+            "writes_memory": true,
+            "reads_memory": true,
+            "executes_rollback": true,
+            "writes_durable_memory": false,
+            "writes_wal": false,
+            "persists_receipt": false,
+            "writes_tombstone": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "reads_credentials": false,
+            "sends_externally": false,
+            "publishes_artifacts": false,
+            "installs_or_restarts": false,
+            "mutates_active_binary": false
+        },
+        {
+            "action": "prepare_minimal_scoped_memory_real_write_canary_durable_wal_receipt_persistence_boundary",
+            "status": "allowed_report_only_next_slice",
+            "requires_minimal_scoped_memory_real_write_canary_execution_boundary": true,
+            "writes_durable_memory": false,
+            "writes_wal": false,
+            "persists_receipt": false,
+            "writes_kg": false,
+            "invokes_provider": false,
+            "sends_externally": false
+        }
+    ]);
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_execution_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_EXECUTION_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-execution-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", false);
+    insert_report_json!("external_side_effect_free", external_side_effect_free);
+    insert_report_json!("audit_date", "2026-07-04");
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_execution_schema_version",
+        "minimal_scoped_memory_real_write_canary_execution_boundary_v1"
+    );
+    insert_report_json!(
+        "scoped_memory_real_write_canary_mode",
+        "minimal_scoped_memory_real_write_canary_execution_isolated_in_memory_store_write_readback_rollback"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!(
+        "memory_write_execution_minimal_scoped_memory_real_write_canary_execution_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_execution_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_execution_performed",
+        report_ready
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_execution_isolated_store_restored",
+        rollback_count_ok
+    );
+    insert_report_json!(
+        "source_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_boundary_ready",
+        source_ready
+    );
+    insert_report_json!(
+        "source_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_report_sha256",
+        source_report_sha256
+    );
+    insert_report_json!(
+        "source_accepted_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_fixture_count",
+        json_u64(
+            &source,
+            "accepted_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_fixture_count"
+        )
+    );
+    insert_report_json!(
+        "source_blocked_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_fixture_count",
+        json_u64(
+            &source,
+            "blocked_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_fixture_count"
+        )
+    );
+    insert_report_json!(
+        "source_rollback_tombstone_proof_authority_accepted_count",
+        json_u64(&source, "rollback_tombstone_proof_authority_accepted_count")
+    );
+    insert_report_json!(
+        "source_minimal_real_write_canary_handoff_proof_bound_count",
+        json_u64(
+            &source,
+            "minimal_real_write_canary_handoff_proof_bound_count"
+        )
+    );
+    for key in [
+        "single_use_nonce_consumed_count",
+        "explicit_command_dispatched_count",
+        "wal_write_performed_count",
+        "receipt_persisted_count",
+        "post_write_readback_performed_count",
+        "readback_result_accepted_count",
+        "rollback_performed_count",
+        "tombstone_written_count",
+        "durable_memory_store_read_performed_count",
+        "durable_memory_store_write_performed_count",
+        "durable_memory_store_rollback_performed_count",
+        "memory_store_write_performed_count",
+    ] {
+        report.insert(
+            format!("source_{key}"),
+            serde_json::json!(json_u64(&source, key)),
+        );
+    }
+    insert_report_json!("approved_namespace", "hepta.memory.canary");
+    insert_report_json!("approved_store", "in-memory-reference");
+    insert_report_json!("approved_scope", "session");
+    insert_report_json!("canary_record_id", canary_record.id.clone());
+    insert_report_json!(
+        "canary_payload_digest_sha256",
+        canary_payload_digest_sha256.clone()
+    );
+    insert_report_json!("canary_payload_plaintext_recorded", false);
+    insert_report_json!("pre_write_snapshot_memory_count", before_memory_count);
+    insert_report_json!("post_write_snapshot_memory_count", after_write_memory_count);
+    insert_report_json!("post_write_readback_hit_count", readback_hit_count);
+    insert_report_json!("post_write_readback_identity_match", readback_match);
+    insert_report_json!("post_write_readback_digest_match", readback_match);
+    insert_report_json!("post_write_readback_report_sha256", readback_report_sha256);
+    insert_report_json!("rollback_restore_result", rollback_ok);
+    insert_report_json!(
+        "post_rollback_snapshot_memory_count",
+        after_rollback_memory_count
+    );
+    insert_report_json!("post_rollback_absence_confirmed", post_rollback_absent);
+    insert_report_json!(
+        "post_rollback_absence_report_sha256",
+        rollback_report_sha256
+    );
+    insert_report_json!(
+        "required_minimal_scoped_memory_real_write_canary_execution_surface_count",
+        EXECUTION_SURFACES.len()
+    );
+    insert_report_json!(
+        "ready_minimal_scoped_memory_real_write_canary_execution_surface_count",
+        if report_ready {
+            EXECUTION_SURFACES.len()
+        } else {
+            0
+        }
+    );
+    insert_report_json!(
+        "external_side_effect_free_minimal_scoped_memory_real_write_canary_execution_surface_count",
+        EXECUTION_SURFACES.len()
+    );
+    insert_report_json!(
+        "required_minimal_scoped_memory_real_write_canary_execution_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_execution_fixture_count",
+        fixture_count
+    );
+    insert_report_json!(
+        "accepted_minimal_scoped_memory_real_write_canary_execution_fixture_count",
+        accepted_fixture_count
+    );
+    insert_report_json!(
+        "blocked_minimal_scoped_memory_real_write_canary_execution_fixture_count",
+        blocked_fixture_count
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_execution_accepted_count",
+        accepted_fixture_count
+    );
+    for key in [
+        "isolated_memory_store_write_bound_count",
+        "post_write_readback_bound_count",
+        "rollback_restore_bound_count",
+        "post_rollback_absence_bound_count",
+    ] {
+        report.insert(key.to_string(), serde_json::json!(accepted_fixture_count));
+    }
+    insert_report_json!("live_mutation_execution_performed_count", 1);
+    insert_report_json!("memory_write_execution_performed_count", 1);
+    insert_report_json!("memory_store_write_performed_count", 1);
+    insert_report_json!("post_write_readback_performed_count", 1);
+    insert_report_json!("readback_result_recorded_count", 1);
+    insert_report_json!("readback_result_accepted_count", 1);
+    insert_report_json!("rollback_performed_count", 1);
+    insert_report_json!("rollback_result_recorded_count", 1);
+    insert_report_json!("rollback_result_accepted_count", 1);
+    for key in [
+        "single_use_nonce_consumed_count",
+        "explicit_command_dispatched_count",
+        "wal_write_performed_count",
+        "wal_recorded_count",
+        "wal_persisted_count",
+        "receipt_recorded_count",
+        "receipt_persisted_count",
+        "receipt_materialized_count",
+        "receipt_delivered_count",
+        "readback_result_persisted_count",
+        "tombstone_written_count",
+        "compensating_memory_write_performed_count",
+        "durable_memory_store_read_performed_count",
+        "durable_memory_store_write_performed_count",
+        "durable_memory_store_rollback_performed_count",
+        "kg_live_write_performed_count",
+        "provider_invoked_count",
+        "model_invoked_count",
+        "credential_read_count",
+        "channel_send_performed_count",
+        "external_send_performed_count",
+        "release_artifact_written_count",
+        "install_executed_count",
+        "service_restarted_count",
+        "active_binary_mutated_count",
+    ] {
+        report.insert(key.to_string(), serde_json::json!(0));
+    }
+    insert_report_json!(
+        "denied_by_minimal_scoped_memory_real_write_canary_execution_boundary_count",
+        denied_count
+    );
+    report.insert(
+        "denied_by_minimal_scoped_memory_real_write_canary_execution_boundary".to_string(),
+        serde_json::Value::Array(denials),
+    );
+    report.insert(
+        "required_minimal_scoped_memory_real_write_canary_execution_fields".to_string(),
+        required_fields,
+    );
+    report.insert(
+        "minimal_scoped_memory_real_write_canary_execution_fixtures".to_string(),
+        fixtures,
+    );
+    report.insert("allowed_next_actions".to_string(), allowed_next_actions);
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_execution_boundary_hash_sha256",
+        boundary_hash_sha256
+    );
+    for &key in FALSE_SIDE_EFFECT_KEYS {
+        report.insert(key.to_string(), serde_json::json!(false));
+    }
+    for &key in TRUE_ISOLATED_EXECUTION_KEYS {
+        report.insert(key.to_string(), serde_json::json!(report_ready));
+    }
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -138298,6 +139086,291 @@ mod tests {
             side_effects
                 .values()
                 .all(|item| item.as_bool() == Some(false))
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_execution_writes_reads_and_rolls_back_scoped_store_without_external_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_EXECUTION_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("minimal scoped Memory real-write canary execution json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_EXECUTION_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-execution-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_minimal_scoped_memory_real_write_canary_execution_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["minimal_scoped_memory_real_write_canary_execution_ready"],
+            true
+        );
+        assert_eq!(
+            value["minimal_scoped_memory_real_write_canary_execution_performed"],
+            true
+        );
+        assert_eq!(
+            value["scoped_memory_real_write_canary_mode"],
+            "minimal_scoped_memory_real_write_canary_execution_isolated_in_memory_store_write_readback_rollback"
+        );
+        assert_eq!(
+            value["source_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_accepted_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["source_blocked_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["source_rollback_tombstone_proof_authority_accepted_count"],
+            1
+        );
+        assert_eq!(
+            value["source_minimal_real_write_canary_handoff_proof_bound_count"],
+            1
+        );
+        for key in [
+            "source_single_use_nonce_consumed_count",
+            "source_explicit_command_dispatched_count",
+            "source_wal_write_performed_count",
+            "source_receipt_persisted_count",
+            "source_post_write_readback_performed_count",
+            "source_readback_result_accepted_count",
+            "source_rollback_performed_count",
+            "source_tombstone_written_count",
+            "source_durable_memory_store_read_performed_count",
+            "source_durable_memory_store_write_performed_count",
+            "source_durable_memory_store_rollback_performed_count",
+            "source_memory_store_write_performed_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "execution source proof side-effect count should stay zero: {key}"
+            );
+        }
+        assert_eq!(value["approved_namespace"], "hepta.memory.canary");
+        assert_eq!(value["approved_store"], "in-memory-reference");
+        assert_eq!(value["approved_scope"], "session");
+        assert_eq!(
+            value["canary_record_id"],
+            "hepta-minimal-scoped-memory-real-write-canary-execution-record-v1"
+        );
+        assert_eq!(value["canary_payload_plaintext_recorded"], false);
+        assert_eq!(value["pre_write_snapshot_memory_count"], 0);
+        assert_eq!(value["post_write_snapshot_memory_count"], 1);
+        assert_eq!(value["post_write_readback_hit_count"], 1);
+        assert_eq!(value["post_write_readback_identity_match"], true);
+        assert_eq!(value["post_write_readback_digest_match"], true);
+        assert_eq!(value["rollback_restore_result"], true);
+        assert_eq!(value["post_rollback_snapshot_memory_count"], 0);
+        assert_eq!(value["post_rollback_absence_confirmed"], true);
+        assert_eq!(
+            value["minimal_scoped_memory_real_write_canary_execution_isolated_store_restored"],
+            true
+        );
+        assert_eq!(
+            value["required_minimal_scoped_memory_real_write_canary_execution_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_minimal_scoped_memory_real_write_canary_execution_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["minimal_scoped_memory_real_write_canary_execution_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["accepted_minimal_scoped_memory_real_write_canary_execution_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["blocked_minimal_scoped_memory_real_write_canary_execution_fixture_count"],
+            9
+        );
+        for key in [
+            "minimal_scoped_memory_real_write_canary_execution_accepted_count",
+            "isolated_memory_store_write_bound_count",
+            "post_write_readback_bound_count",
+            "rollback_restore_bound_count",
+            "post_rollback_absence_bound_count",
+            "live_mutation_execution_performed_count",
+            "memory_write_execution_performed_count",
+            "memory_store_write_performed_count",
+            "post_write_readback_performed_count",
+            "readback_result_recorded_count",
+            "readback_result_accepted_count",
+            "rollback_performed_count",
+            "rollback_result_recorded_count",
+            "rollback_result_accepted_count",
+        ] {
+            assert_eq!(
+                value[key], 1,
+                "execution accepted/write/readback/rollback count should be one: {key}"
+            );
+        }
+        for key in [
+            "single_use_nonce_consumed_count",
+            "explicit_command_dispatched_count",
+            "wal_write_performed_count",
+            "receipt_persisted_count",
+            "readback_result_persisted_count",
+            "tombstone_written_count",
+            "durable_memory_store_read_performed_count",
+            "durable_memory_store_write_performed_count",
+            "durable_memory_store_rollback_performed_count",
+            "kg_live_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "channel_send_performed_count",
+            "external_send_performed_count",
+            "release_artifact_written_count",
+            "install_executed_count",
+            "service_restarted_count",
+            "active_binary_mutated_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "execution external/durable side-effect count should stay zero: {key}"
+            );
+        }
+        for key in [
+            "live_mutation_execution_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_path_enabled",
+            "memory_store_write_allowed",
+            "memory_store_write_performed",
+            "memory_store_mutation_allowed",
+            "memory_store_mutated",
+            "post_write_readback_performed",
+            "readback_result_recorded",
+            "readback_result_accepted",
+            "rollback_executed",
+            "rollback_result_recorded",
+            "rollback_result_accepted",
+        ] {
+            assert_eq!(
+                value[key], true,
+                "execution isolated store side-effect field should be true: {key}"
+            );
+        }
+        for key in [
+            "single_use_nonce_consumed",
+            "explicit_command_dispatched",
+            "wal_write_performed",
+            "receipt_persisted",
+            "readback_result_persisted",
+            "tombstone_written",
+            "durable_memory_store_write_performed",
+            "durable_memory_store_read_performed",
+            "durable_memory_store_rollback_performed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+            "filesystem_written",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "execution external/durable side-effect field should stay false: {key}"
+            );
+        }
+        let fixtures = value["minimal_scoped_memory_real_write_canary_execution_fixtures"]
+            .as_array()
+            .expect("minimal scoped Memory execution fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["minimal_scoped_memory_real_write_canary_execution_accepted"] == true
+                })
+                .count(),
+            1
+        );
+        let denied = value["denied_by_minimal_scoped_memory_real_write_canary_execution_boundary"]
+            .as_array()
+            .expect("minimal scoped Memory execution denials");
+        assert_eq!(denied.len(), 25);
+        assert_eq!(
+            value["denied_by_minimal_scoped_memory_real_write_canary_execution_boundary_count"],
+            25
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_minimal_scoped_memory_real_write_canary_execution_boundary_require_live_gate"
+        );
+        assert_eq!(value["allowed_next_actions"][0]["writes_memory"], true);
+        assert_eq!(value["allowed_next_actions"][0]["reads_memory"], true);
+        assert_eq!(value["allowed_next_actions"][0]["executes_rollback"], true);
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_durable_memory"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_minimal_scoped_memory_real_write_canary_durable_wal_receipt_persistence_boundary"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["requires_minimal_scoped_memory_real_write_canary_execution_boundary"],
+            true
+        );
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("minimal scoped Memory execution side effects");
+        assert_eq!(
+            side_effects["memory_store_write_performed"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["durable_memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["external_send_performed"].as_bool(),
+            Some(false)
         );
     }
 

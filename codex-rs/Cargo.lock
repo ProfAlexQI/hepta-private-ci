@@ -2259,7 +2259,9 @@ dependencies = [
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
+ "hepta-core",
  "hepta-gateway",
+ "hepta-memory",
  "http 1.4.0",
  "libc",
  "owo-colors",
@@ -7143,7 +7145,9 @@ name = "hepta-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "hepta-core",
  "hepta-gateway",
+ "hepta-memory",
  "reqwest",
  "serde",
  "serde_json",

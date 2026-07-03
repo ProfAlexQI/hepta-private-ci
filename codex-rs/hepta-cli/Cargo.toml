@@ -17,7 +17,9 @@ codex-in-process-runner = []
 
 [dependencies]
 anyhow = { workspace = true }
+hepta-core = { workspace = true }
 hepta-gateway = { workspace = true }
+hepta-memory = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

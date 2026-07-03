@@ -61,7 +61,9 @@ codex-tui = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
 codex-utils-path = { workspace = true }
 crossterm = { workspace = true }
+hepta-core = { workspace = true }
 hepta-gateway = { workspace = true }
+hepta-memory = { workspace = true }
 http = { workspace = true }
 libc = { workspace = true }
 owo-colors = { workspace = true }
