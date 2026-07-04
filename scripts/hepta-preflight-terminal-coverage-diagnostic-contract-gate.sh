@@ -344,6 +344,8 @@ required_markers=(
   "memory live mutation operator write execution minimal scoped memory real write canary rollback receipt acceptance boundary route gate"
   "memory live mutation operator write execution minimal scoped memory real write canary tombstone cleanup acceptance boundary gate"
   "memory live mutation operator write execution minimal scoped memory real write canary tombstone cleanup acceptance boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write plan boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write plan boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -395,7 +397,7 @@ emit_phase_family_budget_markers() {
   local live_marker_count=55
 
   if [[ "$mode" == "missing-phase-family-budget" ]]; then
-    live_marker_count=43
+    live_marker_count=41
   fi
 
   if [[ "$mode" != "missing-phase-family-anchor" ]]; then
