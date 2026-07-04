@@ -476,6 +476,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_
     "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-plan-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-preflight-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_READINESS_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -486,7 +488,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 261;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 262;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -1979,6 +1981,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-preflight-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-preflight-boundary",
         side_effect_boundary: "minimal scoped Memory real-write canary durable store write preflight boundary; consumes the durable store write plan boundary as source evidence while accepting only target reachability, namespace/store/scope, redaction/no-secret, WAL/receipt, readback, rollback, tombstone cleanup, and operator handoff preflight evidence, without executing the durable write, mutating a Memory store, writing WAL/receipts, reading Memory, executing rollback/tombstone cleanup, writing KG, invoking providers/models, reading credentials, sending channels, publishing claims/artifacts, installing/restarting, or mutating the active binary",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_READINESS_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary",
+        side_effect_boundary: "minimal scoped Memory real-write canary durable store write guarded execution readiness boundary; consumes the durable store write preflight boundary as source evidence while accepting only execution guard, nonce/command guard, budget, WAL/receipt, readback, rollback, tombstone cleanup, replay, and operator handoff readiness evidence, without executing the durable write, mutating a Memory store, writing WAL/receipts, reading Memory, executing rollback/tombstone cleanup, writing KG, invoking providers/models, reading credentials, sending channels, publishing claims/artifacts, installing/restarting, or mutating the active binary",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4387,6 +4396,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_boundary_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_READINESS_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_report(),
                     ),
                 );
             }
@@ -96979,6 +96998,935 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_report()
+-> serde_json::Value {
+    const READINESS_SURFACES: &[&str] = &[
+        "source_durable_store_write_preflight_required",
+        "approved_namespace_store_scope_required",
+        "durable_store_target_guard_required",
+        "guarded_execution_envelope_required",
+        "nonce_command_guard_required",
+        "single_write_budget_guard_required",
+        "wal_receipt_guard_required",
+        "post_write_readback_guard_required",
+        "rollback_guard_required",
+        "tombstone_cleanup_guard_required",
+        "idempotency_replay_guard_required",
+        "durable_memory_kg_provider_channel_release_install_active_binary_side_effects_forbidden",
+    ];
+    const READINESS_DENIALS: &[&str] = &[
+        "source_durable_store_write_preflight_boundary_required",
+        "source_durable_store_write_preflight_result_acceptance_required",
+        "source_durable_store_write_preflight_hash_required",
+        "approved_namespace_required",
+        "approved_store_required",
+        "approved_scope_required",
+        "durable_store_target_required",
+        "durable_store_target_reachability_preflight_required",
+        "guarded_execution_envelope_required",
+        "single_use_nonce_guard_required",
+        "explicit_command_guard_required",
+        "single_write_budget_guard_required",
+        "wal_receipt_guard_required",
+        "readback_guard_required",
+        "rollback_guard_required",
+        "tombstone_cleanup_guard_required",
+        "idempotency_replay_guard_required",
+        "operator_guarded_execution_handoff_required",
+        "durable_memory_store_read_denied",
+        "durable_memory_store_write_denied",
+        "durable_memory_store_rollback_denied",
+        "memory_store_mutation_denied",
+        "wal_write_denied",
+        "receipt_record_persist_materialize_denied",
+        "artifact_filesystem_write_denied",
+        "post_write_readback_denied",
+        "rollback_tombstone_execution_denied",
+        "kg_provider_credential_channel_release_install_denied",
+        "raw_payload_plaintext_denied",
+        "guard_bypass_denied",
+        "stale_preflight_denied",
+        "direct_execution_authority_denied",
+    ];
+    const FALSE_EXTERNAL_KEYS: &[&str] = &[
+        "single_use_nonce_consumed",
+        "explicit_command_dispatched",
+        "guarded_execution_command_dispatched",
+        "durable_store_write_preflight_executed",
+        "durable_store_write_guarded_execution_readiness_executed",
+        "durable_store_write_guarded_execution_executed",
+        "durable_store_write_execution_performed",
+        "durable_store_write_plan_executed",
+        "wal_write_performed",
+        "wal_recorded",
+        "wal_persisted",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_materialized",
+        "receipt_delivered",
+        "canary_artifact_filesystem_written",
+        "artifact_readback_performed",
+        "artifact_cleanup_performed",
+        "filesystem_written",
+        "post_write_readback_performed",
+        "readback_result_recorded",
+        "readback_result_persisted",
+        "readback_result_accepted",
+        "rollback_executed",
+        "rollback_performed",
+        "rollback_result_recorded",
+        "rollback_result_persisted",
+        "rollback_result_accepted",
+        "tombstone_cleanup_executed",
+        "tombstone_written",
+        "compensating_memory_write_performed",
+        "activation_performed",
+        "live_mutation_execution_performed",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_claim_promoted",
+        "public_release_published",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "service_restart_performed",
+        "active_binary_mutated",
+    ];
+    const TRUE_READINESS_KEYS: &[&str] = &[
+        "durable_store_write_guarded_execution_readiness_performed",
+        "durable_store_write_guarded_execution_readiness_result_recorded",
+        "durable_store_write_guarded_execution_readiness_result_accepted",
+        "source_durable_store_write_preflight_bound",
+        "source_durable_store_write_preflight_hash_bound",
+        "source_durable_store_write_preflight_result_accepted",
+        "approved_namespace_store_scope_guard_verified",
+        "durable_store_target_guard_verified",
+        "guarded_execution_envelope_bound",
+        "single_use_nonce_guard_bound",
+        "explicit_command_guard_bound",
+        "single_write_budget_guard_bound",
+        "wal_receipt_guard_bound",
+        "post_write_readback_guard_bound",
+        "rollback_guard_bound",
+        "tombstone_cleanup_guard_bound",
+        "idempotency_replay_guard_bound",
+        "operator_guarded_execution_handoff_bound",
+        "durable_memory_write_forbidden_until_guarded_execution_boundary",
+        "memory_store_mutation_forbidden_until_guarded_execution_boundary",
+        "kg_provider_channel_release_install_active_binary_forbidden",
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepted",
+    ];
+
+    fn readiness_fixture(
+        id: &str,
+        status: &str,
+        reason: &str,
+        accepted: bool,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut base = serde_json::Map::new();
+        base.insert("id".to_string(), serde_json::json!(id));
+        base.insert("fixture_id".to_string(), serde_json::json!(id));
+        base.insert(
+            "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_status".to_string(),
+            serde_json::json!(status),
+        );
+        base.insert("reason".to_string(), serde_json::json!(reason));
+        base.insert(
+            "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepted".to_string(),
+            serde_json::json!(accepted),
+        );
+        for key in [
+            "source_durable_store_write_preflight_bound",
+            "source_durable_store_write_preflight_hash_bound",
+            "source_durable_store_write_preflight_result_accepted",
+            "approved_namespace_bound",
+            "approved_store_bound",
+            "approved_scope_bound",
+            "approved_namespace_store_scope_guard_verified",
+            "durable_store_target_guard_verified",
+            "guarded_execution_envelope_bound",
+            "single_use_nonce_guard_bound",
+            "explicit_command_guard_bound",
+            "single_write_budget_guard_bound",
+            "wal_receipt_guard_bound",
+            "post_write_readback_guard_bound",
+            "rollback_guard_bound",
+            "tombstone_cleanup_guard_bound",
+            "idempotency_replay_guard_bound",
+            "operator_guarded_execution_handoff_bound",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(accepted));
+        }
+        for &key in FALSE_EXTERNAL_KEYS {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        for &key in TRUE_READINESS_KEYS {
+            base.insert(key.to_string(), serde_json::json!(accepted));
+        }
+        if let Some(extra) = extra.as_object() {
+            for (key, value) in extra {
+                base.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(base)
+    }
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-minimal-canary-durable-store-guarded-readiness-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_boundary_ready": false,
+                "minimal_scoped_memory_real_write_canary_durable_store_write_preflight_ready": false,
+                "source_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_source_report_thread_failed": true
+            })
+        });
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_next_action_guarded_readiness = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.get(1))
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some(
+                    "prepare_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary",
+                )
+                && item
+                    .get("requires_minimal_scoped_memory_real_write_canary_durable_store_write_preflight")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+        })
+        .unwrap_or(false);
+    let source_side_effects_ok = source
+        .get("side_effects")
+        .and_then(serde_json::Value::as_object)
+        .map(|effects| {
+            effects
+                .get("durable_store_write_preflight_performed")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+                && effects
+                    .get("durable_store_write_preflight_result_accepted")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && effects
+                    .get("durable_store_write_preflight_executed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("durable_memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("external_send_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_ready = source.get("status").and_then(serde_json::Value::as_str) == Some("ready")
+        && json_bool(
+            &source,
+            "memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "minimal_scoped_memory_real_write_canary_durable_store_write_preflight_ready",
+        )
+        && json_bool(
+            &source,
+            "minimal_scoped_memory_real_write_canary_durable_store_write_preflight_performed",
+        )
+        && json_bool(
+            &source,
+            "minimal_scoped_memory_real_write_canary_durable_store_write_preflight_accepted",
+        )
+        && json_bool(&source, "durable_store_write_preflight_result_accepted")
+        && json_bool(&source, "durable_store_target_reachability_checked")
+        && json_bool(&source, "approved_namespace_store_scope_preflight_verified")
+        && json_bool(&source, "payload_secret_plaintext_scan_passed")
+        && json_bool(&source, "durable_store_write_wal_receipt_preflight_bound")
+        && json_bool(&source, "durable_store_write_readback_preflight_bound")
+        && json_bool(&source, "durable_store_write_rollback_preflight_bound")
+        && json_bool(
+            &source,
+            "durable_store_write_tombstone_cleanup_preflight_bound",
+        )
+        && json_bool(
+            &source,
+            "durable_store_write_idempotency_replay_guard_preflight_bound",
+        )
+        && json_bool(
+            &source,
+            "durable_store_write_operator_preflight_handoff_bound",
+        )
+        && json_u64(
+            &source,
+            "accepted_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_fixture_count",
+        ) == 1
+        && json_u64(
+            &source,
+            "blocked_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_fixture_count",
+        ) == 9
+        && json_u64(
+            &source,
+            "durable_store_write_preflight_result_accepted_count",
+        ) == 1
+        && json_u64(&source, "durable_store_write_preflight_executed_count") == 0
+        && json_u64(&source, "durable_memory_store_write_performed_count") == 0
+        && json_u64(&source, "durable_memory_store_read_performed_count") == 0
+        && json_u64(&source, "durable_memory_store_rollback_performed_count") == 0
+        && json_u64(&source, "memory_store_write_performed_count") == 0
+        && json_u64(&source, "wal_write_performed_count") == 0
+        && json_u64(&source, "receipt_persisted_count") == 0
+        && json_u64(&source, "artifact_cleanup_performed_count") == 0
+        && json_u64(&source, "post_write_readback_performed_count") == 0
+        && json_u64(&source, "rollback_performed_count") == 0
+        && json_u64(&source, "tombstone_written_count") == 0
+        && !json_bool(&source, "durable_store_write_preflight_executed")
+        && !json_bool(&source, "durable_store_write_plan_executed")
+        && !json_bool(&source, "durable_memory_store_write_performed")
+        && !json_bool(&source, "durable_memory_store_read_performed")
+        && !json_bool(&source, "durable_memory_store_rollback_performed")
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "wal_write_performed")
+        && !json_bool(&source, "receipt_persisted")
+        && !json_bool(&source, "artifact_cleanup_performed")
+        && !json_bool(&source, "post_write_readback_performed")
+        && !json_bool(&source, "rollback_performed")
+        && !json_bool(&source, "tombstone_written")
+        && !json_bool(&source, "raw_payload_plaintext_recorded")
+        && !json_bool(&source, "live_kg_write_performed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "credential_read")
+        && !json_bool(&source, "channel_send_performed")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "install_executed")
+        && !json_bool(&source, "active_binary_mutated")
+        && source_next_action_guarded_readiness
+        && source_side_effects_ok;
+
+    let approved_namespace = json_str(&source, "approved_namespace");
+    let approved_store = json_str(&source, "approved_store");
+    let approved_scope = json_str(&source, "approved_scope");
+    let durable_store_write_target_id = json_str(&source, "durable_store_write_target_id");
+    let durable_store_target_store_id = json_str(&source, "durable_store_target_store_id");
+    let source_report_sha256 = sha256_text_value(&source.to_string());
+    let source_durable_store_write_preflight_hash_sha256 =
+        json_str(&source, "durable_store_write_preflight_hash_sha256");
+    let source_durable_store_write_preflight_operator_handoff_sha256 = json_str(
+        &source,
+        "durable_store_write_preflight_operator_handoff_sha256",
+    );
+    let source_durable_store_write_target_sha256 =
+        json_str(&source, "source_durable_store_write_target_sha256");
+    let source_durable_store_write_payload_digest_sha256 =
+        json_str(&source, "source_durable_store_write_payload_digest_sha256");
+    let source_durable_store_write_wal_receipt_plan_sha256 = json_str(
+        &source,
+        "source_durable_store_write_wal_receipt_plan_sha256",
+    );
+    let source_durable_store_write_readback_plan_sha256 =
+        json_str(&source, "source_durable_store_write_readback_plan_sha256");
+    let source_durable_store_write_rollback_plan_sha256 =
+        json_str(&source, "source_durable_store_write_rollback_plan_sha256");
+    let source_durable_store_write_tombstone_cleanup_plan_sha256 = json_str(
+        &source,
+        "source_durable_store_write_tombstone_cleanup_plan_sha256",
+    );
+    let namespace_bound = approved_namespace == "hepta.memory.canary";
+    let store_bound = approved_store == "wal-receipt-canary-artifact";
+    let scope_bound = approved_scope == "session";
+    let source_preflight_hash_bound = !source_durable_store_write_preflight_hash_sha256.is_empty();
+    let target_bound = durable_store_write_target_id
+        == "hepta-minimal-scoped-memory-real-write-canary-durable-store-write-target-v1"
+        && durable_store_target_store_id == "hepta-memory-durable-store-canary-plan-only"
+        && !source_durable_store_write_target_sha256.is_empty();
+    let payload_digest_bound = !source_durable_store_write_payload_digest_sha256.is_empty();
+    let wal_receipt_plan_bound = !source_durable_store_write_wal_receipt_plan_sha256.is_empty();
+    let readback_plan_bound = !source_durable_store_write_readback_plan_sha256.is_empty();
+    let rollback_plan_bound = !source_durable_store_write_rollback_plan_sha256.is_empty();
+    let tombstone_cleanup_plan_bound =
+        !source_durable_store_write_tombstone_cleanup_plan_sha256.is_empty();
+
+    let guarded_execution_envelope_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-envelope:v1:source-preflight={source_durable_store_write_preflight_hash_sha256}:target-store={durable_store_target_store_id}:namespace={approved_namespace}:scope={approved_scope}:execute=false"
+    ));
+    let single_use_nonce_guard_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-nonce:v1:source-preflight={source_durable_store_write_preflight_hash_sha256}:nonce-consumed=false:execute=false"
+    ));
+    let explicit_command_guard_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-command:v1:source-preflight={source_durable_store_write_preflight_hash_sha256}:command-dispatched=false:operator-explicit-required=true"
+    ));
+    let single_write_budget_guard_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-budget:v1:target={durable_store_write_target_id}:max-write=1:max-readback=1:max-rollback=1:execute=false"
+    ));
+    let wal_receipt_guard_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-wal-receipt:v1:plan={source_durable_store_write_wal_receipt_plan_sha256}:wal-write=false:receipt-persist=false"
+    ));
+    let readback_guard_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-readback:v1:plan={source_durable_store_write_readback_plan_sha256}:read=false"
+    ));
+    let rollback_guard_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-rollback:v1:plan={source_durable_store_write_rollback_plan_sha256}:rollback=false"
+    ));
+    let tombstone_cleanup_guard_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-tombstone-cleanup:v1:plan={source_durable_store_write_tombstone_cleanup_plan_sha256}:tombstone=false:cleanup=false"
+    ));
+    let idempotency_replay_guard_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-idempotency-replay:v1:source-preflight={source_durable_store_write_preflight_hash_sha256}:target-store={durable_store_target_store_id}:replay=false"
+    ));
+    let operator_guarded_execution_handoff_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-guarded-execution-operator-handoff:v1:source={source_report_sha256}:preflight-handoff={source_durable_store_write_preflight_operator_handoff_sha256}:readiness=true:execute=false"
+    ));
+    let guarded_execution_readiness_hash_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness:v1:source-preflight={source_durable_store_write_preflight_hash_sha256}:envelope={guarded_execution_envelope_sha256}:nonce={single_use_nonce_guard_sha256}:command={explicit_command_guard_sha256}:budget={single_write_budget_guard_sha256}:wal={wal_receipt_guard_sha256}:readback={readback_guard_sha256}:rollback={rollback_guard_sha256}:tombstone={tombstone_cleanup_guard_sha256}:handoff={operator_guarded_execution_handoff_sha256}"
+    ));
+    let guard_hashes_bound = [
+        &guarded_execution_envelope_sha256,
+        &single_use_nonce_guard_sha256,
+        &explicit_command_guard_sha256,
+        &single_write_budget_guard_sha256,
+        &wal_receipt_guard_sha256,
+        &readback_guard_sha256,
+        &rollback_guard_sha256,
+        &tombstone_cleanup_guard_sha256,
+        &idempotency_replay_guard_sha256,
+        &operator_guarded_execution_handoff_sha256,
+        &guarded_execution_readiness_hash_sha256,
+    ]
+    .iter()
+    .all(|hash| !hash.is_empty());
+
+    let fixtures = serde_json::json!([
+        readiness_fixture(
+            "accepted-guarded-execution-readiness",
+            "accepted",
+            "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepted",
+            source_ready
+                && namespace_bound
+                && store_bound
+                && scope_bound
+                && source_preflight_hash_bound
+                && target_bound
+                && payload_digest_bound
+                && wal_receipt_plan_bound
+                && readback_plan_bound
+                && rollback_plan_bound
+                && tombstone_cleanup_plan_bound
+                && guard_hashes_bound,
+            serde_json::json!({
+                "approved_namespace": approved_namespace.clone(),
+                "approved_store": approved_store.clone(),
+                "approved_scope": approved_scope.clone(),
+                "durable_store_write_target_id": durable_store_write_target_id.clone(),
+                "durable_store_target_store_id": durable_store_target_store_id.clone(),
+                "source_durable_store_write_preflight_hash_sha256": source_durable_store_write_preflight_hash_sha256.clone(),
+                "guarded_execution_readiness_hash_sha256": guarded_execution_readiness_hash_sha256.clone(),
+                "operator_guarded_execution_handoff_sha256": operator_guarded_execution_handoff_sha256.clone()
+            }),
+        ),
+        readiness_fixture(
+            "missing-source-preflight",
+            "blocked_noop",
+            "source_durable_store_write_preflight_missing",
+            false,
+            serde_json::json!({}),
+        ),
+        readiness_fixture(
+            "wrong-namespace",
+            "blocked_noop",
+            "approved_namespace_mismatch",
+            false,
+            serde_json::json!({}),
+        ),
+        readiness_fixture(
+            "wrong-store",
+            "blocked_noop",
+            "approved_store_mismatch",
+            false,
+            serde_json::json!({}),
+        ),
+        readiness_fixture(
+            "wrong-scope",
+            "blocked_noop",
+            "approved_scope_mismatch",
+            false,
+            serde_json::json!({}),
+        ),
+        readiness_fixture(
+            "execution-envelope-missing",
+            "blocked_noop",
+            "guarded_execution_envelope_missing",
+            false,
+            serde_json::json!({}),
+        ),
+        readiness_fixture(
+            "nonce-command-guard-missing",
+            "blocked_noop",
+            "nonce_or_explicit_command_guard_missing",
+            false,
+            serde_json::json!({}),
+        ),
+        readiness_fixture(
+            "budget-guard-missing",
+            "blocked_noop",
+            "single_write_budget_guard_missing",
+            false,
+            serde_json::json!({}),
+        ),
+        readiness_fixture(
+            "readback-rollback-tombstone-guard-missing",
+            "blocked_noop",
+            "readback_rollback_or_tombstone_guard_missing",
+            false,
+            serde_json::json!({}),
+        ),
+        readiness_fixture(
+            "direct-execution-attempt",
+            "blocked_noop",
+            "direct_durable_store_write_execution_denied",
+            false,
+            serde_json::json!({}),
+        ),
+    ]);
+    let accepted_fixture_count = fixtures
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| {
+                    json_bool(
+                        item,
+                        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepted",
+                    )
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    let blocked_fixture_count = fixtures
+        .as_array()
+        .map(std::vec::Vec::len)
+        .unwrap_or(0)
+        .saturating_sub(accepted_fixture_count);
+    let surface_ready = source_ready
+        && namespace_bound
+        && store_bound
+        && scope_bound
+        && source_preflight_hash_bound
+        && target_bound
+        && payload_digest_bound
+        && wal_receipt_plan_bound
+        && readback_plan_bound
+        && rollback_plan_bound
+        && tombstone_cleanup_plan_bound
+        && guard_hashes_bound;
+    let ready_surface_count = if surface_ready {
+        READINESS_SURFACES.len()
+    } else {
+        0
+    };
+    let report_ready = route_count_source_command_accepted
+        && surface_ready
+        && accepted_fixture_count == 1
+        && blocked_fixture_count == 9
+        && READINESS_DENIALS.len() == 32;
+    let boundary_hash_sha256 = sha256_text_value(&format!(
+        "minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary:v1:source-ready={source_ready}:target={target_bound}:guards={guarded_execution_readiness_hash_sha256}:fixtures=10:accepted=1:denials=32"
+    ));
+    let policy_hash_sha256 = sha256_text_value(
+        "minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-policy:v1:accept-readiness-only:no-durable-memory-write:no-memory-store-mutation:no-wal-write:no-receipt-persist:no-readback:no-rollback:no-tombstone:no-kg:no-provider:no-channel:no-release:no-install",
+    );
+
+    let mut side_effects = serde_json::Map::new();
+    side_effects.insert(
+        "durable_store_write_guarded_execution_readiness_performed".to_string(),
+        serde_json::json!(report_ready),
+    );
+    side_effects.insert(
+        "durable_store_write_guarded_execution_readiness_result_accepted".to_string(),
+        serde_json::json!(report_ready),
+    );
+    for &key in FALSE_EXTERNAL_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    side_effects.insert(
+        "durable_memory_store_write_performed".to_string(),
+        serde_json::json!(false),
+    );
+    side_effects.insert(
+        "memory_store_write_performed".to_string(),
+        serde_json::json!(false),
+    );
+    side_effects.insert(
+        "external_send_performed".to_string(),
+        serde_json::json!(false),
+    );
+
+    let mut report = serde_json::Map::new();
+    macro_rules! insert_report_json {
+        ($key:expr, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_gate"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_READINESS_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!(
+        "memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_performed",
+        report_ready
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepted",
+        report_ready
+    );
+    insert_report_json!(
+        "scoped_memory_real_write_canary_mode",
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_report_only"
+    );
+    insert_report_json!(
+        "source_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_boundary_ready",
+        source_ready
+    );
+    insert_report_json!(
+        "source_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_report_sha256",
+        source_report_sha256
+    );
+    insert_report_json!(
+        "source_accepted_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_fixture_count",
+        json_u64(
+            &source,
+            "accepted_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_fixture_count",
+        )
+    );
+    insert_report_json!(
+        "source_blocked_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_fixture_count",
+        json_u64(
+            &source,
+            "blocked_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_fixture_count",
+        )
+    );
+    insert_report_json!(
+        "source_durable_store_write_preflight_result_accepted_count",
+        json_u64(
+            &source,
+            "durable_store_write_preflight_result_accepted_count"
+        )
+    );
+    insert_report_json!(
+        "source_durable_store_write_preflight_executed_count",
+        json_u64(&source, "durable_store_write_preflight_executed_count")
+    );
+    insert_report_json!(
+        "source_durable_memory_store_write_performed_count",
+        json_u64(&source, "durable_memory_store_write_performed_count")
+    );
+    insert_report_json!(
+        "source_memory_store_write_performed_count",
+        json_u64(&source, "memory_store_write_performed_count")
+    );
+    insert_report_json!("approved_namespace", approved_namespace);
+    insert_report_json!("approved_store", approved_store);
+    insert_report_json!("approved_scope", approved_scope);
+    insert_report_json!(
+        "durable_store_write_target_id",
+        durable_store_write_target_id
+    );
+    insert_report_json!(
+        "durable_store_target_store_id",
+        durable_store_target_store_id
+    );
+    insert_report_json!(
+        "source_durable_store_write_preflight_hash_sha256",
+        source_durable_store_write_preflight_hash_sha256
+    );
+    insert_report_json!(
+        "source_durable_store_write_preflight_operator_handoff_sha256",
+        source_durable_store_write_preflight_operator_handoff_sha256
+    );
+    insert_report_json!(
+        "source_durable_store_write_target_sha256",
+        source_durable_store_write_target_sha256
+    );
+    insert_report_json!(
+        "source_durable_store_write_payload_digest_sha256",
+        source_durable_store_write_payload_digest_sha256
+    );
+    insert_report_json!(
+        "source_durable_store_write_wal_receipt_plan_sha256",
+        source_durable_store_write_wal_receipt_plan_sha256
+    );
+    insert_report_json!(
+        "source_durable_store_write_readback_plan_sha256",
+        source_durable_store_write_readback_plan_sha256
+    );
+    insert_report_json!(
+        "source_durable_store_write_rollback_plan_sha256",
+        source_durable_store_write_rollback_plan_sha256
+    );
+    insert_report_json!(
+        "source_durable_store_write_tombstone_cleanup_plan_sha256",
+        source_durable_store_write_tombstone_cleanup_plan_sha256
+    );
+    insert_report_json!(
+        "guarded_execution_envelope_sha256",
+        guarded_execution_envelope_sha256
+    );
+    insert_report_json!(
+        "single_use_nonce_guard_sha256",
+        single_use_nonce_guard_sha256
+    );
+    insert_report_json!(
+        "explicit_command_guard_sha256",
+        explicit_command_guard_sha256
+    );
+    insert_report_json!(
+        "single_write_budget_guard_sha256",
+        single_write_budget_guard_sha256
+    );
+    insert_report_json!("wal_receipt_guard_sha256", wal_receipt_guard_sha256);
+    insert_report_json!("readback_guard_sha256", readback_guard_sha256);
+    insert_report_json!("rollback_guard_sha256", rollback_guard_sha256);
+    insert_report_json!(
+        "tombstone_cleanup_guard_sha256",
+        tombstone_cleanup_guard_sha256
+    );
+    insert_report_json!(
+        "idempotency_replay_guard_sha256",
+        idempotency_replay_guard_sha256
+    );
+    insert_report_json!(
+        "operator_guarded_execution_handoff_sha256",
+        operator_guarded_execution_handoff_sha256
+    );
+    insert_report_json!(
+        "guarded_execution_readiness_hash_sha256",
+        guarded_execution_readiness_hash_sha256
+    );
+    insert_report_json!(
+        "required_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_surface_count",
+        READINESS_SURFACES.len()
+    );
+    insert_report_json!(
+        "ready_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_surface_count",
+        ready_surface_count
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_fixture_count",
+        10
+    );
+    insert_report_json!(
+        "accepted_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_fixture_count",
+        accepted_fixture_count
+    );
+    insert_report_json!(
+        "blocked_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_fixture_count",
+        blocked_fixture_count
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepted_count",
+        if report_ready { 1 } else { 0 }
+    );
+    insert_report_json!(
+        "durable_store_write_guarded_execution_readiness_authority_accepted_count",
+        if report_ready { 1 } else { 0 }
+    );
+    insert_report_json!(
+        "durable_store_write_guarded_execution_readiness_result_accepted_count",
+        if report_ready { 1 } else { 0 }
+    );
+    insert_report_json!(
+        "denied_by_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary",
+        READINESS_DENIALS
+    );
+    insert_report_json!(
+        "denied_by_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_count",
+        READINESS_DENIALS.len()
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_hash_sha256",
+        boundary_hash_sha256
+    );
+    insert_report_json!(
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_policy_hash_sha256",
+        policy_hash_sha256
+    );
+    report.insert(
+        "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_fixtures"
+            .to_string(),
+        fixtures,
+    );
+    for key in [
+        "source_durable_store_write_preflight_bound",
+        "source_durable_store_write_preflight_hash_bound",
+        "source_durable_store_write_preflight_result_accepted",
+        "approved_namespace_bound",
+        "approved_store_bound",
+        "approved_scope_bound",
+        "approved_namespace_store_scope_guard_verified",
+        "durable_store_target_guard_verified",
+        "guarded_execution_envelope_bound",
+        "single_use_nonce_guard_bound",
+        "explicit_command_guard_bound",
+        "single_write_budget_guard_bound",
+        "wal_receipt_guard_bound",
+        "post_write_readback_guard_bound",
+        "rollback_guard_bound",
+        "tombstone_cleanup_guard_bound",
+        "idempotency_replay_guard_bound",
+        "operator_guarded_execution_handoff_bound",
+        "durable_memory_write_forbidden_until_guarded_execution_boundary",
+        "memory_store_mutation_forbidden_until_guarded_execution_boundary",
+        "kg_provider_channel_release_install_active_binary_forbidden",
+    ] {
+        insert_report_json!(key, report_ready);
+    }
+    for key in [
+        "source_durable_store_write_preflight_bound_count",
+        "source_durable_store_write_preflight_hash_bound_count",
+        "source_durable_store_write_preflight_result_accepted_count",
+        "approved_namespace_store_scope_guard_verified_count",
+        "durable_store_target_guard_verified_count",
+        "guarded_execution_envelope_bound_count",
+        "single_use_nonce_guard_bound_count",
+        "explicit_command_guard_bound_count",
+        "single_write_budget_guard_bound_count",
+        "wal_receipt_guard_bound_count",
+        "post_write_readback_guard_bound_count",
+        "rollback_guard_bound_count",
+        "tombstone_cleanup_guard_bound_count",
+        "idempotency_replay_guard_bound_count",
+        "operator_guarded_execution_handoff_bound_count",
+        "durable_store_write_guarded_execution_readiness_result_recorded_count",
+        "durable_store_write_guarded_execution_readiness_result_accepted_count",
+    ] {
+        insert_report_json!(key, if report_ready { 1 } else { 0 });
+    }
+    for &key in FALSE_EXTERNAL_KEYS {
+        insert_report_json!(key, false);
+        insert_report_json!(format!("{key}_count"), 0);
+    }
+    for &key in TRUE_READINESS_KEYS {
+        insert_report_json!(key, report_ready);
+    }
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+    report.insert(
+        "allowed_next_actions".to_string(),
+        serde_json::json!([
+            {
+                "action": "run_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_require_live_gate",
+                "status": "allowed_verification_only",
+                "writes_durable_memory": false,
+                "mutates_memory_store": false
+            },
+            {
+                "action": "prepare_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_boundary",
+                "status": "allowed_report_only_next_slice",
+                "requires_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness": true,
+                "writes_durable_memory": false,
+                "mutates_memory_store": false
+            }
+        ]),
+    );
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -146432,6 +147380,264 @@ mod tests {
         );
         assert_eq!(
             side_effects["durable_store_write_preflight_executed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["durable_memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["external_send_performed"].as_bool(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepts_readiness_without_memory_or_external_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_READINESS_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("minimal scoped Memory real-write canary durable store write guarded execution readiness json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_READINESS_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_ready"],
+            true
+        );
+        assert_eq!(
+            value["minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_performed"],
+            true
+        );
+        assert_eq!(
+            value["scoped_memory_real_write_canary_mode"],
+            "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_report_only"
+        );
+        assert_eq!(
+            value["source_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_accepted_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["source_blocked_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["source_durable_store_write_preflight_result_accepted_count"],
+            1
+        );
+        assert_eq!(
+            value["source_durable_store_write_preflight_executed_count"],
+            0
+        );
+        assert_eq!(value["approved_namespace"], "hepta.memory.canary");
+        assert_eq!(value["approved_store"], "wal-receipt-canary-artifact");
+        assert_eq!(value["approved_scope"], "session");
+        assert_eq!(
+            value["durable_store_write_target_id"],
+            "hepta-minimal-scoped-memory-real-write-canary-durable-store-write-target-v1"
+        );
+        assert_eq!(
+            value["durable_store_target_store_id"],
+            "hepta-memory-durable-store-canary-plan-only"
+        );
+        for key in [
+            "source_durable_store_write_preflight_hash_sha256",
+            "source_durable_store_write_preflight_operator_handoff_sha256",
+            "guarded_execution_envelope_sha256",
+            "single_use_nonce_guard_sha256",
+            "explicit_command_guard_sha256",
+            "single_write_budget_guard_sha256",
+            "wal_receipt_guard_sha256",
+            "readback_guard_sha256",
+            "rollback_guard_sha256",
+            "tombstone_cleanup_guard_sha256",
+            "idempotency_replay_guard_sha256",
+            "operator_guarded_execution_handoff_sha256",
+            "guarded_execution_readiness_hash_sha256",
+        ] {
+            assert_ne!(
+                value[key], "",
+                "durable store write guarded execution readiness hash should be present: {key}"
+            );
+        }
+        assert_eq!(
+            value["required_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["accepted_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["blocked_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["denied_by_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_count"],
+            32
+        );
+        for key in [
+            "durable_store_write_guarded_execution_readiness_performed",
+            "durable_store_write_guarded_execution_readiness_result_recorded",
+            "durable_store_write_guarded_execution_readiness_result_accepted",
+            "source_durable_store_write_preflight_bound",
+            "source_durable_store_write_preflight_hash_bound",
+            "source_durable_store_write_preflight_result_accepted",
+            "approved_namespace_store_scope_guard_verified",
+            "durable_store_target_guard_verified",
+            "guarded_execution_envelope_bound",
+            "single_use_nonce_guard_bound",
+            "explicit_command_guard_bound",
+            "single_write_budget_guard_bound",
+            "wal_receipt_guard_bound",
+            "post_write_readback_guard_bound",
+            "rollback_guard_bound",
+            "tombstone_cleanup_guard_bound",
+            "idempotency_replay_guard_bound",
+            "operator_guarded_execution_handoff_bound",
+            "durable_memory_write_forbidden_until_guarded_execution_boundary",
+            "memory_store_mutation_forbidden_until_guarded_execution_boundary",
+            "kg_provider_channel_release_install_active_binary_forbidden",
+            "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepted",
+        ] {
+            assert_eq!(
+                value[key], true,
+                "durable store write guarded execution readiness field should be true: {key}"
+            );
+        }
+        for key in [
+            "durable_store_write_guarded_execution_readiness_executed",
+            "durable_store_write_guarded_execution_executed",
+            "durable_store_write_execution_performed",
+            "durable_store_write_preflight_executed",
+            "wal_write_performed",
+            "receipt_persisted",
+            "post_write_readback_performed",
+            "rollback_executed",
+            "tombstone_cleanup_executed",
+            "tombstone_written",
+            "durable_memory_store_write_performed",
+            "durable_memory_store_read_performed",
+            "durable_memory_store_rollback_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "raw_payload_plaintext_recorded",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "durable store write guarded execution readiness side-effect field should stay false: {key}"
+            );
+        }
+        let fixtures = value
+            ["minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_fixtures"]
+            .as_array()
+            .expect("minimal scoped Memory durable store write guarded execution readiness fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepted"]
+                        == true
+                })
+                .count(),
+            1
+        );
+        let denied = value
+            ["denied_by_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary"]
+            .as_array()
+            .expect("minimal scoped Memory durable store write guarded execution readiness denials");
+        assert_eq!(denied.len(), 32);
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_durable_memory"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_boundary"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["requires_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness"],
+            true
+        );
+        let side_effects = value["side_effects"].as_object().expect(
+            "minimal scoped Memory durable store write guarded execution readiness side effects",
+        );
+        assert_eq!(
+            side_effects["durable_store_write_guarded_execution_readiness_performed"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["durable_store_write_guarded_execution_readiness_result_accepted"]
+                .as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["durable_store_write_guarded_execution_executed"].as_bool(),
             Some(false)
         );
         assert_eq!(
