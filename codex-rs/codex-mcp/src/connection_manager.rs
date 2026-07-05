@@ -76,6 +76,13 @@ pub struct McpConnectionManager {
     startup_cancellation_token: CancellationToken,
 }
 
+/// Cloneable, read-only view of MCP clients used for tool listing outside an
+/// outer session lock.
+pub struct McpToolListSnapshot {
+    clients: Vec<AsyncManagedClient>,
+    server_metadata: HashMap<String, McpServerMetadata>,
+}
+
 impl McpConnectionManager {
     pub fn new_uninitialized(
         approval_policy: &Constrained<AskForApproval>,
@@ -362,18 +369,14 @@ impl McpConnectionManager {
     /// Returns all tools with model-visible names normalized.
     #[instrument(level = "trace", skip_all)]
     pub async fn list_all_tools(&self) -> Vec<ToolInfo> {
-        let mut tools = Vec::new();
-        for managed_client in self.clients.values() {
-            let Some(server_tools) = managed_client.listed_tools().await else {
-                continue;
-            };
-            tools.extend(
-                server_tools
-                    .into_iter()
-                    .map(|tool| self.with_server_metadata(tool)),
-            );
+        self.tool_list_snapshot().list_all_tools().await
+    }
+
+    pub fn tool_list_snapshot(&self) -> McpToolListSnapshot {
+        McpToolListSnapshot {
+            clients: self.clients.values().cloned().collect(),
+            server_metadata: self.server_metadata.clone(),
         }
-        normalize_tools_for_model(tools)
     }
 
     /// Force-refresh Hepta apps tools by bypassing the in-process cache.
@@ -682,6 +685,40 @@ impl McpConnectionManager {
             .client()
             .await
             .context("failed to get client")
+    }
+}
+
+impl McpToolListSnapshot {
+    /// Returns all tools with model-visible names normalized.
+    #[instrument(level = "trace", skip_all)]
+    pub async fn list_all_tools(&self) -> Vec<ToolInfo> {
+        let mut tools = Vec::new();
+        for managed_client in &self.clients {
+            let Some(server_tools) = managed_client.listed_tools().await else {
+                continue;
+            };
+            tools.extend(
+                server_tools
+                    .into_iter()
+                    .map(|tool| self.with_server_metadata(tool)),
+            );
+        }
+        normalize_tools_for_model(tools)
+    }
+
+    fn with_server_metadata(&self, mut tool: ToolInfo) -> ToolInfo {
+        let Some(metadata) = self.server_metadata.get(&tool.server_name) else {
+            tool.supports_parallel_tool_calls = false;
+            tool.server_origin = None;
+            return tool;
+        };
+
+        tool.supports_parallel_tool_calls = metadata.supports_parallel_tool_calls;
+        tool.server_origin = metadata
+            .origin
+            .as_ref()
+            .map(|origin| origin.as_str().to_string());
+        tool
     }
 }
 

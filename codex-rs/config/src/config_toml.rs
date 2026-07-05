@@ -721,6 +721,42 @@ pub struct AgentRoleToml {
 
     /// Candidate nicknames for agents spawned with this role.
     pub nickname_candidates: Option<Vec<String>>,
+
+    /// Optional identifier for the AgentCard manifest that governs this role.
+    pub agent_card_manifest_source: Option<String>,
+
+    /// Optional AgentCard manifest version. Used for shadow drift detection.
+    pub agent_card_manifest_version: Option<String>,
+
+    /// Optional structured AgentCard manifest used for shadow registry overlay checks.
+    pub agent_card_manifest: Option<AgentCardManifestToml>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct AgentCardManifestToml {
+    /// AgentCard document schema version.
+    pub schema_version: Option<String>,
+
+    /// Tool or lifecycle surface governed by this manifest.
+    pub source_surface_id: Option<String>,
+
+    /// Capabilities granted to the role for this surface.
+    pub capabilities: Option<Vec<String>>,
+
+    /// Tools allowed for this role on this surface.
+    pub allowed_tools: Option<Vec<String>>,
+
+    /// WorkGraph lane expected for this surface.
+    pub lane: Option<String>,
+
+    /// Optional configured maximum number of threads for this role.
+    #[schemars(range(min = 1))]
+    pub max_threads: Option<usize>,
+
+    /// Optional configured maximum child depth for this role.
+    #[schemars(range(min = 1))]
+    pub max_depth: Option<i32>,
 }
 
 impl From<ToolsToml> for Tools {
