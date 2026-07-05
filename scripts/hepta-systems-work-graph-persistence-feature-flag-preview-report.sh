@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+feature_flag_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_persistence_feature_flag_preview.rs
+)"
+feature_flag_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-feature-flag-preview-report.sh
+)"
+feature_flag_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-feature-flag-preview-gate.sh
+)"
+shadow_adapter_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-shadow-adapter-readback-preview-gate.sh
+)"
+activation_blocker_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-activation-enforcement-blocker-preview-gate.sh
+)"
+state_store_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-state-store-persistence-preview-gate.sh
+)"
+durable_identity_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_durable_identity_preview.rs
+)"
+durable_identity_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-report.sh
+)"
+durable_identity_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-gate.sh
+)"
+
+durable_identity_report="$(
+  capture_json_report \
+    "hepta-work-graph-durable-identity-preview-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-durable-identity-preview-report.sh"
+)"
+
+jq -n \
+  --argjson feature_flag_rust_module_present "$feature_flag_rust_module_present" \
+  --argjson feature_flag_report_script_present "$feature_flag_report_script_present" \
+  --argjson feature_flag_gate_script_present "$feature_flag_gate_script_present" \
+  --argjson shadow_adapter_gate_script_present "$shadow_adapter_gate_script_present" \
+  --argjson activation_blocker_gate_script_present "$activation_blocker_gate_script_present" \
+  --argjson state_store_gate_script_present "$state_store_gate_script_present" \
+  --argjson durable_identity_rust_module_present "$durable_identity_rust_module_present" \
+  --argjson durable_identity_report_script_present "$durable_identity_report_script_present" \
+  --argjson durable_identity_gate_script_present "$durable_identity_gate_script_present" \
+  --argjson durable_identity_report "$durable_identity_report" \
+  '
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  def flag_ids: [
+    "work_graph_store_persistence_flag",
+    "work_graph_wal_append_flag",
+    "work_graph_checkpoint_write_flag",
+    "work_graph_readback_receipt_persistence_flag",
+    "work_graph_idempotency_index_write_flag",
+    "work_graph_replay_execution_feature_flag"
+  ];
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_promotion_precondition_preview_gate",
+    "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+    "hepta_work_graph_shadow_adapter_readback_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ];
+  def feature_flag($id; $surface; $scope; $enablements): {
+    id: $id,
+    activation_surface_id: $surface,
+    scope: $scope,
+    required_enablement_ids: $enablements,
+    default_enabled: false,
+    operator_mutable_in_preview: false,
+    allows_live_writes_in_preview: false
+  };
+  def enablement($id; $fields; $gates): {
+    id: $id,
+    required_fields: $fields,
+    source_gate_ids: $gates,
+    currently_satisfied: false
+  };
+  def rollout($id; $order; $mode): {
+    id: $id,
+    order: $order,
+    traffic_ppm: 0,
+    write_mode: $mode,
+    promotion_allowed: false
+  };
+  def rollback_guard($id; $trigger): {
+    id: $id,
+    trigger: $trigger,
+    blocks_feature_flag_activation: true,
+    required_before_any_write: true
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    feature_flag("work_graph_store_persistence_flag"; "store_persistence_activation"; "persist_canonical_graph_collections"; ["durable_identity_evidence_packet", "explicit_feature_flag", "prior_gate_digest", "shadow_readback_digest", "operator_approval_packet", "rollback_plan"]),
+    feature_flag("work_graph_wal_append_flag"; "store_persistence_activation"; "append_wal_records"; ["durable_identity_evidence_packet", "explicit_feature_flag", "wal_schema_digest", "idempotency_guard_digest", "rollback_plan"]),
+    feature_flag("work_graph_checkpoint_write_flag"; "store_persistence_activation"; "write_checkpoint_snapshots"; ["durable_identity_evidence_packet", "explicit_feature_flag", "checkpoint_hash_plan", "disk_budget_packet", "rollback_plan"]),
+    feature_flag("work_graph_readback_receipt_persistence_flag"; "approval_recording_activation"; "persist_readback_receipts"; ["durable_identity_evidence_packet", "explicit_feature_flag", "shadow_readback_digest", "redaction_packet", "operator_approval_packet"]),
+    feature_flag("work_graph_idempotency_index_write_flag"; "store_persistence_activation"; "write_idempotency_indexes"; ["durable_identity_evidence_packet", "explicit_feature_flag", "idempotency_guard_digest", "rollback_plan"]),
+    feature_flag("work_graph_replay_execution_feature_flag"; "wal_replay_execution_activation"; "execute_replay_against_persisted_graph"; ["durable_identity_evidence_packet", "explicit_feature_flag", "prior_gate_digest", "drift_budget_packet", "rollback_plan"])
+  ] as $feature_flags
+  | [
+    enablement("durable_identity_evidence_packet"; durable_fields; ["hepta_work_graph_durable_identity_preview_gate"]),
+    enablement("explicit_feature_flag"; ["featureFlagName", "defaultState", "proposedEnabledAtUnixMs", "operatorIdHash"]; ["hepta_work_graph_activation_enforcement_blocker_preview_gate"]),
+    enablement("prior_gate_digest"; ["requiredGateIds", "reportHash", "generatedAtUnixMs"]; prior_gates),
+    enablement("shadow_readback_digest"; ["adapterShadowCount", "collectionReadbackCount", "mismatchCount", "evidencePacketHash"]; ["hepta_work_graph_shadow_adapter_readback_preview_gate"]),
+    enablement("operator_approval_packet"; ["approvalId", "operatorIdHash", "scopeHash", "expiresAtUnixMs"]; ["hepta_work_graph_activation_enforcement_blocker_preview_gate"]),
+    enablement("rollback_plan"; ["killSwitchId", "rollbackOwnerHash", "maxRollbackSeconds", "dataRetentionPolicy"]; ["hepta_work_graph_promotion_precondition_preview_gate"]),
+    enablement("wal_schema_digest"; ["walVersion", "recordKinds", "checksumPolicy", "migrationPlanHash"]; ["hepta_work_graph_state_store_persistence_preview_gate"]),
+    enablement("idempotency_guard_digest"; ["sourceSurfaceIds", "keyFieldsHash", "collisionPolicy", "dryRunCollisionCount"]; ["hepta_work_graph_state_store_persistence_preview_gate"]),
+    enablement("checkpoint_hash_plan"; ["checkpointKind", "merkleRootPolicy", "readbackProbeIds"]; ["hepta_work_graph_state_store_persistence_preview_gate"]),
+    enablement("disk_budget_packet"; ["maxWalBytes", "maxCheckpointBytes", "prunePolicy"]; ["hepta_work_graph_state_store_persistence_preview_gate"]),
+    enablement("drift_budget_packet"; ["maxMismatchCount", "maxReplayLagMs", "escalationPolicy"]; ["hepta_work_graph_replay_readback_preview_gate"]),
+    enablement("redaction_packet"; ["redactionState", "piiPolicyHash", "externalDeliveryDisabled"]; ["hepta_work_graph_observability_timeline_preview_gate", "hepta_work_graph_shadow_adapter_readback_preview_gate"])
+  ] as $enablement_packets
+  | [
+    rollout("disabled"; 0; "no_writes_no_reads"),
+    rollout("local_dry_run"; 1; "report_only_no_store_writes"),
+    rollout("shadow_write_fixture_only"; 2; "fixture_projection_no_live_store_writes"),
+    rollout("shadow_readback_compare"; 3; "hash_compare_no_promotion"),
+    rollout("canary_lane_dry_run"; 4; "lane_scoped_dry_run")
+  ] as $rollout_stages
+  | [
+    rollback_guard("operator_kill_switch"; "operator revokes the WorkGraph persistence feature flag"),
+    rollback_guard("wal_checksum_mismatch"; "WAL append or replay checksum does not match the expected digest"),
+    rollback_guard("shadow_readback_drift"; "shadow adapter readback mismatch count exceeds the configured drift budget"),
+    rollback_guard("idempotency_collision"; "source-surface idempotency key collision is detected before write"),
+    rollback_guard("disk_budget_exceeded"; "WAL or checkpoint budget would exceed the operator packet limit"),
+    rollback_guard("operator_approval_expired"; "operator approval packet expires before feature flag activation")
+  ] as $rollback_guards
+  | [
+    invariant("feature_flags_require_durable_identity_evidence"; "persistence feature flags cannot be considered without workflow, run, step, checkpoint, replay, rollback, and receipt evidence"),
+    invariant("feature_flags_default_off"; "every WorkGraph persistence flag is disabled and non-mutable in this preview"),
+    invariant("prior_gate_digest_required_before_flag_enablement"; "feature flag activation cannot be considered until every prior gate has a hashed report"),
+    invariant("operator_packet_and_rollback_plan_required"; "a feature flag cannot authorize persistence without operator evidence and rollback scope"),
+    invariant("canary_stages_have_zero_live_traffic_in_preview"; "this preview can describe canary stages but cannot route live traffic or write state"),
+    invariant("rollback_guards_block_any_write_path"; "kill switch, checksum, drift, idempotency, disk, and approval guards block persistence"),
+    invariant("persistence_feature_flag_preview_has_no_side_effects"; "this gate cannot mutate config, write WAL/checkpoints, execute replay, or send externally")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_persistence_feature_flag_preview_gate",
+      schema_version: "work_graph_persistence_feature_flag_preview_v1",
+      preview_mode: "read_only_persistence_feature_flag_preview_no_flag_mutation",
+      feature_flag_count: ($feature_flags | length),
+      enablement_packet_count: ($enablement_packets | length),
+      rollout_stage_count: ($rollout_stages | length),
+      rollback_guard_count: ($rollback_guards | length),
+      invariant_count: ($invariants | length),
+      required_prior_gates: prior_gates,
+      feature_flags: $feature_flags,
+      enablement_packets: $enablement_packets,
+      rollout_stages: $rollout_stages,
+      rollback_guards: $rollback_guards,
+      durable_identity_evidence: {
+        schema_version: $durable_identity_report.schema_version,
+        required_prior_gate: "hepta_work_graph_durable_identity_preview_gate",
+        required_field_ids: durable_fields,
+        required_for_feature_flag_ids: flag_ids,
+        durable_field_count: $durable_identity_report.durable_field_count,
+        preview_binding_count: $durable_identity_report.preview_binding_count,
+        invariant_count: $durable_identity_report.invariant_count,
+        currently_satisfied: false
+      },
+      invariants: $invariants,
+      recommended_next_gate: "hepta_work_graph_persistence_canary_dry_run_preview_gate",
+      ready_for_persistence_canary_dry_run_preview: true,
+      ready_for_feature_flag_activation: false,
+      ready_for_live_persistence: false,
+      source_probes: {
+        persistence_feature_flag: {
+          rust_module_present: $feature_flag_rust_module_present,
+          report_script_present: $feature_flag_report_script_present,
+          gate_script_present: $feature_flag_gate_script_present
+        },
+        shadow_adapter_readback: {
+          gate_script_present: $shadow_adapter_gate_script_present
+        },
+        activation_blocker: {
+          gate_script_present: $activation_blocker_gate_script_present
+        },
+        state_store_persistence: {
+          gate_script_present: $state_store_gate_script_present
+        },
+        durable_identity: {
+          rust_module_present: $durable_identity_rust_module_present,
+          report_script_present: $durable_identity_report_script_present,
+          gate_script_present: $durable_identity_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        feature_flag_mutated: false,
+        persistence_enabled: false,
+        wal_written: false,
+        checkpoint_written: false,
+        replay_execution_enabled: false,
+        adapter_projection_enforced: false,
+        rollback_performed: false,
+        scheduler_cutover_performed: false,
+        approval_recorded: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

@@ -1,0 +1,11 @@
+# Hepta Systems Plugin Tool Invocation Dry Run Receipt Ledger Preview Readback
+
+This readback extends the feature-gated read-only status dry-run contract into a query-only preview of the dry-run receipt and ledger boundary. It still does not open the feature gate or execute a dry-run.
+
+The read model consumes `hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_run_readback` and projects dry-run receipt preview ids, dry-run receipt preview digests, ledger preview ids, ledger preview digests, policy denial anchors, approval denial anchors, receipt projection anchors, stable preview receipts, and preview idempotency keys. The selected MCP status contribution and the non-selected app connector contribution both get stable preview anchors so rerun readback can verify uniqueness without writing any receipt or ledger state.
+
+This layer is useful because it separates the operator-visible preview contract from execution. The next operator packet can reference the same receipt preview id, ledger preview id, policy denial anchor, approval denial anchor, and idempotency key without requiring ToolRegistry registration, lookup execution, invocation, ledger writes, or receipt persistence.
+
+The boundary remains intentionally closed: no feature gate open, dry-run execution, dry-run receipt preview persistence, ledger preview persistence, policy decision persistence, approval preflight execution, ledger write attempt, receipt projection persistence, ToolRegistry registration, ToolRegistry mutation, registry lookup execution, tool invocation, noop result persistence, ledger write, approval request, receipt persistence, dynamic activation, permission grant, MCP server start, app connector start, plugin install, cache mutation, install-cache materialization, runtime event-log write, SQLite write, credential read, external network, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, channel send, package/release, canary activation, Public GA promotion, or live execution.
+
+The next migration step is `hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_packet_readback`, which should turn this preview into an operator-facing packet/checklist while keeping execution and persistence closed.

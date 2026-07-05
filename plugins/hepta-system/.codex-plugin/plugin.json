@@ -1,0 +1,126 @@
+{
+  "name": "hepta-system",
+  "version": "0.0.0-fixture",
+  "description": "Read-only Hepta systems plugin fixture for manifest, tool, and workflow preflight.",
+  "keywords": [
+    "hepta",
+    "systems",
+    "fixture"
+  ],
+  "skills": "./skills",
+  "mcpServers": "./.mcp.json",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Hepta System",
+    "shortDescription": "Local systems fixture for Hepta runtime planning.",
+    "developerName": "Hepta",
+    "category": "developer-tools",
+    "capabilities": [
+      "tool-preflight",
+      "workflow-preflight"
+    ],
+    "defaultPrompt": "Inspect Hepta system readiness without enabling live execution."
+  },
+  "toolSchemas": {
+    "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "readiness"
+            ]
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready"
+        ]
+      }
+    },
+    "preview:connector:hepta-system@hepta-local:hepta_system_local_app": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "readiness"
+            ]
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready"
+        ]
+      }
+    }
+  },
+  "permissions": {
+    "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp": {
+      "filesystem": "read-only",
+      "network": "none"
+    },
+    "preview:connector:hepta-system@hepta-local:hepta_system_local_app": {
+      "connector": "hepta-local",
+      "network": "none"
+    }
+  },
+  "activationEvents": {
+    "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp": [
+      {
+        "type": "manual"
+      }
+    ],
+    "preview:connector:hepta-system@hepta-local:hepta_system_local_app": [
+      {
+        "type": "manual"
+      }
+    ]
+  },
+  "toolPolicies": {
+    "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp": {
+      "approval": {
+        "kind": "onUse"
+      },
+      "ledger": {
+        "required": true
+      },
+      "timeoutMs": 30000
+    },
+    "preview:connector:hepta-system@hepta-local:hepta_system_local_app": {
+      "approval": {
+        "kind": "install"
+      },
+      "ledger": {
+        "required": true
+      },
+      "timeoutMs": 30000
+    }
+  }
+}

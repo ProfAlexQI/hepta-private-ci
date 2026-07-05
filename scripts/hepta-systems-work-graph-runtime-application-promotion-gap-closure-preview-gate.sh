@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-runtime-application-promotion-gap-closure-preview-report.sh"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-runtime-application-promotion-gap-closure-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "blocked"
+  and .gate == "hepta_work_graph_runtime_application_promotion_gap_closure_preview_gate"
+  and .schema_version == "work_graph_runtime_application_promotion_gap_closure_preview_v1"
+  and .preview_mode == "read_only_runtime_application_promotion_gap_closure_no_enforcement"
+  and .upstream_runtime_rerun_gate == "hepta_work_graph_unified_projection_enforcement_readiness_append_only_store_runtime_rerun_preview_gate"
+  and .runtime_application_primary_residual_source_count == 7
+  and .runtime_application_closure_source_count == 12
+  and .operator_review_decision_source_count == 5
+  and .promotion_plan_count == 12
+  and .promotion_domain_count == 5
+  and .promotion_binding_count == 27
+  and .readback_probe_binding_count == 12
+  and .evidence_field_ref_count == 96
+  and .promotion_group_count == 5
+  and .guard_count == 11
+  and .blocker_count == 13
+  and .required_prior_gate_count == 44
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.promotion_plans | map(.source_surface_id) == [
+    "update_plan_tool",
+    "plan_mode_proposed_plan_blocks",
+    "app_server_turn_plan_notification",
+    "multi_agent_v2_thread_spawn",
+    "multi_agent_v2_mailbox_wait",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_approval_broker",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.promotion_plans | all(
+    .closure_state == "readback_pending_no_mutation"
+    and .ready_for_readback_preview == true
+    and .applies_to_runtime == false
+    and .promotes_runtime_application == false
+    and .attaches_runtime_wrapper == false
+    and .enforces_scheduler_admission == false
+    and .enforces_role_manifest == false
+    and .mutates_store == false
+    and .writes_wal == false
+    and .records_approval == false
+    and (.evidence_field_ids | length) == 8
+  ))
+  and (.promotion_plans | map(select(.source_surface_id == "update_plan_tool" and .promotion_domain_ids == ["projection_adapter_runtime_closure"])) | length) == 1
+  and (.promotion_plans | map(select(.source_surface_id == "multi_agent_v2_thread_spawn" and .promotion_domain_ids == ["terminal_task_result_runtime_wrapper","scheduler_admission_runtime_application","role_manifest_runtime_application"])) | length) == 1
+  and (.promotion_plans | map(select(.source_surface_id == "hepta_runtime_multi_agent_reducer" and .promotion_domain_ids == ["projection_adapter_runtime_closure","store_guard_runtime_application","terminal_task_result_runtime_wrapper"])) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.promotion_groups | map({id: .promotion_domain_id, count: (.affected_source_surface_ids | length), contracts: .expected_contract_count_after_closure}) == [
+    {"id": "projection_adapter_runtime_closure", "count": 7, "contracts": 7},
+    {"id": "store_guard_runtime_application", "count": 5, "contracts": 5},
+    {"id": "terminal_task_result_runtime_wrapper", "count": 6, "contracts": 6},
+    {"id": "scheduler_admission_runtime_application", "count": 5, "contracts": 5},
+    {"id": "role_manifest_runtime_application", "count": 4, "contracts": 4}
+  ])
+  and (.promotion_groups | all(.promotes_runtime_application == false))
+  and (.promotion_bindings | map(select(.promotion_domain_id == "projection_adapter_runtime_closure")) | length) == 7
+  and (.promotion_bindings | map(select(.promotion_domain_id == "store_guard_runtime_application")) | length) == 5
+  and (.promotion_bindings | map(select(.promotion_domain_id == "terminal_task_result_runtime_wrapper")) | length) == 6
+  and (.promotion_bindings | map(select(.promotion_domain_id == "scheduler_admission_runtime_application")) | length) == 5
+  and (.promotion_bindings | map(select(.promotion_domain_id == "role_manifest_runtime_application")) | length) == 4
+  and (.promotion_bindings | all(
+    .binding_state == "readback_pending_no_mutation"
+    and .applies_to_runtime == false
+    and .promotes_runtime_application == false
+    and .writes_store == false
+    and (.required_evidence_field_ids | length) == 8
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.guards | map(.id) == [
+    "runtime_application_promotion_closure_preview_only",
+    "runtime_application_promotion_disabled",
+    "readback_execution_disabled",
+    "wal_write_boundary_disabled",
+    "durable_store_runtime_switch_disabled",
+    "idempotency_mutation_disabled",
+    "rollback_readback_execution_disabled",
+    "task_result_persistence_disabled",
+    "scheduler_admission_runtime_enforcement_disabled",
+    "role_manifest_runtime_enforcement_disabled",
+    "operator_review_bypass_disabled"
+  ])
+  and (.guards | all(.enforced_in_preview == true and .prevents_runtime_mutation == true))
+  and (.blockers | map({id, count: (.affected_source_surface_ids | length)}) == [
+    {"id": "readback_execution_disabled", "count": 12},
+    {"id": "durable_store_runtime_switch_disabled", "count": 12},
+    {"id": "wal_write_boundary_not_enabled", "count": 12},
+    {"id": "idempotency_index_mutation_disabled", "count": 12},
+    {"id": "rollback_readback_not_executed", "count": 12},
+    {"id": "operator_review_required", "count": 7},
+    {"id": "projection_adapter_runtime_closure_application_disabled", "count": 7},
+    {"id": "store_guard_runtime_application_disabled", "count": 5},
+    {"id": "terminal_task_result_runtime_application_disabled", "count": 6},
+    {"id": "scheduler_admission_runtime_application_disabled", "count": 5},
+    {"id": "role_manifest_runtime_application_disabled", "count": 4},
+    {"id": "runtime_application_residuals_not_promoted", "count": 7},
+    {"id": "runtime_application_promotion_readback_missing", "count": 12}
+  ])
+  and (.blockers | all(.required_before_runtime_application_promotion == true))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.required_prior_gates | length == (unique | length))
+  and (.required_prior_gates[-1] == "hepta_work_graph_unified_projection_enforcement_readiness_append_only_store_runtime_rerun_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_runtime_application_promotion_gap_closure_readback_preview_gate"
+  and .ready_for_runtime_application_promotion_readback_preview == true
+  and .ready_for_runtime_application_promotion_application_preview == false
+  and .ready_for_runtime_application_promotion == false
+  and .ready_for_operator_review_side_effect_lock == false
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_projection_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.runtime_application_promotion_gap_closure.rust_module_present == true
+  and .source_probes.runtime_application_promotion_gap_closure.report_script_present == true
+  and .source_probes.runtime_application_promotion_gap_closure.gate_script_present == true
+  and .source_probes.upstream_runtime_rerun.upstream_gate == true
+  and .source_probes.upstream_runtime_rerun.gate_script_present == true
+  and .source_probes.upstream_runtime_rerun.recommended_next_matches == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_runtime_application_promotion_gap_closure_preview --lib
+
+echo "Hepta WorkGraph runtime application promotion gap closure preview gate passed"

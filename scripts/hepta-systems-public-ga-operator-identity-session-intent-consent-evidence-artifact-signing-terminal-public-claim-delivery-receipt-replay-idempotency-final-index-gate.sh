@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-replay-idempotency-final-index-report.sh"
+SOURCE_GATE="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-replay-idempotency-readback-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_IDENTITY_SESSION_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_REPLAY_IDEMPOTENCY_FINAL_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-replay-idempotency-final-index-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable artifact signing terminal public claim delivery receipt replay/idempotency final index report: $REPORT"
+[[ -x "$SOURCE_GATE" ]] || fail "missing executable artifact signing terminal public claim delivery receipt replay/idempotency readback gate: $SOURCE_GATE"
+[[ -f "$DOC" ]] || fail "missing artifact signing terminal public claim delivery receipt replay/idempotency final index architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the artifact signing terminal public claim delivery receipt replay/idempotency final index report"
+fi
+
+grep -q 'Public GA Operator Identity/Session Intent/Consent Evidence Artifact Signing Terminal Public Claim Delivery Receipt Replay/Idempotency Final Index' "$DOC" \
+  || fail "architecture note must document Public GA Operator Identity/Session Intent/Consent Evidence Artifact Signing Terminal Public Claim Delivery Receipt Replay/Idempotency Final Index"
+grep -q 'ready-but-blocked' "$DOC" \
+  || fail "architecture note must document ready-but-blocked status"
+grep -q 'final blocker count: 94' "$DOC" \
+  || fail "architecture note must document final blocker count"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_final_index"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_readback_ready == true
+  and .source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_readback_blocked == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_final_index_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_final_index_blocked == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_readback_attached == true
+  and .operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_denial_gate_present == true
+  and .operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_denial_doc_present == true
+  and .operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_denial_gate_invoked == false
+  and .terminal_public_claim_delivery_receipt_replay_accepted == false
+  and .terminal_public_claim_delivery_receipt_replay_recorded == false
+  and .terminal_public_claim_delivery_receipt_replay_persisted == false
+  and .terminal_public_claim_delivery_receipt_replay_performed == false
+  and .terminal_public_claim_delivery_receipt_duplicate_accepted == false
+  and .terminal_public_claim_delivery_receipt_idempotency_key_accepted == false
+  and .terminal_public_claim_delivery_receipt_idempotency_key_recorded == false
+  and .terminal_public_claim_delivery_receipt_idempotency_state_recorded == false
+  and .terminal_public_claim_delivery_receipt_idempotency_state_persisted == false
+  and .terminal_public_claim_delivery_receipt_replay_nonce_accepted == false
+  and .terminal_public_claim_delivery_receipt_status_upgrade_accepted == false
+  and .terminal_public_claim_delivery_receipt_ack_replay_accepted == false
+  and .terminal_public_claim_delivery_receipt_hash_status_rebind_accepted == false
+  and .release_publication_authority_from_delivery_receipt_replay_derived == false
+  and .activation_authority_from_delivery_receipt_replay_derived == false
+  and .install_from_delivery_receipt_replay_executed == false
+  and .active_binary_from_delivery_receipt_replay_mutated == false
+  and .final_blocker_count == 94
+  and .public_ga_claim_allowed == false
+  and .public_ga_claimed == false
+  and .public_release_published == false
+  and .rollback_execution_allowed == false
+  and .next_migration_step == "attach_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_replay_idempotency_final_index_to_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_ordering_monotonicity_without_receipt_replay"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$SOURCE_GATE" >/dev/null
+
+printf 'hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-replay-idempotency-final-index-gate: PASS: artifact signing terminal public claim delivery receipt replay/idempotency final index is ready but blocked\n'

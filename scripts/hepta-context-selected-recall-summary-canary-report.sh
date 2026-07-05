@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+registry="$repo_root/codex-rs/CONTEXT_SOURCE_REGISTRY.tsv"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+normalized_registry="$(mktemp -t hepta-context-selected-recall-canary-registry.XXXXXX)"
+
+cleanup() {
+  rm -f "$normalized_registry"
+}
+trap cleanup EXIT
+
+fail() {
+  echo "hepta-context-selected-recall-summary-canary-report: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+grep -v '^#' "$registry" >"$normalized_registry"
+
+selected_fields="$(
+  awk -F '\t' '
+    $1 == "selected_context_recall" {
+      print $9 "\t" $10 "\t" $11 "\t" $12 "\t" $14;
+      found = 1;
+    }
+    END {
+      if (!found) {
+        exit 1;
+      }
+    }
+  ' "$normalized_registry"
+)" || fail "selected_context_recall registry row is missing"
+
+IFS=$'\t' read -r selected_redaction selected_quality selected_guard selected_rollback selected_actions <<<"$selected_fields"
+
+if [ "$selected_redaction" != "guarded_envelope" ]; then
+  fail "selected_context_recall redaction policy drifted: $selected_redaction"
+fi
+if [ "$selected_quality" != "recall_quality" ]; then
+  fail "selected_context_recall quality metric drifted: $selected_quality"
+fi
+if [ "$selected_guard" != "operator_approval_required" ]; then
+  fail "selected_context_recall activation guard drifted: $selected_guard"
+fi
+if [ "$selected_rollback" != "rerun_recall" ]; then
+  fail "selected_context_recall rollback policy drifted: $selected_rollback"
+fi
+if [ "$selected_actions" != "summary" ]; then
+  fail "selected_context_recall compression action drifted: $selected_actions"
+fi
+
+for term in \
+  "Context memory recall quality gate" \
+  "Selected-snippet live prompt compression gate" \
+  "Response-debug selected-snippet source markers" \
+  "context lane prompt-input gate"; do
+  assert_file_contains "$contracts" "$term" "selected-recall summary canary contract input"
+done
+
+for term in \
+  "context memory recall quality gate" \
+  "selected-snippet live prompt compression gate" \
+  "context response-debug export gate" \
+  "context prompt-input gate"; do
+  assert_file_contains "$preflight_script" "$term" "selected-recall summary canary preflight input"
+done
+
+cat <<EOF
+selected-recall-summary-canary=pass
+selected-recall-summary-canary.schema=1
+selected-recall-summary-canary.mode=shadow-readiness
+selected-recall-summary-canary.redaction=$selected_redaction
+selected-recall-summary-canary.quality=$selected_quality
+selected-recall-summary-canary.activation-guard=$selected_guard
+selected-recall-summary-canary.rollback=$selected_rollback
+selected-recall-summary-canary.compression=$selected_actions
+selected-recall-summary-canary.metrics.shadow-vs-live=required
+selected-recall-summary-canary.metrics.token-saved=required
+selected-recall-summary-canary.metrics.latency-delta=required
+selected-recall-summary-canary.metrics.quality-delta=required
+selected-recall-summary-canary.rollback-readback=required
+selected-recall-summary-canary.prompt-input-proof=required
+selected-recall-summary-canary.response-debug-proof=payload-light
+selected-recall-summary-canary.readback.prompt-input=manifest-no-leak
+selected-recall-summary-canary.readback.response-debug=payload-light-summary
+selected-recall-summary-canary.readback.rollback=fixture-covered
+selected-recall-summary-canary.readback.rollback-hash=omitted
+selected-recall-summary-canary.controller-readback.prompt-input.manifest-consumed=covered
+selected-recall-summary-canary.controller-readback.prompt-input.shadow-metadata=omitted
+selected-recall-summary-canary.controller-readback.prompt-input.live-selected-snippet=guarded
+selected-recall-summary-canary.controller-readback.response-debug.manifest-summary=covered
+selected-recall-summary-canary.controller-readback.response-debug.payload-light-summary=covered
+selected-recall-summary-canary.controller-readback.rollback.fixture=covered
+selected-recall-summary-canary.controller-readback.rollback.hash=omitted
+selected-recall-summary-canary.operator-approval=required
+selected-recall-summary-canary.production-route=disabled
+selected-recall-summary-canary.runtime-activation=disabled
+EOF

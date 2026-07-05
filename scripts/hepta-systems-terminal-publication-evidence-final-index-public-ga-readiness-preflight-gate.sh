@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-terminal-publication-evidence-final-index-public-ga-readiness-preflight-report.sh"
+PUBLICATION_FINAL_INDEX_GATE="$ROOT/scripts/hepta-systems-terminal-publication-evidence-non-persistence-summary-attachment-final-index-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TERMINAL_PUBLICATION_EVIDENCE_FINAL_INDEX_PUBLIC_GA_READINESS_PREFLIGHT_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-terminal-publication-evidence-final-index-public-ga-readiness-preflight-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable public GA readiness preflight report: $REPORT"
+[[ -x "$PUBLICATION_FINAL_INDEX_GATE" ]] || fail "missing executable publication evidence attachment final index gate: $PUBLICATION_FINAL_INDEX_GATE"
+[[ -f "$DOC" ]] || fail "missing public GA readiness preflight architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the public GA readiness preflight report"
+fi
+
+grep -q 'Terminal Publication Evidence Final Index Public GA Readiness Preflight' "$DOC" \
+  || fail "architecture note must document Terminal Publication Evidence Final Index Public GA Readiness Preflight"
+grep -q 'ready-but-blocked' "$DOC" \
+  || fail "architecture note must document ready-but-blocked status"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that preflight does not invoke Public GA readiness"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "terminal_publication_evidence_final_index_public_ga_readiness_preflight"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .source_terminal_publication_evidence_non_persistence_summary_attachment_final_index_surface == "terminal_publication_evidence_non_persistence_summary_attachment_final_index"
+  and .source_terminal_publication_evidence_non_persistence_summary_attachment_final_index_ready == true
+  and .source_terminal_publication_evidence_non_persistence_summary_attachment_final_index_blocked == true
+  and .public_ga_readiness_preflight_ready == true
+  and .public_ga_readiness_preflight_blocked == true
+  and .public_ga_readiness_source_probe_ready == true
+  and .public_ga_readiness_script_present == true
+  and .public_ga_readiness_existing_doc_present == false
+  and .public_ga_readiness_live_endpoint_read_required_by_target == true
+  and .public_ga_readiness_curl_count >= 1
+  and .public_ga_readiness_api_endpoint_count >= 1
+  and .public_ga_readiness_script_invoked == false
+  and .public_ga_readiness_live_endpoint_read_performed == false
+  and .public_ga_readiness_endpoint_curl_performed == false
+  and .public_ga_readiness_report_materialized == false
+  and .public_ga_readiness_attachment_allowed == false
+  and .non_live_readback_adapter_required == true
+  and .dedicated_public_ga_readiness_architecture_note_required == true
+  and .terminal_publication_evidence_non_persistence_summary_gate_invoked == false
+  and .hepta_watchdog_invoked == false
+  and .terminal_public_distribution_non_publication_lock_gate_invoked == false
+  and .terminal_denial_index_gate_invoked == false
+  and .terminal_summary_gates_invoked == false
+  and .terminal_live_gates_invoked == false
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .preflight_blocker_count == 17
+  and (.preflight_blockers | index("public_ga_readiness_live_endpoint_read_required_by_target")) != null
+  and (.preflight_blockers | index("public_ga_readiness_non_live_readback_adapter_required")) != null
+  and (.preflight_blockers | index("public_ga_readiness_dedicated_architecture_note_missing")) != null
+  and .manual_operator_live_cutover_approval_required == true
+  and .terminal_live_url_required == false
+  and .long_soak_required == false
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .public_distribution_publication_allowed == false
+  and .public_distribution_artifact_write_allowed == false
+  and .public_release_claim_allowed == false
+  and .public_ga_claim_allowed == false
+  and .public_release_published == false
+  and .public_ga_claimed == false
+  and .publication_evidence_summary_recorded == false
+  and .publication_evidence_summary_persisted == false
+  and .publication_evidence_receipt_persisted == false
+  and .publication_evidence_ledger_persisted == false
+  and .operator_approval_recorded == false
+  and .operator_identity_accepted == false
+  and .rollback_execution_allowed == false
+  and .next_migration_step == "create_public_ga_readiness_non_live_source_probe_adapter_before_attachment"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$PUBLICATION_FINAL_INDEX_GATE" >/dev/null
+
+printf 'hepta-systems-terminal-publication-evidence-final-index-public-ga-readiness-preflight-gate: PASS: Public GA readiness preflight is ready but blocked before non-live adapter\n'

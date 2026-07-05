@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-tool-execution-canonical-summary-attachment-phase-index-report.sh"
+ATTACHMENT_GATE="$ROOT/scripts/hepta-systems-tool-execution-canonical-summary-attachment-index-gate.sh"
+WRAPPER_GATE="$ROOT/scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+DECISION_GATE="$ROOT/scripts/hepta-systems-historical-canonical-name-reintroduction-decision-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_CANONICAL_SUMMARY_ATTACHMENT_PHASE_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-execution-canonical-summary-attachment-phase-index-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable canonical summary attachment phase index report: $REPORT"
+[[ -x "$ATTACHMENT_GATE" ]] || fail "missing executable canonical summary attachment index gate: $ATTACHMENT_GATE"
+[[ -x "$WRAPPER_GATE" ]] || fail "missing executable current canonical wrapper gate: $WRAPPER_GATE"
+[[ -x "$DECISION_GATE" ]] || fail "missing executable historical canonical name decision gate: $DECISION_GATE"
+[[ -f "$DOC" ]] || fail "missing canonical summary attachment phase index architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the canonical summary attachment phase index report"
+fi
+
+grep -q 'phase-aware' "$DOC" \
+  || fail "architecture note must document phase-aware behavior"
+grep -q 'historical missing-path evidence' "$DOC" \
+  || fail "architecture note must document historical missing-path evidence"
+grep -q 'current wrapper phase' "$DOC" \
+  || fail "architecture note must document current wrapper phase"
+grep -q 'snapshot evidence' "$DOC" \
+  || fail "architecture note must document snapshot evidence"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "tool_execution_canonical_summary_attachment_phase_index"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_attachment_surface == "tool_execution_canonical_summary_attachment_index"
+  and .source_attachment_ready == true
+  and .source_attachment_snapshot_ready == true
+  and .source_attachment_probe_basis == "historical_snapshot_evidence"
+  and .source_attachment_current_filesystem_probe_used == false
+  and .source_attachment_historical_snapshot_missing_canonical_summary == true
+  and .source_attachment_snapshot_evidence_consumable_after_wrapper_creation == true
+  and .source_current_wrapper_surface == "current_canonical_wrapper"
+  and .source_current_wrapper_ready == true
+  and .source_historical_name_decision_surface == "historical_canonical_name_reintroduction_decision"
+  and .source_historical_name_decision_ready == true
+  and .phase_aware_attachment_index_ready == true
+  and .phase_count == 2
+  and (.phase_index | length) == 2
+  and any(.phase_index[]; .id == "historical_missing_canonical_summary_phase" and .phase_kind == "historical_evidence" and .current_checkout_missing_canonical_summary == true and .historical_snapshot_missing_canonical_summary == true and .canonical_summary_probe_basis == "historical_snapshot_evidence" and .canonical_summary_current_filesystem_probe_used == false and .canonical_summary_present_count == 0 and .historical_missing_path_evidence_preserved == true and .active_summary_source == false)
+  and any(.phase_index[]; .id == "current_canonical_wrapper_phase" and .phase_kind == "current_summary" and .source_ready == true and .execution_enabled_count == 0 and .public_ga_enabled_count == 0 and .historical_canonical_gate_name_claimed == true and .historical_canonical_gate_created == true and .historical_canonical_gate_executable == true and .historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper" and .historical_canonical_gate_wrapper_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh" and .historical_canonical_gate_wrapper_exec_count == 1 and .historical_canonical_gate_mutated == true and .historical_canonical_gate_mutated_by_report == false and .canonical_gate_wrapper_invoked == false and .active_summary_source == true)
+  and .historical_missing_path_evidence_preserved == true
+  and .current_wrapper_phase_available == true
+  and .current_wrapper_active_summary_source == true
+  and .historical_canonical_gate_name_claimed == true
+  and .historical_canonical_gate_created == true
+  and .historical_canonical_gate_executable == true
+  and .historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+  and .historical_canonical_gate_wrapper_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+  and .historical_canonical_gate_wrapper_exec_count == 1
+  and .historical_canonical_gate_mutated == true
+  and .historical_canonical_gate_mutated_by_report == false
+  and .canonical_gate_wrapper_invoked == false
+  and .historical_canonical_gate_name_reintroduction_allowed == true
+  and .phase_split_present == true
+  and .phase_split_required_before_name_claim == false
+  and .phase_split_completed_before_name_claim == true
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "validate_historical_canonical_gate_thin_wrapper_without_live_invocation"
+  and (.phase_blockers | index("historical_canonical_gate_thin_wrapper_validation_pending")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+printf 'hepta-systems-tool-execution-canonical-summary-attachment-phase-index-gate: PASS: attachment index is phase-aware with historical thin wrapper claim and without live invocation\n'

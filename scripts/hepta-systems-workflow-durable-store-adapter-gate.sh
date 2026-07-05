@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-workflow-durable-store-adapter-report.sh"
+APPEND_INTAKE_GATE="$ROOT/scripts/hepta-systems-work-graph-append-only-event-intake-preview-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_WORKFLOW_DURABLE_STORE_ADAPTER_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-workflow-durable-store-adapter-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable workflow durable store adapter report: $REPORT"
+[[ -x "$APPEND_INTAKE_GATE" ]] || fail "missing executable append-only intake gate: $APPEND_INTAKE_GATE"
+[[ -f "$DOC" ]] || fail "missing workflow durable store adapter architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the workflow durable store adapter report"
+fi
+
+grep -q 'Temporal-Lite Durable Store Adapter' "$DOC" \
+  || fail "architecture note must document Temporal-Lite Durable Store Adapter"
+grep -q 'feature gate' "$DOC" \
+  || fail "architecture note must document feature gate"
+grep -q 'no event-log writes' "$DOC" \
+  || fail "architecture note must document no event-log writes"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "workflow_durable_store_adapter"
+  and .status == "ready"
+  and .gate == "hepta_workflow_durable_store_adapter_gate"
+  and .schema_version == "workflow_durable_store_adapter_v1"
+  and .source_append_only_event_intake_ready == true
+  and .source_append_only_event_contract_count == 9
+  and .source_append_plan_surface == "workflow_durable_store_append_plan"
+  and .source_append_plan_ready == true
+  and .source_adapter_harness_surface == "workflow_durable_store_adapter_harness"
+  and .source_adapter_harness_ready == true
+  and .lib_export_present == true
+  and .event_contract_count == 9
+  and .append_plan_count == 9
+  and .lease_metadata_count == 9
+  and .idempotency_metadata_count == 9
+  and .checkpoint_metadata_count == 9
+  and .replay_validation_count == 9
+  and .rollback_metadata_count == 9
+  and .noop_receipt_count == 9
+  and .adapter_entry_count == 9
+  and .feature_gate_required == true
+  and .feature_gate_enabled == false
+  and .adapter_contract_ready == true
+  and .temporal_lite_adapter_ready == true
+  and .ready_for_event_log_write == false
+  and .ready_for_sqlite_write == false
+  and .ready_for_workflow_execution == false
+  and .ready_for_replay_execution == false
+  and .ready_for_rollback_execution == false
+  and .ready_for_live_execution == false
+  and (.entries | length) == 9
+  and (.entries | all(.adapter_route == "temporal_lite_plan_ready_behind_feature_gate"))
+  and (.entries | all(.feature_gate_required == true and .feature_gate_enabled == false and .append_suppressed_by_feature_gate == true and .noop_receipt_projected == true))
+  and (.entries | all(.event_log_write_enabled == false and .sqlite_write_enabled == false and .checkpoint_write_enabled == false and .workflow_execution_enabled == false and .replay_execution_enabled == false and .rollback_execution_enabled == false and .live_execution_enabled == false))
+  and any(.entries[]; .event_contract_id == "plan_step_event_intake" and .lease_scope == "workflow_run_plan_projection_lease")
+  and any(.entries[]; .event_contract_id == "worker_task_event_intake" and .rollback_anchor == "rollback_to_prior_worker_task_attempt_anchor")
+  and any(.entries[]; .event_contract_id == "approval_event_intake" and .checkpoint_policy == "checkpoint_metadata_only_no_checkpoint_write")
+  and (.blockers | index("workflow_durable_store_feature_gate_disabled")) != null
+  and (.blockers | index("workflow_event_log_write_disabled")) != null
+  and (.next_actions | index("phase4_thread_thin_hepta_system_status_e2e_read_only_chain")) != null
+  and .next_migration_step == "phase4_thread_thin_hepta_system_status_e2e_read_only_chain"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$APPEND_INTAKE_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime workflow_durable_store --lib
+)
+
+printf 'hepta-systems-workflow-durable-store-adapter-gate: PASS: Temporal-lite durable store adapter plan is ready behind feature gate with event-log writes and live execution disabled\n'

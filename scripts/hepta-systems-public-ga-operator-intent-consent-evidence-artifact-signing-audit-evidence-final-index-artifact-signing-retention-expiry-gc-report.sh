@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-audit-evidence-final-index-report.sh"
+RETENTION_GATE="$ROOT/scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-retention-gc-denial-gate.sh"
+RETENTION_DOC="$ROOT/docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RETENTION_GC_DENIAL_GATE.md"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable Public GA operator identity/session intent consent evidence artifact signing audit/evidence final index report: $SOURCE_REPORT" >&2
+  exit 1
+}
+[[ -f "$RETENTION_GATE" ]] || {
+  echo "missing operator identity/session intent consent evidence artifact signing retention/expiry/GC denial gate: $RETENTION_GATE" >&2
+  exit 1
+}
+[[ -f "$RETENTION_DOC" ]] || {
+  echo "missing operator identity/session intent consent evidence artifact signing retention/expiry/GC denial doc: $RETENTION_DOC" >&2
+  exit 1
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required to build the Public GA operator identity/session intent consent evidence artifact signing retention/expiry/GC report" >&2
+  exit 1
+fi
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index"
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index_blocked == true
+  and .artifact_distribution_signing_notarization_receipt_audit_evidence_recorded == false
+  and .artifact_distribution_signing_notarization_receipt_hash_chain_recorded == false
+  and .operator_approval_from_signing_receipt_audit_evidence_derived == false
+  and .public_ga_claimed == false
+' <<<"$source_json" >/dev/null
+
+retention_static_mention_count="$(
+  grep -Eci 'retention|expiry|garbage|gc|archive|compaction|ttl|lease|scheduler|timer|ack|queue|scan|candidate|decision|tombstone|delete.marker|evidence|hash|attestation|ledger|delivery|status|telegram|external|authority|install|restart|active-binary|credential|secret|provider|model|live' "$RETENTION_GATE" || true
+)"
+
+jq -n \
+  --argjson source "$source_json" \
+  --argjson retention_static_mention_count "$retention_static_mention_count" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_attachment",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index_surface: $source.surface,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index_ready: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index_ready,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index_blocked: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index_blocked,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_final_index_attached: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_attachment_ready: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_attachment_blocked: true,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_denial_gate_present: true,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_denial_doc_present: true,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_static_mention_count: $retention_static_mention_count,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_denial_gate_invoked: false,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_denial_gate_invoked: false,
+    long_soak_started: false,
+    public_status_claimed: false,
+    public_release_claimed: false,
+    public_ga_claimed: false,
+    artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_allowed: false,
+    artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_accepted: false,
+    artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_recorded: false,
+    artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_persisted: false,
+    artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_materialized: false,
+    artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_filesystem_written: false,
+    retention_policy_recorded: false,
+    retention_policy_persisted: false,
+    ttl_lease_recorded: false,
+    ttl_lease_persisted: false,
+    expiry_timestamp_recorded: false,
+    expiry_scheduler_recorded: false,
+    expiry_timer_started: false,
+    expiry_ack_recorded: false,
+    expiry_state_persisted: false,
+    garbage_collection_queue_recorded: false,
+    garbage_collection_scan_performed: false,
+    garbage_collection_candidate_recorded: false,
+    garbage_collection_decision_recorded: false,
+    garbage_collection_executed: false,
+    tombstone_gc_recorded: false,
+    delete_marker_gc_recorded: false,
+    archive_recorded: false,
+    archive_persisted: false,
+    compaction_recorded: false,
+    compaction_performed: false,
+    audit_evidence_retention_recorded: false,
+    immutable_evidence_retention_recorded: false,
+    hash_attestation_retention_recorded: false,
+    witness_notary_expiry_recorded: false,
+    ledger_index_retention_recorded: false,
+    delivery_evidence_retention_recorded: false,
+    status_evidence_expiry_recorded: false,
+    external_telegram_retention_recorded: false,
+    operator_approval_from_signing_receipt_retention_derived: false,
+    release_publication_authority_from_signing_receipt_retention_derived: false,
+    activation_authority_from_signing_receipt_retention_derived: false,
+    artifact_signing_retention_authority_derived: false,
+    download_link_from_signing_receipt_retention_rendered: false,
+    install_command_from_signing_receipt_retention_rendered: false,
+    install_from_signing_receipt_retention_executed: false,
+    service_restart_from_signing_receipt_retention_performed: false,
+    active_binary_from_signing_receipt_retention_mutated: false,
+    memory_store_write_performed: false,
+    live_kg_write_performed: false,
+    provider_invoked: false,
+    model_invoked: false,
+    credential_read: false,
+    secret_file_read: false,
+    telegram_send_performed: false,
+    external_send_performed: false,
+    public_ga_readiness_script_invoked: false,
+    public_claim_non_promotion_denial_gate_invoked: false,
+    terminal_live_gates_invoked: false,
+    attachment_blocker_count: 78,
+    manual_operator_live_cutover_approval_required: true,
+    public_ga_claim_allowed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    next_migration_step: "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_readback_without_audit_evidence",
+    local_gate: "scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-audit-evidence-final-index-artifact-signing-retention-expiry-gc-gate.sh",
+    architecture_note: "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_AUDIT_EVIDENCE_FINAL_INDEX_ARTIFACT_SIGNING_RETENTION_EXPIRY_GC_2026-06-21.md",
+    source_files: {
+      public_ga_operator_identity_session_intent_consent_evidence_artifact_signing_audit_evidence_final_index_report: "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-audit-evidence-final-index-report.sh",
+      operator_identity_session_intent_consent_evidence_artifact_signing_retention_expiry_gc_denial_gate: "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-retention-gc-denial-gate.sh",
+      operator_identity_session_intent_consent_evidence_artifact_signing_retention_expiry_gc_denial_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RETENTION_GC_DENIAL_GATE.md"
+    },
+    side_effect_free: true,
+    side_effects: {
+      report_written: false,
+      git_index_mutated: false,
+      operator_identity_session_operator_intent_consent_evidence_artifact_signing_retention_expiry_gc_denial_gate_invoked: false,
+      operator_identity_session_operator_intent_consent_evidence_artifact_signing_audit_evidence_denial_gate_invoked: false,
+      artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_recorded: false,
+      artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_persisted: false,
+      artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_materialized: false,
+      artifact_distribution_signing_notarization_receipt_retention_expiry_garbage_collection_filesystem_written: false,
+      retention_policy_recorded: false,
+      ttl_lease_recorded: false,
+      expiry_timestamp_recorded: false,
+      expiry_scheduler_recorded: false,
+      expiry_timer_started: false,
+      expiry_ack_recorded: false,
+      garbage_collection_queue_recorded: false,
+      garbage_collection_scan_performed: false,
+      garbage_collection_decision_recorded: false,
+      garbage_collection_executed: false,
+      archive_recorded: false,
+      compaction_recorded: false,
+      compaction_performed: false,
+      operator_approval_from_signing_receipt_retention_derived: false,
+      release_publication_authority_from_signing_receipt_retention_derived: false,
+      activation_authority_from_signing_receipt_retention_derived: false,
+      install_from_signing_receipt_retention_executed: false,
+      service_restart_from_signing_receipt_retention_performed: false,
+      active_binary_from_signing_receipt_retention_mutated: false,
+      memory_store_write_performed: false,
+      live_kg_write_performed: false,
+      provider_invoked: false,
+      model_invoked: false,
+      credential_read: false,
+      secret_file_read: false,
+      telegram_send_performed: false,
+      external_send_performed: false,
+      long_soak_started: false,
+      terminal_live_gate_invoked: false,
+      terminal_live_url_contacted: false,
+      public_ga_readiness_script_invoked: false,
+      public_claim_non_promotion_denial_gate_invoked: false,
+      public_ga_claim_recorded: false,
+      public_ga_promoted: false,
+      public_release_published: false,
+      rollback_executed: false,
+      external_network_read: false,
+      release_artifact_written: false,
+      public_artifact_written: false,
+      filesystem_written: false
+    }
+  }'

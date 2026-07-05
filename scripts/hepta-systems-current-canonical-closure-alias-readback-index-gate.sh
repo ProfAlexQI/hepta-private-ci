@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-current-canonical-closure-alias-readback-index-report.sh"
+CLOSURE_GATE="$ROOT/scripts/hepta-systems-current-canonical-closure-gate.sh"
+ALIAS_READBACK_GATE="$ROOT/scripts/hepta-systems-historical-canonical-gate-alias-readback-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_CLOSURE_ALIAS_READBACK_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-canonical-closure-alias-readback-index-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable current canonical closure alias readback index report: $REPORT"
+[[ -x "$CLOSURE_GATE" ]] || fail "missing executable current canonical closure gate: $CLOSURE_GATE"
+[[ -x "$ALIAS_READBACK_GATE" ]] || fail "missing executable historical canonical gate alias readback gate: $ALIAS_READBACK_GATE"
+[[ -f "$DOC" ]] || fail "missing current canonical closure alias readback index architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the current canonical closure alias readback index report"
+fi
+
+grep -q 'Closure Alias Readback Index' "$DOC" \
+  || fail "architecture note must document Closure Alias Readback Index"
+grep -q 'non-circular successor' "$DOC" \
+  || fail "architecture note must document the non-circular successor"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that the index does not invoke the alias"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "current_canonical_closure_alias_readback_index"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_current_canonical_closure_surface == "current_canonical_closure"
+  and .source_current_canonical_closure_ready == true
+  and .source_alias_readback_surface == "historical_canonical_gate_alias_readback"
+  and .source_alias_readback_ready == true
+  and .source_alias_readback_mode == "static_shell_readback_only"
+  and .current_canonical_closure_alias_readback_index_ready == true
+  and .index_input_count == 2
+  and (.index_inputs | all(.required == true and .source_ready == true and .invoked_by_report == false))
+  and .historical_canonical_gate_name_claimed == true
+  and .historical_canonical_gate_alias_readback_attached == true
+  and .historical_canonical_gate_alias_readback_pending == false
+  and .historical_canonical_gate_alias_path == "scripts/hepta-systems-canonical-gate.sh"
+  and .historical_canonical_gate_alias_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+  and .historical_canonical_gate_alias_target_count == 1
+  and .historical_canonical_gate_alias_exec_count == 1
+  and .historical_canonical_gate_alias_bash_syntax_valid == true
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "derive_post_canonical_closure_compact_capability_summary_without_live_invocation"
+  and .index_blocker_count == 8
+  and (.index_blockers | index("canonical_gate_not_invoked_by_alias_readback_index")) != null
+  and (.index_blockers | index("wrapper_target_not_invoked_by_alias_readback_index")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$CLOSURE_GATE" >/dev/null
+"$ALIAS_READBACK_GATE" >/dev/null
+
+printf 'hepta-systems-current-canonical-closure-alias-readback-index-gate: PASS: alias readback is attached as a non-circular current canonical closure successor\n'

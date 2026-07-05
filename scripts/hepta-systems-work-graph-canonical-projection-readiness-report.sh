@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+receipt15_report="$(
+  capture_json_report \
+    "hepta-wg-upe-tnc-r15-rerun-preview-report" \
+    "$ROOT/scripts/hepta-systems-wg-upe-tnc-r15-rerun-preview-report.sh"
+)"
+
+rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_canonical_projection_readiness.rs
+)"
+report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-canonical-projection-readiness-report.sh
+)"
+gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-canonical-projection-readiness-gate.sh
+)"
+
+jq -n \
+  --argjson receipt15 "$receipt15_report" \
+  --argjson rust_module_present "$rust_module_present" \
+  --argjson report_script_present "$report_script_present" \
+  --argjson gate_script_present "$gate_script_present" \
+  '
+  def contract($id; $gate; $surface; $note): {
+    id: $id,
+    source_gate: $gate,
+    canonical_surface: $surface,
+    ready: true,
+    enforcement_enabled: false,
+    persistence_enabled: false,
+    note: $note
+  };
+  [
+    contract("receipt15_terminal_no_cutover_proof"; $receipt15.gate; "event_store_cutover_terminal_no_cutover"; "receipt15 proves ready 7 / blocked 0 / residual blockers 0 without enabling event-store cutover"),
+    contract("adapter_projection_fixture"; "hepta_work_graph_adapter_projection_fixture_gate"; "canonical_projection_fixture"; "existing planning, agent, worker, task-board, scheduler, approval, and handoff surfaces are projectable"),
+    contract("task_result_contract"; "hepta_work_graph_task_result_contract_preview_gate"; "terminal_task_result_contract"; "canonical TaskResult fields exist and now need report-only envelope validation at producers"),
+    contract("scheduler_admission_controller"; "hepta_work_graph_scheduler_admission_controller_preview_gate"; "scheduler_admission_checks"; "dependency, lease, approval, idempotency, budget, TaskResult, and side-effect checks exist in preview"),
+    contract("role_manifest_contract"; "hepta_work_graph_role_manifest_contract_preview_gate"; "agent_role_agent_card_manifest"; "role capability, tool permission, budget, verifier, lane, and trace policy are modeled but not enforced"),
+    contract("append_only_event_intake"; "hepta_work_graph_append_only_event_intake_preview_gate"; "append_only_work_graph_event_shadow_path"; "redacted append-only event routes exist as preview contracts with persistence disabled"),
+    contract("observability_timeline"; "hepta_work_graph_observability_timeline_preview_gate"; "trace_guardrail_timeline"; "traceable plan, spawn, mailbox, tool, result, artifact, approval, and guardrail events are previewable")
+  ] as $contracts
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_canonical_projection_readiness_gate",
+      schema_version: "work_graph_canonical_projection_readiness_v1",
+      preview_mode: "read_only_receipt15_canonical_projection_rollup_no_tail_extension",
+      receipt_tail_frozen_at: $receipt15.gate,
+      receipt15_source_surface_count: $receipt15.source_surface_count,
+      receipt15_ready_surface_count: $receipt15.rerun_ready_surface_count,
+      receipt15_blocked_surface_count: $receipt15.rerun_blocked_surface_count,
+      receipt15_required_prior_gate_count: $receipt15.required_prior_gate_count,
+      contract_count: ($contracts | length),
+      contract_ready_count: ($contracts | map(select(.ready == true)) | length),
+      blocker_count: 0,
+      contracts: $contracts,
+      blockers: [],
+      recommended_next_gate: "hepta_work_graph_task_result_envelope_report_only_validator_gate",
+      ready_for_task_result_envelope_report_only_validator: true,
+      ready_for_scheduler_admission_dry_run_enforcement: true,
+      ready_for_append_only_event_store_shadow_path: true,
+      ready_for_live_execution: false,
+      source_probes: {
+        canonical_projection_readiness: {
+          rust_module_present: $rust_module_present,
+          report_script_present: $report_script_present,
+          gate_script_present: $gate_script_present
+        },
+        receipt15_rerun: {
+          gate: $receipt15.gate,
+          ready_surface_count: $receipt15.rerun_ready_surface_count,
+          blocked_surface_count: $receipt15.rerun_blocked_surface_count,
+          required_prior_gate_count: $receipt15.required_prior_gate_count
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_event_persisted: false,
+        event_store_enabled: false,
+        scheduler_admission_enforced: false,
+        task_result_enforcement_enabled: false,
+        receipt_tail_extended: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

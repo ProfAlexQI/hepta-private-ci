@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-plugin-tool-manifest-schema-cutover-preflight-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/tools/src/plugin_tool_invocation_router_preflight_binding.rs"
+GATE="$ROOT/scripts/hepta-systems-plugin-tool-invocation-router-preflight-binding-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_INVOCATION_ROUTER_PREFLIGHT_BINDING_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-plugin-tool-invocation-router-preflight-binding-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable manifest schema preflight report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Rust invocation router preflight binding source: $RUST_SOURCE"
+[[ -f "$DOC" ]] || fail "missing invocation router preflight binding architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the plugin tool invocation router preflight binding report"
+fi
+
+jq -n \
+  --slurpfile source <("$SOURCE_REPORT") \
+  --arg gate "scripts/hepta-systems-plugin-tool-invocation-router-preflight-binding-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_INVOCATION_ROUTER_PREFLIGHT_BINDING_2026-06-21.md" \
+  '
+  def router_route($entry):
+    if $entry.decision_route == "forward_require_approval_ledger_dry_run"
+    then "forward_require_approval_ledger_dry_run"
+    elif $entry.decision_route == "block_source_registry"
+    then "block_source_registry"
+    else "block_manifest_preconditions"
+    end;
+  def router_entry($source; $entry):
+    (router_route($entry)) as $route |
+    {
+      plugin_id:$entry.plugin_id,
+      candidate_tool_id:$entry.candidate_tool_id,
+      contribution_kind:$entry.contribution_kind,
+      source_registry_dry_run_ready:$entry.source_registry_dry_run_ready,
+      source_manifest_schema_preflight_ready:$source.manifest_schema_cutover_preflight_ready,
+      router_binding_present:true,
+      registry_guard_route:$entry.registry_guard_route,
+      registration_preconditions_satisfied:$entry.registration_preconditions_satisfied,
+      registration_cutover_allowed:$source.registration_cutover_allowed,
+      router_decision_route:$route,
+      router_blocked:($route != "forward_require_approval_ledger_dry_run"),
+      router_blocked_reason:(if $route == "forward_require_approval_ledger_dry_run" then null
+        elif $route == "block_source_registry" then "source_registry_dry_run_not_ready"
+        else "manifest_schema_or_policy_preconditions_missing" end),
+      router_registration_lookup_enabled:false,
+      tool_registration_enabled:false,
+      tool_invocation_enabled:false,
+      ledger_write_enabled:false,
+      approval_request_enabled:false,
+      side_effect_free:true
+    };
+
+  ($source[0]) as $source |
+  ($source.entries | map(router_entry($source; .))) as $entries |
+  ($entries | map(select(.router_decision_route == "block_source_registry")) | length) as $blocked_source_count |
+  ($entries | map(select(.router_decision_route == "block_manifest_preconditions")) | length) as $blocked_manifest_count |
+  ($entries | map(select(.router_decision_route == "forward_require_approval_ledger_dry_run")) | length) as $forward_count |
+  {
+    runtime:"hepta",
+    surface:"plugin_tool_invocation_router_preflight_binding",
+    plugin_id:$source.plugin_id,
+    status:(if ($source.manifest_schema_cutover_preflight_ready and ($entries | all(.router_binding_present == true))) then "ready" else "blocked" end),
+    source_registry_dry_run_surface:$source.source_registry_dry_run_surface,
+    source_registry_dry_run_ready:$source.source_registry_dry_run_ready,
+    source_manifest_schema_preflight_surface:$source.surface,
+    source_manifest_schema_preflight_ready:$source.manifest_schema_cutover_preflight_ready,
+    source_manifest_parser_fields_surface:$source.source_manifest_parser_fields_surface,
+    source_manifest_parser_fields_ready:$source.source_manifest_parser_fields_ready,
+    candidate_count:($entries | length),
+    router_bound_candidate_count:($entries | length),
+    router_unbound_candidate_count:0,
+    router_blocked_candidate_count:($blocked_source_count + $blocked_manifest_count),
+    router_blocked_by_source_registry_count:$blocked_source_count,
+    router_blocked_by_manifest_precondition_count:$blocked_manifest_count,
+    router_forward_require_approval_ledger_count:$forward_count,
+    registration_precondition_satisfied_count:$source.registration_precondition_satisfied_count,
+    registration_cutover_allowed:$source.registration_cutover_allowed,
+    all_candidates_bound_to_router:($entries | all(.router_binding_present == true)),
+    all_missing_manifest_preconditions_blocked:($entries | all(if .registration_preconditions_satisfied then true else (.router_decision_route == "block_manifest_preconditions" and .router_blocked == true) end)),
+    all_forwarded_candidates_keep_approval_ledger:($entries | all(if .router_decision_route == "forward_require_approval_ledger_dry_run" then (.registry_guard_route == "require_approval_ledger" and .router_registration_lookup_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false) else true end)),
+    invocation_router_preflight_binding_ready:($source.manifest_schema_cutover_preflight_ready and ($entries | all(.router_binding_present == true))),
+    router_registration_lookup_enabled:false,
+    registration_execution_enabled:false,
+    tool_invocation_enabled:false,
+    ledger_written:false,
+    approval_requested:false,
+    live_mutation_ready:false,
+    next_migration_step:"restore_tool_registry_invocation_source_of_truth_without_execution",
+    entries:$entries,
+    blockers:[
+      "registration_execution_disabled",
+      "router_registration_lookup_disabled",
+      "tool_registration_disabled",
+      "tool_invocation_disabled",
+      "ledger_write_disabled",
+      "approval_request_disabled"
+    ],
+    next_actions:[
+      "restore_tool_registry_invocation_source_of_truth_without_execution",
+      "keep_router_binding_read_only_until_registration_execution_switch_exists",
+      "keep_registration_invocation_ledger_and_approval_disabled_until_explicit_cutover"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      rust_contract:"codex-rs/tools/src/plugin_tool_invocation_router_preflight_binding.rs",
+      source_manifest_schema_preflight_report:"scripts/hepta-systems-plugin-tool-manifest-schema-cutover-preflight-report.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      plugin_cache_mutated:false,
+      plugin_installed:false,
+      manifest_rewritten:false,
+      manifest_schema_written:false,
+      registry_source_of_truth_enabled:false,
+      router_registration_lookup_enabled:false,
+      registration_cutover_executed:false,
+      tool_registered:false,
+      tool_invoked:false,
+      tool_ledger_written:false,
+      approval_requested:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      local_storage_created:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

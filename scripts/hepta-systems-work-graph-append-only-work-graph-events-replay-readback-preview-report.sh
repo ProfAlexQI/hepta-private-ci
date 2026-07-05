@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+upstream_report="$(
+  capture_json_report \
+    "hepta-work-graph-unified-projection-enforcement-readiness-work-graph-events-shadow-write-rerun-preview-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-shadow-write-rerun-preview-report.sh"
+)"
+
+preview_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_work_graph_events_replay_readback_preview.rs
+)"
+preview_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-work-graph-events-replay-readback-preview-report.sh
+)"
+preview_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-work-graph-events-replay-readback-preview-gate.sh
+)"
+upstream_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_projection_enforcement_readiness_work_graph_events_shadow_write_rerun_preview.rs
+)"
+upstream_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-shadow-write-rerun-preview-gate.sh
+)"
+
+jq -n \
+  --argjson upstream "$upstream_report" \
+  --argjson preview_rust_module_present "$preview_rust_module_present" \
+  --argjson preview_report_script_present "$preview_report_script_present" \
+  --argjson preview_gate_script_present "$preview_gate_script_present" \
+  --argjson upstream_rust_module_present "$upstream_rust_module_present" \
+  --argjson upstream_gate_script_present "$upstream_gate_script_present" \
+  '
+  def unique_order: reduce .[] as $item ([]; if index($item) then . else . + [$item] end);
+  def stage_ids: [
+    "work_graph_events_replay_cursor_contract",
+    "work_graph_events_readback_probe_contract",
+    "work_graph_events_duplicate_suppression_contract",
+    "work_graph_events_timeline_ordering_contract",
+    "work_graph_events_rollback_anchor_contract",
+    "work_graph_events_integrity_digest_contract",
+    "work_graph_events_no_execution_guard",
+    "work_graph_events_replay_readback_blocker_mapping"
+  ];
+  def evidence_fields: [
+    "source_surface_id",
+    "source_category",
+    "shadow_write_rerun_decision_ref",
+    "replay_cursor_contract_id",
+    "readback_probe_contract_id",
+    "duplicate_suppression_contract_id",
+    "timeline_ordering_contract_id",
+    "rollback_anchor_contract_id",
+    "event_integrity_digest_contract_id",
+    "residual_source_blocker_ids"
+  ];
+  def stage($id; $priority; $category; $sources; $contracts): {
+    id: $id,
+    priority: $priority,
+    category: $category,
+    affected_source_surface_ids: $sources,
+    required_contract_ref_ids: $contracts,
+    expected_runtime_state: "preview_only_no_replay_readback_execution",
+    prerequisite_gate_ids: ["hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_shadow_write_rerun_preview_gate"],
+    contract_ready_preview: true,
+    persists_work_graph_events_after_preview: false,
+    writes_wal_after_preview: false,
+    writes_checkpoint_after_preview: false,
+    mutates_idempotency_index_after_preview: false,
+    executes_replay_after_preview: false,
+    executes_readback_after_preview: false,
+    executes_rollback_after_preview: false,
+    mutates_runtime_after_preview: false
+  };
+  def guard($id; $severity; $scope): {
+    id: $id,
+    severity: $severity,
+    guard_scope: $scope,
+    required_before_replay_readback_execution: true,
+    satisfied_by_preview: false
+  };
+  def blocker($id; $severity; $category; $sources; $stages; $plans; $fix): {
+    id: $id,
+    severity: $severity,
+    category: $category,
+    affected_source_surface_ids: $sources,
+    affected_replay_readback_stage_ids: $stages,
+    affected_replay_readback_plan_ids: $plans,
+    required_before_replay_readback_execution: true,
+    recommended_fix: $fix
+  };
+  def sources_for($blocker_id):
+    [$upstream.decision_deltas[]
+      | select(.residual_source_blocker_ids | index($blocker_id))
+      | .source_surface_id] | unique_order;
+  ($upstream.decision_deltas | map(.source_surface_id)) as $all_sources
+  | ($upstream.decision_deltas | map({
+      source_surface_id: .source_surface_id,
+      source_category: .source_category,
+      replay_readback_plan_id: (.source_surface_id + "_append_only_work_graph_events_replay_readback"),
+      previous_enforcement_decision: .work_graph_events_shadow_write_rerun_enforcement_decision,
+      replay_readback_state: "work_graph_events_replay_readback_contract_ready_preview",
+      required_replay_readback_stage_ids: stage_ids,
+      expected_evidence_field_ids: evidence_fields,
+      residual_source_blocker_ids: .residual_source_blocker_ids,
+      replay_cursor_contract_ready_preview: true,
+      readback_probe_contract_ready_preview: true,
+      duplicate_suppression_contract_ready_preview: true,
+      timeline_ordering_contract_ready_preview: true,
+      rollback_anchor_contract_ready_preview: true,
+      event_integrity_digest_contract_ready_preview: true,
+      applies_to_runtime: false,
+      persists_work_graph_events: false,
+      writes_wal: false,
+      writes_checkpoint: false,
+      mutates_idempotency_index: false,
+      executes_replay: false,
+      executes_readback: false,
+      executes_rollback: false,
+      enforces_adapter_projection: false,
+      mutates_runtime: false
+    })) as $plans
+  | ($plans | map(.replay_readback_plan_id)) as $plan_ids
+  | ([
+      stage("work_graph_events_replay_cursor_contract"; "critical"; "replay_cursor"; $all_sources; ["shadow_replay_cursor_contract_ready","event_sequence_cursor_ready","source_surface_cursor_partition_ready","idempotency_cursor_watermark_ready","cursor_resume_digest_ready"]),
+      stage("work_graph_events_readback_probe_contract"; "critical"; "readback_probe"; $all_sources; ["event_projection_probe_contract_ready","source_surface_readback_probe_ready","task_result_readback_probe_ready","timeline_readback_probe_ready","redacted_evidence_probe_ready"]),
+      stage("work_graph_events_duplicate_suppression_contract"; "high"; "duplicate_suppression"; $all_sources; ["idempotency_key_collision_check_ready","event_id_duplicate_check_ready","payload_hash_duplicate_check_ready","sequence_gap_duplicate_check_ready"]),
+      stage("work_graph_events_timeline_ordering_contract"; "high"; "timeline_ordering"; $all_sources; ["timeline_event_order_contract_ready","parent_child_order_contract_ready","message_link_order_contract_ready","gate_evaluation_order_contract_ready","artifact_order_contract_ready"]),
+      stage("work_graph_events_rollback_anchor_contract"; "high"; "rollback_anchor"; $all_sources; ["rollback_anchor_event_ref_ready","checkpoint_anchor_no_write_guard_ready","replay_rewind_boundary_ready","operator_review_anchor_ready","event_integrity_anchor_ready"]),
+      stage("work_graph_events_integrity_digest_contract"; "high"; "event_integrity"; $all_sources; ["event_payload_hash_contract_ready","redacted_evidence_digest_ready","event_schema_version_digest_ready","source_surface_digest_ready","timeline_digest_ready"]),
+      stage("work_graph_events_no_execution_guard"; "critical"; "no_execution_guard"; $all_sources; ["work_graph_events_no_persist_guard_ready","wal_no_write_guard_ready","checkpoint_no_write_guard_ready","replay_execution_disabled_guard_ready","readback_execution_disabled_guard_ready","rollback_execution_disabled_guard_ready","agent_spawn_noop_guard_ready"]),
+      stage("work_graph_events_replay_readback_blocker_mapping"; "high"; "blocker_mapping"; $all_sources; ["append_only_events_disabled_blocker_mapping_ready","replay_readback_disabled_blocker_mapping_ready","partial_gap_blocker_mapping_ready","adapter_enforcement_blocker_mapping_ready"])
+    ]) as $stages
+  | ([
+      guard("work_graph_events_persistence_disabled"; "critical"; "event_store"),
+      guard("wal_write_disabled"; "critical"; "wal"),
+      guard("checkpoint_write_disabled"; "critical"; "checkpoint"),
+      guard("replay_execution_disabled"; "critical"; "replay"),
+      guard("readback_execution_disabled"; "critical"; "readback"),
+      guard("rollback_execution_disabled"; "critical"; "rollback"),
+      guard("idempotency_index_mutation_disabled"; "critical"; "idempotency"),
+      guard("adapter_projection_enforcement_disabled"; "critical"; "adapter_projection"),
+      guard("scheduler_admission_enforcement_disabled"; "high"; "scheduler_admission"),
+      guard("no_agent_spawn"; "high"; "agent_spawn"),
+      guard("no_external_send_or_model_invocation"; "high"; "external_effects")
+    ]) as $guards
+  | ([
+      blocker("append_only_work_graph_events_disabled"; "high"; "append_only_fact_source"; sources_for("append_only_work_graph_events_disabled"); stage_ids; $plan_ids; "keep WorkGraph event persistence disabled until replay/readback contracts are read back and applied"),
+      blocker("replay_readback_execution_disabled"; "high"; "replay_readback"; sources_for("replay_readback_execution_disabled"); stage_ids; $plan_ids; "keep replay/readback execution disabled until operator review and side-effect lock are promoted"),
+      blocker("runtime_canonical_adapter_enforcement_disabled"; "high"; "runtime_adapter_enforcement"; sources_for("runtime_canonical_adapter_enforcement_disabled"); ["work_graph_events_readback_probe_contract","work_graph_events_timeline_ordering_contract","work_graph_events_replay_readback_blocker_mapping"]; $plan_ids; "keep canonical adapter enforcement disabled until append-only events replay/readback is verified"),
+      blocker("canonical_adapter_projection_partial_or_gap"; "high"; "projection_coverage"; sources_for("canonical_adapter_projection_partial_or_gap"); ["work_graph_events_readback_probe_contract","work_graph_events_replay_readback_blocker_mapping"]; $plan_ids; "close partial/gap adapter source mappings before authoritative event replay/readback"),
+      blocker("append_only_work_graph_events_replay_readback_readback_missing"; "medium"; "readback_preview"; $all_sources; stage_ids; $plan_ids; "run replay/readback readback preview before applying no-execution outcomes")
+    ]) as $blockers
+  | ($upstream.required_prior_gates + [$upstream.gate]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "blocked",
+      gate: "hepta_work_graph_append_only_work_graph_events_replay_readback_preview_gate",
+      schema_version: "work_graph_append_only_work_graph_events_replay_readback_preview_v1",
+      preview_mode: "read_only_append_only_work_graph_events_replay_readback_preview_no_execution",
+      upstream_shadow_write_rerun_gate: "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_shadow_write_rerun_preview_gate",
+      source_surface_count: ($all_sources | length),
+      replay_readback_plan_count: ($plans | length),
+      replay_readback_stage_count: ($stages | length),
+      replay_readback_stage_source_ref_count: ($stages | map(.affected_source_surface_ids | length) | add),
+      replay_readback_stage_contract_ref_count: ($stages | map(.required_contract_ref_ids | length) | add),
+      replay_readback_plan_stage_ref_count: ($plans | map(.required_replay_readback_stage_ids | length) | add),
+      replay_readback_plan_evidence_field_ref_count: ($plans | map(.expected_evidence_field_ids | length) | add),
+      replay_cursor_contract_ready_preview_count: ($plans | map(select(.replay_cursor_contract_ready_preview)) | length),
+      readback_probe_contract_ready_preview_count: ($plans | map(select(.readback_probe_contract_ready_preview)) | length),
+      duplicate_suppression_contract_ready_preview_count: ($plans | map(select(.duplicate_suppression_contract_ready_preview)) | length),
+      timeline_ordering_contract_ready_preview_count: ($plans | map(select(.timeline_ordering_contract_ready_preview)) | length),
+      rollback_anchor_contract_ready_preview_count: ($plans | map(select(.rollback_anchor_contract_ready_preview)) | length),
+      event_integrity_digest_contract_ready_preview_count: ($plans | map(select(.event_integrity_digest_contract_ready_preview)) | length),
+      append_only_work_graph_events_primary_blocked_source_count: (sources_for("append_only_work_graph_events_disabled") | length),
+      replay_readback_blocked_source_count: (sources_for("replay_readback_execution_disabled") | length),
+      partial_or_gap_blocked_source_count: (sources_for("canonical_adapter_projection_partial_or_gap") | length),
+      guard_count: ($guards | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      replay_readback_plans: $plans,
+      replay_readback_stage_plans: $stages,
+      guards: $guards,
+      blockers: $blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_append_only_work_graph_events_replay_readback_readback_preview_gate",
+      ready_for_replay_readback_readback_preview: true,
+      ready_for_replay_readback_application_preview: false,
+      ready_for_append_only_work_graph_events: false,
+      ready_for_replay_readback_execution: false,
+      ready_for_runtime_adapter_enforcement: false,
+      ready_for_scheduler_admission_enforcement: false,
+      ready_for_task_result_enforcement: false,
+      ready_for_role_manifest_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        append_only_work_graph_events_replay_readback_preview: {
+          rust_module_present: $preview_rust_module_present,
+          report_script_present: $preview_report_script_present,
+          gate_script_present: $preview_gate_script_present
+        },
+        work_graph_events_shadow_write_rerun: {
+          rust_module_present: $upstream_rust_module_present,
+          gate_script_present: $upstream_gate_script_present,
+          upstream_gate: ($upstream.gate == "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_shadow_write_rerun_preview_gate")
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_events_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        durable_store_switch_enabled: false,
+        idempotency_index_mutated: false,
+        replay_executed: false,
+        readback_executed: false,
+        rollback_executed: false,
+        adapter_projection_enforced: false,
+        runtime_mutation_performed: false,
+        scheduler_admission_enforced: false,
+        task_result_enforcement_enabled: false,
+        role_manifest_enforcement_enabled: false,
+        approval_recorded: false,
+        side_effect_lock_established: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

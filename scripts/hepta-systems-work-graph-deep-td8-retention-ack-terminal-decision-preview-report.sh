@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() { [[ -e "$1" ]]; }
+bool_for() {
+  if "$@"; then printf 'true\n'; else printf 'false\n'; fi
+}
+
+prior_report_script="scripts/hepta-systems-work-graph-deep-td8-receipt-retention-readback-ack-replay-preview-report.sh"
+prior_gate_script="scripts/hepta-systems-work-graph-deep-td8-receipt-retention-readback-ack-replay-preview-gate.sh"
+prior_report="$("$ROOT/$prior_report_script")"
+GATE="$(jq -r '.recommended_next_gate' <<<"$prior_report")"
+BASE="${GATE%_preview_gate}"
+SCHEMA="${GATE#hepta_}"
+SCHEMA="${SCHEMA%_gate}_v1"
+NEXT="${BASE}_receipt_preview_gate"
+required_prior_gates="$(jq -c '.required_prior_gates + [.gate]' <<<"$prior_report")"
+
+rust_module="codex-rs/hepta-runtime/src/wg_deep_td8_retention_ack_terminal_decision_preview.rs"
+report_script="scripts/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-preview-report.sh"
+gate_script="scripts/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-preview-gate.sh"
+
+jq -n \
+  --arg gate "$GATE" \
+  --arg schema "$SCHEMA" \
+  --arg next "$NEXT" \
+  --argjson required_prior_gates "$required_prior_gates" \
+  --argjson rust_module_present "$(bool_for path_exists "$rust_module")" \
+  --argjson report_script_present "$(bool_for path_exists "$report_script")" \
+  --argjson gate_script_present "$(bool_for path_exists "$gate_script")" \
+  --argjson prior_report_script_present "$(bool_for path_exists "$prior_report_script")" \
+  --argjson prior_gate_script_present "$(bool_for path_exists "$prior_gate_script")" \
+  '
+  def replay_ids: [range(0; 6) | "deep_td8_readback_ack_replay_scenario_\(.)"];
+  def surface_ids: [range(0; 6) | "deep_td8_retention_ack_terminal_decision_surface_\(.)"];
+  def surface($i): {
+    id: "deep_td8_retention_ack_terminal_decision_surface_\($i)",
+    audience: (["operator", "release_owner", "auditor", "rollback_owner", "system", "external_delivery"][$i]),
+    source_replay_scenario_ids: replay_ids,
+    decision_visibility: (if $i == 5 then "external_delivery_echo_denied" else "local_deep_td8_retention_ack_terminal_decision_read_only" end),
+    decision_recording_allowed: false,
+    promotion_allowed: false,
+    authority_grant_allowed: false,
+    public_claim_enabled: false,
+    external_delivery_enabled: false
+  };
+  def denial($i): {
+    id: "deep_td8_retention_ack_terminal_decision_non_promotion_denial_\($i)",
+    applies_to_surface_ids: surface_ids,
+    reason: "deep td8 terminal decision visibility remains non-promoting",
+    blocks_persistence_promotion: true,
+    blocks_authority_grant: true,
+    blocks_rollout: true,
+    blocks_release_publication: true,
+    blocks_public_claim: true,
+    blocks_external_delivery: true
+  };
+  def authority_guard($i): {
+    id: "deep_td8_retention_ack_terminal_decision_authority_guard_\($i)",
+    required_fields: ["authorityGuardId", "authorityHash", "authorityGranted"],
+    authority_grant_allowed: false
+  };
+  def release_guard($i): {
+    id: "deep_td8_retention_ack_terminal_decision_release_delivery_guard_\($i)",
+    required_fields: ["releaseGuardId", "releaseHash", "deliveryHash"],
+    release_publication_allowed: false,
+    public_claim_allowed: false,
+    delivery_allowed: false
+  };
+  def local_view($i): {
+    id: "deep_td8_retention_ack_terminal_decision_local_view_\($i)",
+    audience: (["operator", "release_owner", "auditor", "system"][$i]),
+    required_fields: ["terminalDecisionSurfaceId", "promotionAllowed", "authorityGranted", "nextGate"],
+    external_delivery_enabled: false
+  };
+  def invariant($i): {
+    id: "deep_td8_retention_ack_terminal_decision_invariant_\($i)",
+    required: true,
+    reason: "deep td8 terminal decision preview is non-promoting and zero-effect"
+  };
+  {
+    product: "Hepta",
+    runtime: "hepta",
+    status: "ready",
+    gate: $gate,
+    schema_version: $schema,
+    preview_mode: "read_only_deep_td8_retention_ack_terminal_decision_non_promotion_preview_no_promotion",
+    terminal_decision_surface_count: 6,
+    non_promotion_denial_count: 8,
+    authority_guard_count: 6,
+    release_delivery_guard_count: 6,
+    local_view_count: 4,
+    invariant_count: 6,
+    required_prior_gates: $required_prior_gates,
+    terminal_decision_surfaces: [range(0; 6) | surface(.)],
+    non_promotion_denials: [range(0; 8) | denial(.)],
+    authority_guards: [range(0; 6) | authority_guard(.)],
+    release_delivery_guards: [range(0; 6) | release_guard(.)],
+    local_views: [range(0; 4) | local_view(.)],
+    invariants: [range(0; 6) | invariant(.)],
+    recommended_next_gate: $next,
+    ready_for_terminal_decision_receipt_preview: true,
+    ready_for_operator_acceptance: false,
+    ready_for_live_persistence: false,
+    side_effects: {
+      filesystem_written: false,
+      graph_state_persisted: false,
+      terminal_decision_recorded: false,
+      terminal_decision_receipt_recorded: false,
+      acknowledgement_recorded: false,
+      operator_acceptance_recorded: false,
+      approval_recorded: false,
+      authority_granted: false,
+      live_persistence_enabled: false,
+      wal_written: false,
+      checkpoint_written: false,
+      rollout_started: false,
+      release_published: false,
+      public_claim_recorded: false,
+      external_send_performed: false,
+      model_invoked: false
+    },
+    source_probes: {
+      deep_td8_retention_ack_terminal_decision: {
+        rust_module_present: $rust_module_present,
+        report_script_present: $report_script_present,
+        gate_script_present: $gate_script_present
+      },
+      prior_deep_td8_retention_ack_replay: {
+        report_script_present: $prior_report_script_present,
+        gate_script_present: $prior_gate_script_present
+      }
+    }
+  }
+'

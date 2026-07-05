@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+preview_report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-work-graph-events-event-store-cutover-readiness-preview-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-readiness-preview-report.sh"
+)"
+
+readback_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_work_graph_events_event_store_cutover_readiness_readback_preview.rs
+)"
+readback_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-readiness-readback-preview-report.sh
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-readiness-readback-preview-gate.sh
+)"
+preview_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_work_graph_events_event_store_cutover_readiness_preview.rs
+)"
+preview_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-readiness-preview-gate.sh
+)"
+
+jq -n \
+  --argjson preview "$preview_report" \
+  --argjson readback_rust_module_present "$readback_rust_module_present" \
+  --argjson readback_report_script_present "$readback_report_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  --argjson preview_rust_module_present "$preview_rust_module_present" \
+  --argjson preview_gate_script_present "$preview_gate_script_present" \
+  '
+  def readback_plan($plan): {
+      source_surface_id: $plan.source_surface_id,
+      source_category: $plan.source_category,
+      event_store_cutover_readiness_plan_id: $plan.event_store_cutover_readiness_plan_id,
+      expected_stage_count: ($plan.required_event_store_cutover_readiness_stage_ids | length),
+      expected_evidence_field_count: ($plan.expected_evidence_field_ids | length),
+      expected_residual_blocker_count: ($plan.residual_source_blocker_ids | length),
+      readback_status: "readback_plan_ready",
+      readback_execution_enabled: false,
+      replay_execution_enabled: false,
+      event_store_cutover_readiness_enabled: false,
+      persists_work_graph_events: false,
+      next_required_gate: "hepta_work_graph_append_only_work_graph_events_event_store_cutover_readiness_application_preview_gate"
+    };
+  def stage_assertion($stage): {
+      stage_id: $stage.id,
+      affected_source_surface_ids: $stage.affected_source_surface_ids,
+      required_contract_ref_ids: $stage.required_contract_ref_ids,
+      contract_ready_preview: $stage.contract_ready_preview,
+      event_store_enabled_after_readback: false,
+      execution_enabled_after_readback: false,
+      persistence_enabled_after_readback: false
+    };
+  def evidence_field_assertion($plan): {
+      source_surface_id: $plan.source_surface_id,
+      evidence_field_ids: $plan.expected_evidence_field_ids,
+      evidence_contract_ready_preview: true,
+      persists_evidence_after_readback: false
+    };
+  def guard_assertion($guard): {
+      guard_id: $guard.id,
+      severity: $guard.severity,
+      guard_scope: $guard.guard_scope,
+      required_before_event_store_cutover_readiness: $guard.required_before_event_store_cutover_readiness,
+      satisfied_by_preview: $guard.satisfied_by_preview
+    };
+  def blocker_mapping_assertion($blocker): {
+      blocker_id: $blocker.id,
+      affected_source_surface_ids: $blocker.affected_source_surface_ids,
+      affected_event_store_cutover_readiness_stage_ids: $blocker.affected_event_store_cutover_readiness_stage_ids,
+      blocks_event_store_cutover_readiness: true
+    };
+  def drift_detector($id; $fields): {
+      id: $id,
+      source_fields: $fields,
+      drift_budget: 0
+    };
+  def readback_blocker($id; $severity; $sources; $fix): {
+      id: $id,
+      severity: $severity,
+      affected_source_surface_ids: $sources,
+      recommended_fix: $fix
+    };
+  ($preview.event_store_cutover_readiness_plans | map(readback_plan(.))) as $readback_plans
+  | ($preview.event_store_cutover_readiness_stage_plans | map(stage_assertion(.))) as $stage_assertions
+  | ($preview.event_store_cutover_readiness_plans | map(evidence_field_assertion(.))) as $evidence_field_assertions
+  | ($preview.guards | map(guard_assertion(.))) as $guard_assertions
+  | ($preview.blockers | map(blocker_mapping_assertion(.))) as $blocker_mapping_assertions
+  | [
+      drift_detector("event_store_cutover_readiness_contract_drift"; ["event_store_cutover_readiness_contract_id"]),
+      drift_detector("append_only_event_store_persistence_guard_drift"; ["append_only_event_store_persistence_guard_id"]),
+      drift_detector("operator_review_no_cutover_readiness_guard_drift"; ["operator_review_no_cutover_readiness_guard_id"]),
+      drift_detector("replay_readback_prerequisite_contract_drift"; ["replay_readback_prerequisite_contract_id"]),
+      drift_detector("adapter_enforcement_prerequisite_contract_drift"; ["adapter_enforcement_prerequisite_contract_id"]),
+      drift_detector("residual_blocker_mapping_drift"; ["residual_source_blocker_ids"]),
+      drift_detector("next_required_gate_drift"; ["next_required_gate"])
+    ] as $drift_detectors
+  | ($preview.event_store_cutover_readiness_plans | map(.source_surface_id)) as $all_sources
+  | (($preview.blockers[] | select(.id == "canonical_adapter_projection_partial_or_gap") | .affected_source_surface_ids) // []) as $partial_gap_sources
+  | [
+      readback_blocker("append_only_work_graph_events_event_store_cutover_readiness_readback_not_executed"; "high"; $all_sources; "keep event-store cutover_readiness readback as a preview until execution is explicitly enabled"),
+      readback_blocker("append_only_work_graph_events_event_store_cutover_readiness_application_missing"; "high"; $all_sources; "apply readback-verified event-store cutover_readiness contracts into no-persistence outcomes"),
+      readback_blocker("append_only_work_graph_events_disabled"; "high"; $all_sources; "keep WorkGraph event persistence disabled until event-store cutover_readiness application is verified"),
+      readback_blocker("replay_readback_execution_disabled"; "high"; $all_sources; "keep replay/readback execution disabled until append-only event persistence is promoted"),
+      readback_blocker("runtime_canonical_adapter_enforcement_disabled"; "high"; $all_sources; "keep runtime adapter enforcement disabled until append-only event persistence is promoted"),
+      readback_blocker("canonical_adapter_projection_partial_or_gap"; "high"; $partial_gap_sources; "close partial/gap adapter source mappings before authoritative event-store cutover_readiness")
+    ] as $blockers
+  | ($preview.required_prior_gates + [$preview.gate]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_append_only_work_graph_events_event_store_cutover_readiness_readback_preview_gate",
+      schema_version: "work_graph_append_only_work_graph_events_event_store_cutover_readiness_readback_preview_v1",
+      preview_mode: "read_only_append_only_work_graph_events_event_store_cutover_readiness_readback_preview_no_execution",
+      upstream_event_store_cutover_readiness_preview_gate: "hepta_work_graph_append_only_work_graph_events_event_store_cutover_readiness_preview_gate",
+      source_surface_count: $preview.source_surface_count,
+      preview_plan_count: $preview.event_store_cutover_readiness_plan_count,
+      readback_plan_count: ($readback_plans | length),
+      stage_assertion_count: ($stage_assertions | length),
+      evidence_field_assertion_count: ($evidence_field_assertions | length),
+      guard_assertion_count: ($guard_assertions | length),
+      blocker_mapping_assertion_count: ($blocker_mapping_assertions | length),
+      drift_detector_count: ($drift_detectors | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      readback_plans: $readback_plans,
+      stage_assertions: $stage_assertions,
+      evidence_field_assertions: $evidence_field_assertions,
+      guard_assertions: $guard_assertions,
+      blocker_mapping_assertions: $blocker_mapping_assertions,
+      drift_detectors: $drift_detectors,
+      blockers: $blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_append_only_work_graph_events_event_store_cutover_readiness_application_preview_gate",
+      ready_for_event_store_cutover_readiness_application_preview: true,
+      ready_for_append_only_work_graph_events: false,
+      ready_for_event_store_cutover_readiness: false,
+      ready_for_replay_readback_execution: false,
+      ready_for_runtime_adapter_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        append_only_work_graph_events_event_store_cutover_readiness_readback: {
+          rust_module_present: $readback_rust_module_present,
+          report_script_present: $readback_report_script_present,
+          gate_script_present: $readback_gate_script_present
+        },
+        append_only_work_graph_events_event_store_cutover_readiness_preview: {
+          rust_module_present: $preview_rust_module_present,
+          gate_script_present: $preview_gate_script_present,
+          upstream_gate: ($preview.gate == "hepta_work_graph_append_only_work_graph_events_event_store_cutover_readiness_preview_gate")
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_events_persisted: false,
+        event_store_enabled: false,
+        wal_written: false,
+        checkpoint_written: false,
+        replay_executed: false,
+        readback_executed: false,
+        adapter_projection_enforced: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

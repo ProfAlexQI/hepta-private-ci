@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-receipt-preview-report.sh"
+
+report="$(capture_json_report "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-receipt-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+GATE="$(jq -r '.gate' <<<"$report")"
+NEXT="$(jq -r '.recommended_next_gate' <<<"$report")"
+PRIOR="$(jq -r '.required_prior_gates[-1]' <<<"$report")"
+
+jq -e --arg gate "$GATE" --arg next "$NEXT" --arg prior "$PRIOR" '
+  .gate == $gate
+  and (.gate | endswith("_terminal_decision_non_promotion_receipt_retention_expiry_readback_receipt_preview_gate"))
+  and .receipt_count == 6
+  and (.receipts | all(.hash_only == true and .blocks_recording == true))
+  and .digest_check_count == 6
+  and .mismatch_denial_count == 7
+  and (.digest_checks + .mismatch_denials | all(.blocks_external_delivery == true))
+  and .receipt_guard_count == 5
+  and .local_view_count == 4
+  and .invariant_count == 6
+  and (.required_prior_gates[-1] == $prior)
+  and (.required_prior_gates[-1] | endswith("_terminal_decision_non_promotion_receipt_retention_expiry_preview_gate"))
+  and .recommended_next_gate == $next
+  and (.recommended_next_gate | endswith("_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_preview_gate"))
+  and .ready_for_readback_acknowledgement_preview == true
+  and .ready_for_operator_acceptance == false
+  and .ready_for_live_persistence == false
+  and .source_probes.deep_td8_ret_ack_td_readback_receipt.rust_module_present == true
+  and .source_probes.prior_retention.report_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  wg_deep_td8_ret_ack_td_receipt_retention_readback_receipt_preview --lib
+
+echo "Hepta WorkGraph deep td8 retention-ack terminal-decision receipt retention readback receipt preview gate passed"

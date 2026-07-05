@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+E2E_REPORT="$ROOT/scripts/hepta-systems-hepta-system-status-read-only-e2e-report.sh"
+TOOL_DISPATCH_REPORT="$ROOT/scripts/hepta-systems-tool-registry-read-only-dispatch-preflight-report.sh"
+FIXTURE_REPORT="$ROOT/scripts/hepta-systems-workflow-durable-store-test-only-append-fixture-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/hepta_system_status_internal_read_only_invocation.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HEPTA_SYSTEM_STATUS_INTERNAL_READ_ONLY_INVOCATION_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-hepta-system-status-internal-read-only-invocation-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$E2E_REPORT" ]] || fail "missing executable Phase 4 E2E report: $E2E_REPORT"
+[[ -x "$TOOL_DISPATCH_REPORT" ]] || fail "missing executable ToolRegistry dispatch preflight report: $TOOL_DISPATCH_REPORT"
+[[ -x "$FIXTURE_REPORT" ]] || fail "missing executable Phase 7 append fixture report: $FIXTURE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 8 Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Phase 8 architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Phase 8 internal read-only invocation report"
+fi
+
+lib_export_present=false
+if grep -q 'hepta_system_status_internal_read_only_invocation_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile e2e <("$E2E_REPORT") \
+  --slurpfile dispatch <("$TOOL_DISPATCH_REPORT") \
+  --slurpfile fixture <("$FIXTURE_REPORT") \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-hepta-system-status-internal-read-only-invocation-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_HEPTA_SYSTEM_STATUS_INTERNAL_READ_ONLY_INVOCATION_2026-06-27.md" \
+  '
+  def selected_candidate_id: "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp";
+  def non_selected_candidate_id: "preview:connector:hepta-system@hepta-local:hepta_system_local_app";
+  def payload_fingerprint: "hepta-system-status.internal-read-only.v1.e2e4.fixture9.live0";
+  def by_id($items; $id): ($items[] | select(.candidate_tool_id == $id));
+  def selected_entry($dispatch_entry): {
+    candidate_tool_id:selected_candidate_id,
+    contribution_kind:$dispatch_entry.contribution_kind,
+    invocation_route:"internal_status_payload_projected",
+    request_id:"hepta-system.status.internal-read-only.v1",
+    output_schema:"hepta_system_status_internal_read_only_payload_v1",
+    payload_fingerprint:payload_fingerprint,
+    internal_executor:"hepta_runtime_status_read_model",
+    selected_for_internal_invocation:true,
+    preflight_bound:($dispatch_entry.dispatch_preflight_ready == true),
+    input_schema_validated:true,
+    output_schema_validated:true,
+    internal_read_model_evaluated:true,
+    external_network_allowed:false,
+    credential_read_allowed:false,
+    external_tool_invoked:false,
+    tool_invocation_switch_enabled:false,
+    ledger_write_allowed:false,
+    approval_request_allowed:false,
+    approval_acceptance_allowed:false,
+    receipt_persisted:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    native_post_mutation_allowed:false,
+    channel_send_allowed:false,
+    live_execution_allowed:false
+  };
+  def non_selected_entry($dispatch_entry): {
+    candidate_tool_id:non_selected_candidate_id,
+    contribution_kind:$dispatch_entry.contribution_kind,
+    invocation_route:"preflight_only_not_invoked",
+    request_id:"hepta-system.status.internal-read-only.non-selected-app.v1",
+    output_schema:"preflight_only_no_payload",
+    payload_fingerprint:"not-selected.preflight-only.no-payload",
+    internal_executor:"none_preflight_only",
+    selected_for_internal_invocation:false,
+    preflight_bound:($dispatch_entry.dispatch_preflight_ready == true),
+    input_schema_validated:true,
+    output_schema_validated:true,
+    internal_read_model_evaluated:false,
+    external_network_allowed:false,
+    credential_read_allowed:false,
+    external_tool_invoked:false,
+    tool_invocation_switch_enabled:false,
+    ledger_write_allowed:false,
+    approval_request_allowed:false,
+    approval_acceptance_allowed:false,
+    receipt_persisted:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    native_post_mutation_allowed:false,
+    channel_send_allowed:false,
+    live_execution_allowed:false
+  };
+  ($e2e[0]) as $e2e |
+  ($dispatch[0]) as $dispatch |
+  ($fixture[0]) as $fixture |
+  (by_id($dispatch.entries; selected_candidate_id)) as $selected_dispatch |
+  (by_id($dispatch.entries; non_selected_candidate_id)) as $non_selected_dispatch |
+  [selected_entry($selected_dispatch), non_selected_entry($non_selected_dispatch)] as $entries |
+  ($entries | map(select(.selected_for_internal_invocation == true)) | length) as $invocation_entry_count |
+  ($e2e.read_only_e2e_ready == true
+    and $e2e.ready_for_invocation == false
+    and $dispatch.read_only_dispatch_preflight_ready == true
+    and $dispatch.candidate_count == 2
+    and $dispatch.dispatch_preflight_ready_count == 2
+    and $selected_dispatch.dispatch_preflight_ready == true
+    and $non_selected_dispatch.dispatch_preflight_ready == true
+    and $selected_dispatch.tool_invocation_enabled == false
+    and $selected_dispatch.ledger_write_enabled == false
+    and $selected_dispatch.approval_request_enabled == false
+    and $selected_dispatch.result_receipt_write_enabled == false
+    and $fixture.test_only_append_fixture_ready == true
+    and $fixture.fixture_entry_count == 9
+    and $fixture.runtime_event_log_write_allowed == false
+    and $fixture.runtime_sqlite_write_allowed == false
+    and $fixture.workflow_execution_allowed == false
+    and $fixture.replay_execution_allowed == false
+    and $fixture.rollback_execution_allowed == false
+    and $fixture.live_execution_allowed == false
+    and $lib_export_present == true
+    and ($entries | length) == 2
+    and $invocation_entry_count == 1
+    and ($entries | all(.preflight_bound == true
+      and .external_network_allowed == false
+      and .credential_read_allowed == false
+      and .external_tool_invoked == false
+      and .tool_invocation_switch_enabled == false
+      and .ledger_write_allowed == false
+      and .approval_request_allowed == false
+      and .approval_acceptance_allowed == false
+      and .receipt_persisted == false
+      and .workflow_event_log_write_allowed == false
+      and .sqlite_write_allowed == false
+      and .native_post_mutation_allowed == false
+      and .channel_send_allowed == false
+      and .live_execution_allowed == false))) as $invocation_ready |
+  {
+    runtime:"hepta",
+    surface:"hepta_system_status_internal_read_only_invocation",
+    status:(if $invocation_ready then "ready" else "blocked" end),
+    gate:"hepta_system_status_internal_read_only_invocation_gate",
+    schema_version:"hepta_system_status_internal_read_only_invocation_v1",
+    plugin_id:"hepta-system@hepta-local",
+    invocation_scope:"internal_read_only_status_payload_no_external_network_or_mutation",
+    source_e2e_gate:$e2e.gate,
+    source_e2e_ready:$e2e.read_only_e2e_ready,
+    source_e2e_chain_link_count:$e2e.chain_link_count,
+    source_e2e_ready_for_invocation:$e2e.ready_for_invocation,
+    source_tool_dispatch_ready:$dispatch.read_only_dispatch_preflight_ready,
+    source_tool_dispatch_candidate_count:$dispatch.candidate_count,
+    source_selected_candidate_preflight_ready:$selected_dispatch.dispatch_preflight_ready,
+    source_non_selected_candidate_preflight_ready:$non_selected_dispatch.dispatch_preflight_ready,
+    source_fixture_gate:$fixture.gate,
+    source_fixture_ready:$fixture.test_only_append_fixture_ready,
+    source_fixture_entry_count:$fixture.fixture_entry_count,
+    source_fixture_runtime_event_log_write_allowed:$fixture.runtime_event_log_write_allowed,
+    lib_export_present:$lib_export_present,
+    candidate_count:($entries | length),
+    selected_candidate_tool_id:selected_candidate_id,
+    selected_contribution_kind:$selected_dispatch.contribution_kind,
+    non_selected_candidate_tool_id:non_selected_candidate_id,
+    non_selected_candidate_kept_preflight_only:true,
+    invocation_entry_count:$invocation_entry_count,
+    internal_read_only_invocation_materialized:$invocation_ready,
+    status_payload_materialized:$invocation_ready,
+    status_payload_fingerprint:payload_fingerprint,
+    output_schema_validated:$invocation_ready,
+    receipt_projected_in_memory:$invocation_ready,
+    receipt_persisted:false,
+    external_network_allowed:false,
+    credential_read_allowed:false,
+    external_tool_invoked:false,
+    tool_invocation_switch_enabled:false,
+    ledger_write_allowed:false,
+    approval_request_allowed:false,
+    approval_acceptance_allowed:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    native_post_mutation_allowed:false,
+    channel_send_allowed:false,
+    live_execution_allowed:false,
+    internal_read_only_invocation_ready:$invocation_ready,
+    payload:{
+      plugin_id:"hepta-system@hepta-local",
+      status:(if $invocation_ready then "ready_blocked" else "blocked" end),
+      status_route:"internal://hepta-system/status/read-only",
+      source_e2e_ready:$e2e.read_only_e2e_ready,
+      workflow_fixture_ready:$fixture.test_only_append_fixture_ready,
+      workflow_fixture_entry_count:$fixture.fixture_entry_count,
+      controlled_live_cutover_ready:false,
+      live_enabled_count:0,
+      summary:"hepta-system status is internally readable; external network, credentials, mutation, persistence, and live execution remain disabled"
+    },
+    entries:$entries,
+    blockers:[
+      "external_network_disabled",
+      "credential_read_disabled",
+      "external_tool_invocation_disabled",
+      "tool_registry_live_switch_disabled",
+      "ledger_write_disabled",
+      "approval_request_disabled",
+      "approval_acceptance_disabled",
+      "receipt_persistence_disabled",
+      "workflow_event_log_write_disabled",
+      "sqlite_write_disabled",
+      "native_post_mutation_disabled",
+      "channel_send_disabled",
+      "live_execution_disabled"
+    ],
+    next_actions:[
+      "phase9_operator_approval_protocol_nonce_session_binding_without_auto_acceptance"
+    ],
+    next_migration_step:"phase9_operator_approval_protocol_nonce_session_binding_without_auto_acceptance",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      filesystem_written:false,
+      credential_read:false,
+      external_network_used:false,
+      external_tool_invoked:false,
+      tool_registry_switch_enabled:false,
+      ledger_written:false,
+      approval_requested:false,
+      approval_accepted:false,
+      receipt_persisted:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

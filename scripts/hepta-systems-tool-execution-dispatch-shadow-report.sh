@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-tool-execution-adapter-preflight-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/tools/src/tool_execution_dispatch_shadow.rs"
+TOOL_EXECUTOR_SOURCE="$ROOT/codex-rs/tools/src/tool_executor.rs"
+GATE="$ROOT/scripts/hepta-systems-tool-execution-dispatch-shadow-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_DISPATCH_SHADOW_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-execution-dispatch-shadow-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable execution adapter preflight report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing execution dispatch shadow Rust source: $RUST_SOURCE"
+[[ -f "$TOOL_EXECUTOR_SOURCE" ]] || fail "missing ToolExecutor source: $TOOL_EXECUTOR_SOURCE"
+[[ -f "$DOC" ]] || fail "missing execution dispatch shadow architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the execution dispatch shadow report"
+fi
+
+jq -n \
+  --slurpfile source <("$SOURCE_REPORT") \
+  --arg gate "scripts/hepta-systems-tool-execution-dispatch-shadow-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_DISPATCH_SHADOW_2026-06-21.md" \
+  '
+  def shadow_entry($entry):
+    ($entry.adapter_preflight_route == "disabled_execution_adapter_preflight" and $entry.execution_adapter_preflight_ready == true) as $adapter_ready |
+    ($entry.registry_guard_route == "require_approval_ledger") as $approval_guard |
+    {
+      plugin_id:$entry.plugin_id,
+      candidate_tool_id:$entry.candidate_tool_id,
+      contribution_kind:$entry.contribution_kind,
+      execution_adapter_kind:$entry.execution_adapter_kind,
+      source_adapter_preflight_route:$entry.adapter_preflight_route,
+      registry_guard_route:$entry.registry_guard_route,
+      dispatch_shadow_route:(if ($adapter_ready and $approval_guard) then "disabled_execution_dispatch_shadow" elif $adapter_ready then "blocked_by_registry_guard" else "blocked_by_execution_adapter_preflight" end),
+      dispatch_shadow_ready:($adapter_ready and $approval_guard),
+      execution_adapter_preflight_ready:$entry.execution_adapter_preflight_ready,
+      dispatch_shadow_binding_present:true,
+      tool_invocation_execution_switch_enabled:false,
+      adapter_dispatch_switch_enabled:false,
+      router_registration_lookup_enabled:false,
+      registry_lookup_executed:false,
+      registry_source_of_truth_enabled:false,
+      tool_registration_enabled:false,
+      tool_invocation_enabled:false,
+      ledger_write_enabled:false,
+      approval_request_enabled:false,
+      result_receipt_write_enabled:false,
+      side_effect_free:true
+    };
+
+  ($source[0]) as $source |
+  ($source.entries | map(shadow_entry(.))) as $entries |
+  ($entries | map(select(.dispatch_shadow_ready == true)) | length) as $ready_count |
+  ($entries | map(select(.dispatch_shadow_route == "disabled_execution_dispatch_shadow")) | length) as $disabled_count |
+  ($source.tool_execution_adapter_preflight_ready
+    and $source.tool_invocation_enabled == false
+    and $source.ledger_written == false
+    and $source.approval_requested == false
+    and $source.result_receipt_written == false
+    and $ready_count == ($entries | length)
+    and $disabled_count == ($entries | length)
+    and ($entries | all(.dispatch_shadow_binding_present == true))
+    and ($entries | all(if .dispatch_shadow_route == "disabled_execution_dispatch_shadow" then (.registry_guard_route == "require_approval_ledger" and .tool_invocation_execution_switch_enabled == false and .adapter_dispatch_switch_enabled == false and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false and .result_receipt_write_enabled == false) else true end))) as $shadow_ready |
+  {
+    runtime:"hepta",
+    surface:"tool_execution_dispatch_shadow",
+    plugin_id:$source.plugin_id,
+    status:(if $shadow_ready then "ready" else "blocked" end),
+    source_execution_adapter_preflight_surface:$source.surface,
+    source_execution_adapter_preflight_ready:$source.tool_execution_adapter_preflight_ready,
+    dispatch_shadow_binding_present:true,
+    tool_invocation_execution_switch_enabled:false,
+    adapter_dispatch_switch_enabled:false,
+    candidate_count:($entries | length),
+    dispatch_shadow_ready_count:$ready_count,
+    dispatch_shadow_blocked_count:(($entries | length) - $ready_count),
+    disabled_execution_dispatch_shadow_count:$disabled_count,
+    all_execution_adapter_preflight_entries_shadowed:($ready_count == ($entries | length) and $disabled_count == ($entries | length) and ($entries | all(.dispatch_shadow_binding_present == true))),
+    all_dispatch_shadow_entries_keep_approval_guard:($entries | all(if .dispatch_shadow_route == "disabled_execution_dispatch_shadow" then (.registry_guard_route == "require_approval_ledger" and .tool_invocation_execution_switch_enabled == false and .adapter_dispatch_switch_enabled == false and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false and .result_receipt_write_enabled == false) else true end)),
+    tool_execution_dispatch_shadow_ready:$shadow_ready,
+    execution_dispatch_shadow_allowed:$shadow_ready,
+    router_registration_lookup_enabled:false,
+    registry_lookup_executed:false,
+    registry_source_of_truth_enabled:false,
+    tool_registration_enabled:false,
+    tool_invocation_enabled:false,
+    ledger_written:false,
+    approval_requested:false,
+    result_receipt_written:false,
+    live_mutation_ready:false,
+    next_migration_step:"restore_tool_execution_operator_approval_packet_without_invocation",
+    entries:$entries,
+    blockers:[
+      "router_registration_lookup_disabled",
+      "registry_lookup_execution_disabled",
+      "registry_source_of_truth_enablement_disabled",
+      "tool_registration_disabled",
+      "tool_invocation_disabled",
+      "execution_adapter_dispatch_disabled",
+      "tool_invocation_ledger_write_disabled",
+      "approval_broker_request_disabled",
+      "result_receipt_write_disabled"
+    ],
+    next_actions:[
+      "restore_tool_execution_operator_approval_packet_without_invocation",
+      "keep_execution_dispatch_shadow_read_only_until_operator_packet_is_restored",
+      "keep_registration_invocation_ledger_approval_receipts_and_live_mutation_disabled_until_explicit_cutover"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      rust_contract:"codex-rs/tools/src/tool_execution_dispatch_shadow.rs",
+      execution_adapter_preflight_report:"scripts/hepta-systems-tool-execution-adapter-preflight-report.sh",
+      tool_executor_runtime:"codex-rs/tools/src/tool_executor.rs"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      plugin_cache_mutated:false,
+      plugin_installed:false,
+      manifest_rewritten:false,
+      manifest_schema_written:false,
+      registry_source_of_truth_enabled:false,
+      router_registration_lookup_enabled:false,
+      registry_lookup_executed:false,
+      registration_cutover_executed:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      result_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      local_storage_created:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

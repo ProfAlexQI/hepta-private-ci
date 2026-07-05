@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-preview-report.sh"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-store-runtime-idempotency-mutation-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "blocked"
+  and .gate == "hepta_work_graph_append_only_store_runtime_idempotency_mutation_preview_gate"
+  and .schema_version == "work_graph_append_only_store_runtime_idempotency_mutation_preview_v1"
+  and .preview_mode == "read_only_append_only_store_runtime_idempotency_mutation_preview_no_index_mutation"
+  and .upstream_runtime_durable_store_switch_rerun_gate == "hepta_work_graph_unified_projection_enforcement_readiness_runtime_durable_store_switch_rerun_preview_gate"
+  and .source_surface_count == 12
+  and .idempotency_mutation_source_count == 12
+  and .idempotency_mutation_plan_count == 12
+  and .idempotency_mutation_stage_count == 5
+  and .idempotency_mutation_stage_source_ref_count == 60
+  and .idempotency_mutation_stage_contract_ref_count == 28
+  and .idempotency_mutation_plan_stage_ref_count == 60
+  and .idempotency_mutation_plan_evidence_field_ref_count == 108
+  and .idempotency_residual_source_count == 12
+  and .wal_boundary_residual_source_count == 12
+  and .rollback_readback_residual_source_count == 12
+  and .guard_count == 8
+  and .blocker_count == 5
+  and .required_prior_gate_count == 60
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.idempotency_mutation_plans | map(.source_surface_id) == [
+    "update_plan_tool",
+    "plan_mode_proposed_plan_blocks",
+    "app_server_turn_plan_notification",
+    "multi_agent_v2_thread_spawn",
+    "multi_agent_v2_mailbox_wait",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_approval_broker",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.idempotency_mutation_plans | all(
+    .previous_enforcement_decision == "deny_runtime_idempotency_mutation_disabled"
+    and .idempotency_mutation_state == "idempotency_mutation_contract_defined_preview_only"
+    and .required_idempotency_mutation_stage_ids == [
+      "idempotency_mutation_policy_contract",
+      "idempotency_collision_replay_evidence_contract",
+      "idempotency_index_no_mutation_guard",
+      "rollback_readback_prerequisite_contract",
+      "idempotency_blocker_mapping"
+    ]
+    and .expected_evidence_field_ids == [
+      "source_surface_id",
+      "source_category",
+      "durable_store_switch_rerun_decision_ref",
+      "idempotency_mutation_policy_id",
+      "collision_replay_evidence_id",
+      "no_mutation_guard_ref",
+      "rollback_readback_prerequisite_id",
+      "residual_source_blocker_ids",
+      "next_required_gate"
+    ]
+    and .idempotency_mutation_policy_contract_ready_preview == true
+    and .collision_replay_evidence_contract_ready_preview == true
+    and .applies_to_runtime == false
+    and .writes_wal == false
+    and .writes_checkpoint == false
+    and .mutates_idempotency_index == false
+    and .executes_replay == false
+    and .executes_readback == false
+    and .executes_rollback == false
+    and .mutates_runtime == false
+  ))
+  and (.idempotency_mutation_plans | map(select(.residual_source_blocker_ids | index("idempotency_index_mutation_disabled"))) | length) == 12
+  and (.idempotency_mutation_plans | map(select(.residual_source_blocker_ids | index("durable_store_runtime_switch_disabled"))) | length) == 0
+  and (.idempotency_mutation_plans | map(select(.residual_source_blocker_ids | index("durable_store_switch_application_missing"))) | length) == 0
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.idempotency_mutation_stage_plans | map({id, count: (.affected_source_surface_ids | length), contracts: (.required_contract_ref_ids | length)}) == [
+    {"id": "idempotency_mutation_policy_contract", "count": 12, "contracts": 6},
+    {"id": "idempotency_collision_replay_evidence_contract", "count": 12, "contracts": 6},
+    {"id": "idempotency_index_no_mutation_guard", "count": 12, "contracts": 6},
+    {"id": "rollback_readback_prerequisite_contract", "count": 12, "contracts": 5},
+    {"id": "idempotency_blocker_mapping", "count": 12, "contracts": 5}
+  ])
+  and (.idempotency_mutation_stage_plans | all(
+    .priority == "p0"
+    and .expected_runtime_state == "contract_ready_preview_runtime_disabled"
+    and .contract_ready_preview == true
+    and .runtime_enabled_after_preview == false
+    and (.prerequisite_gate_ids[-1] == "hepta_work_graph_unified_projection_enforcement_readiness_runtime_durable_store_switch_rerun_preview_gate")
+  ))
+  and (.idempotency_mutation_stage_plans | map(select(.id == "idempotency_mutation_policy_contract" and .mutates_idempotency_index == true and .writes_wal == false and .writes_checkpoint == false)) | length) == 1
+  and (.idempotency_mutation_stage_plans | map(select(.id == "idempotency_collision_replay_evidence_contract" and .writes_wal == true and .writes_checkpoint == true and .executes_replay == true)) | length) == 1
+  and (.idempotency_mutation_stage_plans | map(select(.id == "rollback_readback_prerequisite_contract" and .executes_readback == true and .executes_rollback == true and .writes_checkpoint == true)) | length) == 1
+  and (.idempotency_mutation_stage_plans | map(select(.id == "idempotency_index_no_mutation_guard" and .mutates_idempotency_index == false and .writes_wal == false and .writes_checkpoint == false and .executes_replay == false and .executes_readback == false and .executes_rollback == false)) | length) == 1
+  and (.idempotency_mutation_stage_plans | map(select(.id == "idempotency_blocker_mapping" and .mutates_idempotency_index == false and .writes_wal == false and .writes_checkpoint == false and .executes_replay == false and .executes_readback == false and .executes_rollback == false)) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.guards | map(.id) == [
+    "idempotency_mutation_preview_only",
+    "idempotency_index_mutation_disabled",
+    "wal_write_boundary_disabled",
+    "checkpoint_write_disabled",
+    "replay_execution_disabled",
+    "rollback_readback_execution_disabled",
+    "durable_store_switch_disabled",
+    "runtime_mutation_disabled"
+  ])
+  and (.guards | all(.required_before_idempotency_mutation == true and .satisfied_by_preview == false))
+  and (.blockers | map({id, count: (.affected_source_surface_ids | length), stages: .affected_idempotency_mutation_stage_ids}) == [
+    {"id": "readback_execution_disabled", "count": 12, "stages": ["rollback_readback_prerequisite_contract"]},
+    {"id": "wal_write_boundary_not_enabled", "count": 12, "stages": ["idempotency_collision_replay_evidence_contract"]},
+    {"id": "idempotency_index_mutation_disabled", "count": 12, "stages": ["idempotency_mutation_policy_contract"]},
+    {"id": "rollback_readback_not_executed", "count": 12, "stages": ["rollback_readback_prerequisite_contract"]},
+    {"id": "idempotency_mutation_readback_missing", "count": 12, "stages": [
+      "idempotency_mutation_policy_contract",
+      "idempotency_collision_replay_evidence_contract",
+      "idempotency_index_no_mutation_guard",
+      "rollback_readback_prerequisite_contract",
+      "idempotency_blocker_mapping"
+    ]}
+  ])
+  and (.blockers | all(.required_before_idempotency_mutation == true))
+  and (.blockers | all((.affected_idempotency_mutation_plan_ids | length) == (.affected_source_surface_ids | length)))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.required_prior_gates | length == (unique | length))
+  and (.required_prior_gates[-1] == "hepta_work_graph_unified_projection_enforcement_readiness_runtime_durable_store_switch_rerun_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_append_only_store_runtime_idempotency_mutation_readback_preview_gate"
+  and .ready_for_runtime_idempotency_mutation_readback_preview == true
+  and .ready_for_runtime_idempotency_mutation_application_preview == false
+  and .ready_for_wal_write == false
+  and .ready_for_checkpoint_write == false
+  and .ready_for_idempotency_mutation == false
+  and .ready_for_readback_execution == false
+  and .ready_for_rollback_execution == false
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_projection_enforcement == false
+  and .ready_for_scheduler_admission_enforcement == false
+  and .ready_for_role_manifest_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.idempotency_mutation_preview.rust_module_present == true
+  and .source_probes.idempotency_mutation_preview.report_script_present == true
+  and .source_probes.idempotency_mutation_preview.gate_script_present == true
+  and .source_probes.runtime_durable_store_switch_rerun.upstream_gate == true
+  and .source_probes.runtime_durable_store_switch_rerun.gate_script_present == true
+  and .source_probes.runtime_durable_store_switch_rerun.recommended_next_matches == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_store_runtime_idempotency_mutation --lib
+
+echo "Hepta WorkGraph append-only store runtime idempotency mutation preview gate passed"

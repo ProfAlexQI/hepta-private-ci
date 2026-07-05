@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-work-graph-enforcement-readiness.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+capture_json_report \
+  "hepta-work-graph-unified-projection-audit-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-unified-projection-audit-preview-report.sh" \
+  >"$tmpdir/unified_projection_audit.json"
+capture_json_report \
+  "hepta-work-graph-append-only-event-intake-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-append-only-event-intake-preview-report.sh" \
+  >"$tmpdir/append_only_event_intake.json"
+capture_json_report \
+  "hepta-work-graph-task-result-contract-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-task-result-contract-preview-report.sh" \
+  >"$tmpdir/task_result_contract.json"
+capture_json_report \
+  "hepta-work-graph-scheduler-admission-controller-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-scheduler-admission-controller-preview-report.sh" \
+  >"$tmpdir/scheduler_admission.json"
+capture_json_report \
+  "hepta-work-graph-observability-timeline-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-observability-timeline-preview-report.sh" \
+  >"$tmpdir/observability_timeline.json"
+capture_json_report \
+  "hepta-work-graph-role-manifest-contract-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-role-manifest-contract-preview-report.sh" \
+  >"$tmpdir/role_manifest.json"
+capture_json_report \
+  "hepta-work-graph-state-store-persistence-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-state-store-persistence-preview-report.sh" \
+  >"$tmpdir/state_store_persistence.json"
+capture_json_report \
+  "hepta-work-graph-idempotency-readback-adapter-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-idempotency-readback-adapter-preview-report.sh" \
+  >"$tmpdir/idempotency_readback_adapter.json"
+
+enforcement_readiness_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_projection_enforcement_readiness_preview.rs
+)"
+enforcement_readiness_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-preview-report.sh
+)"
+enforcement_readiness_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-preview-gate.sh
+)"
+
+jq -n \
+  --slurpfile audit "$tmpdir/unified_projection_audit.json" \
+  --slurpfile append "$tmpdir/append_only_event_intake.json" \
+  --slurpfile task_result "$tmpdir/task_result_contract.json" \
+  --slurpfile scheduler "$tmpdir/scheduler_admission.json" \
+  --slurpfile timeline "$tmpdir/observability_timeline.json" \
+  --slurpfile role "$tmpdir/role_manifest.json" \
+  --slurpfile state_store "$tmpdir/state_store_persistence.json" \
+  --slurpfile idempotency "$tmpdir/idempotency_readback_adapter.json" \
+  --argjson enforcement_readiness_rust_module_present "$enforcement_readiness_rust_module_present" \
+  --argjson enforcement_readiness_report_script_present "$enforcement_readiness_report_script_present" \
+  --argjson enforcement_readiness_gate_script_present "$enforcement_readiness_gate_script_present" \
+  '
+  $audit[0] as $audit
+  | $append[0] as $append
+  | $task_result[0] as $task_result
+  | $scheduler[0] as $scheduler
+  | $timeline[0] as $timeline
+  | $role[0] as $role
+  | $state_store[0] as $state_store
+  | $idempotency[0] as $idempotency
+  | def route_for($id): [$append.source_routes[] | select(.source_surface_id == $id)][0] // null;
+  def idempotency_adapter_present($id): any($idempotency.source_adapters[]?; .source_surface_id == $id);
+  def has_suffix($values; $suffix): any($values[]?; endswith($suffix));
+  def has_contains($values; $needle): any($values[]?; contains($needle));
+  def scheduler_relevant($source): ($source.source_category | IN("multi_agent", "batch_agent_jobs", "runtime_scheduler"));
+  def decision_for($source; $route; $task_result_ready; $readback_ready):
+    if ($source.has_unified_store_projection | not) then "deny_missing_unified_store_projection"
+    elif ($source.has_observability_timeline_projection | not) then "deny_missing_timeline_projection"
+    elif ($task_result_ready | not) then "deny_missing_task_result_projection"
+    elif $route == null then "deny_missing_append_only_route"
+    elif ($route.idempotency_guard_id == null) then "deny_missing_store_idempotency_guard"
+    elif ($readback_ready | not) then "deny_missing_readback_probe"
+    elif ($route.blocker_ids | index("terminal_task_result_enforcement_disabled")) then "deny_terminal_task_result_enforcement_disabled"
+    elif has_suffix($source.blocker_ids; "_admission_not_enforced") then "deny_scheduler_admission_not_enforced"
+    elif has_contains($source.blocker_ids; "role_manifest_not_enforced") then "deny_role_manifest_not_enforced"
+    elif ($route.blocker_ids | index("append_only_store_disabled_by_design")) then "deny_append_only_store_disabled"
+    else "allow_preview_only"
+    end;
+  def next_gate_for($decision):
+    if $decision == "deny_missing_unified_store_projection" then "hepta_work_graph_projection_adapter_gap_closure_preview_gate"
+    elif $decision == "deny_missing_timeline_projection" then "hepta_work_graph_observability_timeline_preview_gate"
+    elif $decision == "deny_missing_task_result_projection" then "hepta_work_graph_task_result_contract_preview_gate"
+    elif $decision == "deny_missing_append_only_route" then "hepta_work_graph_append_only_event_intake_preview_gate"
+    elif $decision == "deny_missing_store_idempotency_guard" then "hepta_work_graph_idempotency_readback_adapter_preview_gate"
+    elif $decision == "deny_missing_readback_probe" then "hepta_work_graph_replay_readback_preview_gate"
+    elif $decision == "deny_terminal_task_result_enforcement_disabled" then "hepta_work_graph_terminal_task_result_wrapper_preview_gate"
+    elif $decision == "deny_scheduler_admission_not_enforced" then "hepta_work_graph_scheduler_admission_controller_preview_gate"
+    elif $decision == "deny_role_manifest_not_enforced" then "hepta_work_graph_role_manifest_contract_preview_gate"
+    elif $decision == "deny_append_only_store_disabled" then "hepta_work_graph_append_only_store_enablement_precondition_preview_gate"
+    else "hepta_work_graph_projection_enforcement_dry_run_preview_gate"
+    end;
+  def source_decision($source):
+    (route_for($source.source_surface_id)) as $route
+    | (($route != null) and (($route.readback_probe_ids | length) >= ($route.target_collection_ids | length))) as $readback_ready
+    | ((if $source.requires_terminal_task_result then $source.has_task_result_projection else true end)) as $task_result_ready
+    | (decision_for($source; $route; $task_result_ready; $readback_ready)) as $decision
+    | {
+        source_surface_id: $source.source_surface_id,
+        source_category: $source.source_category,
+        coverage_state: $source.coverage_state,
+        requires_terminal_task_result: $source.requires_terminal_task_result,
+        projection_contract_ready: ($source.coverage_state == "contract_ready_preview"),
+        unified_store_projection_ready: $source.has_unified_store_projection,
+        timeline_projection_ready: $source.has_observability_timeline_projection,
+        task_result_projection_ready: $task_result_ready,
+        role_manifest_projection_ready: ((if $source.requires_terminal_task_result then $source.has_role_manifest_projection else true end)),
+        scheduler_admission_projection_ready: ((if scheduler_relevant($source) then $source.has_scheduler_admission_projection else true end)),
+        append_only_route_ready: ($route != null),
+        store_idempotency_guard_ready: (($route != null) and ($route.idempotency_guard_id != null)),
+        idempotency_readback_adapter_present: idempotency_adapter_present($source.source_surface_id),
+        readback_probe_contract_ready: $readback_ready,
+        source_blocker_ids: $source.blocker_ids,
+        route_blocker_ids: (($route.blocker_ids // [])),
+        enforcement_decision: $decision,
+        next_required_gate: next_gate_for($decision)
+      };
+  def blocker($id; $severity; $affected; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_source_surface_ids: $affected,
+    required_before_projection_enforcement: true,
+    recommended_fix: $fix
+  };
+  def stage($id; $gates; $observed; $ready; $blockers; $next): {
+    id: $id,
+    input_gate_ids: $gates,
+    observed_contract_count: $observed,
+    ready_contract_count: $ready,
+    hard_blocker_ids: $blockers,
+    enforcement_enabled: false,
+    next_gate: $next
+  };
+  def required_prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_append_only_event_intake_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_idempotency_readback_adapter_preview_gate"
+  ];
+  ($audit.source_surfaces | map(source_decision(.))) as $decisions
+  | [
+    blocker(
+      "projection_adapters_missing_for_enforcement";
+      "high";
+      ($decisions | map(select((.unified_store_projection_ready | not) or (.timeline_projection_ready | not) or (.task_result_projection_ready | not)) | .source_surface_id));
+      "close unified store, timeline, and terminal TaskResult projection gaps before enabling projection authority"
+    ),
+    blocker(
+      "store_idempotency_guards_missing_for_enforcement";
+      "high";
+      ($decisions | map(select(.store_idempotency_guard_ready | not) | .source_surface_id));
+      "promote idempotency readback adapters into state-store guards before any append-only intake writes"
+    ),
+    blocker(
+      "terminal_task_result_enforcement_disabled";
+      "high";
+      ($decisions | map(select(.requires_terminal_task_result and (.route_blocker_ids | index("terminal_task_result_enforcement_disabled"))) | .source_surface_id));
+      "make every terminal worker, agent, scheduler, and handoff path emit the canonical TaskResult contract"
+    ),
+    blocker(
+      "scheduler_admission_not_enforced";
+      "high";
+      ($decisions | map(select(has_suffix(.source_blocker_ids; "_admission_not_enforced")) | .source_surface_id));
+      "make dependency, lease, budget, approval, role, and idempotency checks authoritative before work start"
+    ),
+    blocker(
+      "role_manifest_not_enforced";
+      "medium";
+      ($decisions | map(select(has_contains(.source_blocker_ids; "role_manifest_not_enforced")) | .source_surface_id));
+      "bind multi-agent, batch, worker, and handoff sources to role manifests with budgets and tool permissions"
+    ),
+    blocker("append_only_store_enablement_disabled"; "medium"; ($decisions | map(.source_surface_id)); "keep projection enforcement disabled until WAL, readback, replay, and operator readiness gates are promoted")
+  ] as $blockers
+  | [
+    stage("unified_projection_contracts"; ["hepta_work_graph_unified_projection_audit_preview_gate"]; ($decisions | length); ($decisions | map(select(.projection_contract_ready)) | length); ["projection_adapters_missing_for_enforcement"]; "hepta_work_graph_projection_adapter_gap_closure_preview_gate"),
+    stage("timeline_observability_contracts"; ["hepta_work_graph_observability_timeline_preview_gate"]; ($timeline.adapter_previews | length); 0; ["projection_adapters_missing_for_enforcement"]; "hepta_work_graph_observability_timeline_preview_gate"),
+    stage("append_only_event_intake_contracts"; ["hepta_work_graph_append_only_event_intake_preview_gate"]; ($append.source_routes | length); ($append.source_routes | map(select((.blocker_ids | index("source_projection_not_contract_ready")) | not)) | length); ["append_only_store_enablement_disabled"]; "hepta_work_graph_append_only_event_intake_preview_gate"),
+    stage("idempotency_readback_gap_closures"; ["hepta_work_graph_idempotency_readback_adapter_preview_gate"]; ($idempotency.source_adapters | length); 0; ["store_idempotency_guards_missing_for_enforcement"]; "hepta_work_graph_state_store_persistence_preview_gate"),
+    stage("terminal_task_result_contracts"; ["hepta_work_graph_task_result_contract_preview_gate"]; ($task_result.adapter_previews | length); 0; ["terminal_task_result_enforcement_disabled"]; "hepta_work_graph_terminal_task_result_wrapper_preview_gate"),
+    stage("scheduler_admission_contracts"; ["hepta_work_graph_scheduler_admission_controller_preview_gate"]; ($scheduler.adapter_previews | length); 0; ["scheduler_admission_not_enforced"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+    stage("role_manifest_contracts"; ["hepta_work_graph_role_manifest_contract_preview_gate"]; ($role.adapter_previews | length); 0; ["role_manifest_not_enforced"]; "hepta_work_graph_role_manifest_contract_preview_gate"),
+    stage("append_only_store_enablement"; ["hepta_work_graph_state_store_persistence_preview_gate", "hepta_work_graph_replay_readback_preview_gate"]; ($append.event_contracts | length); 0; ["append_only_store_enablement_disabled"]; "hepta_work_graph_append_only_store_enablement_precondition_preview_gate")
+  ] as $stages
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "blocked",
+      gate: "hepta_work_graph_unified_projection_enforcement_readiness_preview_gate",
+      schema_version: "work_graph_unified_projection_enforcement_readiness_preview_v1",
+      preview_mode: "read_only_projection_enforcement_readiness_no_enforcement",
+      source_surface_count: ($decisions | length),
+      contract_ready_surface_count: ($decisions | map(select(.projection_contract_ready)) | length),
+      ready_surface_count: ($decisions | map(select(.enforcement_decision == "allow_preview_only")) | length),
+      blocked_surface_count: ($decisions | map(select(.enforcement_decision != "allow_preview_only")) | length),
+      decision_count: ($decisions | length),
+      blocker_count: ($blockers | length),
+      enforcement_stage_count: ($stages | length),
+      required_prior_gate_count: (required_prior_gates | length),
+      source_decisions: $decisions,
+      blockers: $blockers,
+      enforcement_stages: $stages,
+      required_prior_gates: required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_projection_adapter_gap_closure_preview_gate",
+      ready_for_projection_gap_closure_preview: true,
+      ready_for_projection_enforcement: false,
+      ready_for_append_only_store_enablement: false,
+      ready_for_task_result_enforcement: false,
+      ready_for_scheduler_admission_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        enforcement_readiness: {
+          rust_module_present: $enforcement_readiness_rust_module_present,
+          report_script_present: $enforcement_readiness_report_script_present,
+          gate_script_present: $enforcement_readiness_gate_script_present
+        },
+        upstream_reports: {
+          unified_projection_audit: ($audit.gate == "hepta_work_graph_unified_projection_audit_preview_gate"),
+          append_only_event_intake: ($append.gate == "hepta_work_graph_append_only_event_intake_preview_gate"),
+          task_result_contract: ($task_result.gate == "hepta_work_graph_task_result_contract_preview_gate"),
+          scheduler_admission: ($scheduler.gate == "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+          observability_timeline: ($timeline.gate == "hepta_work_graph_observability_timeline_preview_gate"),
+          role_manifest: ($role.gate == "hepta_work_graph_role_manifest_contract_preview_gate"),
+          state_store_persistence: ($state_store.gate == "hepta_work_graph_state_store_persistence_preview_gate"),
+          idempotency_readback_adapter: ($idempotency.gate == "hepta_work_graph_idempotency_readback_adapter_preview_gate")
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        append_only_store_enabled: false,
+        projection_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        task_result_enforcement_enabled: false,
+        role_manifest_enforcement_enabled: false,
+        timeline_persisted: false,
+        approval_recorded: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

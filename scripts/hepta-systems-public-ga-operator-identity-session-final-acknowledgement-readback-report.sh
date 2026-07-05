@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-summary-briefing-final-index-final-acknowledgement-report.sh"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable Public GA operator identity/session final acknowledgement attachment report: $SOURCE_REPORT" >&2
+  exit 1
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required to build the Public GA operator identity/session final acknowledgement readback report" >&2
+  exit 1
+fi
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment"
+  and .public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment_ready == true
+  and .public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment_blocked == true
+  and .final_operator_acknowledgement_accepted == false
+  and .operator_received_recorded == false
+  and .operator_confirmed_recorded == false
+  and .telegram_acknowledgement_sent == false
+  and .source_canonical_governance_tool_execution_closure_backfeed_ready == true
+  and .source_canonical_governance_tool_execution_closure_backfeed_blocker_count == 17
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_count == 4
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_ready_count == 4
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count == 17
+  and .source_canonical_governance_tool_execution_closure_backfeed_categorization_ready == true
+' <<<"$source_json" >/dev/null
+
+jq -n \
+  --argjson source "$source_json" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_final_acknowledgement_non_acceptance_readback",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment_surface: $source.surface,
+    source_public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment_ready: $source.public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment_ready,
+    source_public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment_blocked: $source.public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment_blocked,
+    public_ga_operator_identity_session_final_acknowledgement_non_acceptance_readback_ready: true,
+    public_ga_operator_identity_session_final_acknowledgement_non_acceptance_readback_blocked: true,
+    public_ga_operator_identity_session_final_acknowledgement_non_acceptance_attachment_attached: true,
+    public_ga_operator_identity_session_operator_facing_summary_briefing_final_index_attached: $source.public_ga_operator_identity_session_operator_facing_summary_briefing_final_index_attached,
+    readback_mode: "static_operator_identity_session_final_acknowledgement_snapshot_only",
+    readback_check_count: 50,
+    source_canonical_governance_tool_execution_closure_backfeed_ready: $source.source_canonical_governance_tool_execution_closure_backfeed_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_blocker_count: $source.source_canonical_governance_tool_execution_closure_backfeed_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_ready_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_categorization_ready: $source.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_categories: $source.source_canonical_governance_tool_execution_closure_backfeed_categories,
+    operator_identity_session_final_acknowledgement_non_acceptance_gate_present: $source.operator_identity_session_final_acknowledgement_non_acceptance_gate_present,
+    operator_identity_session_final_acknowledgement_non_acceptance_doc_present: $source.operator_identity_session_final_acknowledgement_non_acceptance_doc_present,
+    operator_identity_session_final_acknowledgement_non_acceptance_gate_invoked: false,
+    operator_identity_session_operator_facing_summary_briefing_non_persistence_gate_invoked: false,
+    long_soak_required_by_source_final_acknowledgement_gate: $source.long_soak_required_by_source_final_acknowledgement_gate,
+    long_soak_started: false,
+    public_ga_operator_approval_packet_invoked: false,
+    public_ga_operator_packet_sent: false,
+    operator_approval_request_sent: false,
+    operator_approval_recorded: false,
+    operator_approval_accepted: false,
+    final_operator_acknowledgement_accepted: false,
+    final_operator_acknowledgement_recorded: false,
+    final_operator_acknowledgement_persisted: false,
+    final_operator_acknowledgement_materialized: false,
+    final_operator_acknowledgement_filesystem_written: false,
+    final_operator_acknowledgement_delivered: false,
+    operator_received_recorded: false,
+    operator_confirmed_recorded: false,
+    operator_read_recorded: false,
+    operator_seen_recorded: false,
+    final_response_recorded: false,
+    completion_acknowledgement_recorded: false,
+    status_acknowledgement_recorded: false,
+    summary_acknowledgement_recorded: false,
+    briefing_acknowledgement_recorded: false,
+    readback_digest_acknowledgement_recorded: false,
+    dashboard_acknowledgement_recorded: false,
+    notification_acknowledgement_recorded: false,
+    channel_acknowledgement_delivered: false,
+    external_acknowledgement_sent: false,
+    telegram_acknowledgement_sent: false,
+    acknowledgement_acceptance_recorded: false,
+    operator_approval_from_acknowledgement_derived: false,
+    release_publication_authority_from_acknowledgement_derived: false,
+    activation_authority_from_acknowledgement_derived: false,
+    activation_command_from_acknowledgement_derived: false,
+    activation_from_acknowledgement_allowed: false,
+    live_execution_from_acknowledgement_allowed: false,
+    download_link_from_acknowledgement_rendered: false,
+    install_command_from_acknowledgement_rendered: false,
+    install_from_acknowledgement_executed: false,
+    service_restart_from_acknowledgement_performed: false,
+    active_binary_from_acknowledgement_mutated: false,
+    memory_store_write_performed: false,
+    live_kg_write_performed: false,
+    telegram_send_performed: false,
+    external_send_performed: false,
+    public_ga_readiness_script_invoked: false,
+    public_claim_non_promotion_denial_gate_invoked: false,
+    terminal_live_gates_invoked: false,
+    readback_blocker_count: 44,
+    public_ga_claim_allowed: false,
+    public_ga_claimed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    next_migration_step: "derive_public_ga_operator_identity_session_final_acknowledgement_final_index_without_summary",
+    local_gate: "scripts/hepta-systems-public-ga-operator-identity-session-final-acknowledgement-readback-gate.sh",
+    architecture_note: "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_IDENTITY_SESSION_FINAL_ACKNOWLEDGEMENT_READBACK_2026-06-21.md",
+    source_files: {
+      public_ga_operator_identity_session_final_acknowledgement_attachment_report: "scripts/hepta-systems-public-ga-operator-summary-briefing-final-index-final-acknowledgement-report.sh"
+    },
+    side_effect_free: true,
+    side_effects: ($source.side_effects)
+  }'

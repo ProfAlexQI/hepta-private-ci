@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+ack_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_preview.rs
+)"
+ack_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-preview-report.sh
+)"
+ack_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-preview-gate.sh
+)"
+readback_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_receipt_preview.rs
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-receipt-preview-gate.sh
+)"
+durable_identity_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_durable_identity_preview.rs
+)"
+durable_identity_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-report.sh
+)"
+durable_identity_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-gate.sh
+)"
+durable_identity_report="$(
+  capture_json_report \
+    "hepta-work-graph-durable-identity-preview-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-durable-identity-preview-report.sh"
+)"
+
+jq -n \
+  --argjson ack_rust_module_present "$ack_rust_module_present" \
+  --argjson ack_report_script_present "$ack_report_script_present" \
+  --argjson ack_gate_script_present "$ack_gate_script_present" \
+  --argjson readback_rust_module_present "$readback_rust_module_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  --argjson durable_identity_rust_module_present "$durable_identity_rust_module_present" \
+  --argjson durable_identity_report_script_present "$durable_identity_report_script_present" \
+  --argjson durable_identity_gate_script_present "$durable_identity_gate_script_present" \
+  --argjson durable_identity_report "$durable_identity_report" \
+  '
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_promotion_precondition_preview_gate",
+    "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+    "hepta_work_graph_shadow_adapter_readback_preview_gate",
+    "hepta_work_graph_persistence_feature_flag_preview_gate",
+    "hepta_work_graph_persistence_canary_dry_run_preview_gate",
+    "hepta_work_graph_persistence_canary_readback_receipt_preview_gate",
+    "hepta_work_graph_persistence_promotion_blocker_preview_gate",
+    "hepta_work_graph_persistence_shadow_live_readback_comparison_preview_gate",
+    "hepta_work_graph_persistence_enforcement_rollout_blocker_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_packet_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_acknowledgement_preview_gate",
+    "hepta_work_graph_persistence_acceptance_authority_blocker_preview_gate",
+    "hepta_work_graph_persistence_acceptance_record_intake_preview_gate",
+    "hepta_work_graph_persistence_acceptance_record_receipt_preview_gate",
+    "hepta_work_graph_persistence_acceptance_record_receipt_acknowledgement_preview_gate",
+    "hepta_work_graph_persistence_acceptance_effect_application_blocker_preview_gate",
+    "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_preview_gate",
+    "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_acknowledgement_preview_gate",
+    "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_replay_idempotency_preview_gate",
+    "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_preview_gate",
+    "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_receipt_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ];
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  def ack_ids: [
+    "retention_policy_readback_receipt_acknowledgement",
+    "expiry_guard_readback_receipt_acknowledgement",
+    "supersession_guard_readback_receipt_acknowledgement",
+    "garbage_collection_denial_readback_receipt_acknowledgement",
+    "zero_effect_digest_readback_receipt_acknowledgement",
+    "release_external_denial_readback_receipt_acknowledgement"
+  ];
+  def ack($id; $source): {
+    id: $id,
+    source_readback_receipt_id: $source,
+    required_fields: (durable_fields + ["acknowledgementId", "sourceReadbackReceiptId", "readbackReceiptHash", "retentionScope", "acknowledgementHash", "accepted", "recordingEnabled", "nextGate"]),
+    acceptance_allowed: false,
+    acknowledgement_recording_enabled: false,
+    receipt_recording_enabled: false,
+    authority_grant_enabled: false,
+    external_delivery_enabled: false
+  };
+  def reason($id; $text): {
+    id: $id,
+    applies_to_acknowledgement_ids: ack_ids,
+    reason: $text,
+    blocks_acceptance: true
+  };
+  def denial($id; $target; $text): {
+    id: $id,
+    target_record: $target,
+    reason: $text,
+    blocks_recording: true
+  };
+  def guard($id; $trigger): {
+    id: $id,
+    applies_to_acknowledgement_ids: ack_ids,
+    trigger: $trigger,
+    blocks_acknowledgement: true
+  };
+  def view($id; $audience; $fields): {
+    id: $id,
+    audience: $audience,
+    required_fields: $fields,
+    external_delivery_enabled: false
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    ack("retention_policy_readback_receipt_acknowledgement"; "retention_policy_readback_receipt"),
+    ack("expiry_guard_readback_receipt_acknowledgement"; "expiry_guard_readback_receipt"),
+    ack("supersession_guard_readback_receipt_acknowledgement"; "supersession_guard_readback_receipt"),
+    ack("garbage_collection_denial_readback_receipt_acknowledgement"; "garbage_collection_denial_readback_receipt"),
+    ack("zero_effect_digest_readback_receipt_acknowledgement"; "zero_effect_digest_readback_receipt"),
+    ack("release_external_denial_readback_receipt_acknowledgement"; "release_external_denial_readback_receipt")
+  ] as $acknowledgement_contracts
+  | [
+    reason("durable_identity_evidence_missing"; "retention readback acknowledgement does not include durable identity evidence"),
+    reason("readback_acknowledgement_is_not_retention_acceptance"; "readback acknowledgement only confirms local preview visibility"),
+    reason("readback_acknowledgement_cannot_record_receipt_or_acknowledgement"; "readback acknowledgement cannot record receipt or acknowledgement state"),
+    reason("readback_acknowledgement_cannot_record_approval"; "readback acknowledgement cannot record approval or acceptance"),
+    reason("readback_acknowledgement_cannot_grant_authority"; "readback acknowledgement cannot grant WorkGraph authority"),
+    reason("readback_acknowledgement_cannot_enable_persistence_or_wal"; "readback acknowledgement cannot enable live persistence, WAL, or checkpoints"),
+    reason("readback_acknowledgement_cannot_start_rollout"; "readback acknowledgement cannot start rollout or route traffic"),
+    reason("readback_acknowledgement_cannot_publish_or_send"; "readback acknowledgement cannot publish release state or send externally")
+  ] as $non_acceptance_reasons
+  | [
+    denial("deny_durable_identity_readback_ack_recording"; "durable_identity_readback_acknowledgement_evidence"; "readback acknowledgement recording is blocked without durable identity evidence"),
+    denial("retention_readback_acknowledgement_recording_denied"; "retention_readback_acknowledgement_store"; "retention readback acknowledgement recording is disabled in preview"),
+    denial("retention_state_recording_denied"; "retention_state_store"; "readback acknowledgement cannot persist retention state"),
+    denial("readback_receipt_recording_denied"; "retention_readback_receipt_store"; "readback acknowledgement cannot persist receipt state"),
+    denial("operator_acceptance_recording_denied"; "operator_acceptance_record"; "readback acknowledgement is not operator acceptance"),
+    denial("approval_ledger_recording_denied"; "approval_ledger"; "readback acknowledgement cannot write approval ledger entries"),
+    denial("authority_grant_recording_denied"; "authority_grant_record"; "readback acknowledgement cannot grant authority"),
+    denial("release_external_recording_denied"; "release_publication_external_delivery_record"; "readback acknowledgement cannot publish release state or create delivery records")
+  ] as $recording_denials
+  | [
+    guard("retention_readback_receipt_expired"; "retention readback receipt exceeded the local preview window"),
+    guard("retention_readback_receipt_scope_superseded"; "retention readback receipt scope was superseded by a newer blocker report"),
+    guard("retention_readback_receipt_digest_mismatch"; "retention readback receipt digest does not match local readback evidence"),
+    guard("retention_garbage_collection_denial_receipt_replayed"; "garbage-collection denial readback receipt replay was observed"),
+    guard("readback_acknowledgement_replay_detected"; "readback acknowledgement idempotency key has already been observed")
+  ] as $expiry_replay_guards
+  | [
+    view("operator_retention_readback_acknowledgement_view"; "operator"; durable_fields + ["acknowledgementId", "sourceReadbackReceiptId", "accepted", "nextGate"]),
+    view("auditor_retention_readback_acknowledgement_view"; "auditor"; durable_fields + ["acknowledgementHash", "sourceReadbackReceiptHash", "scopeDigest", "zeroEffectHash"]),
+    view("release_owner_retention_readback_acknowledgement_view"; "release_owner"; durable_fields + ["releaseDenied", "publicationDenied", "externalDeliveryDenied", "acknowledgementId"]),
+    view("runtime_retention_readback_acknowledgement_zero_effect_view"; "system"; durable_fields + ["acknowledgementRecorded", "retentionStatePersisted", "authorityGranted", "trafficRouted", "externalSendPerformed"])
+  ] as $local_views
+  | [
+    invariant("retention_readback_acknowledgements_require_durable_identity_evidence"; "retention readback acknowledgement contracts require workflow, run, step, checkpoint, replay, rollback, and receipt evidence"),
+    invariant("retention_readback_acknowledgements_are_hash_only"; "acknowledgements expose only local hash-only readback receipt references"),
+    invariant("retention_readback_acknowledgements_are_non_accepting"; "retention readback acknowledgement visibility cannot become acceptance"),
+    invariant("retention_readback_acknowledgements_are_non_recording"; "acknowledgement preview cannot record receipt, approval, acceptance, authority, or retention state"),
+    invariant("retention_readback_acknowledgement_views_are_local_only"; "operator, auditor, release-owner, and runtime views cannot be sent externally"),
+    invariant("retention_readback_acknowledgement_requires_readback_receipt_gate"; "acknowledgement preview requires retention expiry readback receipt evidence first"),
+    invariant("retention_readback_acknowledgement_preview_has_no_side_effects"; "this gate cannot persist, grant authority, enable live execution, publish, or send externally")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_preview_gate",
+      schema_version: "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_preview_v1",
+      preview_mode: "read_only_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_preview_no_recording",
+      acknowledgement_contract_count: ($acknowledgement_contracts | length),
+      non_acceptance_reason_count: ($non_acceptance_reasons | length),
+      recording_denial_count: ($recording_denials | length),
+      expiry_replay_guard_count: ($expiry_replay_guards | length),
+      local_view_count: ($local_views | length),
+      invariant_count: ($invariants | length),
+      required_prior_gates: prior_gates,
+      acknowledgement_contracts: $acknowledgement_contracts,
+      non_acceptance_reasons: $non_acceptance_reasons,
+      recording_denials: $recording_denials,
+      expiry_replay_guards: $expiry_replay_guards,
+      local_views: $local_views,
+      durable_identity_evidence: {
+        schema_version: $durable_identity_report.schema_version,
+        required_prior_gate: "hepta_work_graph_durable_identity_preview_gate",
+        required_field_ids: durable_fields,
+        required_for_acknowledgement_ids: ack_ids,
+        durable_field_count: (durable_fields | length),
+        preview_binding_count: 5,
+        invariant_count: ($invariants | length),
+        currently_satisfied: false
+      },
+      invariants: $invariants,
+      recommended_next_gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_replay_idempotency_preview_gate",
+      ready_for_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_replay_idempotency_preview: true,
+      ready_for_operator_acceptance: false,
+      ready_for_live_persistence: false,
+      source_probes: {
+        persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement: {
+          rust_module_present: $ack_rust_module_present,
+          report_script_present: $ack_report_script_present,
+          gate_script_present: $ack_gate_script_present
+        },
+        persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_receipt: {
+          rust_module_present: $readback_rust_module_present,
+          gate_script_present: $readback_gate_script_present
+        },
+        durable_identity: {
+          rust_module_present: $durable_identity_rust_module_present,
+          report_script_present: $durable_identity_report_script_present,
+          gate_script_present: $durable_identity_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        retention_state_persisted: false,
+        readback_receipt_persisted: false,
+        readback_acknowledgement_recorded: false,
+        operator_acceptance_recorded: false,
+        approval_recorded: false,
+        authority_granted: false,
+        live_persistence_enabled: false,
+        wal_written: false,
+        checkpoint_written: false,
+        enforcement_enabled: false,
+        rollout_started: false,
+        traffic_routed: false,
+        release_published: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

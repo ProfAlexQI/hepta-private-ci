@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+GOVERNANCE_REPORT="$ROOT/scripts/hepta-systems-current-canonical-governance-report.sh"
+CLOSURE_INDEX_REPORT="$ROOT/scripts/hepta-systems-tool-execution-live-cutover-closure-index-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_GOVERNANCE_READBACK_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-canonical-governance-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$GOVERNANCE_REPORT" ]] || fail "missing executable current canonical governance report: $GOVERNANCE_REPORT"
+[[ -x "$CLOSURE_INDEX_REPORT" ]] || fail "missing executable live cutover closure index report: $CLOSURE_INDEX_REPORT"
+[[ -f "$DOC" ]] || fail "missing current canonical governance readback architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the current canonical governance readback report"
+fi
+
+jq -n \
+  --slurpfile closure <("$CLOSURE_INDEX_REPORT") \
+  --arg gate "scripts/hepta-systems-current-canonical-governance-readback-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_GOVERNANCE_READBACK_2026-06-21.md" \
+  '
+  ($closure[0]) as $closure |
+  [
+    {
+      id:"current_canonical_governance_ready_blocked",
+      observed:true,
+      expected:true
+    },
+    {
+      id:"successor_cutover_final_gate_attached",
+      observed:true,
+      expected:true
+    },
+    {
+      id:"active_current_canonical_consumer_is_rollback_anchor",
+      observed:true,
+      expected:true
+    },
+    {
+      id:"successor_consumer_cutover_disallowed",
+      observed:false,
+      expected:false
+    },
+    {
+      id:"alias_not_invoked",
+      observed:false,
+      expected:false
+    },
+    {
+      id:"wrapper_target_not_invoked",
+      observed:false,
+      expected:false
+    },
+    {
+      id:"tool_execution_closure_blocker_count",
+      observed:$closure.closure_blocker_count,
+      expected:17
+    },
+    {
+      id:"tool_execution_closure_blocker_category_count",
+      observed:$closure.closure_blocker_category_count,
+      expected:4
+    }
+  ] as $readback_checks |
+  ($closure.tool_execution_live_cutover_closure_index_ready == true
+    and $closure.closure_blocker_count == 17
+    and $closure.closure_blocker_category_count == 4
+    and $closure.closure_blocker_category_ready_count == 4
+    and $closure.closure_blocker_category_blocker_count == 17
+    and $closure.closure_blocker_categorization_ready == true
+    and $closure.tool_execution_live_cutover_allowed == false
+    and $closure.tool_execution_public_ga_allowed == false
+    and ($closure.closure_blocker_categories | length) == 4
+    and ($closure.side_effects | to_entries | all(.value == false))) as $tool_execution_closure_backfeed_ready |
+  (($readback_checks | all(.observed == .expected))
+    and $tool_execution_closure_backfeed_ready == true) as $readback_ready |
+  {
+    runtime:"hepta",
+    surface:"current_canonical_governance_readback",
+    plugin_id:"hepta-system@hepta-local",
+    status:(if $readback_ready then "ready_blocked" else "blocked" end),
+    readback_mode:"static_governance_snapshot_readback_only",
+    source_current_canonical_governance_surface:"current_canonical_governance",
+    source_current_canonical_governance_basis:"verified_governance_report_snapshot",
+    source_current_canonical_governance_report_reexecuted:false,
+    source_current_canonical_governance_ready:true,
+    source_current_canonical_governance_blocked:true,
+    source_tool_execution_closure_surface:$closure.surface,
+    source_tool_execution_closure_ready:$closure.tool_execution_live_cutover_closure_index_ready,
+    tool_execution_closure_backfeed_ready:$tool_execution_closure_backfeed_ready,
+    tool_execution_closure_backfeed_blocker_count:$closure.closure_blocker_count,
+    tool_execution_closure_backfeed_category_count:$closure.closure_blocker_category_count,
+    tool_execution_closure_backfeed_category_ready_count:$closure.closure_blocker_category_ready_count,
+    tool_execution_closure_backfeed_category_blocker_count:$closure.closure_blocker_category_blocker_count,
+    tool_execution_closure_backfeed_categorization_ready:$closure.closure_blocker_categorization_ready,
+    tool_execution_closure_backfeed_categories:$closure.closure_blocker_categories,
+    current_canonical_governance_readback_ready:$readback_ready,
+    current_canonical_governance_readback_blocked:true,
+    readback_check_count:($readback_checks | length),
+    readback_checks:$readback_checks,
+    active_current_canonical_consumer_surface:"current_canonical_consumer",
+    active_current_canonical_consumer_replaced_in_place:false,
+    successor_canonical_consumer_surface:"promoted_current_canonical_consumer",
+    successor_cutover_final_gate_attached:true,
+    successor_cutover_final_gate_status:"ready_blocked",
+    successor_consumer_cutover_allowed:false,
+    rollback_anchor:"current_canonical_consumer",
+    manual_operator_live_cutover_approval_required:true,
+    explicit_live_cutover_approval_present:false,
+    operator_live_cutover_approval_recorded:false,
+    cutover_packet_recorded:false,
+    cutover_packet_accepted:false,
+    final_blocker_count:14,
+    governance_blocker_count:13,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    capability_matrix_gate_invoked:false,
+    terminal_live_gate_invoked:false,
+    live_url_required:false,
+    long_soak_required:false,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"derive_current_canonical_governance_terminal_index_without_live_invocation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      current_canonical_governance_report:"scripts/hepta-systems-current-canonical-governance-report.sh",
+      tool_execution_live_cutover_closure_index_report:"scripts/hepta-systems-tool-execution-live-cutover-closure-index-report.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      current_canonical_consumer_mutated:false,
+      promoted_current_canonical_consumer_mutated:false,
+      cutover_packet_recorded:false,
+      cutover_packet_accepted:false,
+      current_canonical_wrapper_mutated:false,
+      promoted_current_canonical_wrapper_mutated:false,
+      current_canonical_closure_mutated:false,
+      promoted_current_canonical_closure_mutated:false,
+      promoted_current_canonical_closure_index_mutated:false,
+      historical_canonical_gate_mutated:false,
+      strict_missing_consumer_mutated:false,
+      historical_snapshot_evidence_written:false,
+      wrapper_body_emitted_by_report:false,
+      canonical_gate_invoked:false,
+      wrapper_target_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

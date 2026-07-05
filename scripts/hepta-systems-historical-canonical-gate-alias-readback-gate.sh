@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-historical-canonical-gate-alias-readback-report.sh"
+CLOSURE_GATE="$ROOT/scripts/hepta-systems-current-canonical-closure-gate.sh"
+CANONICAL_GATE="$ROOT/scripts/hepta-systems-canonical-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_GATE_ALIAS_READBACK_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-historical-canonical-gate-alias-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable historical canonical gate alias readback report: $REPORT"
+[[ -x "$CLOSURE_GATE" ]] || fail "missing executable current canonical closure gate: $CLOSURE_GATE"
+[[ -x "$CANONICAL_GATE" ]] || fail "missing executable historical canonical gate alias: $CANONICAL_GATE"
+[[ -f "$DOC" ]] || fail "missing historical canonical gate alias readback architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the historical canonical gate alias readback report"
+fi
+
+grep -q 'Alias Readback' "$DOC" \
+  || fail "architecture note must document Alias Readback"
+grep -q 'static shell readback' "$DOC" \
+  || fail "architecture note must document static shell readback"
+grep -q 'does not execute' "$DOC" \
+  || fail "architecture note must document that readback does not execute the alias"
+
+bash -n "$CANONICAL_GATE"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "historical_canonical_gate_alias_readback"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_current_canonical_closure_surface == "current_canonical_closure"
+  and .source_current_canonical_closure_ready == true
+  and .source_thin_wrapper_validation_attached == true
+  and .historical_canonical_gate_alias_path == "scripts/hepta-systems-canonical-gate.sh"
+  and .historical_canonical_gate_alias_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+  and .historical_canonical_gate_alias_readback_mode == "static_shell_readback_only"
+  and .historical_canonical_gate_alias_shebang_count == 1
+  and .historical_canonical_gate_alias_strict_mode_count == 1
+  and .historical_canonical_gate_alias_root_count == 1
+  and .historical_canonical_gate_alias_target_count == 1
+  and .historical_canonical_gate_alias_exec_count == 1
+  and .historical_canonical_gate_alias_fail_prefix_count == 1
+  and .historical_canonical_gate_alias_bash_syntax_checked == true
+  and .historical_canonical_gate_alias_bash_syntax_valid == true
+  and .historical_canonical_gate_alias_readback_ready == true
+  and .readback_check_count == 4
+  and (.readback_checks | all(.passed == true))
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "attach_historical_canonical_gate_alias_readback_to_current_canonical_closure_without_live_invocation"
+  and .alias_blocker_count == 8
+  and (.alias_blockers | index("canonical_gate_not_invoked_by_alias_readback")) != null
+  and (.alias_blockers | index("wrapper_target_not_invoked_by_alias_readback")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$CLOSURE_GATE" >/dev/null
+
+printf 'hepta-systems-historical-canonical-gate-alias-readback-gate: PASS: historical canonical gate alias readback is static and does not invoke the alias\n'

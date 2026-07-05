@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-append-only-store-runtime-readback.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+capture_json_report \
+  "hepta-work-graph-append-only-store-runtime-enablement-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-append-only-store-runtime-enablement-preview-report.sh" \
+  >"$tmpdir/runtime_enablement.json"
+
+readback_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_store_runtime_enablement_readback_preview.rs
+)"
+readback_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-store-runtime-enablement-readback-preview-report.sh
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-store-runtime-enablement-readback-preview-gate.sh
+)"
+runtime_preview_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-store-runtime-enablement-preview-gate.sh
+)"
+
+jq -n \
+  --slurpfile runtime "$tmpdir/runtime_enablement.json" \
+  --argjson readback_rust_module_present "$readback_rust_module_present" \
+  --argjson readback_report_script_present "$readback_report_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  --argjson runtime_preview_gate_script_present "$runtime_preview_gate_script_present" \
+  '
+  $runtime[0] as $runtime
+  | def assertion_id($base; $suffix): ($base + "_" + $suffix + "_readback_assertion");
+  def readback_plan($plan): {
+      source_surface_id: $plan.source_surface_id,
+      source_category: $plan.source_category,
+      runtime_enablement_plan_id: $plan.runtime_enablement_plan_id,
+      expected_runtime_stage_ids: $plan.required_runtime_stage_ids,
+      expected_evidence_field_ids: $plan.expected_evidence_field_ids,
+      residual_source_blocker_ids: $plan.residual_source_blocker_ids,
+      readback_scope: "append_only_store_runtime_enablement_contract_refs",
+      expected_preview_state: "runtime_enablement_contract_ready_readback_not_executed",
+      required_before_runtime_enablement_application: true,
+      performs_readback: false,
+      mutates_store: false,
+      enables_append_only_store: false,
+      writes_wal: false,
+      mutates_idempotency_index: false,
+      executes_rollback: false,
+      records_approval: false
+    };
+  def source_plan_assertion($plan): {
+      assertion_id: assertion_id($plan.runtime_enablement_plan_id; "source_plan"),
+      source_surface_id: $plan.source_surface_id,
+      runtime_enablement_plan_id: $plan.runtime_enablement_plan_id,
+      expected_runtime_stage_ids: $plan.required_runtime_stage_ids,
+      expected_runtime_stage_count: ($plan.required_runtime_stage_ids | length),
+      expected_plan_state: "runtime_enablement_plan_defined_runtime_disabled",
+      performs_readback: false,
+      mutates_store: false
+    };
+  def stage_assertion($stage): {
+      assertion_id: assertion_id($stage.id; "stage_plan"),
+      runtime_stage_id: $stage.id,
+      category: $stage.category,
+      expected_source_surface_ids: $stage.affected_source_surface_ids,
+      expected_source_surface_count: ($stage.affected_source_surface_ids | length),
+      expected_contract_ref_ids: $stage.required_contract_ref_ids,
+      expected_contract_ref_count: ($stage.required_contract_ref_ids | length),
+      expected_runtime_state: "contract_ready_preview_runtime_disabled_readback_not_executed",
+      performs_readback: false,
+      mutates_store: false,
+      enables_append_only_store: false
+    };
+  def evidence_assertion($plan): {
+      assertion_id: assertion_id($plan.runtime_enablement_plan_id; "evidence_fields"),
+      source_surface_id: $plan.source_surface_id,
+      runtime_enablement_plan_id: $plan.runtime_enablement_plan_id,
+      expected_evidence_field_ids: $plan.expected_evidence_field_ids,
+      expected_evidence_field_count: ($plan.expected_evidence_field_ids | length),
+      expected_evidence_state: "evidence_fields_declared_readback_not_executed",
+      performs_readback: false,
+      mutates_store: false
+    };
+  def guard_assertion($guard): {
+      assertion_id: assertion_id($guard.id; "guard"),
+      guard_id: $guard.id,
+      guard_scope: $guard.guard_scope,
+      expected_guard_state: "guard_required_not_satisfied_by_preview",
+      required_before_runtime_enablement: $guard.required_before_runtime_enablement,
+      satisfied_by_preview: $guard.satisfied_by_preview,
+      performs_readback: false,
+      mutates_store: false
+    };
+  def blocker_assertion($blocker): {
+      assertion_id: assertion_id($blocker.id; "blocker_mapping"),
+      blocker_id: $blocker.id,
+      category: $blocker.category,
+      affected_source_surface_ids: $blocker.affected_source_surface_ids,
+      affected_runtime_stage_ids: $blocker.affected_runtime_stage_ids,
+      affected_runtime_enablement_plan_ids: $blocker.affected_runtime_enablement_plan_ids,
+      expected_blocker_state: "blocks_runtime_enablement_until_readback_and_application_preview",
+      required_before_runtime_enablement: $blocker.required_before_runtime_enablement,
+      performs_readback: false,
+      mutates_store: false
+    };
+  def drift($id; $fields; $severity): {
+      id: $id,
+      compared_field_ids: $fields,
+      severity: $severity,
+      blocks_runtime_enablement_application: true,
+      performs_readback: false
+    };
+  def readback_blocker($id; $severity; $category; $sources; $plans; $fix): {
+      id: $id,
+      severity: $severity,
+      category: $category,
+      affected_source_surface_ids: $sources,
+      affected_runtime_enablement_plan_ids: $plans,
+      required_before_runtime_enablement_application: true,
+      recommended_fix: $fix
+    };
+  def blocker_from_runtime($blocker): readback_blocker($blocker.id; $blocker.severity; $blocker.category; $blocker.affected_source_surface_ids; $blocker.affected_runtime_enablement_plan_ids; $blocker.recommended_fix);
+  ($runtime.runtime_enablement_plans | map(readback_plan(.))) as $readback_plans
+  | ($runtime.runtime_enablement_plans | map(source_plan_assertion(.))) as $source_assertions
+  | ($runtime.runtime_stage_plans | map(stage_assertion(.))) as $stage_assertions
+  | ($runtime.runtime_enablement_plans | map(evidence_assertion(.))) as $evidence_assertions
+  | ($runtime.guards | map(guard_assertion(.))) as $guard_assertions
+  | ($runtime.blockers | map(blocker_assertion(.))) as $blocker_assertions
+  | [
+      drift("append_only_runtime_source_plan_drift"; ["source_surface_id","runtime_enablement_plan_id","residual_source_blocker_ids"]; "critical"),
+      drift("append_only_runtime_stage_contract_drift"; ["runtime_stage_id","required_contract_ref_ids","affected_source_surface_ids"]; "critical"),
+      drift("append_only_runtime_evidence_field_drift"; ["expected_evidence_field_ids","runtime_store_switch_contract_ref","no_mutation_guard_ref"]; "high"),
+      drift("append_only_runtime_blocker_mapping_drift"; ["blocker_id","affected_runtime_stage_ids","affected_runtime_enablement_plan_ids"]; "critical"),
+      drift("append_only_runtime_side_effect_boundary_drift"; ["side_effects","append_only_store_enabled","wal_written","runtime_application_promoted"]; "critical"),
+      drift("append_only_runtime_prior_gate_drift"; ["required_prior_gates","runtime_enablement_preview_gate","role_manifest_readiness_rerun_gate"]; "medium")
+    ] as $drift_detectors
+  | ($runtime.runtime_enablement_plans | map(.source_surface_id)) as $all_sources
+  | ($runtime.runtime_enablement_plans | map(.runtime_enablement_plan_id)) as $all_plan_ids
+  | ([readback_blocker("readback_execution_disabled"; "critical"; "readback_execution"; $all_sources; $all_plan_ids; "keep this gate preview-only until runtime enablement readback execution is explicitly promoted")]
+      + ($runtime.blockers | map(blocker_from_runtime(.)))) as $readback_blockers
+  | ($runtime.required_prior_gates + (if ($runtime.required_prior_gates | index($runtime.gate)) then [] else [$runtime.gate] end)) as $required_priors
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_append_only_store_runtime_enablement_readback_preview_gate",
+      schema_version: "work_graph_append_only_store_runtime_enablement_readback_preview_v1",
+      preview_mode: "read_only_append_only_store_runtime_enablement_readback_preview_no_execution",
+      runtime_enablement_plan_count: ($runtime.runtime_enablement_plans | length),
+      readback_plan_count: ($readback_plans | length),
+      source_plan_assertion_count: ($source_assertions | length),
+      stage_plan_assertion_count: ($stage_assertions | length),
+      evidence_field_assertion_count: ($evidence_assertions | length),
+      guard_assertion_count: ($guard_assertions | length),
+      blocker_mapping_assertion_count: ($blocker_assertions | length),
+      readback_evidence_field_ref_count: ($readback_plans | map(.expected_evidence_field_ids | length) | add),
+      stage_contract_ref_count: ($stage_assertions | map(.expected_contract_ref_count) | add),
+      stage_source_ref_count: ($stage_assertions | map(.expected_source_surface_count) | add),
+      blocker_mapping_source_ref_count: ($blocker_assertions | map(.affected_source_surface_ids | length) | add),
+      drift_detector_count: ($drift_detectors | length),
+      blocker_count: ($readback_blockers | length),
+      required_prior_gate_count: ($required_priors | length),
+      readback_plans: $readback_plans,
+      source_plan_assertions: $source_assertions,
+      stage_plan_assertions: $stage_assertions,
+      evidence_field_assertions: $evidence_assertions,
+      guard_assertions: $guard_assertions,
+      blocker_mapping_assertions: $blocker_assertions,
+      drift_detectors: $drift_detectors,
+      blockers: $readback_blockers,
+      required_prior_gates: $required_priors,
+      recommended_next_gate: "hepta_work_graph_append_only_store_runtime_enablement_application_preview_gate",
+      ready_for_runtime_enablement_application_preview: true,
+      ready_for_append_only_store_enablement: false,
+      ready_for_projection_enforcement: false,
+      ready_for_scheduler_admission_enforcement: false,
+      ready_for_role_manifest_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        append_only_store_runtime_enablement_readback: {
+          rust_module_present: $readback_rust_module_present,
+          report_script_present: $readback_report_script_present,
+          gate_script_present: $readback_gate_script_present
+        },
+        append_only_store_runtime_enablement_preview: {
+          upstream_gate: ($runtime.gate == "hepta_work_graph_append_only_store_runtime_enablement_preview_gate"),
+          gate_script_present: $runtime_preview_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        idempotency_index_mutated: false,
+        append_only_store_enabled: false,
+        projection_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        role_manifest_enforcement_enabled: false,
+        task_result_enforcement_enabled: false,
+        task_result_persisted: false,
+        readback_executed: false,
+        rollback_executed: false,
+        runtime_application_promoted: false,
+        approval_recorded: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

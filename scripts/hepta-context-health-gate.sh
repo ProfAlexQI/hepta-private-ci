@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+release_manifest="$repo_root/codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv"
+report_script="$repo_root/scripts/hepta-context-health-report.sh"
+gate_script="$repo_root/scripts/hepta-context-health-gate.sh"
+report_output="$(mktemp -t hepta-context-health-report.XXXXXX)"
+
+cleanup() {
+  rm -f "$report_output"
+}
+trap cleanup EXIT
+
+fail() {
+  echo "hepta-context-health-gate: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+assert_report_line() {
+  local expected="$1"
+  if ! grep -F -x "$expected" "$report_output" >/dev/null; then
+    fail "health report must contain line: $expected"
+  fi
+}
+
+line_number_of() {
+  local file_path="$1"
+  local needle="$2"
+  local line
+
+  line="$(grep -n -F "$needle" "$file_path" | head -n 1 | cut -d: -f1 || true)"
+  if [ -z "$line" ]; then
+    fail "$file_path is missing required text: $needle"
+  fi
+  printf '%s\n' "$line"
+}
+
+assert_line_before() {
+  local file_path="$1"
+  local before_needle="$2"
+  local after_needle="$3"
+  local label="$4"
+  local before_line
+  local after_line
+
+  before_line="$(line_number_of "$file_path" "$before_needle")"
+  after_line="$(line_number_of "$file_path" "$after_needle")"
+  if [ "$before_line" -ge "$after_line" ]; then
+    fail "$label expected '$before_needle' before '$after_needle'"
+  fi
+}
+
+bash "$report_script" >"$report_output"
+
+assert_report_line "context-health-report=pass"
+assert_report_line "context-health-report.schema=1"
+assert_report_line "context-health-report.source-registry.entries=19"
+assert_report_line "context-health-report.source-registry.descriptor-fields=14"
+assert_report_line "context-health-report.source-registry.live-activation-routes=0"
+assert_report_line "context-health-report.source-registry.runtime-activation=disabled"
+assert_report_line "context-health-report.selected-context-recall.redaction=guarded_envelope"
+assert_report_line "context-health-report.selected-context-recall.quality=recall_quality"
+assert_report_line "context-health-report.selected-context-recall.activation-guard=operator_approval_required"
+assert_report_line "context-health-report.selected-context-recall.rollback=rerun_recall"
+assert_report_line "context-health-report.selected-context-recall.compression=summary"
+assert_report_line "context-health-report.source-aware.canary=feature-and-helper-marker"
+assert_report_line "context-health-report.source-aware.production-route=disabled"
+assert_report_line "context-health-report.prompt-mutation=explicit-canary-only"
+assert_report_line "context-health-report.payload-policy=no-raw-prompt-or-recall-payload"
+assert_report_line "context-health-report.runtime-activation=disabled"
+
+for term in \
+  "Context health/meta report" \
+  "hepta-context-health-report.sh" \
+  "hepta-context-health-gate.sh" \
+  "source-registry descriptor coverage" \
+  "selected_context_recall operator approval guard" \
+  "explicit-canary-only prompt mutation" \
+  "must not rerun cargo gates"; do
+  assert_file_contains "$contracts" "$term" "context health/meta contract"
+done
+
+assert_file_contains "$debug_gate" "hepta-context-health-gate.sh" \
+  "context health debug gate"
+assert_file_contains "$preflight_script" "context health/meta report gate" \
+  "context health preflight stage"
+assert_file_contains "$release_manifest" "scripts/hepta-context-health-report.sh" \
+  "context health report release manifest"
+assert_file_contains "$release_manifest" "scripts/hepta-context-health-gate.sh" \
+  "context health gate release manifest"
+
+assert_line_before \
+  "$preflight_script" \
+  "context source registry health gate" \
+  "context health/meta report gate" \
+  "context health preflight order"
+assert_line_before \
+  "$preflight_script" \
+  "context health/meta report gate" \
+  "context adaptive budget allocation dry-run report gate" \
+  "context health preflight order"
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-source-registry-health-gate.sh" \
+  "hepta-context-health-gate.sh" \
+  "context health debug order"
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-health-gate.sh" \
+  "hepta-context-adaptive-budget-allocation-report-gate.sh" \
+  "context health debug order"
+
+bash -n "$report_script"
+bash -n "$gate_script"
+
+echo "context-health-gate=pass"
+echo "context-health-gate.schema=1"
+echo "context-health-gate.source-registry=descriptor-covered"
+echo "context-health-gate.selected-context-recall=operator-approval-guarded"
+echo "context-health-gate.prompt-mutation=explicit-canary-only"
+echo "context-health-gate.runtime-activation=disabled"

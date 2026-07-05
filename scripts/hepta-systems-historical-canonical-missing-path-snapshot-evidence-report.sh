@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_MISSING_PATH_SNAPSHOT_EVIDENCE_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-historical-canonical-missing-path-snapshot-evidence-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -f "$DOC" ]] || fail "missing historical canonical missing path snapshot evidence architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the historical canonical missing path snapshot evidence report"
+fi
+
+jq -n \
+  --arg gate "scripts/hepta-systems-historical-canonical-missing-path-snapshot-evidence-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_MISSING_PATH_SNAPSHOT_EVIDENCE_2026-06-21.md" \
+  '
+  [
+    {
+      id:"hepta_systems_canonical_gate",
+      kind:"script",
+      path:"scripts/hepta-systems-canonical-gate.sh",
+      present_at_snapshot:false,
+      executable_at_snapshot:false
+    },
+    {
+      id:"hepta_systems_capability_matrix_report",
+      kind:"script",
+      path:"scripts/hepta-systems-capability-matrix-report.sh",
+      present_at_snapshot:false,
+      executable_at_snapshot:false
+    },
+    {
+      id:"hepta_systems_capability_matrix_gate",
+      kind:"script",
+      path:"scripts/hepta-systems-capability-matrix-gate.sh",
+      present_at_snapshot:false,
+      executable_at_snapshot:false
+    },
+    {
+      id:"hepta_systems_canonical_gate_matrix_doc",
+      kind:"doc",
+      path:"docs/architecture/HEPTA_SYSTEMS_CANONICAL_GATE_MATRIX_2026-06-12.md",
+      present_at_snapshot:false,
+      executable_at_snapshot:false
+    },
+    {
+      id:"hepta_systems_capability_matrix_doc",
+      kind:"doc",
+      path:"docs/architecture/HEPTA_SYSTEMS_CAPABILITY_MATRIX_2026-06-19.md",
+      present_at_snapshot:false,
+      executable_at_snapshot:false
+    },
+    {
+      id:"hepta_systems_plugins_tools_workflow_plan_doc",
+      kind:"doc",
+      path:"docs/architecture/HEPTA_SYSTEMS_PLUGINS_TOOLS_WORKFLOW_PLAN_2026-06-12.md",
+      present_at_snapshot:false,
+      executable_at_snapshot:false
+    },
+    {
+      id:"hepta_systems_p0_local_gate",
+      kind:"script",
+      path:"scripts/hepta-systems-p0-local-gate.sh",
+      present_at_snapshot:false,
+      executable_at_snapshot:false
+    },
+    {
+      id:"hepta_system_status_skill",
+      kind:"skill",
+      path:"plugins/hepta-system/skills/hepta-system-status/SKILL.md",
+      present_at_snapshot:false,
+      executable_at_snapshot:false
+    }
+  ] as $snapshot_probes |
+  {
+    runtime:"hepta",
+    surface:"historical_canonical_missing_path_snapshot_evidence",
+    plugin_id:"hepta-system@hepta-local",
+    status:"ready",
+    snapshot_id:"historical_canonical_missing_path_snapshot_2026_06_22_1139_cst",
+    snapshot_kind:"historical_missing_path_evidence",
+    snapshot_capture_state:"pre_historical_canonical_gate_wrapper_creation",
+    snapshot_source_surfaces:[
+      "tool_execution_canonical_summary_attachment_index",
+      "compact_capability_matrix_restore_preflight",
+      "historical_canonical_gate_post_claim_impact_preflight"
+    ],
+    snapshot_source_gate_status:"previously_verified_pass",
+    snapshot_runtime_live_absence_probe_used:false,
+    snapshot_current_filesystem_probe_used:false,
+    snapshot_decouples_from_current_filesystem_state:true,
+    historical_canonical_gate_path:"scripts/hepta-systems-canonical-gate.sh",
+    historical_canonical_gate_path_present_at_snapshot:false,
+    canonical_summary_present_count_at_snapshot:0,
+    current_checkout_missing_canonical_summary_at_snapshot:true,
+    canonical_summary_available_at_snapshot:false,
+    canonical_summary_probe_count_at_snapshot:($snapshot_probes | length),
+    missing_canonical_source_count_at_snapshot:($snapshot_probes | map(select(.present_at_snapshot == false)) | length),
+    missing_canonical_source_ids_at_snapshot:($snapshot_probes | map(select(.present_at_snapshot == false) | .id)),
+    canonical_source_snapshot_probes:$snapshot_probes,
+    historical_compact_capability_matrix_patch_call_count_at_snapshot:291,
+    historical_compact_capability_matrix_missing_path_count_at_snapshot:39,
+    selected_reconstruction_candidate_snapshot:{
+      call_id:"call_rFtWhyTEAmT4jByPkr8d7L3f",
+      timestamp:"2026-06-12T10:56:49.829Z",
+      session:"2026/06/12/rollout-2026-06-12T18-50-56-019ebb74-d5ef-7501-84cf-178833fd21e5.jsonl",
+      patch_line_count:417,
+      touched_paths:[
+        "docs/architecture/HEPTA_SYSTEMS_CANONICAL_GATE_MATRIX_2026-06-12.md",
+        "docs/architecture/HEPTA_SYSTEMS_PLUGINS_TOOLS_WORKFLOW_PLAN_2026-06-12.md",
+        "plugins/hepta-system/skills/hepta-system-status/SKILL.md",
+        "scripts/hepta-systems-canonical-gate.sh",
+        "scripts/hepta-systems-p0-local-gate.sh"
+      ],
+      current_status_counts_at_snapshot:{missing:5},
+      replay_risk:"requires_missing_base_path_reconstruction",
+      patch_body_emitted:false,
+      replay_applied:false
+    },
+    post_claim_impact_consumer_count_at_snapshot:12,
+    post_claim_live_absence_probe_consumer_count_at_snapshot:12,
+    post_claim_blocking_consumer_count_at_snapshot:12,
+    snapshot_decoupling_required:true,
+    snapshot_evidence_ready:true,
+    historical_missing_path_snapshot_evidence_ready:true,
+    historical_snapshot_evidence_consumable_after_wrapper_creation:true,
+    historical_canonical_gate_name_creation_allowed_now:false,
+    historical_canonical_gate_name_claimed:false,
+    historical_canonical_gate_mutated:false,
+    wrapper_creation_performed:false,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    manual_operator_live_cutover_approval_required:true,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"migrate_attachment_index_to_snapshot_evidence_source_before_wrapper_creation",
+    snapshot_blockers:[
+      "affected_consumers_not_migrated_to_snapshot_evidence_yet",
+      "historical_canonical_gate_name_creation_deferred",
+      "manual_operator_live_cutover_approval_required",
+      "tool_execution_live_cutover_allowed_false",
+      "tool_execution_public_ga_allowed_false"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      source_attachment_index_report:"scripts/hepta-systems-tool-execution-canonical-summary-attachment-index-report.sh",
+      source_restore_preflight_report:"scripts/hepta-systems-compact-capability-matrix-restore-preflight-report.sh",
+      source_post_claim_impact_preflight_report:"scripts/hepta-systems-historical-canonical-gate-post-claim-impact-preflight-report.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      strict_missing_consumer_mutated:false,
+      historical_snapshot_evidence_runtime_write:false,
+      historical_canonical_gate_mutated:false,
+      historical_canonical_gate_name_claimed:false,
+      wrapper_creation_performed:false,
+      canonical_gate_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

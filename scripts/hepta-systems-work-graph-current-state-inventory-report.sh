@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+file_contains() {
+  local path="$1"
+  local pattern="$2"
+  [[ -f "$path" ]] && grep -Eq "$pattern" "$path"
+}
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+update_plan_tool_present="$(
+  bool_for bash -c '
+    grep -Eq "struct UpdatePlanArgs|PlanItemArg" codex-rs/protocol/src/plan_tool.rs \
+      && grep -Eq "EventMsg::PlanUpdate|update_plan is a TODO/checklist tool" codex-rs/core/src/tools/handlers/plan.rs
+  '
+)"
+plan_mode_proposed_plan_present="$(
+  bool_for file_contains \
+    codex-rs/collaboration-mode-templates/templates/plan.md \
+    '<proposed_plan>|Plan Mode'
+)"
+app_server_turn_plan_notification_present="$(
+  bool_for file_contains \
+    codex-rs/app-server-protocol/src/protocol/v2/turn.rs \
+    'TurnPlanUpdatedNotification|TurnPlanStep'
+)"
+multi_agent_v2_thread_spawn_present="$(
+  bool_for bash -c '
+    grep -Eq "spawn_agent|ThreadSpawn" codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs \
+      && grep -Eq "AgentPath|/root|/morpheus" codex-rs/protocol/src/agent_path.rs \
+      && grep -Eq "spawn_agent_with_metadata|persist_thread_spawn_edge_for_source" codex-rs/core/src/agent/control.rs
+  '
+)"
+multi_agent_v2_mailbox_wait_present="$(
+  bool_for file_contains \
+    codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs \
+    'wait_for_mailbox_change|agent_statuses: Vec::new'
+)"
+codex_agent_graph_store_present="$(
+  bool_for bash -c '
+    test -f codex-rs/agent-graph-store/src/store.rs \
+      && grep -Eq "upsert_thread_spawn_edge|set_thread_spawn_edge_status" codex-rs/agent-graph-store/src/store.rs
+  '
+)"
+agent_jobs_batch_workers_present="$(
+  bool_for bash -c '
+    grep -Eq "spawn_agents_on_csv|report_agent_job_result" codex-rs/core/src/tools/handlers/agent_jobs_spec.rs \
+      && grep -Eq "output_schema_json|result_json" codex-rs/state/src/model/agent_job.rs \
+      && grep -Eq "report_agent_job_item_result|result_json IS NOT NULL" codex-rs/state/src/runtime/agent_jobs.rs
+  '
+)"
+hepta_runtime_task_board_present="$(
+  bool_for file_contains \
+    codex-rs/hepta-runtime/src/task_board.rs \
+    'DEFAULT_TASK_BOARD_PATH|TaskBoardTask|depends_on|claim_token'
+)"
+hepta_runtime_worker_tasks_present="$(
+  bool_for file_contains \
+    codex-rs/hepta-runtime/src/worker_tasks.rs \
+    'WorkerTaskRecord|WorkerTaskArtifact|WorkerTaskSafetyEnvelope|WorkerTaskCommandRun'
+)"
+hepta_runtime_scheduler_store_present="$(
+  bool_for file_contains \
+    codex-rs/hepta-runtime/src/scheduler_store.rs \
+    'DEFAULT_SCHEDULER_STORE_PATH|SchedulerRunRecord|idempotency_key|readback_evidence_id'
+)"
+hepta_runtime_agent_harness_present="$(
+  bool_for file_contains \
+    codex-rs/hepta-runtime/src/agent_harness.rs \
+    'AgentHarnessLedger|AgentHarnessRunRecord|readback|lineage'
+)"
+hepta_runtime_multi_agent_reducer_present="$(
+  bool_for file_contains \
+    codex-rs/hepta-runtime/src/multi_agent.rs \
+    'AgentReducerMode|run_ready_agents_with_reducer|AgentRuntimeRunResult'
+)"
+current_inventory_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_current_state_inventory.rs
+)"
+current_inventory_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-current-state-inventory-report.sh
+)"
+current_inventory_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-current-state-inventory-gate.sh
+)"
+unified_state_store_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_state_store.rs
+)"
+task_result_contract_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_task_result_contract.rs
+)"
+scheduler_admission_controller_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_scheduler_admission_controller.rs
+)"
+observability_timeline_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_observability_timeline.rs
+)"
+role_manifest_contract_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_role_manifest_contract.rs
+)"
+
+jq -n \
+  --argjson update_plan_tool_present "$update_plan_tool_present" \
+  --argjson plan_mode_proposed_plan_present "$plan_mode_proposed_plan_present" \
+  --argjson app_server_turn_plan_notification_present "$app_server_turn_plan_notification_present" \
+  --argjson multi_agent_v2_thread_spawn_present "$multi_agent_v2_thread_spawn_present" \
+  --argjson multi_agent_v2_mailbox_wait_present "$multi_agent_v2_mailbox_wait_present" \
+  --argjson codex_agent_graph_store_present "$codex_agent_graph_store_present" \
+  --argjson agent_jobs_batch_workers_present "$agent_jobs_batch_workers_present" \
+  --argjson hepta_runtime_task_board_present "$hepta_runtime_task_board_present" \
+  --argjson hepta_runtime_worker_tasks_present "$hepta_runtime_worker_tasks_present" \
+  --argjson hepta_runtime_scheduler_store_present "$hepta_runtime_scheduler_store_present" \
+  --argjson hepta_runtime_agent_harness_present "$hepta_runtime_agent_harness_present" \
+  --argjson hepta_runtime_multi_agent_reducer_present "$hepta_runtime_multi_agent_reducer_present" \
+  --argjson current_inventory_rust_module_present "$current_inventory_rust_module_present" \
+  --argjson current_inventory_report_script_present "$current_inventory_report_script_present" \
+  --argjson current_inventory_gate_script_present "$current_inventory_gate_script_present" \
+  --argjson unified_state_store_present "$unified_state_store_present" \
+  --argjson task_result_contract_present "$task_result_contract_present" \
+  --argjson scheduler_admission_controller_present "$scheduler_admission_controller_present" \
+  --argjson observability_timeline_present "$observability_timeline_present" \
+  --argjson role_manifest_contract_present "$role_manifest_contract_present" \
+  '
+  def surface($id; $kind; $present; $durable; $partial; $work_graph; $task_result; $trace; $blockers; $note): {
+    id: $id,
+    kind: $kind,
+    present_in_current_head: $present,
+    durable_fact_source_present: $durable,
+    partial_graph_edge_store_present: $partial,
+    work_graph_adapter_present: $work_graph,
+    task_result_adapter_present: $task_result,
+    trace_adapter_present: $trace,
+    blocker_ids: $blockers,
+    note: $note
+  };
+  def gap($id; $severity; $source_surface_ids; $reason; $recommended_next_action): {
+    id: $id,
+    severity: $severity,
+    source_surface_ids: $source_surface_ids,
+    reason: $reason,
+    recommended_next_action: $recommended_next_action
+  };
+  [
+    surface("update_plan_tool"; "planning_notification"; $update_plan_tool_present; false; false; false; false; false; ["unified_work_graph_state_store_not_enforced", "plan_step_identity_projection_missing"]; "Checklist steps are emitted as turn events, not durable plan nodes."),
+    surface("plan_mode_proposed_plan"; "human_review_plan"; $plan_mode_proposed_plan_present; false; false; false; false; false; ["plan_mode_projection_adapter_missing"]; "Plan Mode has strong non-mutating rules but no executable graph contract."),
+    surface("app_server_turn_plan_notification"; "app_server_notification"; $app_server_turn_plan_notification_present; false; false; false; false; false; ["turn_plan_notification_work_graph_projection_missing"]; "The app-server mirrors plan steps as notifications without graph semantics."),
+    surface("multi_agent_v2_thread_spawn"; "agent_orchestration"; $multi_agent_v2_thread_spawn_present; false; true; false; false; false; ["agent_task_lifecycle_fact_source_missing", "role_manifest_contract_not_enforced"]; "Thread spawn edges are partially durable, but agent tasks are not WorkGraph nodes."),
+    surface("multi_agent_v2_mailbox_wait"; "agent_orchestration"; $multi_agent_v2_mailbox_wait_present; false; false; false; false; false; ["target_status_wait_contract_missing"]; "wait_agent waits for mailbox progress, not named task terminal states."),
+    surface("codex_agent_graph_store"; "partial_graph_store"; $codex_agent_graph_store_present; true; true; false; false; false; ["graph_store_only_tracks_thread_spawn_edges"]; "The store tracks parent/child thread edges, not plan nodes, artifacts, gates, or results."),
+    surface("agent_jobs_batch_workers"; "batch_worker_orchestration"; $agent_jobs_batch_workers_present; true; false; false; false; false; ["task_result_contract_not_enforced_for_agent_jobs"]; "Agent jobs persist item results, but output_schema is not the unified TaskResult contract."),
+    surface("hepta_runtime_task_board"; "runtime_task_queue"; $hepta_runtime_task_board_present; true; false; false; false; false; ["task_board_work_graph_adapter_missing"]; "Task board already has dependencies, leases, workers, and terminal delivery guards."),
+    surface("hepta_runtime_worker_tasks"; "runtime_worker_task_model"; $hepta_runtime_worker_tasks_present; false; false; false; false; false; ["worker_task_task_result_adapter_missing"]; "Worker tasks model artifacts, commands, safety, and patches but are not unified results."),
+    surface("hepta_runtime_scheduler_store"; "runtime_scheduler_store"; $hepta_runtime_scheduler_store_present; true; false; false; false; false; ["scheduler_admission_controller_not_enforced"]; "Scheduler records jobs, runs, wakes, readback, and idempotency but not graph admission."),
+    surface("hepta_runtime_agent_harness"; "runtime_agent_harness"; $hepta_runtime_agent_harness_present; true; false; false; false; false; ["agent_harness_work_graph_projection_missing"]; "Harness ledger has lineage and readback but no shared WorkGraph projection."),
+    surface("hepta_runtime_multi_agent_reducer"; "runtime_multi_agent_demo"; $hepta_runtime_multi_agent_reducer_present; false; false; false; false; false; ["semantic_task_result_reducer_missing"]; "Reducer modes exist, but reducer evidence is not a production TaskResult pipeline.")
+  ] as $source_surfaces
+  | [
+    gap("unified_work_graph_state_store_not_enforced"; "p0"; ["update_plan_tool", "multi_agent_v2_thread_spawn", "hepta_runtime_task_board", "hepta_runtime_scheduler_store"]; "Planning, agent orchestration, runtime tasks, and scheduler runs cannot be queried through one enforced durable fact graph."; "Use the unified state store preview to add adapter projection fixtures before enabling persistence."),
+    gap("task_result_contract_not_enforced"; "p0"; ["agent_jobs_batch_workers", "hepta_runtime_worker_tasks", "hepta_runtime_multi_agent_reducer"]; "Subagent completions, batch item results, worker artifacts, and reducer decisions do not share one result schema."; "Use the TaskResult preview contract to add adapter validator coverage before enabling enforcement."),
+    gap("scheduler_admission_controller_not_enforced"; "p0"; ["hepta_runtime_scheduler_store", "hepta_runtime_task_board", "multi_agent_v2_thread_spawn"]; "No single enforced admission check gates dependencies, leases, lane ownership, approval, idempotency, and budget before work starts."; "Use the dry-run admission preview to add fixture coverage before enabling scheduler enforcement."),
+    gap("work_graph_observability_timeline_not_enforced"; "p0"; ["app_server_turn_plan_notification", "multi_agent_v2_thread_spawn", "agent_jobs_batch_workers", "hepta_runtime_agent_harness"]; "There is no enforced unified trace from plan step to agent, mailbox, tool, artifact, gate, and result."; "Use the timeline preview to add local trace fixtures before dashboards or external exports."),
+    gap("role_manifest_contract_not_enforced"; "p0"; ["multi_agent_v2_thread_spawn"]; "Agent roles are not enforced through declared capabilities, tool permissions, output schemas, verifiers, budgets, and lanes."; "Use the role manifest preview to add role adapter fixtures before enabling permission enforcement.")
+  ] as $active_p0_gaps
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      system_status: "attention",
+      gate: "hepta_work_graph_current_state_inventory_gate",
+      schema_version: "work_graph_current_state_inventory_v1",
+      inventory_mode: "read_only_current_head_contract_inventory",
+      source_surface_count: ($source_surfaces | length),
+      active_p0_gap_count: ($active_p0_gaps | length),
+      source_surfaces: $source_surfaces,
+      active_p0_gaps: $active_p0_gaps,
+      recommended_next_gate: "hepta_work_graph_contract_preview_gate",
+      ready_for_work_graph_contract_preview: true,
+      ready_for_scheduler_cutover: false,
+      source_probes: {
+        current_inventory_contract: {
+          rust_module_present: $current_inventory_rust_module_present,
+          report_script_present: $current_inventory_report_script_present,
+          gate_script_present: $current_inventory_gate_script_present
+        },
+        future_work_graph_contracts: {
+          unified_state_store_present: $unified_state_store_present,
+          task_result_contract_present: $task_result_contract_present,
+          scheduler_admission_controller_present: $scheduler_admission_controller_present,
+          observability_timeline_present: $observability_timeline_present,
+          role_manifest_contract_present: $role_manifest_contract_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        runtime_mutation_performed: false,
+        scheduler_cutover_performed: false,
+        agent_spawn_performed: false,
+        gateway_mutation_performed: false,
+        credential_read: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

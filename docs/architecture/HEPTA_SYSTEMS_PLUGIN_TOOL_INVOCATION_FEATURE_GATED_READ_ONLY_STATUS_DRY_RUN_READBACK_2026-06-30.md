@@ -1,0 +1,11 @@
+# Hepta Systems Plugin Tool Invocation Feature Gated Read Only Status Dry Run Readback
+
+This readback extends the plugin tool invocation policy, approval, and ledger boundary into the next query-only contract: a feature-gated read-only status dry-run shape for the selected `hepta-system` MCP status tool path.
+
+The read model consumes `hepta_systems_plugin_tool_invocation_policy_approval_ledger_boundary_readback` and projects feature gate ids, closed feature gates, selected read-only status dry-run payloads, dry-run result projections, policy denials, receipt projections, stable dry-run receipts, and idempotency keys. The MCP status contribution is the only selected dry-run path; the app connector contribution stays a non-selected preflight boundary.
+
+This layer is still a readback contract, not execution. It proves the dry-run contract can be addressed and audited before opening any execution or persistence path. The report keeps the feature gate closed, derives a stable dry-run request, dry-run payload id, payload digest, result projection, denial receipt, and idempotency key, and verifies the rerun readback remains stable and unique for both candidate contribution kinds.
+
+The boundary remains intentionally closed: no feature gate open, dry-run execution, dry-run payload persistence, dry-run result persistence, policy decision persistence, approval preflight execution, ledger write attempt, receipt projection persistence, ToolRegistry registration, ToolRegistry mutation, registry lookup execution, tool invocation, noop result persistence, ledger write, approval request, receipt persistence, dynamic activation, permission grant, MCP server start, app connector start, plugin install, cache mutation, install-cache materialization, runtime event-log write, SQLite write, credential read, external network, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, channel send, package/release, canary activation, Public GA promotion, or live execution.
+
+The next migration step is `hepta_systems_plugin_tool_invocation_dry_run_receipt_ledger_preview_readback`, which should keep the same closed execution boundary while making the dry-run receipt and ledger preview contract queryable.

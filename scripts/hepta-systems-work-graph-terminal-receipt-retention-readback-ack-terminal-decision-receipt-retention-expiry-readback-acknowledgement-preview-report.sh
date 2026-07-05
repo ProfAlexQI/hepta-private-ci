@@ -1,0 +1,237 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() { [[ -e "$1" ]]; }
+bool_for() {
+  if "$@"; then printf 'true\n'; else printf 'false\n'; fi
+}
+
+rust_module="codex-rs/hepta-runtime/src/wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_preview.rs"
+report_script="scripts/hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-acknowledgement-preview-report.sh"
+gate_script="scripts/hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-acknowledgement-preview-gate.sh"
+prior_report_script="scripts/hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-receipt-preview-report.sh"
+prior_gate_script="scripts/hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-receipt-preview-gate.sh"
+
+required_prior_gates="$("$ROOT/$prior_report_script" | jq -c '(.required_prior_gates | map(select(. != "hepta_work_graph_durable_identity_preview_gate"))) + [.gate, "hepta_work_graph_durable_identity_preview_gate"]')"
+rust_module_present="$(bool_for path_exists "$rust_module")"
+report_script_present="$(bool_for path_exists "$report_script")"
+gate_script_present="$(bool_for path_exists "$gate_script")"
+prior_report_script_present="$(bool_for path_exists "$prior_report_script")"
+prior_gate_script_present="$(bool_for path_exists "$prior_gate_script")"
+
+jq -n \
+  --argjson required_prior_gates "$required_prior_gates" \
+  --argjson rust_module_present "$rust_module_present" \
+  --argjson report_script_present "$report_script_present" \
+  --argjson gate_script_present "$gate_script_present" \
+  --argjson prior_report_script_present "$prior_report_script_present" \
+  --argjson prior_gate_script_present "$prior_gate_script_present" \
+  '
+  def receipt_ids: [
+    "terminal_decision_receipt_retention_policy_readback_receipt",
+    "terminal_decision_receipt_expiry_guard_readback_receipt",
+    "terminal_decision_receipt_supersession_guard_readback_receipt",
+    "terminal_decision_receipt_gc_denial_readback_receipt",
+    "terminal_decision_receipt_zero_effect_digest_readback_receipt",
+    "terminal_decision_receipt_release_public_claim_denial_readback_receipt"
+  ];
+  def ack_ids: [
+    "operator_terminal_decision_receipt_retention_readback_acknowledgement",
+    "auditor_terminal_decision_receipt_retention_readback_acknowledgement",
+    "release_owner_terminal_decision_receipt_retention_readback_acknowledgement",
+    "authority_denial_terminal_decision_receipt_retention_readback_acknowledgement",
+    "public_claim_denial_terminal_decision_receipt_retention_readback_acknowledgement",
+    "external_delivery_denial_terminal_decision_receipt_retention_readback_acknowledgement"
+  ];
+  def durable_field_ids: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  def with_durable_identity_fields($fields): durable_field_ids + $fields;
+  def contract($id; $visibility): {
+    id: $id,
+    source_readback_receipt_ids: receipt_ids,
+    acknowledgement_visibility: $visibility,
+    required_fields: with_durable_identity_fields([
+      "acknowledgementId",
+      "readbackReceiptHash",
+      "acknowledgementHash",
+      "retentionScope",
+      "acceptanceAllowed",
+      "recordingEnabled",
+      "nextGate"
+    ]),
+    acknowledgement_recording_allowed: false,
+    acceptance_allowed: false,
+    approval_recording_allowed: false,
+    authority_grant_allowed: false,
+    public_claim_enabled: false,
+    external_delivery_enabled: false
+  };
+  def reason($id; $text): {
+    id: $id,
+    applies_to_acknowledgement_ids: ack_ids,
+    reason: $text,
+    blocks_acceptance: true,
+    blocks_approval: true,
+    blocks_authority: true
+  };
+  def denial($id; $target; $text): {
+    id: $id,
+    applies_to_acknowledgement_ids: ack_ids,
+    target_record: $target,
+    reason: $text,
+    blocks_acknowledgement_recording: true,
+    blocks_receipt_recording: true,
+    blocks_acceptance: true,
+    blocks_authority: true,
+    blocks_release_publication: true,
+    blocks_public_claim: true,
+    blocks_external_delivery: true
+  };
+  def guard($id; $fields): {
+    id: $id,
+    applies_to_acknowledgement_ids: ack_ids,
+    required_fields: $fields,
+    blocks_acknowledgement_recording: true
+  };
+  def view($id; $audience; $fields): {
+    id: $id,
+    audience: $audience,
+    required_fields: $fields,
+    external_delivery_enabled: false
+  };
+  def invariant($id; $text): {
+    id: $id,
+    required: true,
+    reason: $text
+  };
+  [
+    contract("operator_terminal_decision_receipt_retention_readback_acknowledgement"; "local_operator_retention_readback_receipt_visibility"),
+    contract("auditor_terminal_decision_receipt_retention_readback_acknowledgement"; "local_auditor_retention_digest_visibility"),
+    contract("release_owner_terminal_decision_receipt_retention_readback_acknowledgement"; "local_release_owner_denial_visibility"),
+    contract("authority_denial_terminal_decision_receipt_retention_readback_acknowledgement"; "local_authority_denial_visibility"),
+    contract("public_claim_denial_terminal_decision_receipt_retention_readback_acknowledgement"; "local_public_claim_denial_visibility"),
+    contract("external_delivery_denial_terminal_decision_receipt_retention_readback_acknowledgement"; "local_external_delivery_denial_visibility")
+  ] as $acknowledgement_contracts
+  | [
+    reason("durable_identity_evidence_missing"; "terminal decision receipt retention readback acknowledgement does not include durable identity evidence"),
+    reason("terminal_decision_receipt_retention_readback_ack_is_not_acceptance"; "readback acknowledgement is local visibility, not acceptance"),
+    reason("terminal_decision_receipt_retention_readback_ack_cannot_record_receipt"; "readback acknowledgement cannot record the readback receipt"),
+    reason("terminal_decision_receipt_retention_readback_ack_cannot_record_approval"; "readback acknowledgement cannot record approval"),
+    reason("terminal_decision_receipt_retention_readback_ack_cannot_grant_authority"; "readback acknowledgement cannot grant authority"),
+    reason("terminal_decision_receipt_retention_readback_ack_cannot_enable_live_persistence"; "readback acknowledgement cannot enable live persistence, WAL, or checkpoints"),
+    reason("terminal_decision_receipt_retention_readback_ack_cannot_start_rollout"; "readback acknowledgement cannot start rollout or route traffic"),
+    reason("terminal_decision_receipt_retention_readback_ack_cannot_publish_or_send"; "readback acknowledgement cannot publish, record public claims, or send externally")
+  ] as $non_acceptance_reasons
+  | [
+    denial("deny_durable_identity_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_recording"; "durable_identity_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_acknowledgement_evidence"; "terminal decision receipt retention readback acknowledgement recording is blocked without durable identity evidence"),
+    denial("terminal_decision_receipt_retention_readback_ack_recording_denied"; "acknowledgement_record"; "acknowledgement recording is denied"),
+    denial("terminal_decision_receipt_retention_readback_receipt_recording_denied"; "readback_receipt_record"; "readback receipt recording remains denied"),
+    denial("terminal_decision_receipt_retention_readback_acceptance_recording_denied"; "operator_acceptance_record"; "operator acceptance recording is denied"),
+    denial("terminal_decision_receipt_retention_readback_approval_recording_denied"; "approval_ledger_record"; "approval recording is denied"),
+    denial("terminal_decision_receipt_retention_readback_authority_recording_denied"; "authority_grant_record"; "authority grant recording is denied"),
+    denial("terminal_decision_receipt_retention_readback_release_public_claim_recording_denied"; "release_public_claim_record"; "release publication and public claim recording are denied"),
+    denial("terminal_decision_receipt_retention_readback_external_delivery_recording_denied"; "external_delivery_record"; "external delivery recording and send are denied")
+  ] as $recording_denials
+  | [
+    guard("terminal_decision_receipt_retention_readback_receipt_expired_before_ack"; ["readbackReceiptId", "expiresAt", "observedAt"]),
+    guard("terminal_decision_receipt_retention_readback_scope_superseded_before_ack"; ["receiptScope", "scopeEpoch", "supersessionHash"]),
+    guard("terminal_decision_receipt_retention_readback_digest_mismatch_before_ack"; ["readbackReceiptHash", "acknowledgementHash", "priorGateDigest"]),
+    guard("terminal_decision_receipt_retention_readback_ack_replay_detected"; ["acknowledgementId", "idempotencyKey", "replayHash"]),
+    guard("terminal_decision_receipt_retention_readback_cross_scope_ack_detected"; ["readbackReceiptScope", "acknowledgementScope", "scopeBindingHash"])
+  ] as $expiry_replay_guards
+  | [
+    view("operator_terminal_decision_receipt_retention_readback_ack_view"; "operator"; with_durable_identity_fields(["acknowledgementId", "readbackReceiptHash", "acceptanceAllowed", "nextGate"])),
+    view("auditor_terminal_decision_receipt_retention_readback_ack_digest_view"; "auditor"; with_durable_identity_fields(["readbackReceiptHash", "acknowledgementHash", "priorGateDigest", "recordingDenialId"])),
+    view("release_owner_terminal_decision_receipt_retention_readback_ack_denial_view"; "release_owner"; with_durable_identity_fields(["releasePublished", "publicClaimRecorded", "authorityGranted", "externalDeliveryDenied"])),
+    view("runtime_terminal_decision_receipt_retention_readback_ack_zero_effect_view"; "system"; with_durable_identity_fields(["acknowledgementRecorded", "authorityGranted", "trafficRouted", "externalSendPerformed"]))
+  ] as $local_views
+  | [
+    invariant("terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_acknowledgements_require_durable_identity_evidence"; "terminal decision receipt retention readback acknowledgement contracts require workflow, run, step, checkpoint, replay, rollback, and receipt evidence"),
+    invariant("terminal_decision_receipt_retention_readback_ack_is_hash_only"; "acknowledgement visibility exposes hash-only local receipt evidence"),
+    invariant("terminal_decision_receipt_retention_readback_ack_is_not_acceptance"; "acknowledgement does not become acceptance, approval, or authority"),
+    invariant("terminal_decision_receipt_retention_readback_ack_is_not_recorded"; "acknowledgement and readback receipt recording remain disabled"),
+    invariant("terminal_decision_receipt_retention_readback_ack_views_are_local_only"; "operator, auditor, release-owner, and runtime views stay local only"),
+    invariant("terminal_decision_receipt_retention_readback_ack_requires_readback_receipt_gate"; "acknowledgement preview requires the retention readback receipt gate"),
+    invariant("terminal_decision_receipt_retention_readback_ack_preview_has_no_side_effects"; "this gate cannot persist, write WAL/checkpoints, start rollout, publish, record public claims, or send externally")
+  ] as $invariants
+  | {
+    product: "Hepta",
+    runtime: "hepta",
+    status: "ready",
+    gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_preview_gate",
+    schema_version: "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_preview_v1",
+    preview_mode: "read_only_terminal_receipt_retention_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_preview_no_recording",
+    acknowledgement_contract_count: ($acknowledgement_contracts | length),
+    non_acceptance_reason_count: ($non_acceptance_reasons | length),
+    recording_denial_count: ($recording_denials | length),
+    expiry_replay_guard_count: ($expiry_replay_guards | length),
+    local_view_count: ($local_views | length),
+    invariant_count: ($invariants | length),
+    required_prior_gates: $required_prior_gates,
+    acknowledgement_contracts: $acknowledgement_contracts,
+    non_acceptance_reasons: $non_acceptance_reasons,
+    recording_denials: $recording_denials,
+    expiry_replay_guards: $expiry_replay_guards,
+    local_views: $local_views,
+    durable_identity_evidence: {
+      schema_version: "work_graph_durable_identity_preview_v1",
+      required_prior_gate: "hepta_work_graph_durable_identity_preview_gate",
+      required_field_ids: durable_field_ids,
+      required_for_acknowledgement_ids: ack_ids,
+      durable_field_count: (durable_field_ids | length),
+      preview_binding_count: 5,
+      invariant_count: 7,
+      currently_satisfied: false
+    },
+    invariants: $invariants,
+    recommended_next_gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_replay_idempotency_preview_gate",
+    ready_for_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_replay_idempotency_preview: true,
+    ready_for_operator_acceptance: false,
+    ready_for_live_persistence: false,
+    side_effects: {
+      filesystem_written: false,
+      graph_state_persisted: false,
+      terminal_decision_recorded: false,
+      terminal_decision_receipt_recorded: false,
+      terminal_decision_receipt_persisted: false,
+      terminal_decision_receipt_acknowledgement_recorded: false,
+      retention_state_persisted: false,
+      readback_receipt_persisted: false,
+      receipt_acknowledgement_recorded: false,
+      operator_acceptance_recorded: false,
+      approval_recorded: false,
+      authority_granted: false,
+      live_persistence_enabled: false,
+      wal_written: false,
+      checkpoint_written: false,
+      enforcement_enabled: false,
+      rollout_started: false,
+      traffic_routed: false,
+      release_published: false,
+      public_claim_recorded: false,
+      external_send_performed: false,
+      model_invoked: false
+    },
+    source_probes: {
+      terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_acknowledgement: {
+        rust_module_present: $rust_module_present,
+        report_script_present: $report_script_present,
+        gate_script_present: $gate_script_present
+      },
+      terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt: {
+        report_script_present: $prior_report_script_present,
+        gate_script_present: $prior_gate_script_present
+      }
+    }
+  }
+'

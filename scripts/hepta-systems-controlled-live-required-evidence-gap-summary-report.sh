@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+READBACK_REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-readback-index-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_required_evidence_gap_summary.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_SUMMARY_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-required-evidence-gap-summary-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$READBACK_REPORT" ]] || fail "missing executable Phase 5e readback index report: $READBACK_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 5f Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Phase 5f architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Phase 5f required evidence gap summary report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_required_evidence_gap_summary_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+readback_json="${HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_READBACK_JSON:-}"
+if [[ -n "$readback_json" ]]; then
+  [[ -f "$readback_json" ]] || fail "missing cached Phase 5e readback index report: $readback_json"
+else
+  readback_json="$tmpdir/readback.json"
+  "$READBACK_REPORT" >"$readback_json" || fail "failed to render Phase 5e readback index report"
+fi
+
+jq -n \
+  --slurpfile readback "$readback_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-controlled-live-required-evidence-gap-summary-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_SUMMARY_2026-06-27.md" \
+  '
+  def gap_key($id):
+    "controlled_live.required_evidence.gap." + $id;
+  def owner_for($id):
+    if $id == "dirty_worktree_boundary" then "hepta_systems_lane_owner"
+    elif $id == "operator_live_approval_missing" then "operator"
+    elif $id == "fresh_soak_readback_missing" then "runtime_soak_owner"
+    elif $id == "credential_boundary_attestation_missing" then "credential_boundary_owner"
+    elif $id == "gateway_native_telegram_post_boundary_approval_missing" then "transport_boundary_owner"
+    elif $id == "rollback_rehearsal_missing" then "rollback_rehearsal_owner"
+    elif $id == "kill_switch_rehearsal_missing" then "kill_switch_owner"
+    else "unknown_owner"
+    end;
+  def risk_bucket_for($id):
+    if $id == "dirty_worktree_boundary" then "medium"
+    elif $id == "operator_live_approval_missing" then "critical"
+    elif $id == "fresh_soak_readback_missing" then "high"
+    elif $id == "credential_boundary_attestation_missing" then "critical"
+    elif $id == "gateway_native_telegram_post_boundary_approval_missing" then "critical"
+    elif $id == "rollback_rehearsal_missing" then "high"
+    elif $id == "kill_switch_rehearsal_missing" then "high"
+    else "unknown"
+    end;
+  def cutover_risk_for($id):
+    if $id == "dirty_worktree_boundary" then "dirty checkout can hide unrelated live-path drift"
+    elif $id == "operator_live_approval_missing" then "no explicit human authorization for live execution"
+    elif $id == "fresh_soak_readback_missing" then "read-only chain lacks fresh soak/readback evidence"
+    elif $id == "credential_boundary_attestation_missing" then "credential access boundary has not been attested"
+    elif $id == "gateway_native_telegram_post_boundary_approval_missing" then "external POST and transport mutation boundaries are not approved"
+    elif $id == "rollback_rehearsal_missing" then "rollback path has not been rehearsed"
+    elif $id == "kill_switch_rehearsal_missing" then "kill-switch path has not been rehearsed"
+    else "unknown cutover risk"
+    end;
+  ($readback[0]) as $readback |
+  ($readback.entries | map({
+    id,
+    source_blocker_id,
+    gap_key:gap_key(.source_blocker_id),
+    owner:owner_for(.source_blocker_id),
+    risk_bucket:risk_bucket_for(.source_blocker_id),
+    cutover_risk:cutover_risk_for(.source_blocker_id),
+    query_key,
+    readback_route,
+    diff_key,
+    fingerprint,
+    operator_label,
+    required_evidence,
+    evidence_state,
+    operator_visible:true,
+    queryable:true,
+    evidence_missing:(.evidence_state == "missing"),
+    evidence_recorded:false,
+    evidence_recording_allowed:false,
+    credential_read_allowed:false,
+    approval_acceptance_allowed:false,
+    blocker_waiver_allowed:false,
+    persistence_allowed:false,
+    live_mutation_allowed:false
+  })) as $entries |
+  ($readback.entries | map(select(.evidence_state == "missing")) | length) as $source_missing_evidence_count |
+  ($entries | map(select(.evidence_missing == true)) | length) as $missing_evidence_count |
+  ($entries | map(.owner) | unique | length) as $owner_count |
+  ($entries | map(.risk_bucket) | unique | length) as $risk_bucket_count |
+  ($entries | map(select(.risk_bucket == "critical" or .risk_bucket == "high")) | length) as $high_risk_gap_count |
+  ($entries | map(select(.operator_visible == true)) | length) as $operator_visible_gap_count |
+  ($entries | map(select(.queryable == true)) | length) as $queryable_gap_count |
+  ($entries | map(select(.evidence_recorded == true)) | length) as $evidence_recorded_count |
+  ($entries | map(select(.blocker_waiver_allowed == true)) | length) as $blocker_waived_count |
+  ($readback.readback_index_ready == true
+    and $readback.index_entry_count == 7
+    and $source_missing_evidence_count == 7
+    and ($entries | length) == 7
+    and $missing_evidence_count == 7
+    and $owner_count == 7
+    and $risk_bucket_count == 3
+    and $high_risk_gap_count == 6
+    and $operator_visible_gap_count == 7
+    and $queryable_gap_count == 7
+    and $evidence_recorded_count == 0
+    and $blocker_waived_count == 0
+    and $lib_export_present == true
+    and ($entries | all(.evidence_state == "missing"
+      and .evidence_missing == true
+      and .evidence_recording_allowed == false
+      and .credential_read_allowed == false
+      and .approval_acceptance_allowed == false
+      and .persistence_allowed == false
+      and .live_mutation_allowed == false))) as $gap_summary_ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_required_evidence_gap_summary",
+    status:(if $gap_summary_ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_required_evidence_gap_summary_gate",
+    schema_version:"controlled_live_required_evidence_gap_summary_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_readback_index_ready:$readback.readback_index_ready,
+    source_index_entry_count:$readback.index_entry_count,
+    source_missing_evidence_count:$source_missing_evidence_count,
+    lib_export_present:$lib_export_present,
+    gap_entry_count:($entries | length),
+    missing_evidence_count:$missing_evidence_count,
+    owner_count:$owner_count,
+    risk_bucket_count:$risk_bucket_count,
+    high_risk_gap_count:$high_risk_gap_count,
+    operator_visible_gap_count:$operator_visible_gap_count,
+    queryable_gap_count:$queryable_gap_count,
+    evidence_recorded_count:$evidence_recorded_count,
+    gap_summary_ready:$gap_summary_ready,
+    approval_acceptance_ready:false,
+    approval_accepted:false,
+    blocker_waived_count:$blocker_waived_count,
+    credential_read_allowed:false,
+    evidence_recording_allowed:false,
+    evidence_persisted:false,
+    controlled_live_cutover_ready:false,
+    live_execution_allowed:false,
+    entries:$entries,
+    next_actions:[
+      "phase5g_controlled_live_required_evidence_gap_diff_view_without_acceptance",
+      "keep_gap_summary_operator_facing_without_acceptance"
+    ],
+    next_migration_step:"phase5g_controlled_live_required_evidence_gap_diff_view_without_acceptance",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      approval_requested:false,
+      approval_accepted:false,
+      approval_recorded:false,
+      evidence_recorded:false,
+      evidence_persisted:false,
+      blocker_waived:false,
+      credential_read:false,
+      readback_persisted:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

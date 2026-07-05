@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SINGLE_RENDER_REPORT="$ROOT/scripts/hepta-systems-matrix-report-single-render-cache-boundary-readback-report.sh"
+DASHBOARD_GATE="$ROOT/scripts/hepta-systems-controlled-live-operator-readiness-dashboard-gate.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/current_reality_matrix_compact_cache_boundary_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_2026-06-29.md"
+
+fail() {
+  printf 'hepta-systems-current-reality-matrix-compact-cache-boundary-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SINGLE_RENDER_REPORT" ]] || fail "missing executable single-render matrix report: $SINGLE_RENDER_REPORT"
+[[ -x "$DASHBOARD_GATE" ]] || fail "missing executable controlled-live dashboard gate: $DASHBOARD_GATE"
+[[ -f "$RUST_SOURCE" ]] || fail "missing compact cache boundary Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing compact cache boundary architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the compact cache boundary report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+"$SINGLE_RENDER_REPORT" >"$tmpdir/single_render.json" || fail "failed to render single-render matrix boundary"
+jq -e . "$tmpdir/single_render.json" >/dev/null || fail "single-render matrix boundary did not render valid JSON"
+
+lib_export_present=false
+if grep -q 'hepta_current_reality_matrix_compact_cache_boundary_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+dashboard_gate_matrix_rerun_removed=true
+if grep -q '"$MATRIX_REPORT" | jq' "$DASHBOARD_GATE"; then
+  dashboard_gate_matrix_rerun_removed=false
+fi
+
+jq -n \
+  --slurpfile single_render "$tmpdir/single_render.json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --argjson dashboard_gate_matrix_rerun_removed "$dashboard_gate_matrix_rerun_removed" \
+  --arg gate "scripts/hepta-systems-current-reality-matrix-compact-cache-boundary-readback-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_2026-06-29.md" \
+  '
+  def compact_entry($entry_id; $source; $route): {
+    entry_id:$entry_id,
+    source:$source,
+    readback_route:$route,
+    projected_in_memory:true,
+    cache_write_allowed:false,
+    cache_persisted:false,
+    evidence_recording_allowed:false,
+    approval_acceptance_allowed:false,
+    decision_recording_allowed:false,
+    live_execution_allowed:false
+  };
+  ($single_render[0]) as $single_render_report |
+  [
+    compact_entry("matrix_capability_counts"; "current_reality_capability_matrix"; "readback://current-reality-matrix/compact-cache/capability-counts"),
+    compact_entry("matrix_live_blockers"; "current_reality_capability_matrix"; "readback://current-reality-matrix/compact-cache/live-blockers"),
+    compact_entry("dirty_worktree_counts"; "current_reality_capability_matrix"; "readback://current-reality-matrix/compact-cache/dirty-worktree-counts"),
+    compact_entry("dashboard_matrix_rerun_boundary"; "controlled_live_operator_readiness_dashboard_gate"; "readback://current-reality-matrix/compact-cache/dashboard-rerun-boundary")
+  ] as $entries |
+  ($entries | map(select(.projected_in_memory == true)) | length) as $compact_projection_count |
+  ($single_render_report.single_render_cache_boundary_readback_ready == true
+    and $single_render_report.source_matrix_ready == true
+    and $single_render_report.source_matrix_capability_count == 104
+    and $single_render_report.source_matrix_ready_count == 104
+    and $single_render_report.source_live_enabled_count == 0
+    and $single_render_report.source_all_live_paths_blocked == true
+    and $single_render_report.matrix_report_render_count == 1
+    and $single_render_report.compact_cache_consumer_rewired == true
+    and $single_render_report.recommended_next_gate == "close_controlled_live_evidence_before_status_canary_start"
+    and $lib_export_present == true
+    and $dashboard_gate_matrix_rerun_removed == true
+    and $compact_projection_count == 4
+    and ($entries | all(.cache_write_allowed == false
+      and .cache_persisted == false
+      and .evidence_recording_allowed == false
+      and .approval_acceptance_allowed == false
+      and .decision_recording_allowed == false
+      and .live_execution_allowed == false))) as $compact_ready |
+  {
+    runtime:"hepta",
+    surface:"current_reality_matrix_compact_cache_boundary_readback",
+    status:(if $compact_ready then "ready_blocked" else "blocked" end),
+    gate:"current_reality_matrix_compact_cache_boundary_readback_gate",
+    schema_version:"current_reality_matrix_compact_cache_boundary_readback_v1",
+    source_single_render_cache_boundary_ready:$single_render_report.single_render_cache_boundary_readback_ready,
+    source_matrix_ready:$single_render_report.source_matrix_ready,
+    source_matrix_capability_count:$single_render_report.source_matrix_capability_count,
+    source_matrix_ready_count:$single_render_report.source_matrix_ready_count,
+    source_live_enabled_count:$single_render_report.source_live_enabled_count,
+    source_all_live_paths_blocked:$single_render_report.source_all_live_paths_blocked,
+    source_dirty_worktree_entry_count:$single_render_report.source_dirty_worktree_entry_count,
+    source_dirty_worktree_untracked_count:$single_render_report.source_dirty_worktree_untracked_count,
+    source_dirty_worktree_tracked_change_count:$single_render_report.source_dirty_worktree_tracked_change_count,
+    controlled_live_blocker_count:7,
+    compact_projection_count:$compact_projection_count,
+    matrix_report_render_count:$single_render_report.matrix_report_render_count,
+    single_render_cache_boundary_consumed:true,
+    dashboard_gate_matrix_rerun_removed:$dashboard_gate_matrix_rerun_removed,
+    lib_export_present:$lib_export_present,
+    cache_write_allowed:false,
+    cache_persisted:false,
+    evidence_recording_allowed:false,
+    approval_acceptance_allowed:false,
+    decision_recording_allowed:false,
+    live_execution_allowed:false,
+    compact_cache_boundary_readback_ready:$compact_ready,
+    entries:$entries,
+    blockers:[
+      "matrix_cache_write_disabled",
+      "compact_cache_persistence_disabled",
+      "evidence_recording_disabled",
+      "approval_acceptance_disabled",
+      "decision_recording_disabled",
+      "live_execution_disabled"
+    ],
+    next_actions:[
+      "close_controlled_live_evidence_before_status_canary_start"
+    ],
+    recommended_next_gate:"close_controlled_live_evidence_before_status_canary_start",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      filesystem_written:false,
+      matrix_cache_written:false,
+      compact_cache_persisted:false,
+      evidence_recorded:false,
+      approval_accepted:false,
+      decision_recorded:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      provider_invoked:false,
+      model_invoked:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      channel_send_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

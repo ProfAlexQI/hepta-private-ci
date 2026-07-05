@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-tool-execution-dispatch-shadow-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/tools/src/tool_execution_cutover_preflight.rs"
+GATE="$ROOT/scripts/hepta-systems-tool-execution-cutover-preflight-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_CUTOVER_PREFLIGHT_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-execution-cutover-preflight-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable execution dispatch shadow report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing execution cutover preflight Rust source: $RUST_SOURCE"
+[[ -f "$DOC" ]] || fail "missing execution cutover preflight architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the execution cutover preflight report"
+fi
+
+jq -n \
+  --slurpfile source <("$SOURCE_REPORT") \
+  --arg gate "scripts/hepta-systems-tool-execution-cutover-preflight-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_CUTOVER_PREFLIGHT_2026-06-21.md" \
+  '
+  def cutover_entry($entry):
+    ($entry.dispatch_shadow_route == "disabled_execution_dispatch_shadow" and $entry.dispatch_shadow_ready == true) as $shadow_ready |
+    ($entry.registry_guard_route == "require_approval_ledger") as $approval_guard |
+    {
+      plugin_id:$entry.plugin_id,
+      candidate_tool_id:$entry.candidate_tool_id,
+      contribution_kind:$entry.contribution_kind,
+      execution_adapter_kind:$entry.execution_adapter_kind,
+      source_dispatch_shadow_route:$entry.dispatch_shadow_route,
+      registry_guard_route:$entry.registry_guard_route,
+      cutover_preflight_route:(if ($shadow_ready and $approval_guard) then "cutover_preflight_blocked_until_explicit_approval" elif $shadow_ready then "blocked_by_registry_guard" else "blocked_by_execution_dispatch_shadow" end),
+      cutover_preflight_ready:($shadow_ready and $approval_guard),
+      explicit_cutover_approval_required:($shadow_ready and $approval_guard),
+      live_cutover_blocked:($shadow_ready and $approval_guard),
+      cutover_matrix_binding_present:true,
+      explicit_cutover_approval_present:false,
+      tool_invocation_execution_switch_enabled:false,
+      adapter_dispatch_switch_enabled:false,
+      live_cutover_switch_enabled:false,
+      router_registration_lookup_enabled:false,
+      registry_lookup_executed:false,
+      registry_source_of_truth_enabled:false,
+      tool_registration_enabled:false,
+      tool_invocation_enabled:false,
+      ledger_write_enabled:false,
+      approval_request_enabled:false,
+      result_receipt_write_enabled:false,
+      side_effect_free:true
+    };
+
+  ($source[0]) as $source |
+  ($source.entries | map(cutover_entry(.))) as $entries |
+  ($entries | map(select(.cutover_preflight_ready == true)) | length) as $ready_count |
+  ($entries | map(select(.explicit_cutover_approval_required == true)) | length) as $approval_required_count |
+  ($entries | map(select(.live_cutover_blocked == true)) | length) as $live_blocked_count |
+  ($source.tool_execution_dispatch_shadow_ready
+    and $source.tool_invocation_enabled == false
+    and $source.ledger_written == false
+    and $source.approval_requested == false
+    and $source.result_receipt_written == false
+    and $ready_count == ($entries | length)
+    and $approval_required_count == ($entries | length)
+    and $live_blocked_count == ($entries | length)
+    and ($entries | all(.cutover_matrix_binding_present == true))
+    and ($entries | all(if .cutover_preflight_route == "cutover_preflight_blocked_until_explicit_approval" then (.registry_guard_route == "require_approval_ledger" and .explicit_cutover_approval_present == false and .tool_invocation_execution_switch_enabled == false and .adapter_dispatch_switch_enabled == false and .live_cutover_switch_enabled == false and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false and .result_receipt_write_enabled == false) else true end))) as $cutover_ready |
+  {
+    runtime:"hepta",
+    surface:"tool_execution_cutover_preflight",
+    plugin_id:$source.plugin_id,
+    status:(if $cutover_ready then "ready" else "blocked" end),
+    source_execution_dispatch_shadow_surface:$source.surface,
+    source_execution_dispatch_shadow_ready:$source.tool_execution_dispatch_shadow_ready,
+    cutover_matrix_binding_present:true,
+    explicit_cutover_approval_present:false,
+    tool_invocation_execution_switch_enabled:false,
+    adapter_dispatch_switch_enabled:false,
+    live_cutover_switch_enabled:false,
+    candidate_count:($entries | length),
+    cutover_preflight_ready_count:$ready_count,
+    cutover_preflight_blocked_count:(($entries | length) - $ready_count),
+    explicit_cutover_approval_required_count:$approval_required_count,
+    live_cutover_blocked_count:$live_blocked_count,
+    all_dispatch_shadow_entries_bound_to_cutover_preflight:($ready_count == ($entries | length) and $approval_required_count == ($entries | length) and $live_blocked_count == ($entries | length) and ($entries | all(.cutover_matrix_binding_present == true))),
+    all_cutover_entries_keep_approval_guard:($entries | all(if .cutover_preflight_route == "cutover_preflight_blocked_until_explicit_approval" then (.registry_guard_route == "require_approval_ledger" and .explicit_cutover_approval_present == false and .tool_invocation_execution_switch_enabled == false and .adapter_dispatch_switch_enabled == false and .live_cutover_switch_enabled == false and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false and .result_receipt_write_enabled == false) else true end)),
+    tool_execution_cutover_preflight_ready:$cutover_ready,
+    tool_execution_live_cutover_allowed:false,
+    router_registration_lookup_enabled:false,
+    registry_lookup_executed:false,
+    registry_source_of_truth_enabled:false,
+    tool_registration_enabled:false,
+    tool_invocation_enabled:false,
+    ledger_written:false,
+    approval_requested:false,
+    result_receipt_written:false,
+    live_mutation_ready:false,
+    next_migration_step:"restore_tool_execution_operator_approval_receipt_projection_without_invocation",
+    entries:$entries,
+    blockers:[
+      "explicit_cutover_approval_missing",
+      "live_cutover_switch_disabled",
+      "router_registration_lookup_disabled",
+      "registry_lookup_execution_disabled",
+      "registry_source_of_truth_enablement_disabled",
+      "tool_registration_disabled",
+      "tool_invocation_disabled",
+      "execution_adapter_dispatch_disabled",
+      "tool_invocation_ledger_write_disabled",
+      "approval_broker_request_disabled",
+      "result_receipt_write_disabled"
+    ],
+    next_actions:[
+      "restore_tool_execution_operator_approval_receipt_projection_without_invocation",
+      "keep_execution_cutover_preflight_read_only_until_operator_packet_is_restored",
+      "keep_registration_invocation_ledger_approval_receipts_and_live_mutation_disabled_until_explicit_cutover"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      rust_contract:"codex-rs/tools/src/tool_execution_cutover_preflight.rs",
+      execution_dispatch_shadow_report:"scripts/hepta-systems-tool-execution-dispatch-shadow-report.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      plugin_cache_mutated:false,
+      plugin_installed:false,
+      manifest_rewritten:false,
+      manifest_schema_written:false,
+      registry_source_of_truth_enabled:false,
+      router_registration_lookup_enabled:false,
+      registry_lookup_executed:false,
+      registration_cutover_executed:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      result_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      local_storage_created:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

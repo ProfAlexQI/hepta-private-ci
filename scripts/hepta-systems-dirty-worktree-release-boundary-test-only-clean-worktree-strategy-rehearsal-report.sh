@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-dirty-worktree-release-boundary-release-risk-snapshot-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_DIRTY_WORKTREE_RELEASE_BOUNDARY_TEST_ONLY_CLEAN_WORKTREE_STRATEGY_REHEARSAL_2026-06-28.md"
+
+fail() {
+  printf 'hepta-systems-dirty-worktree-release-boundary-test-only-clean-worktree-strategy-rehearsal-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable Phase 23 release risk snapshot report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 24 Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Phase 24 architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Phase 24 test-only clean-worktree strategy rehearsal report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+"$SOURCE_REPORT" >"$tmpdir/source.json" \
+  || fail "failed to render Phase 23 release risk snapshot report"
+jq -e . "$tmpdir/source.json" >/dev/null \
+  || fail "invalid JSON rendered by Phase 23 release risk snapshot report"
+
+lib_export_present=false
+if grep -q 'dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile source "$tmpdir/source.json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-dirty-worktree-release-boundary-test-only-clean-worktree-strategy-rehearsal-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_DIRTY_WORKTREE_RELEASE_BOUNDARY_TEST_ONLY_CLEAN_WORKTREE_STRATEGY_REHEARSAL_2026-06-28.md" \
+  '
+  def route_prefix($group_type):
+    if $group_type == "top_level" then "top-level"
+    elif $group_type == "scope" then "scope"
+    else $group_type
+    end;
+  def key_safe($value): ($value | gsub("[^A-Za-z0-9._-]"; "_") | gsub("-"; "_"));
+  def route_safe($value): ($value | gsub("_"; "-") | gsub("[^A-Za-z0-9.-]"; "-"));
+  def rehearsal_probe($bucket):
+    if $bucket == "cross_lane_or_unowned" then "owner_attribution_and_freeze_probe"
+    elif $bucket == "codex-rs" then "targeted_rust_gate_probe"
+    elif $bucket == "plugins" then "plugin_surface_gate_probe"
+    elif $bucket == "scripts" then "script_syntax_and_gate_probe"
+    elif $bucket == "hepta_systems_owned" then "owned_lane_freeze_probe"
+    elif $bucket == "artifacts" then "artifact_classification_probe"
+    elif $bucket == "docs" then "doc_evidence_consistency_probe"
+    else "general_dirty_worktree_review_probe"
+    end;
+  def required_local_gate($bucket):
+    if $bucket == "cross_lane_or_unowned" then "owner_attribution_freeze_gate"
+    elif $bucket == "codex-rs" then "targeted_rust_gate"
+    elif $bucket == "plugins" then "plugin_surface_gate"
+    elif $bucket == "scripts" then "script_syntax_gate"
+    elif $bucket == "hepta_systems_owned" then "owned_lane_freeze_gate"
+    elif $bucket == "artifacts" then "artifact_classification_gate"
+    elif $bucket == "docs" then "doc_evidence_consistency_gate"
+    else "general_dirty_worktree_review_gate"
+    end;
+  def convergence_state($bucket):
+    if $bucket == "cross_lane_or_unowned" then "blocked_until_owner_attribution"
+    elif $bucket == "codex-rs" then "candidate_after_targeted_rust_gate"
+    elif $bucket == "plugins" then "candidate_after_plugin_surface_gate"
+    elif $bucket == "scripts" then "candidate_after_script_gate"
+    elif $bucket == "hepta_systems_owned" then "candidate_after_owned_lane_freeze"
+    elif $bucket == "artifacts" then "candidate_after_artifact_classification"
+    elif $bucket == "docs" then "candidate_after_doc_evidence_check"
+    else "candidate_after_general_dirty_worktree_review"
+    end;
+  def rehearsal_entry:
+    . as $entry
+    | {
+      source_snapshot_key:$entry.snapshot_key,
+      source_snapshot_route:$entry.snapshot_route,
+      rehearsal_key:("dirty_worktree.test_only_clean_worktree_strategy_rehearsal." + key_safe($entry.group_type) + "." + key_safe($entry.source_bucket)),
+      rehearsal_route:("readback://release-boundary/dirty-worktree/test-only-clean-worktree-strategy-rehearsal/" + route_prefix($entry.group_type) + "/" + route_safe($entry.source_bucket)),
+      group_type:$entry.group_type,
+      source_bucket:$entry.source_bucket,
+      source_entry_count:$entry.source_entry_count,
+      tracked_count:$entry.tracked_count,
+      untracked_count:$entry.untracked_count,
+      owner_hint:$entry.owner_hint,
+      review_lane:$entry.review_lane,
+      recommended_strategy:$entry.recommended_strategy,
+      source_release_risk_tier:$entry.release_risk_tier,
+      source_release_blocker:$entry.release_blocker,
+      source_release_blocker_state:$entry.release_blocker_state,
+      source_rehearsal_action:$entry.rehearsal_action,
+      rehearsal_probe:rehearsal_probe($entry.source_bucket),
+      required_local_gate:required_local_gate($entry.source_bucket),
+      convergence_state:convergence_state($entry.source_bucket),
+      operator_action:"review_test_only_rehearsal_before_clean_worktree_strategy",
+      decision_state:$entry.decision_state,
+      evidence_recording_state:$entry.evidence_recording_state,
+      evidence_persistence_state:$entry.evidence_persistence_state,
+      evidence_receipt_state:$entry.evidence_receipt_state,
+      approval_request_state:$entry.approval_request_state,
+      approval_acceptance_state:$entry.approval_acceptance_state,
+      approval_recording_state:$entry.approval_recording_state,
+      approval_receipt_state:$entry.approval_receipt_state,
+      source_snapshot_attached:(($entry.snapshot_key | length) > 0 and ($entry.snapshot_route | length) > 0),
+      operator_visible:$entry.operator_visible,
+      queryable:$entry.queryable,
+      diffable:$entry.diffable,
+      test_only_rehearsal_candidate:$entry.clean_worktree_rehearsal_candidate,
+      test_only_rehearsal_visible:true,
+      test_only_rehearsal_executed:false,
+      mutation_free:true,
+      evidence_recording_allowed:false,
+      approval_acceptance_allowed:false,
+      decision_recording_allowed:false,
+      git_add_blocked:$entry.git_add_blocked,
+      git_index_mutation_blocked:$entry.git_index_mutation_blocked,
+      git_commit_blocked:$entry.git_commit_blocked,
+      git_push_blocked:$entry.git_push_blocked,
+      git_reset_blocked:$entry.git_reset_blocked,
+      git_checkout_blocked:$entry.git_checkout_blocked,
+      git_revert_blocked:$entry.git_revert_blocked,
+      cleanup_blocked:$entry.cleanup_blocked,
+      delete_blocked:$entry.delete_blocked,
+      release_cutover_allowed:false,
+      canary_activation_allowed:false,
+      live_execution_allowed:false
+    };
+  ($source[0]) as $source_report |
+  ($source_report.entries | map(rehearsal_entry)) as $entries |
+  ($entries | length) as $rehearsal_entry_count |
+  ($entries | map(.rehearsal_key) | unique | length) as $stable_rehearsal_key_count |
+  ($entries | map(.rehearsal_route) | unique | length) as $rehearsal_route_count |
+  ($entries | map(select(.source_snapshot_attached == true and .operator_visible == true and .queryable == true and .diffable == true and .test_only_rehearsal_candidate == true and .test_only_rehearsal_visible == true and .test_only_rehearsal_executed == false and .mutation_free == true and .source_release_blocker_state == "blocked_dirty_worktree" and .convergence_state != "unknown" and (.required_local_gate | length) > 0 and .decision_state == "pending_operator_decision" and .evidence_recording_state == "evidence_recording_blocked" and .evidence_persistence_state == "evidence_persistence_blocked" and .evidence_receipt_state == "evidence_receipt_blocked" and .evidence_recording_allowed == false and .approval_acceptance_allowed == false and .decision_recording_allowed == false and .git_add_blocked == true and .git_index_mutation_blocked == true and .git_commit_blocked == true and .git_push_blocked == true and .git_reset_blocked == true and .git_checkout_blocked == true and .git_revert_blocked == true and .cleanup_blocked == true and .delete_blocked == true and .release_cutover_allowed == false and .canary_activation_allowed == false and .live_execution_allowed == false)) | length) as $rehearsal_ready_count |
+  ($entries | map(select(.test_only_rehearsal_candidate == true)) | length) as $convergence_candidate_count |
+  ($entries | map(select(.required_local_gate == "owner_attribution_freeze_gate")) | length) as $owner_attribution_required_count |
+  ($entries | map(select(.required_local_gate == "targeted_rust_gate")) | length) as $runtime_gate_required_count |
+  ($entries | map(select(.required_local_gate == "plugin_surface_gate")) | length) as $plugin_gate_required_count |
+  ($entries | map(select(.required_local_gate == "script_syntax_gate")) | length) as $script_gate_required_count |
+  ($entries | map(select(.required_local_gate == "owned_lane_freeze_gate")) | length) as $owned_lane_freeze_required_count |
+  ($entries | map(select(.required_local_gate == "artifact_classification_gate")) | length) as $artifact_classification_required_count |
+  ($entries | map(select(.required_local_gate == "doc_evidence_consistency_gate")) | length) as $doc_evidence_required_count |
+  ($entries | map(select(.source_release_blocker_state == "blocked_dirty_worktree")) | length) as $release_blocked_count |
+  ($entries | map(select(.git_add_blocked == true and .git_index_mutation_blocked == true and .git_commit_blocked == true and .git_push_blocked == true and .git_reset_blocked == true and .git_checkout_blocked == true and .git_revert_blocked == true)) | length) as $git_mutation_blocked_count |
+  ($entries | map(select(.cleanup_blocked == true and .delete_blocked == true)) | length) as $cleanup_delete_blocked_count |
+  ($entries | map(select(.evidence_recording_allowed == false)) | length) as $evidence_recording_blocked_count |
+  ($entries | map(select(.approval_acceptance_allowed == false)) | length) as $approval_acceptance_blocked_count |
+  ($entries | map(select(.decision_recording_allowed == false)) | length) as $decision_recording_blocked_count |
+  ($source_report.release_risk_snapshot_ready == true
+    and $source_report.risk_snapshot_visible == true
+    and $source_report.risk_snapshot_persisted == false
+    and $source_report.evidence_recorded == false
+    and $source_report.evidence_recording_persisted == false
+    and $source_report.evidence_receipt_persisted == false
+    and $lib_export_present == true
+    and $rehearsal_entry_count == $source_report.risk_entry_count
+    and $stable_rehearsal_key_count == $rehearsal_entry_count
+    and $rehearsal_route_count == $rehearsal_entry_count
+    and $rehearsal_ready_count == $rehearsal_entry_count
+    and $convergence_candidate_count == $rehearsal_entry_count
+    and $owner_attribution_required_count == 1
+    and $runtime_gate_required_count == 1
+    and $plugin_gate_required_count == 1
+    and $script_gate_required_count == 1
+    and $owned_lane_freeze_required_count == 1
+    and $artifact_classification_required_count == 1
+    and $doc_evidence_required_count == 1
+    and $release_blocked_count == $rehearsal_entry_count
+    and $git_mutation_blocked_count == $rehearsal_entry_count
+    and $cleanup_delete_blocked_count == $rehearsal_entry_count
+    and $evidence_recording_blocked_count == $rehearsal_entry_count
+    and $approval_acceptance_blocked_count == $rehearsal_entry_count
+    and $decision_recording_blocked_count == $rehearsal_entry_count) as $rehearsal_ready |
+  {
+    runtime:"hepta",
+    surface:"dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal",
+    status:(if $rehearsal_ready then "ready_blocked" else "blocked" end),
+    gate:"dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal_gate",
+    schema_version:"dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal_v1",
+    plugin_id:$source_report.plugin_id,
+    source_release_risk_snapshot_gate:$source_report.gate,
+    source_release_risk_snapshot_ready:$source_report.release_risk_snapshot_ready,
+    source_release_risk_snapshot_visible:$source_report.risk_snapshot_visible,
+    source_release_risk_snapshot_persisted:$source_report.risk_snapshot_persisted,
+    source_evidence_recorded:$source_report.evidence_recorded,
+    source_evidence_recording_persisted:$source_report.evidence_recording_persisted,
+    source_evidence_receipt_persisted:$source_report.evidence_receipt_persisted,
+    source_risk_entry_count:$source_report.risk_entry_count,
+    lib_export_present:$lib_export_present,
+    inventory_entry_count:$source_report.inventory_entry_count,
+    tracked_change_count:$source_report.tracked_change_count,
+    untracked_change_count:$source_report.untracked_change_count,
+    rehearsal_scope:{
+      rehearsal_id:"dirty-worktree.release-boundary.test-only-clean-worktree-strategy-rehearsal.v1",
+      rehearsal_route:"readback://release-boundary/dirty-worktree/test-only-clean-worktree-strategy-rehearsal/v1",
+      source_release_risk_snapshot_route:$source_report.release_risk_snapshot_scope.snapshot_route,
+      rehearsal_mode:"test_only_no_git_mutation_no_cleanup_no_evidence_recording",
+      git_mutation_boundary:"blocked",
+      cleanup_boundary:"blocked",
+      evidence_boundary:"blocked",
+      approval_boundary:"blocked",
+      decision_boundary:"blocked",
+      live_boundary:"blocked"
+    },
+    rehearsal_entry_count:$rehearsal_entry_count,
+    stable_rehearsal_key_count:$stable_rehearsal_key_count,
+    rehearsal_route_count:$rehearsal_route_count,
+    rehearsal_ready_count:$rehearsal_ready_count,
+    convergence_candidate_count:$convergence_candidate_count,
+    owner_attribution_required_count:$owner_attribution_required_count,
+    runtime_gate_required_count:$runtime_gate_required_count,
+    plugin_gate_required_count:$plugin_gate_required_count,
+    script_gate_required_count:$script_gate_required_count,
+    owned_lane_freeze_required_count:$owned_lane_freeze_required_count,
+    artifact_classification_required_count:$artifact_classification_required_count,
+    doc_evidence_required_count:$doc_evidence_required_count,
+    release_blocked_count:$release_blocked_count,
+    git_mutation_blocked_count:$git_mutation_blocked_count,
+    cleanup_delete_blocked_count:$cleanup_delete_blocked_count,
+    evidence_recording_blocked_count:$evidence_recording_blocked_count,
+    approval_acceptance_blocked_count:$approval_acceptance_blocked_count,
+    decision_recording_blocked_count:$decision_recording_blocked_count,
+    test_only_rehearsal_visible:$rehearsal_ready,
+    test_only_rehearsal_persisted:false,
+    test_probe_executed:false,
+    evidence_recorded:false,
+    evidence_recording_persisted:false,
+    evidence_receipt_persisted:false,
+    approval_request_sent:false,
+    approval_accepted:false,
+    approval_recorded:false,
+    approval_receipt_persisted:false,
+    decision_recorded:false,
+    decision_recording_persisted:false,
+    decision_receipt_persisted:false,
+    operator_packet_sent:false,
+    operator_packet_persisted:false,
+    readback_persisted:false,
+    strategy_applied:false,
+    release_cutover_allowed:false,
+    git_add_allowed:false,
+    git_index_mutated:false,
+    git_commit_allowed:false,
+    git_push_allowed:false,
+    git_reset_allowed:false,
+    git_checkout_allowed:false,
+    git_revert_allowed:false,
+    cleanup_allowed:false,
+    delete_allowed:false,
+    blocker_waiver_allowed:false,
+    package_or_release_allowed:false,
+    public_ga_allowed:false,
+    canary_activation_allowed:false,
+    live_activation_allowed:false,
+    live_execution_allowed:false,
+    test_only_clean_worktree_strategy_rehearsal_ready:$rehearsal_ready,
+    entries:$entries,
+    blockers:[
+      "test_only_rehearsal_visible_only",
+      "test_probe_execution_blocked",
+      "release_cutover_blocked",
+      "git_mutation_blocked",
+      "cleanup_and_delete_blocked",
+      "evidence_recording_blocked",
+      "approval_acceptance_blocked",
+      "decision_recording_blocked",
+      "canary_activation_blocked",
+      "live_activation_blocked"
+    ],
+    recommended_next_gate:"phase25_dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback_without_git_mutation",
+    next_actions:[
+      "phase25_dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback_without_git_mutation"
+    ],
+    gate_script:$gate,
+    doc_path:$doc,
+    side_effect_free:true,
+    side_effects:{
+      rehearsal_persisted:false,
+      test_probe_executed:false,
+      evidence_recorded:false,
+      evidence_persisted:false,
+      evidence_receipt_persisted:false,
+      approval_requested:false,
+      approval_accepted:false,
+      approval_recorded:false,
+      approval_receipt_persisted:false,
+      decision_recorded:false,
+      decision_recording_persisted:false,
+      decision_receipt_persisted:false,
+      packet_sent:false,
+      packet_persisted:false,
+      readback_persisted:false,
+      git_add_performed:false,
+      git_index_mutated:false,
+      git_commit_created:false,
+      git_push_performed:false,
+      git_reset_performed:false,
+      git_checkout_performed:false,
+      git_revert_performed:false,
+      cleanup_performed:false,
+      unrelated_file_deleted:false,
+      strategy_applied:false,
+      blocker_waived:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      canary_activation_started:false,
+      live_activation_started:false,
+      live_execution_started:false
+    }
+  }
+  '

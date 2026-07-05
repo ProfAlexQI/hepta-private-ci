@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-terminal-task-result-wrapper-preview-report.sh"
+
+report="$(capture_json_report "hepta-work-graph-terminal-task-result-wrapper-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_terminal_task_result_wrapper_preview_gate"
+  and .schema_version == "work_graph_terminal_task_result_wrapper_preview_v1"
+  and .preview_mode == "read_only_terminal_task_result_wrapper_preview_no_execution"
+  and .terminal_wrapper_count == 8
+  and (.terminal_wrappers | length) == .terminal_wrapper_count
+  and .terminal_source_count == 8
+  and (.terminal_wrappers | map(.source_surface_id) == [
+    "multi_agent_v2_thread_spawn",
+    "multi_agent_v2_mailbox_wait",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_task_board",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.terminal_wrappers | all(
+    .emitted_event_contract_id == "task_result_event_intake"
+    and .wrapper_state == "preview_contract_defined_wrapper_execution_disabled"
+    and .attaches_runtime_adapter == false
+    and .executes_wrapper == false
+    and .persists_task_result == false
+    and .enforces_task_result == false
+    and .mutates_store == false
+  ))
+  and .canonical_wire_field_count == 11
+  and (.canonical_wire_fields == [
+    "taskId",
+    "status",
+    "summary",
+    "artifacts",
+    "evidence",
+    "risks",
+    "nextActions",
+    "verifier",
+    "reducer",
+    "usage",
+    "traceId"
+  ])
+  and .terminal_required_field_count == 6
+  and (.terminal_required_fields == ["taskId", "status", "summary", "evidence", "verifier", "traceId"])
+  and (.terminal_wrappers | all(
+    .required_wire_fields == [
+      "taskId",
+      "status",
+      "summary",
+      "artifacts",
+      "evidence",
+      "risks",
+      "nextActions",
+      "verifier",
+      "reducer",
+      "usage",
+      "traceId"
+    ]
+    and .terminal_required_fields == ["taskId", "status", "summary", "evidence", "verifier", "traceId"]
+  ))
+  and (.terminal_wrappers | all((.canonical_status_mappings | map(.canonical_status) | unique) == [
+    "blocked",
+    "cancelled",
+    "failed",
+    "succeeded",
+    "superseded"
+  ]))
+  and (.terminal_wrappers | all(.canonical_status_mappings | all(.terminal == true)))
+  and .evidence_contract_count == 8
+  and (.evidence_contracts | length) == .evidence_contract_count
+  and (.evidence_contracts | map(.source_surface_id) == [
+    "multi_agent_v2_thread_spawn",
+    "multi_agent_v2_mailbox_wait",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_task_board",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.evidence_contracts | all(.stores_raw_payload == false and .performs_readback == false and .mutates_store == false))
+  and .blocker_count == 4
+  and (.blockers | length) == .blocker_count
+  and (.blockers | map(.id) == [
+    "wrapper_fixture_execution_disabled",
+    "terminal_task_result_enforcement_disabled",
+    "append_only_store_still_disabled",
+    "scheduler_admission_consumes_preview_only"
+  ])
+  and (.blockers | map(select(.severity == "high")) | length) == 2
+  and (.blockers | all(.required_before_task_result_enforcement == true))
+  and .required_prior_gate_count == 12
+  and (.required_prior_gates == [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_append_only_event_intake_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_idempotency_readback_adapter_preview_gate"
+  ])
+  and .recommended_next_gate == "hepta_work_graph_terminal_task_result_wrapper_fixture_preview_gate"
+  and .ready_for_wrapper_fixture_preview == true
+  and .ready_for_task_result_enforcement == false
+  and .ready_for_store_enablement == false
+  and .ready_for_live_execution == false
+  and .source_probes.terminal_task_result_wrapper.rust_module_present == true
+  and .source_probes.terminal_task_result_wrapper.report_script_present == true
+  and .source_probes.terminal_task_result_wrapper.gate_script_present == true
+  and .source_probes.idempotency_readback_adapter.rust_module_present == true
+  and .source_probes.idempotency_readback_adapter.gate_script_present == true
+  and .source_probes.task_result_contract.rust_module_present == true
+  and .source_probes.append_only_event_intake.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_terminal_task_result_wrapper --lib
+
+echo "Hepta WorkGraph terminal TaskResult wrapper preview gate passed"

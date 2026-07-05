@@ -1,0 +1,19 @@
+mod adaptive_shadow;
+mod eval_seed;
+mod selected_recall_canary;
+
+pub use adaptive_shadow::ContextMemoryAdaptiveAllocatorEvalArm;
+pub use adaptive_shadow::ContextMemoryAdaptiveAllocatorEvalShadowComparisonVerdict;
+pub use adaptive_shadow::ContextMemoryAdaptiveAllocatorEvalShadowReport;
+pub use adaptive_shadow::ContextMemoryAdaptiveAllocatorEvalShadowResult;
+pub use adaptive_shadow::ContextMemoryAdaptiveAllocatorEvalShadowVerdict;
+pub(in crate::memory) use adaptive_shadow::adaptive_allocator_eval_required_fixture_kinds;
+pub use eval_seed::ContextMemoryEvalFixtureKind;
+pub use eval_seed::ContextMemoryEvalFixtureResult;
+pub use eval_seed::ContextMemoryEvalHarnessReport;
+pub use eval_seed::ContextMemoryEvalMetric;
+pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalFixtureKind;
+pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalFixtureResult;
+pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalMetric;
+pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalMode;
+pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalReport;

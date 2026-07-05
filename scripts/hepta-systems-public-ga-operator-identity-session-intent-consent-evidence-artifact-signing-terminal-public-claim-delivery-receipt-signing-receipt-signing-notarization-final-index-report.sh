@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-notarization-readback-report.sh"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable artifact signing receipt signing receipt signing/notarization readback report: $SOURCE_REPORT" >&2
+  exit 1
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required to build the artifact signing receipt signing receipt signing/notarization final index report" >&2
+  exit 1
+fi
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback"
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback_blocked == true
+  and .readback_blocker_count == 174
+  and .artifact_signing_notarization_surface_recorded == false
+  and .notarization_submitted == false
+  and .operator_approval_from_signing_status_derived == false
+' <<<"$source_json" >/dev/null
+
+jq -n \
+  --argjson source "$source_json" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_final_index",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback_surface: $source.surface,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback_ready: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback_ready,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback_blocked: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback_blocked,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_final_index_ready: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_final_index_blocked: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_readback_attached: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_distribution_artifact_manifest_status_final_index_attached: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_distribution_artifact_manifest_status_final_index_attached,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_denial_gate_present: $source.artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_denial_gate_present,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_denial_doc_present: $source.artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_denial_doc_present,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_denial_gate_invoked: false,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_distribution_artifact_manifest_status_denial_gate_invoked: false,
+    artifact_signing_notarization_surface_recorded: false,
+    artifact_signing_notarization_surface_persisted: false,
+    artifact_signing_notarization_surface_materialized: false,
+    artifact_signing_notarization_surface_filesystem_written: false,
+    artifact_signing_status_exposed: false,
+    package_signing_status_exposed: false,
+    signature_manifest_written: false,
+    checksum_binding_recorded: false,
+    notarization_submitted: false,
+    notarization_ticket_recorded: false,
+    stapling_executed: false,
+    installer_signed: false,
+    provenance_attestation_published: false,
+    sbom_manifest_published: false,
+    release_asset_packaged: false,
+    artifact_bundle_packaged: false,
+    cdn_artifact_written: false,
+    update_feed_artifact_written: false,
+    package_registry_artifact_published: false,
+    dashboard_signing_status_exposed: false,
+    endpoint_signing_status_exposed: false,
+    query_status_exposed: false,
+    export_status_exposed: false,
+    observability_status_exposed: false,
+    external_status_sent: false,
+    telegram_status_sent: false,
+    public_status_claimed: false,
+    public_release_claimed: false,
+    public_ga_claimed: false,
+    operator_approval_from_signing_status_derived: false,
+    release_publication_authority_from_signing_status_derived: false,
+    activation_authority_from_signing_status_derived: false,
+    install_from_signing_status_executed: false,
+    service_restart_from_signing_status_performed: false,
+    active_binary_from_signing_status_mutated: false,
+    provider_invoked: false,
+    model_invoked: false,
+    credential_read: false,
+    secret_file_read: false,
+    terminal_live_gates_invoked: false,
+    final_blocker_count: 174,
+    manual_operator_live_cutover_approval_required: true,
+    terminal_live_url_required: false,
+    long_soak_required: false,
+    public_ga_claim_allowed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    next_migration_step: "attach_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_artifact_signing_notarization_surface_final_index_to_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_non_persistence_without_signing",
+    source_files: {
+      signing_receipt_notarization_readback_report: "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-notarization-readback-report.sh"
+    },
+    side_effect_free: true,
+    side_effects: ($source.side_effects + {
+      final_index_report_written: false,
+      signing_notarization_surface_final_index_recorded: false,
+      signing_notarization_surface_denial_gate_invoked: false
+    })
+  }'

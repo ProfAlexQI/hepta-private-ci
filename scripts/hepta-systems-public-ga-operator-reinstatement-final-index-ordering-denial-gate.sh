@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-reinstatement-final-index-ordering-denial-report.sh"
+SOURCE_GATE="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-reinstatement-denial-final-index-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_REINSTATEMENT_FINAL_INDEX_ORDERING_DENIAL_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-public-ga-operator-reinstatement-final-index-ordering-denial-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Public GA operator identity/session reinstatement ordering denial attachment report: $REPORT"
+[[ -x "$SOURCE_GATE" ]] || fail "missing executable Public GA operator identity/session reinstatement denial final index gate: $SOURCE_GATE"
+[[ -f "$DOC" ]] || fail "missing Public GA operator identity/session reinstatement ordering denial architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Public GA operator identity/session reinstatement ordering denial attachment report"
+fi
+
+grep -q 'Public GA Operator Identity/Session Reinstatement Ordering Denial Attachment' "$DOC" \
+  || fail "architecture note must document Public GA Operator Identity/Session Reinstatement Ordering Denial Attachment"
+grep -q 'ready-but-blocked' "$DOC" \
+  || fail "architecture note must document ready-but-blocked status"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that attachment does not invoke ordering gates"
+grep -q 'canonical terminal closure backfeed' "$DOC" \
+  || fail "architecture note must document canonical terminal closure backfeed carry-through"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "public_ga_operator_identity_session_reinstatement_ordering_denial_attachment"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .source_public_ga_operator_identity_session_reinstatement_denial_final_index_surface == "public_ga_operator_identity_session_reinstatement_denial_final_index"
+  and .source_public_ga_operator_identity_session_reinstatement_denial_final_index_ready == true
+  and .source_public_ga_operator_identity_session_reinstatement_denial_final_index_blocked == true
+  and .source_canonical_governance_tool_execution_closure_backfeed_ready == true
+  and .source_canonical_governance_tool_execution_closure_backfeed_blocker_count == 17
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_count == 4
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_ready_count == 4
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count == 17
+  and .source_canonical_governance_tool_execution_closure_backfeed_categorization_ready == true
+  and (.source_canonical_governance_tool_execution_closure_backfeed_categories | length) == 4
+  and any(.source_canonical_governance_tool_execution_closure_backfeed_categories[]; .id == "runner_selector" and .blocker_count == 2)
+  and any(.source_canonical_governance_tool_execution_closure_backfeed_categories[]; .id == "dirty_worktree_owner_freeze" and .blocker_count == 2)
+  and .public_ga_operator_identity_session_reinstatement_denial_final_index_attached == true
+  and .public_ga_operator_identity_session_reinstatement_ordering_denial_attachment_ready == true
+  and .public_ga_operator_identity_session_reinstatement_ordering_denial_attachment_blocked == true
+  and .operator_identity_session_reinstatement_ordering_monotonicity_denial_gate_present == true
+  and .operator_identity_session_reinstatement_ordering_monotonicity_denial_doc_present == true
+  and .operator_identity_session_reinstatement_ordering_static_mention_count >= 10
+  and .operator_identity_session_reinstatement_ordering_monotonicity_denial_gate_invoked == false
+  and .operator_identity_session_revocation_logout_replay_reinstatement_denial_gate_invoked == false
+  and .operator_identity_session_revocation_logout_denial_gate_invoked == false
+  and .long_soak_required_by_source_ordering_gate == true
+  and .long_soak_started == false
+  and .operator_identity_reinstatement_requested == false
+  and .operator_identity_reinstated == false
+  and .operator_session_reinstatement_requested == false
+  and .operator_session_reinstated == false
+  and .reinstatement_authority_derived == false
+  and .ordering_recorded == false
+  and .ordering_persisted == false
+  and .sequence_cursor_recorded == false
+  and .monotonicity_state_recorded == false
+  and .timestamp_rollback_accepted == false
+  and .epoch_rollback_accepted == false
+  and .latest_wins_accepted == false
+  and .monotonic_cursor_accepted == false
+  and .ordering_authority_derived == false
+  and .attachment_blocker_count == 32
+  and .manual_operator_live_cutover_approval_required == true
+  and .public_ga_claim_allowed == false
+  and .public_ga_claimed == false
+  and .public_release_published == false
+  and .rollback_execution_allowed == false
+  and .next_migration_step == "derive_public_ga_operator_identity_session_reinstatement_ordering_readback_without_ordering"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$SOURCE_GATE" >/dev/null
+
+printf 'hepta-systems-public-ga-operator-reinstatement-final-index-ordering-denial-gate: PASS: Public GA operator identity/session reinstatement ordering denial attachment is ready but blocked without ordering\n'

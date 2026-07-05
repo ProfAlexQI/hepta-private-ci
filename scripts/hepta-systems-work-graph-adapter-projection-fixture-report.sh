@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+adapter_projection_fixture_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_adapter_projection_fixture.rs
+)"
+adapter_projection_fixture_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-adapter-projection-fixture-report.sh
+)"
+adapter_projection_fixture_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-adapter-projection-fixture-gate.sh
+)"
+unified_state_store_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_state_store.rs
+)"
+unified_state_store_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-state-store-preview-report.sh
+)"
+unified_state_store_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-state-store-preview-gate.sh
+)"
+approval_broker_surface_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/approval_broker.rs
+)"
+
+jq -n \
+  --argjson adapter_projection_fixture_rust_module_present "$adapter_projection_fixture_rust_module_present" \
+  --argjson adapter_projection_fixture_report_script_present "$adapter_projection_fixture_report_script_present" \
+  --argjson adapter_projection_fixture_gate_script_present "$adapter_projection_fixture_gate_script_present" \
+  --argjson unified_state_store_rust_module_present "$unified_state_store_rust_module_present" \
+  --argjson unified_state_store_report_script_present "$unified_state_store_report_script_present" \
+  --argjson unified_state_store_gate_script_present "$unified_state_store_gate_script_present" \
+  --argjson approval_broker_surface_present "$approval_broker_surface_present" \
+  '
+  def required_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate"
+  ];
+  def fixture($id; $source; $record; $node_kind; $node_id; $trace; $status; $collections; $edges; $task_result; $artifacts; $approval; $events; $idempotency): {
+    id: $id,
+    source_surface_id: $source,
+    source_record_id: $record,
+    node_kind: $node_kind,
+    projected_node_id: $node_id,
+    trace_id: $trace,
+    status: $status,
+    projected_collection_ids: $collections,
+    projected_edge_ids: $edges,
+    projected_task_result_id: $task_result,
+    projected_artifact_ids: $artifacts,
+    projected_approval_id: $approval,
+    projected_timeline_event_ids: $events,
+    idempotency_key_hash: $idempotency,
+    redaction_state: "redacted_refs_only",
+    required_contract_gates: required_gates,
+    persistence_enabled: false,
+    enforcement_enabled: false
+  };
+  def collection_coverage($id; $fixture_ids): {
+    id: $id,
+    fixture_ids: $fixture_ids,
+    required_before_persistence: true
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    fixture("update_plan_step_projection"; "update_plan_tool"; "turn-plan-step-preview-0"; "plan_step"; "wg-node-plan-step-turn-plan-step-preview-0"; "wg-trace-preview-plan-001"; "pending"; ["nodes", "edges", "timelineEvents"]; ["wg-edge-plan-step-depends-on-root"]; null; []; null; ["wg-event-plan-step-observed-001"]; null),
+    fixture("plan_mode_proposal_block_projection"; "plan_mode_proposed_plan_blocks"; "plan-mode-proposal-block-preview-001"; "plan_step"; "wg-node-plan-step-plan-mode-proposal-block-preview-001"; "wg-trace-preview-plan-mode-001"; "pending"; ["nodes", "edges", "timelineEvents"]; ["wg-edge-plan-mode-proposal-replaces-plan-step-001"]; null; []; null; ["wg-event-plan-mode-proposal-observed-001"]; "hash:plan-mode-proposal-block-preview-001"),
+    fixture("app_server_turn_plan_notification_projection"; "app_server_turn_plan_notification"; "app-server-turn-plan-notification-preview-001"; "plan_step"; "wg-node-plan-step-app-server-turn-plan-notification-preview-001"; "wg-trace-preview-app-server-plan-001"; "running"; ["nodes", "edges", "timelineEvents"]; ["wg-edge-app-server-plan-notification-updates-plan-001"]; null; []; null; ["wg-event-app-server-plan-step-observed-001"]; "hash:app-server-turn-plan-notification-preview-001"),
+    fixture("multi_agent_thread_spawn_projection"; "multi_agent_v2_thread_spawn"; "thread-spawn-edge-preview-001"; "agent_task"; "wg-node-agent-task-thread-spawn-edge-preview-001"; "wg-trace-preview-agent-001"; "queued"; ["nodes", "edges", "taskResults", "timelineEvents"]; ["wg-edge-agent-task-spawned-by-plan-001"]; "wg-result-agent-task-thread-spawn-edge-preview-001"; []; null; ["wg-event-agent-task-spawned-001"]; null),
+    fixture("multi_agent_mailbox_wait_projection"; "multi_agent_v2_mailbox_wait"; "mailbox-wait-preview-001"; "agent_task"; "wg-node-agent-task-mailbox-wait-preview-001"; "wg-trace-preview-mailbox-wait-001"; "running"; ["nodes", "edges", "timelineEvents"]; ["wg-edge-mailbox-wait-unblocks-agent-task-001"]; null; []; null; ["wg-event-mailbox-progress-observed-001"]; "hash:mailbox-wait-preview-001"),
+    fixture("multi_agent_reducer_result_projection"; "hepta_runtime_multi_agent_reducer"; "multi-agent-reducer-preview-001"; "agent_task"; "wg-node-agent-task-multi-agent-reducer-preview-001"; "wg-trace-preview-reducer-001"; "succeeded"; ["nodes", "edges", "taskResults", "timelineEvents"]; ["wg-edge-multi-agent-reducer-reduces-agent-results-001", "wg-edge-multi-agent-reducer-verifies-consensus-001"]; "wg-result-multi-agent-reducer-preview-001"; []; null; ["wg-event-multi-agent-reducer-result-001"]; "hash:multi-agent-reducer-preview-001"),
+    fixture("agent_job_item_result_projection"; "agent_jobs_batch_workers"; "agent-job-item-preview-001"; "worker_task"; "wg-node-worker-task-agent-job-item-preview-001"; "wg-trace-preview-agent-job-001"; "running"; ["nodes", "taskResults", "timelineEvents"]; []; "wg-result-agent-job-item-preview-001"; []; null; ["wg-event-task-result-agent-job-001"]; null),
+    fixture("task_board_lease_claim_projection"; "hepta_runtime_task_board"; "task-board-lease-preview-001"; "worker_task"; "wg-node-worker-task-board-lease-preview-001"; "wg-trace-preview-task-board-001"; "queued"; ["nodes", "edges", "timelineEvents"]; ["wg-edge-task-board-depends-on-parent-001", "wg-edge-task-board-lease-claim-001"]; null; []; null; ["wg-event-task-board-lease-observed-001"]; "hash:task-board-lease-preview-001"),
+    fixture("runtime_worker_task_artifact_projection"; "hepta_runtime_worker_tasks"; "worker-task-preview-001"; "worker_task"; "wg-node-worker-task-preview-001"; "wg-trace-preview-worker-001"; "succeeded"; ["nodes", "taskResults", "artifacts", "timelineEvents"]; []; "wg-result-worker-task-preview-001"; ["wg-artifact-worker-task-preview-001"]; null; ["wg-event-worker-artifact-produced-001", "wg-event-worker-task-result-001"]; null),
+    fixture("scheduler_run_admission_projection"; "hepta_runtime_scheduler_store"; "scheduler-run-preview-001"; "scheduler_run"; "wg-node-scheduler-run-preview-001"; "wg-trace-preview-scheduler-001"; "blocked"; ["nodes", "edges", "taskResults", "timelineEvents"]; ["wg-edge-scheduler-run-blocked-by-approval-001"]; "wg-result-scheduler-run-preview-001"; []; null; ["wg-event-scheduler-admission-denied-001"]; "hash:idempotency-preview-scheduler-001"),
+    fixture("approval_broker_human_approval_projection"; "hepta_runtime_approval_broker"; "approval-request-preview-001"; "human_approval"; "wg-node-human-approval-preview-001"; "wg-trace-preview-approval-001"; "pending"; ["nodes", "approvals", "timelineEvents"]; []; null; []; "wg-approval-preview-001"; ["wg-event-human-approval-requested-001"]; null),
+    fixture("agent_harness_external_handoff_projection"; "hepta_runtime_agent_harness"; "agent-harness-handoff-preview-001"; "external_handoff"; "wg-node-external-handoff-preview-001"; "wg-trace-preview-handoff-001"; "blocked"; ["nodes", "taskResults", "artifacts", "timelineEvents"]; ["wg-edge-external-handoff-blocked-by-approval-001"]; "wg-result-agent-harness-handoff-preview-001"; ["wg-artifact-handoff-preview-001"]; null; ["wg-event-external-handoff-observed-001"]; "hash:handoff-preview-001")
+  ] as $fixtures
+  | [
+    collection_coverage("nodes"; ($fixtures | map(.id))),
+    collection_coverage("edges"; [
+      "update_plan_step_projection",
+      "plan_mode_proposal_block_projection",
+      "app_server_turn_plan_notification_projection",
+      "multi_agent_thread_spawn_projection",
+      "multi_agent_mailbox_wait_projection",
+      "multi_agent_reducer_result_projection",
+      "scheduler_run_admission_projection",
+      "task_board_lease_claim_projection",
+      "agent_harness_external_handoff_projection"
+    ]),
+    collection_coverage("taskResults"; [
+      "multi_agent_thread_spawn_projection",
+      "multi_agent_reducer_result_projection",
+      "agent_job_item_result_projection",
+      "runtime_worker_task_artifact_projection",
+      "scheduler_run_admission_projection",
+      "agent_harness_external_handoff_projection"
+    ]),
+    collection_coverage("artifacts"; [
+      "runtime_worker_task_artifact_projection",
+      "agent_harness_external_handoff_projection"
+    ]),
+    collection_coverage("approvals"; ["approval_broker_human_approval_projection"]),
+    collection_coverage("timelineEvents"; ($fixtures | map(.id)))
+  ] as $projected_collections
+  | [
+    invariant("fixtures_use_deterministic_redacted_ids"; "fixtures use stable synthetic ids and hashes instead of raw payloads"),
+    invariant("every_fixture_has_trace_and_node_id"; "projection cannot be accepted without traceId and projected node identity"),
+    invariant("collection_coverage_includes_nodes_and_timeline"; "every fixture must project at least a node and a redacted timeline event"),
+    invariant("task_result_fixtures_use_task_result_contract"; "worker-like fixtures must point at TaskResult ids before persistence preview"),
+    invariant("approval_and_external_handoff_are_preview_only"; "human approval and external handoff fixtures cannot record decisions or deliver"),
+    invariant("fixture_gate_does_not_persist_or_enforce"; "this gate cannot write graph state or enable adapter enforcement")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_adapter_projection_fixture_gate",
+      schema_version: "work_graph_adapter_projection_fixture_v1",
+      preview_mode: "read_only_adapter_projection_fixture_no_persistence",
+      fixture_count: ($fixtures | length),
+      source_surface_count: ($fixtures | map(.source_surface_id) | unique | length),
+      projected_collection_count: ($projected_collections | length),
+      invariant_count: ($invariants | length),
+      fixtures: $fixtures,
+      projected_collections: $projected_collections,
+      invariants: $invariants,
+      recommended_next_gate: "hepta_work_graph_state_store_persistence_preview_gate",
+      ready_for_state_store_persistence_preview: true,
+      ready_for_store_persistence: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        adapter_projection_fixture: {
+          rust_module_present: $adapter_projection_fixture_rust_module_present,
+          report_script_present: $adapter_projection_fixture_report_script_present,
+          gate_script_present: $adapter_projection_fixture_gate_script_present
+        },
+        unified_state_store: {
+          rust_module_present: $unified_state_store_rust_module_present,
+          report_script_present: $unified_state_store_report_script_present,
+          gate_script_present: $unified_state_store_gate_script_present
+        },
+        approval_broker: {
+          rust_module_present: $approval_broker_surface_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        store_persistence_enabled: false,
+        runtime_mutation_performed: false,
+        scheduler_cutover_performed: false,
+        adapter_projection_enforced: false,
+        approval_recorded: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

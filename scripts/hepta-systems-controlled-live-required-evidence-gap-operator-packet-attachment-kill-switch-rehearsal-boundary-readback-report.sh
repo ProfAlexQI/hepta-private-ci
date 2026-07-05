@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+ROLLBACK_REHEARSAL_BOUNDARY_REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-rollback-rehearsal-boundary-readback-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_KILL_SWITCH_REHEARSAL_BOUNDARY_READBACK_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$ROLLBACK_REHEARSAL_BOUNDARY_REPORT" ]] || fail "missing executable Phase 5m rollback rehearsal boundary readback report: $ROLLBACK_REHEARSAL_BOUNDARY_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 5n Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Phase 5n architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Phase 5n operator packet attachment kill-switch rehearsal boundary readback report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+rollback_json="${HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_ROLLBACK_JSON:-}"
+if [[ -n "$rollback_json" ]]; then
+  [[ -f "$rollback_json" ]] || fail "missing cached Phase 5m rollback rehearsal boundary readback report: $rollback_json"
+else
+  rollback_json="$tmpdir/rollback.json"
+  "$ROLLBACK_REHEARSAL_BOUNDARY_REPORT" >"$rollback_json" || fail "failed to render Phase 5m rollback rehearsal boundary readback report"
+fi
+
+jq -n \
+  --slurpfile rollback "$rollback_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_KILL_SWITCH_REHEARSAL_BOUNDARY_READBACK_2026-06-27.md" \
+  '
+  def kill_id($id):
+    "kill_switch_rehearsal_boundary_readback_" + $id;
+  def kill_key($id):
+    "controlled_live.required_evidence.gap.operator_packet_attachment.kill_switch_rehearsal_boundary." + $id;
+  def kill_route($id):
+    "readback://controlled-live/operator-packet/attachment/kill-switch-rehearsal-boundary/" + ($id | gsub("_"; "-"));
+  ($rollback[0]) as $rollback |
+  ($rollback.entries | map({
+    id:kill_id(.source_blocker_id),
+    source_blocker_id,
+    packet_id,
+    packet_payload_hash,
+    attachment_key,
+    attachment_route,
+    rollback_rehearsal_boundary_key,
+    rollback_rehearsal_boundary_route,
+    kill_switch_rehearsal_boundary_key:kill_key(.source_blocker_id),
+    kill_switch_rehearsal_boundary_route:kill_route(.source_blocker_id),
+    operator_display_order,
+    operator_status,
+    observed_state:"kill_switch_rehearsal_boundary_closed_no_mutation",
+    previous_state,
+    current_state,
+    state_delta,
+    owner,
+    risk_bucket,
+    operator_label,
+    required_evidence,
+    operator_visible:true,
+    attachment_visible:true,
+    rollback_rehearsal_boundary_confirmed:true,
+    kill_switch_rehearsal_boundary_readback_visible:true,
+    kill_switch_rehearsal_boundary_status:"closed_no_mutation",
+    kill_switch_rehearsal_evidence_state:"missing",
+    rollback_rehearsal_allowed:false,
+    rollback_rehearsal_executed:false,
+    rollback_execution_allowed:false,
+    rollback_executed:false,
+    kill_switch_rehearsal_allowed:false,
+    kill_switch_rehearsal_executed:false,
+    kill_switch_mutation_allowed:false,
+    kill_switch_mutated:false,
+    kill_switch_rehearsal_recording_allowed:false,
+    kill_switch_rehearsal_recorded:false,
+    kill_switch_rehearsal_receipt_persistence_allowed:false,
+    kill_switch_rehearsal_receipt_persisted:false,
+    gateway_or_auth_mutation_allowed:false,
+    native_post_mutation_allowed:false,
+    telegram_transport_mutation_allowed:false,
+    channel_send_allowed:false,
+    transport_mutation_allowed:false,
+    approval_request_allowed:false,
+    approval_acceptance_allowed:false,
+    blocker_waiver_allowed:false,
+    credential_read_allowed:false,
+    evidence_recording_allowed:false,
+    packet_persistence_allowed:false,
+    attachment_persistence_allowed:false,
+    readback_persistence_allowed:false,
+    live_mutation_allowed:false,
+    evidence_recorded:false
+  })) as $entries |
+  ($entries | map(select(.operator_visible == true
+    and .attachment_visible == true
+    and .rollback_rehearsal_boundary_confirmed == true
+    and .kill_switch_rehearsal_boundary_readback_visible == true
+    and .kill_switch_rehearsal_boundary_status == "closed_no_mutation"
+    and .kill_switch_rehearsal_evidence_state == "missing"
+    and .rollback_rehearsal_allowed == false
+    and .rollback_rehearsal_executed == false
+    and .rollback_execution_allowed == false
+    and .rollback_executed == false
+    and .kill_switch_rehearsal_allowed == false
+    and .kill_switch_rehearsal_executed == false
+    and .kill_switch_mutation_allowed == false
+    and .kill_switch_mutated == false
+    and .kill_switch_rehearsal_recording_allowed == false
+    and .kill_switch_rehearsal_recorded == false
+    and .kill_switch_rehearsal_receipt_persistence_allowed == false
+    and .kill_switch_rehearsal_receipt_persisted == false
+    and .live_mutation_allowed == false)) | length) as $kill_switch_rehearsal_boundary_ready_count |
+  ($entries | map(select(.kill_switch_rehearsal_boundary_status == "closed_no_mutation")) | length) as $kill_switch_rehearsal_boundary_closed_count |
+  ($entries | map(select(.kill_switch_rehearsal_allowed == false and .kill_switch_rehearsal_executed == false)) | length) as $kill_switch_rehearsal_execution_blocked_count |
+  ($entries | map(select(.kill_switch_mutation_allowed == false and .kill_switch_mutated == false)) | length) as $kill_switch_mutation_blocked_count |
+  ($entries | map(select(.kill_switch_rehearsal_recording_allowed == false and .kill_switch_rehearsal_recorded == false)) | length) as $kill_switch_rehearsal_recording_blocked_count |
+  ($entries | map(select(.kill_switch_rehearsal_receipt_persistence_allowed == false and .kill_switch_rehearsal_receipt_persisted == false)) | length) as $kill_switch_rehearsal_receipt_persistence_blocked_count |
+  ($entries | map(select(.kill_switch_rehearsal_evidence_state == "missing")) | length) as $kill_switch_rehearsal_evidence_missing_count |
+  ($entries | map(select(.evidence_recorded == true)) | length) as $evidence_recorded_count |
+  ($entries | map(select(.blocker_waiver_allowed == true)) | length) as $blocker_waived_count |
+  ($rollback.rollback_rehearsal_boundary_readback_ready == true
+    and $rollback.rollback_rehearsal_boundary_entry_count == 7
+    and $rollback.rollback_rehearsal_boundary_ready_count == 7
+    and $rollback.rollback_rehearsal_boundary_closed_count == 7
+    and $rollback.rollback_rehearsal_execution_blocked_count == 7
+    and $rollback.rollback_execution_blocked_count == 7
+    and $rollback.rollback_rehearsal_recording_blocked_count == 7
+    and $rollback.rollback_rehearsal_receipt_persistence_blocked_count == 7
+    and $rollback.packet_send_attempted == false
+    and $rollback.attachment_send_attempted == false
+    and $rollback.approval_request_sent == false
+    and $rollback.approval_accepted == false
+    and $rollback.credential_read_allowed == false
+    and $rollback.rollback_rehearsal_allowed == false
+    and $rollback.rollback_rehearsal_executed == false
+    and $rollback.rollback_execution_allowed == false
+    and $rollback.rollback_executed == false
+    and $rollback.packet_persisted == false
+    and $rollback.attachment_persisted == false
+    and $rollback.readback_persisted == false
+    and $lib_export_present == true
+    and ($entries | length) == 7
+    and $kill_switch_rehearsal_boundary_ready_count == 7
+    and $kill_switch_rehearsal_boundary_closed_count == 7
+    and $kill_switch_rehearsal_execution_blocked_count == 7
+    and $kill_switch_mutation_blocked_count == 7
+    and $kill_switch_rehearsal_recording_blocked_count == 7
+    and $kill_switch_rehearsal_receipt_persistence_blocked_count == 7
+    and $kill_switch_rehearsal_evidence_missing_count == 7
+    and $evidence_recorded_count == 0
+    and $blocker_waived_count == 0
+    and ($entries | all(.observed_state == "kill_switch_rehearsal_boundary_closed_no_mutation"
+      and .previous_state == "missing"
+      and .current_state == "missing"
+      and .state_delta == "unchanged_missing"
+      and .approval_request_allowed == false
+      and .approval_acceptance_allowed == false
+      and .credential_read_allowed == false
+      and .rollback_rehearsal_allowed == false
+      and .rollback_execution_allowed == false
+      and .kill_switch_rehearsal_allowed == false
+      and .kill_switch_mutation_allowed == false
+      and .kill_switch_rehearsal_recording_allowed == false
+      and .kill_switch_rehearsal_receipt_persistence_allowed == false
+      and .evidence_recording_allowed == false
+      and .packet_persistence_allowed == false
+      and .attachment_persistence_allowed == false
+      and .readback_persistence_allowed == false
+      and .live_mutation_allowed == false))) as $kill_switch_rehearsal_boundary_readback_ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback",
+    status:(if $kill_switch_rehearsal_boundary_readback_ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback_gate",
+    schema_version:"controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_rollback_rehearsal_boundary_readback_ready:$rollback.rollback_rehearsal_boundary_readback_ready,
+    source_rollback_rehearsal_boundary_entry_count:$rollback.rollback_rehearsal_boundary_entry_count,
+    source_rollback_rehearsal_boundary_ready_count:$rollback.rollback_rehearsal_boundary_ready_count,
+    lib_export_present:$lib_export_present,
+    kill_switch_rehearsal_boundary_entry_count:($entries | length),
+    kill_switch_rehearsal_boundary_ready_count:$kill_switch_rehearsal_boundary_ready_count,
+    kill_switch_rehearsal_boundary_closed_count:$kill_switch_rehearsal_boundary_closed_count,
+    kill_switch_rehearsal_execution_blocked_count:$kill_switch_rehearsal_execution_blocked_count,
+    kill_switch_mutation_blocked_count:$kill_switch_mutation_blocked_count,
+    kill_switch_rehearsal_recording_blocked_count:$kill_switch_rehearsal_recording_blocked_count,
+    kill_switch_rehearsal_receipt_persistence_blocked_count:$kill_switch_rehearsal_receipt_persistence_blocked_count,
+    kill_switch_rehearsal_evidence_missing_count:$kill_switch_rehearsal_evidence_missing_count,
+    evidence_recorded_count:$evidence_recorded_count,
+    blocker_waived_count:$blocker_waived_count,
+    packet_send_attempted:false,
+    attachment_send_attempted:false,
+    approval_request_ready:false,
+    approval_request_sent:false,
+    approval_acceptance_ready:false,
+    approval_accepted:false,
+    approval_recorded:false,
+    credential_read_allowed:false,
+    rollback_rehearsal_allowed:false,
+    rollback_rehearsal_executed:false,
+    rollback_execution_allowed:false,
+    rollback_executed:false,
+    kill_switch_rehearsal_allowed:false,
+    kill_switch_rehearsal_executed:false,
+    kill_switch_mutation_allowed:false,
+    kill_switch_mutated:false,
+    kill_switch_rehearsal_recording_allowed:false,
+    kill_switch_rehearsal_receipt_persistence_allowed:false,
+    evidence_recording_allowed:false,
+    evidence_persisted:false,
+    packet_persisted:false,
+    attachment_persisted:false,
+    readback_persisted:false,
+    gateway_or_auth_mutation_allowed:false,
+    native_post_mutation_allowed:false,
+    telegram_transport_mutation_allowed:false,
+    channel_send_allowed:false,
+    transport_mutation_allowed:false,
+    controlled_live_cutover_ready:false,
+    live_execution_allowed:false,
+    kill_switch_rehearsal_boundary_readback_ready:$kill_switch_rehearsal_boundary_readback_ready,
+    entries:$entries,
+    next_actions:[
+      "phase6_controlled_live_operator_readiness_dashboard_without_suffix_expansion",
+      "stop_suffix_expansion_and_collapse_controlled_live_readiness_into_operator_dashboard"
+    ],
+    next_migration_step:"phase6_controlled_live_operator_readiness_dashboard_without_suffix_expansion",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      approval_requested:false,
+      approval_accepted:false,
+      approval_recorded:false,
+      evidence_recorded:false,
+      evidence_persisted:false,
+      blocker_waived:false,
+      credential_read:false,
+      rollback_rehearsal_executed:false,
+      rollback_executed:false,
+      kill_switch_rehearsal_executed:false,
+      kill_switch_mutated:false,
+      kill_switch_rehearsal_recorded:false,
+      kill_switch_rehearsal_receipt_persisted:false,
+      packet_sent:false,
+      attachment_sent:false,
+      packet_persisted:false,
+      attachment_persisted:false,
+      readback_persisted:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed_side_effect:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

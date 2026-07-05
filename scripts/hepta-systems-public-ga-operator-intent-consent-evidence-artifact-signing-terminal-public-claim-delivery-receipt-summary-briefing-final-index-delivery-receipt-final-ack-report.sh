@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-summary-briefing-final-index-report.sh"
+FINAL_ACK_GATE="$ROOT/scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-final-ack-denial-gate.sh"
+FINAL_ACK_DOC="$ROOT/docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_FINAL_ACK_DENIAL_GATE.md"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable terminal public claim delivery receipt summary/briefing final index report: $SOURCE_REPORT" >&2
+  exit 1
+}
+[[ -f "$FINAL_ACK_GATE" ]] || {
+  echo "missing terminal public claim delivery receipt final acknowledgement denial gate: $FINAL_ACK_GATE" >&2
+  exit 1
+}
+[[ -f "$FINAL_ACK_DOC" ]] || {
+  echo "missing terminal public claim delivery receipt final acknowledgement denial doc: $FINAL_ACK_DOC" >&2
+  exit 1
+}
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index"
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index_blocked == true
+  and .final_blocker_count == 106
+  and .operator_summary_recorded == false
+  and .operator_briefing_recorded == false
+  and .delivery_receipt_readback_recorded == false
+  and .briefing_delivery_recorded == false
+  and .telegram_briefing_delivered == false
+  and .release_publication_authority_from_summary_briefing_derived == false
+  and .activation_authority_from_summary_briefing_derived == false
+  and .install_from_summary_briefing_executed == false
+  and .active_binary_from_summary_briefing_mutated == false
+  and .public_ga_claim_allowed == false
+  and .public_ga_claimed == false
+  and .public_release_published == false
+' <<<"$source_json" >/dev/null
+
+final_ack_static_mention_count="$(
+  grep -Ec 'acknowledgement|acknowledge|received|confirmed|read|seen|response|completion|status|summary|briefing|readback|dashboard|notification|telegram|external|authority|install|restart|active-binary|approval' "$FINAL_ACK_GATE" || true
+)"
+
+jq -n \
+  --argjson source "$source_json" \
+  --argjson final_ack_static_mention_count "$final_ack_static_mention_count" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_final_acknowledgement_attachment",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index_surface: $source.surface,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index_ready: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index_ready,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index_blocked: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index_blocked,
+    source_final_blocker_count: $source.final_blocker_count,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_final_index_attached: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_final_acknowledgement_attachment_ready: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_final_acknowledgement_attachment_blocked: true,
+    artifact_signing_terminal_public_claim_delivery_receipt_final_acknowledgement_denial_gate_present: true,
+    artifact_signing_terminal_public_claim_delivery_receipt_final_acknowledgement_denial_doc_present: true,
+    artifact_signing_terminal_public_claim_delivery_receipt_final_acknowledgement_static_mention_count: $final_ack_static_mention_count,
+    artifact_signing_terminal_public_claim_delivery_receipt_final_acknowledgement_denial_gate_invoked: false,
+    artifact_signing_terminal_public_claim_delivery_receipt_summary_briefing_denial_gate_invoked: false,
+    long_soak_started: false,
+    terminal_public_claim_delivery_receipt_final_acknowledgement_accepted: false,
+    terminal_public_claim_delivery_receipt_final_acknowledgement_recorded: false,
+    terminal_public_claim_delivery_receipt_final_acknowledgement_persisted: false,
+    terminal_public_claim_delivery_receipt_final_acknowledgement_materialized: false,
+    terminal_public_claim_delivery_receipt_final_acknowledgement_filesystem_written: false,
+    terminal_public_claim_delivery_receipt_final_acknowledgement_delivered: false,
+    operator_received_recorded: false,
+    operator_confirmed_recorded: false,
+    operator_read_recorded: false,
+    operator_seen_recorded: false,
+    final_response_recorded: false,
+    completion_acknowledgement_recorded: false,
+    status_acknowledgement_recorded: false,
+    summary_acknowledgement_recorded: false,
+    briefing_acknowledgement_recorded: false,
+    readback_digest_acknowledgement_recorded: false,
+    dashboard_acknowledgement_recorded: false,
+    notification_acknowledgement_recorded: false,
+    channel_acknowledgement_delivered: false,
+    external_acknowledgement_sent: false,
+    telegram_acknowledgement_sent: false,
+    acknowledgement_acceptance_recorded: false,
+    operator_acceptance_from_acknowledgement_recorded: false,
+    operator_approval_from_acknowledgement_derived: false,
+    release_publication_authority_from_acknowledgement_derived: false,
+    activation_authority_from_acknowledgement_derived: false,
+    activation_command_from_acknowledgement_derived: false,
+    live_execution_from_acknowledgement_allowed: false,
+    download_link_from_acknowledgement_rendered: false,
+    install_command_from_acknowledgement_rendered: false,
+    install_from_acknowledgement_executed: false,
+    service_restart_from_acknowledgement_performed: false,
+    active_binary_from_acknowledgement_mutated: false,
+    result_receipt_from_acknowledgement_recorded: false,
+    result_receipt_from_acknowledgement_persisted: false,
+    memory_store_write_performed: false,
+    live_kg_write_performed: false,
+    provider_invoked: false,
+    model_invoked: false,
+    credential_read: false,
+    secret_file_read: false,
+    telegram_send_performed: false,
+    external_send_performed: false,
+    public_ga_readiness_script_invoked: false,
+    public_claim_non_promotion_denial_gate_invoked: false,
+    terminal_live_gates_invoked: false,
+    attachment_blocker_count: 108,
+    manual_operator_live_cutover_approval_required: true,
+    public_ga_claim_allowed: false,
+    public_ga_claimed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    next_migration_step: "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_final_acknowledgement_readback_without_summary",
+    local_gate: "scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-summary-briefing-final-index-delivery-receipt-final-ack-gate.sh",
+    architecture_note: "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SUMMARY_BRIEFING_FINAL_INDEX_DELIVERY_RECEIPT_FINAL_ACK_2026-06-21.md",
+    source_files: {
+      summary_briefing_final_index_report: "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-summary-briefing-final-index-report.sh",
+      terminal_public_claim_delivery_receipt_final_ack_denial_gate: "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-final-ack-denial-gate.sh",
+      terminal_public_claim_delivery_receipt_final_ack_denial_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_FINAL_ACK_DENIAL_GATE.md"
+    },
+    side_effect_free: true,
+    side_effects: {
+      report_written: false,
+      git_index_mutated: false,
+      final_acknowledgement_denial_gate_invoked: false,
+      summary_briefing_denial_gate_invoked: false,
+      final_operator_acknowledgement_recorded: false,
+      final_operator_acknowledgement_persisted: false,
+      final_operator_acknowledgement_delivered: false,
+      operator_received_recorded: false,
+      operator_confirmed_recorded: false,
+      operator_read_recorded: false,
+      operator_seen_recorded: false,
+      final_response_recorded: false,
+      completion_acknowledgement_recorded: false,
+      status_acknowledgement_recorded: false,
+      summary_acknowledgement_recorded: false,
+      briefing_acknowledgement_recorded: false,
+      readback_digest_acknowledgement_recorded: false,
+      dashboard_acknowledgement_recorded: false,
+      notification_acknowledgement_recorded: false,
+      channel_acknowledgement_delivered: false,
+      external_acknowledgement_sent: false,
+      telegram_acknowledgement_sent: false,
+      operator_approval_from_acknowledgement_derived: false,
+      release_publication_authority_from_acknowledgement_derived: false,
+      activation_authority_from_acknowledgement_derived: false,
+      install_from_acknowledgement_executed: false,
+      active_binary_from_acknowledgement_mutated: false,
+      provider_invoked: false,
+      model_invoked: false,
+      credential_read: false,
+      secret_file_read: false,
+      external_send_performed: false,
+      telegram_send_performed: false,
+      long_soak_started: false,
+      terminal_live_gate_invoked: false,
+      public_ga_claim_recorded: false,
+      public_ga_promoted: false,
+      public_release_published: false,
+      rollback_executed: false,
+      external_network_read: false
+    }
+  }'

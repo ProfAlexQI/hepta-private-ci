@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-transport-boundary-readback-report.sh"
+NON_SEND_READBACK_REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-non-send-readback-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_TRANSPORT_BOUNDARY_READBACK_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-transport-boundary-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 5k report: $REPORT"
+[[ -x "$NON_SEND_READBACK_REPORT" ]] || fail "missing executable Phase 5j non-send readback report: $NON_SEND_READBACK_REPORT"
+[[ -f "$DOC" ]] || fail "missing Phase 5k architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Phase 5k operator packet attachment transport boundary readback report"
+fi
+
+grep -q 'Controlled Live Required Evidence Gap Operator Packet Attachment Transport Boundary Readback' "$DOC" \
+  || fail "architecture note must document Controlled Live Required Evidence Gap Operator Packet Attachment Transport Boundary Readback"
+grep -q 'operator packet attachment transport boundary readback without accepting evidence' "$DOC" \
+  || fail "architecture note must document transport boundary readback without acceptance"
+grep -q 'no approval request, approval acceptance, approval recording, evidence recording, evidence persistence, blocker waiver, credential read, packet send, attachment send, packet persistence, attachment persistence, readback persistence, ledger write, event-log write, SQLite write, Native POST mutation, Telegram transport mutation, gateway/auth mutation, channel send, replay, rollback, package, release, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed transport boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_required_evidence_gap_operator_packet_attachment_transport_boundary_readback"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_required_evidence_gap_operator_packet_attachment_transport_boundary_readback_gate"
+  and .schema_version == "controlled_live_required_evidence_gap_operator_packet_attachment_transport_boundary_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_non_send_readback_ready == true
+  and .source_readback_entry_count == 7
+  and .source_unchanged_missing_readback_count == 7
+  and .lib_export_present == true
+  and .transport_boundary_entry_count == 7
+  and .transport_boundary_ready_count == 7
+  and .gateway_auth_boundary_closed_count == 7
+  and .native_post_boundary_closed_count == 7
+  and .telegram_transport_boundary_closed_count == 7
+  and .channel_send_boundary_closed_count == 7
+  and .evidence_recorded_count == 0
+  and .blocker_waived_count == 0
+  and .packet_send_attempted == false
+  and .attachment_send_attempted == false
+  and .approval_request_ready == false
+  and .approval_request_sent == false
+  and .approval_acceptance_ready == false
+  and .approval_accepted == false
+  and .approval_recorded == false
+  and .credential_read_allowed == false
+  and .evidence_recording_allowed == false
+  and .evidence_persisted == false
+  and .packet_persisted == false
+  and .attachment_persisted == false
+  and .readback_persisted == false
+  and .gateway_or_auth_mutation_allowed == false
+  and .native_post_mutation_allowed == false
+  and .telegram_transport_mutation_allowed == false
+  and .channel_send_allowed == false
+  and .transport_mutation_allowed == false
+  and .controlled_live_cutover_ready == false
+  and .live_execution_allowed == false
+  and .transport_boundary_readback_ready == true
+  and (.entries | length) == 7
+  and (.entries | all(.operator_visible == true and .attachment_visible == true and .non_send_confirmed == true and .gateway_auth_boundary == "closed" and .native_post_boundary == "closed" and .telegram_transport_boundary == "closed" and .channel_send_boundary == "closed" and .gateway_or_auth_mutation_allowed == false and .native_post_mutation_allowed == false and .telegram_transport_mutation_allowed == false and .channel_send_allowed == false and .transport_mutation_allowed == false and .operator_status == "blocked_missing_evidence" and .observed_state == "transport_boundary_closed_no_send" and .previous_state == "missing" and .current_state == "missing" and .state_delta == "unchanged_missing" and (.transport_boundary_key | length) > 0 and (.transport_boundary_route | length) > 0 and .approval_request_allowed == false and .approval_acceptance_allowed == false and .blocker_waiver_allowed == false and .credential_read_allowed == false and .evidence_recording_allowed == false and .packet_persistence_allowed == false and .attachment_persistence_allowed == false and .readback_persistence_allowed == false and .live_mutation_allowed == false and .evidence_recorded == false))
+  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .transport_boundary_route == "readback://controlled-live/operator-packet/attachment/transport-boundary/dirty-worktree-boundary")
+  and any(.entries[]; .source_blocker_id == "operator_live_approval_missing" and .transport_boundary_route == "readback://controlled-live/operator-packet/attachment/transport-boundary/operator-live-approval-missing")
+  and any(.entries[]; .source_blocker_id == "fresh_soak_readback_missing" and .transport_boundary_route == "readback://controlled-live/operator-packet/attachment/transport-boundary/fresh-soak-readback-missing")
+  and any(.entries[]; .source_blocker_id == "credential_boundary_attestation_missing" and .transport_boundary_route == "readback://controlled-live/operator-packet/attachment/transport-boundary/credential-boundary-attestation-missing")
+  and any(.entries[]; .source_blocker_id == "gateway_native_telegram_post_boundary_approval_missing" and .transport_boundary_route == "readback://controlled-live/operator-packet/attachment/transport-boundary/gateway-native-telegram-post-boundary-approval-missing")
+  and any(.entries[]; .source_blocker_id == "rollback_rehearsal_missing" and .transport_boundary_route == "readback://controlled-live/operator-packet/attachment/transport-boundary/rollback-rehearsal-missing")
+  and any(.entries[]; .source_blocker_id == "kill_switch_rehearsal_missing" and .transport_boundary_route == "readback://controlled-live/operator-packet/attachment/transport-boundary/kill-switch-rehearsal-missing")
+  and (.next_actions | index("phase5l_controlled_live_required_evidence_gap_operator_packet_attachment_credential_boundary_readback_without_credential_read")) != null
+  and .next_migration_step == "phase5l_controlled_live_required_evidence_gap_operator_packet_attachment_credential_boundary_readback_without_credential_read"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$NON_SEND_READBACK_REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_required_evidence_gap_operator_packet_attachment_non_send_readback"
+  and .status == "ready_blocked"
+  and .non_send_readback_ready == true
+  and .readback_entry_count == 7
+  and .unchanged_missing_readback_count == 7
+  and .attachment_send_attempted == false
+  and .packet_send_attempted == false
+  and .approval_request_sent == false
+  and .approval_accepted == false
+  and .packet_persisted == false
+  and .attachment_persisted == false
+  and .readback_persisted == false
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime controlled_live_required_evidence_gap_operator_packet_attachment_transport_boundary_readback --lib
+)
+
+printf 'hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-transport-boundary-readback-gate: PASS: operator packet attachment transport boundaries are closed and operator-visible without mutation\n'

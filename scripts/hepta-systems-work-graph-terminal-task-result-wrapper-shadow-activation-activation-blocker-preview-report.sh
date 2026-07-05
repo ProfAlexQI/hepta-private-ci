@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+shadow_activation_blocker_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_terminal_task_result_wrapper_shadow_activation_activation_blocker_preview.rs
+)"
+shadow_activation_blocker_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-shadow-activation-activation-blocker-preview-report.sh
+)"
+shadow_activation_blocker_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-shadow-activation-activation-blocker-preview-gate.sh
+)"
+shadow_promotion_precondition_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_terminal_task_result_wrapper_shadow_activation_promotion_precondition_preview.rs
+)"
+shadow_promotion_precondition_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-shadow-activation-promotion-precondition-preview-gate.sh
+)"
+
+jq -n \
+  --argjson shadow_activation_blocker_rust_module_present "$shadow_activation_blocker_rust_module_present" \
+  --argjson shadow_activation_blocker_report_script_present "$shadow_activation_blocker_report_script_present" \
+  --argjson shadow_activation_blocker_gate_script_present "$shadow_activation_blocker_gate_script_present" \
+  --argjson shadow_promotion_precondition_rust_module_present "$shadow_promotion_precondition_rust_module_present" \
+  --argjson shadow_promotion_precondition_gate_script_present "$shadow_promotion_precondition_gate_script_present" \
+  '
+  def surface_ids: [
+    "wrapper_execution_activation",
+    "readback_execution_activation",
+    "promotion_execution_activation",
+    "task_result_enforcement_activation",
+    "store_enablement_activation",
+    "live_execution_activation",
+    "external_delivery_activation"
+  ];
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_append_only_event_intake_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_idempotency_readback_adapter_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_fixture_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_readback_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_drift_budget_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_promotion_precondition_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_activation_blocker_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_readback_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_drift_budget_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_promotion_precondition_preview_gate"
+  ];
+  def surface($id; $risk; $source; $blockers; $enablements): {
+    id: $id,
+    risk_class: $risk,
+    source_target_id: $source,
+    blocked_by_default: true,
+    required_blocker_ids: $blockers,
+    required_enablement_ids: $enablements,
+    activation_state: "blocked_preview_only",
+    enables_runtime_mutation: false,
+    enables_external_side_effect: false
+  };
+  def blocker($id; $severity; $surfaces; $reason): {
+    id: $id,
+    severity: $severity,
+    applies_to_surface_ids: $surfaces,
+    denial_reason: $reason,
+    source_gate_id: "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_promotion_precondition_preview_gate",
+    blocks_shadow_activation: true,
+    blocks_shadow_promotion: true
+  };
+  def enablement($id; $source; $surfaces; $fields): {
+    id: $id,
+    source_gate_id: $source,
+    required_for_surface_ids: $surfaces,
+    required_evidence_fields: $fields,
+    currently_satisfied: false
+  };
+  def kill_switch($id; $surfaces; $trigger): {
+    id: $id,
+    target_surface_ids: $surfaces,
+    trigger: $trigger,
+    armed_in_preview: true,
+    persists_switch_state: false
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    surface("wrapper_execution_activation"; "runtime_execution"; "shadow_promote_wrapper_execution_activation"; ["shadow_promotion_preconditions_unsatisfied", "shadow_wrapper_execution_disabled", "shadow_runtime_attachment_disabled", "shadow_kill_switches_preview_only"]; ["shadow_promotion_precondition_report", "shadow_runtime_attachment_plan", "shadow_side_effect_lock_proof"]),
+    surface("readback_execution_activation"; "readback_execution"; "shadow_promote_readback_execution_activation"; ["shadow_promotion_preconditions_unsatisfied", "shadow_readback_execution_disabled", "shadow_drift_budgets_not_executed", "shadow_operator_review_missing"]; ["shadow_promotion_precondition_report", "shadow_zero_tolerance_drift_budget_report", "shadow_operator_review_packet"]),
+    surface("promotion_execution_activation"; "state_promotion"; "shadow_promote_promotion_execution_activation"; ["shadow_promotion_preconditions_unsatisfied", "shadow_audit_receipts_non_persistent", "shadow_promotion_execution_disabled", "shadow_runtime_attachment_disabled"]; ["shadow_promotion_precondition_report", "shadow_non_persistent_audit_receipt_readback", "shadow_runtime_attachment_plan"]),
+    surface("task_result_enforcement_activation"; "contract_enforcement"; "shadow_promote_task_result_enforcement_activation"; ["shadow_promotion_preconditions_unsatisfied", "shadow_task_result_enforcement_disabled", "shadow_drift_budgets_not_executed", "shadow_side_effect_lock_not_proven"]; ["shadow_promotion_precondition_report", "shadow_zero_tolerance_drift_budget_report", "shadow_side_effect_lock_proof"]),
+    surface("store_enablement_activation"; "state_write"; "shadow_promote_store_enablement_activation"; ["shadow_promotion_preconditions_unsatisfied", "shadow_store_enablement_disabled", "shadow_audit_receipts_non_persistent", "shadow_activation_blocker_persistence_disabled"]; ["shadow_promotion_precondition_report", "shadow_non_persistent_audit_receipt_readback", "shadow_side_effect_lock_proof"]),
+    surface("live_execution_activation"; "live_runtime"; "shadow_promote_live_execution_activation"; ["shadow_promotion_preconditions_unsatisfied", "shadow_live_execution_disabled", "shadow_kill_switches_preview_only", "shadow_operator_review_missing"]; ["shadow_promotion_precondition_report", "shadow_operator_review_packet", "shadow_side_effect_lock_proof"]),
+    surface("external_delivery_activation"; "external_side_effect"; "shadow_promote_external_delivery_activation"; ["shadow_promotion_preconditions_unsatisfied", "shadow_external_delivery_disabled", "shadow_side_effect_lock_not_proven", "shadow_operator_review_missing"]; ["shadow_promotion_precondition_report", "shadow_operator_review_packet", "shadow_side_effect_lock_proof"])
+  ] as $activation_surfaces
+  | [
+    blocker("shadow_promotion_preconditions_unsatisfied"; "critical"; surface_ids; "shadow activation promotion preconditions are preview-only and not satisfied"),
+    blocker("shadow_drift_budgets_not_executed"; "critical"; ["readback_execution_activation", "task_result_enforcement_activation", "live_execution_activation", "external_delivery_activation"]; "shadow zero-tolerance drift budgets have not been proven by executed readback"),
+    blocker("shadow_operator_review_missing"; "high"; ["readback_execution_activation", "live_execution_activation", "external_delivery_activation"]; "shadow activation operator review has not been performed"),
+    blocker("shadow_audit_receipts_non_persistent"; "high"; ["promotion_execution_activation", "store_enablement_activation"]; "shadow activation audit receipts are non-persistent preview artifacts"),
+    blocker("shadow_side_effect_lock_not_proven"; "critical"; surface_ids; "shadow side-effect lock has not been proven by executed readback"),
+    blocker("shadow_wrapper_execution_disabled"; "medium"; ["wrapper_execution_activation"]; "shadow wrapper execution attachment is not enabled"),
+    blocker("shadow_readback_execution_disabled"; "medium"; ["readback_execution_activation"]; "shadow readback probes are contract-only and do not execute"),
+    blocker("shadow_promotion_execution_disabled"; "medium"; ["promotion_execution_activation"]; "shadow promotion execution remains disabled after precondition preview"),
+    blocker("shadow_task_result_enforcement_disabled"; "medium"; ["task_result_enforcement_activation"]; "shadow TaskResult contract enforcement is not enabled"),
+    blocker("shadow_store_enablement_disabled"; "medium"; ["store_enablement_activation"]; "shadow store, WAL, checkpoint, and graph persistence remain disabled"),
+    blocker("shadow_live_execution_disabled"; "critical"; ["live_execution_activation"]; "shadow live execution is explicitly out of scope for this preview"),
+    blocker("shadow_external_delivery_disabled"; "critical"; ["external_delivery_activation"]; "shadow external delivery is explicitly disabled for activation"),
+    blocker("shadow_runtime_attachment_disabled"; "medium"; ["wrapper_execution_activation", "promotion_execution_activation", "task_result_enforcement_activation", "store_enablement_activation"]; "shadow activation blockers are not attached to runtime paths"),
+    blocker("shadow_kill_switches_preview_only"; "medium"; ["wrapper_execution_activation", "live_execution_activation", "external_delivery_activation"]; "shadow activation kill switches are declared but not wired to runtime activation"),
+    blocker("shadow_activation_blocker_persistence_disabled"; "medium"; ["store_enablement_activation", "promotion_execution_activation"]; "shadow activation blocker state cannot be persisted from this preview"),
+    blocker("shadow_explicit_operator_approval_absent"; "high"; surface_ids; "no explicit future operator approval exists for shadow activation or promotion")
+  ] as $blockers
+  | [
+    enablement("shadow_promotion_precondition_report"; "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_promotion_precondition_preview_gate"; surface_ids; ["targetCount", "preconditionBindingCount", "blockerCount"]),
+    enablement("shadow_zero_tolerance_drift_budget_report"; "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_drift_budget_preview_gate"; ["readback_execution_activation", "task_result_enforcement_activation", "live_execution_activation", "external_delivery_activation"]; ["maxAllowedMismatches", "maxAllowedUnreviewedFindings", "maxReplayLagMs"]),
+    enablement("shadow_operator_review_packet"; "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_drift_budget_preview_gate"; ["readback_execution_activation", "live_execution_activation", "external_delivery_activation"]; ["reviewerIdHash", "reviewedAtUnixMs", "summaryHash"]),
+    enablement("shadow_non_persistent_audit_receipt_readback"; "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_promotion_precondition_preview_gate"; ["promotion_execution_activation", "store_enablement_activation"]; ["receiptHash", "redactedEvidenceRefs", "blockerIds"]),
+    enablement("shadow_side_effect_lock_proof"; "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_promotion_precondition_preview_gate"; surface_ids; ["activationPerformed", "taskResultEnforcementEnabled", "storePersistenceEnabled"]),
+    enablement("shadow_runtime_attachment_plan"; "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_promotion_precondition_preview_gate"; ["wrapper_execution_activation", "promotion_execution_activation", "task_result_enforcement_activation", "store_enablement_activation"]; ["attachmentPoint", "rollbackPlanId", "killSwitchId"])
+  ] as $required_enablements
+  | [
+    kill_switch("kill_all_shadow_activation"; surface_ids; "operator disables all shadow activation surfaces"),
+    kill_switch("kill_shadow_wrapper_execution_activation"; ["wrapper_execution_activation"]; "shadow wrapper execution attachment diverges from preview contract"),
+    kill_switch("kill_shadow_task_result_enforcement_activation"; ["task_result_enforcement_activation"]; "shadow TaskResult enforcement rejects a terminal wrapper output"),
+    kill_switch("kill_shadow_store_enablement_activation"; ["store_enablement_activation"]; "shadow store or WAL write is attempted from preview-only path"),
+    kill_switch("kill_shadow_live_execution_activation"; ["live_execution_activation"]; "shadow live execution is requested from activation preview"),
+    kill_switch("kill_shadow_external_delivery_activation"; ["external_delivery_activation"]; "shadow external delivery is requested from activation preview")
+  ] as $kill_switches
+  | [
+    invariant("shadow_activation_surfaces_blocked_by_default"; "every shadow activation surface remains blocked until explicit future enablement"),
+    invariant("shadow_promotion_preconditions_do_not_authorize_activation"; "shadow promotion preconditions describe blockers but cannot execute, activate, or promote"),
+    invariant("zero_tolerance_shadow_drift_must_be_executed_before_activation"; "shadow TaskResult enforcement and activation require executed readback proving zero critical drift"),
+    invariant("shadow_audit_receipts_are_not_persistence_authority"; "non-persistent shadow audit receipts cannot authorize store, WAL, checkpoint, or graph writes"),
+    invariant("shadow_side_effect_lock_blocks_live_store_and_external_surfaces"; "shadow side-effect lock must remain false before store, live, or external surfaces can activate"),
+    invariant("shadow_activation_activation_blocker_preview_has_no_side_effects"; "this preview cannot activate, promote, execute wrappers, enforce TaskResult, persist state, or send externally")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_activation_blocker_preview_gate",
+      schema_version: "work_graph_terminal_task_result_wrapper_shadow_activation_activation_blocker_preview_v1",
+      preview_mode: "read_only_terminal_task_result_wrapper_shadow_activation_activation_blocker_preview_no_activation",
+      activation_surface_count: ($activation_surfaces | length),
+      blocker_count: ($blockers | length),
+      required_enablement_count: ($required_enablements | length),
+      kill_switch_count: ($kill_switches | length),
+      invariant_count: ($invariants | length),
+      required_prior_gate_count: (prior_gates | length),
+      activation_surfaces: $activation_surfaces,
+      blockers: $blockers,
+      required_enablements: $required_enablements,
+      kill_switches: $kill_switches,
+      invariants: $invariants,
+      required_prior_gates: prior_gates,
+      recommended_next_gate: "hepta_work_graph_terminal_task_result_wrapper_shadow_activation_activation_blocker_readback_preview_gate",
+      ready_for_shadow_activation_activation_blocker_readback_preview: true,
+      ready_for_shadow_activation_execution: false,
+      ready_for_activation: false,
+      ready_for_shadow_promotion_execution: false,
+      ready_for_wrapper_execution: false,
+      ready_for_task_result_enforcement: false,
+      ready_for_store_enablement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        terminal_task_result_wrapper_shadow_activation_activation_blocker: {
+          rust_module_present: $shadow_activation_blocker_rust_module_present,
+          report_script_present: $shadow_activation_blocker_report_script_present,
+          gate_script_present: $shadow_activation_blocker_gate_script_present
+        },
+        terminal_task_result_wrapper_shadow_activation_promotion_precondition: {
+          rust_module_present: $shadow_promotion_precondition_rust_module_present,
+          gate_script_present: $shadow_promotion_precondition_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        shadow_activation_blocker_persisted: false,
+        shadow_promotion_precondition_persisted: false,
+        audit_receipt_persisted: false,
+        shadow_readback_performed: false,
+        shadow_activation_performed: false,
+        activation_state_mutated: false,
+        activation_performed: false,
+        promotion_performed: false,
+        wrapper_executed: false,
+        readback_performed: false,
+        task_result_enforcement_enabled: false,
+        store_persistence_enabled: false,
+        event_record_persisted: false,
+        task_result_persisted: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        scheduler_admission_enforced: false,
+        replay_executed: false,
+        approval_recorded: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

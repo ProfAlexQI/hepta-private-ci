@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-idempotency-mutation-application.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$tmpdir/cache"
+fi
+
+capture_json_report \
+  "hepta-work-graph-append-only-store-runtime-idempotency-mutation-readback-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-readback-preview-report.sh" \
+  >"$tmpdir/readback.json"
+
+application_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_store_runtime_idempotency_mutation_application_preview.rs
+)"
+application_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-application-preview-report.sh
+)"
+application_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-application-preview-gate.sh
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-readback-preview-gate.sh
+)"
+
+jq -n \
+  --slurpfile readback "$tmpdir/readback.json" \
+  --argjson application_rust_module_present "$application_rust_module_present" \
+  --argjson application_report_script_present "$application_report_script_present" \
+  --argjson application_gate_script_present "$application_gate_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  '
+  $readback[0] as $readback
+  | def application_plan_id($readback_plan_id):
+      "apply_" + $readback_plan_id + "_idempotency_mutation_preview";
+  def application_plan_ids_for_sources($sources; $plans):
+      [$plans[] as $plan | select($sources | index($plan.source_surface_id)) | $plan.application_plan_id];
+  def application_plan_ids_for_readback_plans($readback_plan_ids; $plans):
+      [$plans[] as $plan | select($readback_plan_ids | index($plan.readback_plan_id)) | $plan.application_plan_id];
+  def application_guard($id; $severity; $scope): {
+      id: $id,
+      severity: $severity,
+      guard_scope: $scope,
+      required_before_idempotency_mutation: true,
+      satisfied_by_preview: false
+    };
+  def application_blocker($id; $severity; $category; $sources; $stages; $plans; $fix): {
+      id: $id,
+      severity: $severity,
+      category: $category,
+      affected_source_surface_ids: $sources,
+      affected_idempotency_mutation_stage_ids: $stages,
+      affected_application_plan_ids: application_plan_ids_for_sources($sources; $plans),
+      required_before_idempotency_mutation: true,
+      recommended_fix: $fix
+    };
+  ($readback.readback_plans | map({
+      application_plan_id: application_plan_id(.id),
+      readback_plan_id: .id,
+      source_surface_id: .source_surface_id,
+      source_category: .source_category,
+      idempotency_mutation_plan_id: .idempotency_mutation_plan_id,
+      required_idempotency_mutation_stage_ids: .required_idempotency_mutation_stage_ids,
+      residual_source_blocker_ids: .residual_source_blocker_ids,
+      expected_evidence_field_ids: .required_evidence_field_ids,
+      application_scope: "idempotency_mutation_application_binding",
+      application_state: "preview_application_defined_idempotency_mutation_not_enabled",
+      readback_verified_by_preview: true,
+      idempotency_mutation_policy_contract_ready_preview: true,
+      collision_replay_evidence_contract_ready_preview: true,
+      applies_to_runtime: false,
+      writes_wal: false,
+      writes_checkpoint: false,
+      mutates_idempotency_index: false,
+      executes_replay: false,
+      executes_readback: false,
+      executes_rollback: false,
+      mutates_runtime: false
+    })) as $application_plans
+  | ($application_plans | map({
+      source_surface_id: .source_surface_id,
+      source_category: .source_category,
+      application_plan_id: .application_plan_id,
+      post_application_idempotency_mutation_state: "idempotency_mutation_contract_ready_preview_after_application",
+      idempotency_mutation_policy_contract_ready_preview: true,
+      collision_replay_evidence_contract_ready_preview: true,
+      ready_for_unified_projection_enforcement_readiness_runtime_idempotency_mutation_rerun_preview: true,
+      ready_for_wal_write: false,
+      applies_to_runtime: false
+    })) as $source_outcomes
+  | ($readback.stage_assertions | map({
+      application_id: ("apply_" + .stage_id + "_idempotency_mutation_stage_preview"),
+      stage_id: .stage_id,
+      category: .category,
+      affected_source_surface_ids: .affected_source_surface_ids,
+      required_contract_ref_ids: .required_contract_ref_ids,
+      expected_stage_state: "stage_contract_ready_preview_after_application_runtime_disabled",
+      stage_contract_ready_preview: true,
+      readback_verified_by_preview: true,
+      declared_writes_wal: .declared_writes_wal,
+      declared_writes_checkpoint: .declared_writes_checkpoint,
+      declared_mutates_idempotency_index: .declared_mutates_idempotency_index,
+      declared_executes_replay: .declared_executes_replay,
+      declared_executes_readback: .declared_executes_readback,
+      declared_executes_rollback: .declared_executes_rollback,
+      enables_runtime_after_application: false,
+      writes_wal: false,
+      writes_checkpoint: false,
+      mutates_idempotency_index: false,
+      executes_replay: false,
+      executes_readback: false,
+      executes_rollback: false,
+      mutates_runtime: false
+    })) as $stage_applications
+  | ($readback.evidence_field_assertions | map({
+      application_id: ("apply_" + .source_surface_id + "_idempotency_mutation_evidence_preview"),
+      source_surface_id: .source_surface_id,
+      required_evidence_field_ids: .required_evidence_field_ids,
+      expected_evidence_state: "evidence_contract_ready_preview_after_application_not_persisted",
+      evidence_contract_ready_preview: true,
+      readback_verified_by_preview: true,
+      persists_evidence: false,
+      writes_store: false
+    })) as $evidence_applications
+  | ($readback.guard_assertions | map({
+      application_id: ("apply_" + .guard_id + "_idempotency_mutation_guard_preview"),
+      guard_id: .guard_id,
+      severity: .severity,
+      guard_scope: .guard_scope,
+      expected_guard_state: "guard_contract_ready_preview_after_application_runtime_mutation_prevented",
+      guard_contract_ready_preview: true,
+      readback_verified_by_preview: true,
+      satisfied_by_preview: false,
+      mutates_runtime: false
+    })) as $guard_applications
+  | ($readback.blocker_mapping_assertions | map({
+      application_id: ("apply_" + .blocker_id + "_idempotency_mutation_blocker_preview"),
+      blocker_id: .blocker_id,
+      severity: .severity,
+      category: .category,
+      affected_source_surface_ids: .affected_source_surface_ids,
+      affected_idempotency_mutation_stage_ids: .affected_idempotency_mutation_stage_ids,
+      affected_readback_plan_ids: .affected_readback_plan_ids,
+      affected_application_plan_ids: application_plan_ids_for_readback_plans(.affected_readback_plan_ids; $application_plans),
+      expected_blocker_state: "blocker_mapping_contract_ready_preview_after_application_runtime_still_blocked",
+      blocker_contract_ready_preview: true,
+      readback_verified_by_preview: true,
+      clears_idempotency_mutation_blocker: false,
+      mutates_runtime: false
+    })) as $blocker_applications
+  | ([
+      application_guard("idempotency_mutation_application_is_preview_only"; "medium"; "application_preview"),
+      application_guard("readback_execution_disabled"; "critical"; "readback"),
+      application_guard("wal_write_boundary_disabled"; "critical"; "wal_boundary"),
+      application_guard("checkpoint_write_disabled"; "critical"; "checkpoint"),
+      application_guard("replay_execution_disabled"; "critical"; "replay"),
+      application_guard("idempotency_mutation_disabled"; "critical"; "idempotency"),
+      application_guard("rollback_readback_execution_disabled"; "critical"; "rollback_readback"),
+      application_guard("append_only_store_enablement_disabled"; "critical"; "append_only_store"),
+      application_guard("runtime_mutation_disabled"; "critical"; "runtime_mutation"),
+      application_guard("model_invocation_disabled"; "high"; "model_boundary")
+    ]) as $application_guards
+  | (($readback.blockers | map(application_blocker(
+        .id;
+        .severity;
+        .category;
+        .affected_source_surface_ids;
+        .affected_idempotency_mutation_stage_ids;
+        $application_plans;
+        .recommended_fix
+      ))) + [
+      application_blocker(
+        "idempotency_mutation_readiness_rerun_missing";
+        "high";
+        "readiness_rerun";
+        ($application_plans | map(.source_surface_id));
+        ($application_plans[0].required_idempotency_mutation_stage_ids // []);
+        $application_plans;
+        "rerun unified projection enforcement-readiness against runtime idempotency mutation application preview outcomes"
+      )
+    ]) as $blockers
+  | ($readback.required_prior_gates + [$readback.gate]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_append_only_store_runtime_idempotency_mutation_application_preview_gate",
+      schema_version: "work_graph_append_only_store_runtime_idempotency_mutation_application_preview_v1",
+      preview_mode: "read_only_append_only_store_runtime_idempotency_mutation_application_no_index_mutation",
+      readback_plan_count: $readback.readback_plan_count,
+      application_plan_count: ($application_plans | length),
+      source_outcome_count: ($source_outcomes | length),
+      idempotency_mutation_contract_ready_preview_count: ($source_outcomes | map(select(.idempotency_mutation_policy_contract_ready_preview and .collision_replay_evidence_contract_ready_preview)) | length),
+      stage_application_count: ($stage_applications | length),
+      evidence_field_application_count: ($evidence_applications | length),
+      guard_application_count: ($guard_applications | length),
+      blocker_application_count: ($blocker_applications | length),
+      application_guard_count: ($application_guards | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      stage_source_ref_count: ($stage_applications | map(.affected_source_surface_ids | length) | add),
+      stage_contract_ref_count: ($stage_applications | map(.required_contract_ref_ids | length) | add),
+      plan_stage_ref_count: ($application_plans | map(.required_idempotency_mutation_stage_ids | length) | add),
+      evidence_field_ref_count: ($application_plans | map(.expected_evidence_field_ids | length) | add),
+      blocker_mapping_source_ref_count: ($blocker_applications | map(.affected_source_surface_ids | length) | add),
+      blocker_mapping_stage_ref_count: ($blocker_applications | map(.affected_idempotency_mutation_stage_ids | length) | add),
+      application_plans: $application_plans,
+      source_outcomes: $source_outcomes,
+      stage_applications: $stage_applications,
+      evidence_field_applications: $evidence_applications,
+      guard_applications: $guard_applications,
+      blocker_applications: $blocker_applications,
+      application_guards: $application_guards,
+      blockers: $blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_unified_projection_enforcement_readiness_runtime_idempotency_mutation_rerun_preview_gate",
+      ready_for_unified_projection_enforcement_readiness_runtime_idempotency_mutation_rerun_preview: true,
+      ready_for_wal_write: false,
+      ready_for_checkpoint_write: false,
+      ready_for_idempotency_mutation: false,
+      ready_for_readback_execution: false,
+      ready_for_replay_execution: false,
+      ready_for_rollback_execution: false,
+      ready_for_append_only_store_enablement: false,
+      ready_for_projection_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        idempotency_mutation_application: {
+          rust_module_present: $application_rust_module_present,
+          report_script_present: $application_report_script_present,
+          gate_script_present: $application_gate_script_present
+        },
+        idempotency_mutation_readback: {
+          upstream_gate: ($readback.gate == "hepta_work_graph_append_only_store_runtime_idempotency_mutation_readback_preview_gate"),
+          gate_script_present: $readback_gate_script_present,
+          recommended_next_matches: ($readback.recommended_next_gate == "hepta_work_graph_append_only_store_runtime_idempotency_mutation_application_preview_gate")
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        durable_store_switch_enabled: false,
+        idempotency_index_mutated: false,
+        append_only_store_enabled: false,
+        projection_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        approval_recorded: false,
+        operator_review_recorded: false,
+        side_effect_lock_established: false,
+        task_result_enforcement_enabled: false,
+        task_result_persisted: false,
+        role_manifest_enforcement_enabled: false,
+        readback_executed: false,
+        replay_executed: false,
+        rollback_executed: false,
+        runtime_mutation_performed: false,
+        external_send_performed: false,
+        model_invoked: false,
+        agent_spawn_performed: false
+      }
+    }
+  '

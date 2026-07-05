@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-report.sh"
+ROLLBACK_REHEARSAL_BOUNDARY_REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-rollback-rehearsal-boundary-readback-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_KILL_SWITCH_REHEARSAL_BOUNDARY_READBACK_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 5n report: $REPORT"
+[[ -x "$ROLLBACK_REHEARSAL_BOUNDARY_REPORT" ]] || fail "missing executable Phase 5m rollback rehearsal boundary readback report: $ROLLBACK_REHEARSAL_BOUNDARY_REPORT"
+[[ -f "$DOC" ]] || fail "missing Phase 5n architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Phase 5n operator packet attachment kill-switch rehearsal boundary readback report"
+fi
+
+grep -q 'Controlled Live Required Evidence Gap Operator Packet Attachment Kill-Switch Rehearsal Boundary Readback' "$DOC" \
+  || fail "architecture note must document Controlled Live Required Evidence Gap Operator Packet Attachment Kill-Switch Rehearsal Boundary Readback"
+grep -q 'operator packet attachment kill-switch rehearsal boundary readback without mutation' "$DOC" \
+  || fail "architecture note must document kill-switch rehearsal boundary readback without mutation"
+grep -q 'no kill-switch rehearsal execution, kill-switch mutation, kill-switch rehearsal recording, kill-switch rehearsal receipt persistence, rollback rehearsal execution, rollback execution, credential read, approval request, approval acceptance, approval recording, evidence recording, evidence persistence, blocker waiver, packet send, attachment send, packet persistence, attachment persistence, readback persistence, ledger write, event-log write, SQLite write, Native POST mutation, Telegram transport mutation, gateway/auth mutation, channel send, replay, package, release, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed kill-switch rehearsal boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback_gate"
+  and .schema_version == "controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_rollback_rehearsal_boundary_readback_ready == true
+  and .source_rollback_rehearsal_boundary_entry_count == 7
+  and .source_rollback_rehearsal_boundary_ready_count == 7
+  and .lib_export_present == true
+  and .kill_switch_rehearsal_boundary_entry_count == 7
+  and .kill_switch_rehearsal_boundary_ready_count == 7
+  and .kill_switch_rehearsal_boundary_closed_count == 7
+  and .kill_switch_rehearsal_execution_blocked_count == 7
+  and .kill_switch_mutation_blocked_count == 7
+  and .kill_switch_rehearsal_recording_blocked_count == 7
+  and .kill_switch_rehearsal_receipt_persistence_blocked_count == 7
+  and .kill_switch_rehearsal_evidence_missing_count == 7
+  and .evidence_recorded_count == 0
+  and .blocker_waived_count == 0
+  and .packet_send_attempted == false
+  and .attachment_send_attempted == false
+  and .approval_request_ready == false
+  and .approval_request_sent == false
+  and .approval_acceptance_ready == false
+  and .approval_accepted == false
+  and .approval_recorded == false
+  and .credential_read_allowed == false
+  and .rollback_rehearsal_allowed == false
+  and .rollback_rehearsal_executed == false
+  and .rollback_execution_allowed == false
+  and .rollback_executed == false
+  and .kill_switch_rehearsal_allowed == false
+  and .kill_switch_rehearsal_executed == false
+  and .kill_switch_mutation_allowed == false
+  and .kill_switch_mutated == false
+  and .kill_switch_rehearsal_recording_allowed == false
+  and .kill_switch_rehearsal_receipt_persistence_allowed == false
+  and .evidence_recording_allowed == false
+  and .evidence_persisted == false
+  and .packet_persisted == false
+  and .attachment_persisted == false
+  and .readback_persisted == false
+  and .gateway_or_auth_mutation_allowed == false
+  and .native_post_mutation_allowed == false
+  and .telegram_transport_mutation_allowed == false
+  and .channel_send_allowed == false
+  and .transport_mutation_allowed == false
+  and .controlled_live_cutover_ready == false
+  and .live_execution_allowed == false
+  and .kill_switch_rehearsal_boundary_readback_ready == true
+  and (.entries | length) == 7
+  and (.entries | all(.operator_visible == true and .attachment_visible == true and .rollback_rehearsal_boundary_confirmed == true and .kill_switch_rehearsal_boundary_readback_visible == true and .kill_switch_rehearsal_boundary_status == "closed_no_mutation" and .kill_switch_rehearsal_evidence_state == "missing" and .operator_status == "blocked_missing_evidence" and .observed_state == "kill_switch_rehearsal_boundary_closed_no_mutation" and .previous_state == "missing" and .current_state == "missing" and .state_delta == "unchanged_missing" and (.kill_switch_rehearsal_boundary_key | length) > 0 and (.kill_switch_rehearsal_boundary_route | length) > 0 and .rollback_rehearsal_allowed == false and .rollback_rehearsal_executed == false and .rollback_execution_allowed == false and .rollback_executed == false and .kill_switch_rehearsal_allowed == false and .kill_switch_rehearsal_executed == false and .kill_switch_mutation_allowed == false and .kill_switch_mutated == false and .kill_switch_rehearsal_recording_allowed == false and .kill_switch_rehearsal_recorded == false and .kill_switch_rehearsal_receipt_persistence_allowed == false and .kill_switch_rehearsal_receipt_persisted == false and .approval_request_allowed == false and .approval_acceptance_allowed == false and .blocker_waiver_allowed == false and .credential_read_allowed == false and .evidence_recording_allowed == false and .packet_persistence_allowed == false and .attachment_persistence_allowed == false and .readback_persistence_allowed == false and .live_mutation_allowed == false and .evidence_recorded == false))
+  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .kill_switch_rehearsal_boundary_route == "readback://controlled-live/operator-packet/attachment/kill-switch-rehearsal-boundary/dirty-worktree-boundary")
+  and any(.entries[]; .source_blocker_id == "operator_live_approval_missing" and .kill_switch_rehearsal_boundary_route == "readback://controlled-live/operator-packet/attachment/kill-switch-rehearsal-boundary/operator-live-approval-missing")
+  and any(.entries[]; .source_blocker_id == "fresh_soak_readback_missing" and .kill_switch_rehearsal_boundary_route == "readback://controlled-live/operator-packet/attachment/kill-switch-rehearsal-boundary/fresh-soak-readback-missing")
+  and any(.entries[]; .source_blocker_id == "credential_boundary_attestation_missing" and .kill_switch_rehearsal_boundary_route == "readback://controlled-live/operator-packet/attachment/kill-switch-rehearsal-boundary/credential-boundary-attestation-missing")
+  and any(.entries[]; .source_blocker_id == "gateway_native_telegram_post_boundary_approval_missing" and .kill_switch_rehearsal_boundary_route == "readback://controlled-live/operator-packet/attachment/kill-switch-rehearsal-boundary/gateway-native-telegram-post-boundary-approval-missing")
+  and any(.entries[]; .source_blocker_id == "rollback_rehearsal_missing" and .kill_switch_rehearsal_boundary_route == "readback://controlled-live/operator-packet/attachment/kill-switch-rehearsal-boundary/rollback-rehearsal-missing")
+  and any(.entries[]; .source_blocker_id == "kill_switch_rehearsal_missing" and .kill_switch_rehearsal_boundary_route == "readback://controlled-live/operator-packet/attachment/kill-switch-rehearsal-boundary/kill-switch-rehearsal-missing")
+  and (.next_actions | index("phase6_controlled_live_operator_readiness_dashboard_without_suffix_expansion")) != null
+  and .next_migration_step == "phase6_controlled_live_operator_readiness_dashboard_without_suffix_expansion"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$ROLLBACK_REHEARSAL_BOUNDARY_REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_required_evidence_gap_operator_packet_attachment_rollback_rehearsal_boundary_readback"
+  and .status == "ready_blocked"
+  and .rollback_rehearsal_boundary_readback_ready == true
+  and .rollback_rehearsal_boundary_entry_count == 7
+  and .rollback_rehearsal_boundary_ready_count == 7
+  and .rollback_rehearsal_boundary_closed_count == 7
+  and .rollback_rehearsal_execution_blocked_count == 7
+  and .rollback_execution_blocked_count == 7
+  and .rollback_rehearsal_recording_blocked_count == 7
+  and .rollback_rehearsal_receipt_persistence_blocked_count == 7
+  and .packet_send_attempted == false
+  and .attachment_send_attempted == false
+  and .approval_request_sent == false
+  and .approval_accepted == false
+  and .credential_read_allowed == false
+  and .rollback_rehearsal_allowed == false
+  and .rollback_rehearsal_executed == false
+  and .rollback_execution_allowed == false
+  and .rollback_executed == false
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback --lib
+)
+
+printf 'hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-gate: PASS: operator packet attachment kill-switch rehearsal boundary is closed and operator-visible without mutation\n'

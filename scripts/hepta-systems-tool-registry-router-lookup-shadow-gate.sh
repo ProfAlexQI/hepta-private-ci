@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-tool-registry-router-lookup-shadow-report.sh"
+SOURCE_GATE="$ROOT/scripts/hepta-systems-tool-registry-registration-lookup-cutover-preflight-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_REGISTRY_ROUTER_LOOKUP_SHADOW_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-registry-router-lookup-shadow-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable router lookup shadow report: $REPORT"
+[[ -x "$SOURCE_GATE" ]] || fail "missing executable registration lookup cutover preflight gate: $SOURCE_GATE"
+[[ -f "$DOC" ]] || fail "missing router lookup shadow architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the router lookup shadow report"
+fi
+
+grep -q 'Router Lookup Shadow' "$DOC" \
+  || fail "architecture note must document Router Lookup Shadow"
+grep -q 'disabled lookup shadow' "$DOC" \
+  || fail "architecture note must document disabled lookup shadow"
+grep -q 'without registration' "$DOC" \
+  || fail "architecture note must document without registration"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "tool_registry_router_lookup_shadow"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_registration_lookup_preflight_surface == "tool_registry_registration_lookup_cutover_preflight"
+  and .source_registration_lookup_preflight_ready == true
+  and .registration_lookup_cutover_switch_enabled == false
+  and .router_shadow_binding_present == true
+  and .candidate_count == 2
+  and .shadow_ready_count == 2
+  and .shadow_blocked_count == 0
+  and .disabled_lookup_shadow_count == 2
+  and .all_lookup_preflight_entries_shadowed == true
+  and .all_shadow_entries_keep_approval_ledger_guard == true
+  and .router_lookup_shadow_ready == true
+  and .router_registration_lookup_enabled == false
+  and .registry_lookup_executed == false
+  and .registry_source_of_truth_enabled == false
+  and .tool_registration_enabled == false
+  and .tool_invocation_enabled == false
+  and .ledger_written == false
+  and .approval_requested == false
+  and .live_mutation_ready == false
+  and .next_migration_step == "restore_tool_invocation_receipt_projection_without_execution"
+  and (.entries | length) == 2
+  and any(.entries[]; .contribution_kind == "mcp_server" and .registry_guard_route == "require_approval_ledger" and .lookup_cutover_route == "approval_ledger_lookup_dry_run" and .shadow_route == "disabled_approval_ledger_lookup_shadow" and .shadow_ready == true and .registration_lookup_cutover_switch_enabled == false and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false)
+  and any(.entries[]; .contribution_kind == "app_connector" and .registry_guard_route == "require_approval_ledger" and .lookup_cutover_route == "approval_ledger_lookup_dry_run" and .shadow_route == "disabled_approval_ledger_lookup_shadow" and .shadow_ready == true and .registration_lookup_cutover_switch_enabled == false and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false)
+  and (.blockers | index("registration_lookup_cutover_switch_disabled")) != null
+  and (.blockers | index("router_registration_lookup_disabled")) != null
+  and (.blockers | index("registry_lookup_execution_disabled")) != null
+  and (.blockers | index("tool_registration_disabled")) != null
+  and (.blockers | index("tool_invocation_disabled")) != null
+  and (.blockers | index("ledger_write_disabled")) != null
+  and (.blockers | index("approval_request_disabled")) != null
+  and (.next_actions | index("restore_tool_invocation_receipt_projection_without_execution")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$SOURCE_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p codex-tools tool_registry_router_lookup_shadow --quiet
+)
+
+printf 'hepta-systems-tool-registry-router-lookup-shadow-gate: PASS: registration lookup cutover is shadowed behind a disabled switch while registration, invocation, ledger, and approval paths remain disabled\n'

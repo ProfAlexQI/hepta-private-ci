@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+audit_report="$("$ROOT/scripts/hepta-systems-work-graph-unified-projection-audit-preview-report.sh")"
+wal_rerun_report="$("$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview-report.sh")"
+
+canonical_inventory_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_canonical_adapter_inventory_preview.rs
+)"
+canonical_inventory_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-canonical-adapter-inventory-preview-report.sh
+)"
+canonical_inventory_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-canonical-adapter-inventory-preview-gate.sh
+)"
+multi_agent_v2_surface_present="$(
+  bool_for path_exists codex-rs/core/src/tools/handlers/multi_agents_v2.rs
+)"
+agent_jobs_surface_present="$(
+  bool_for path_exists codex-rs/core/src/tools/handlers/agent_jobs.rs
+)"
+task_board_surface_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/task_board.rs
+)"
+worker_tasks_surface_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/worker_tasks.rs
+)"
+scheduler_store_surface_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/scheduler_store.rs
+)"
+
+jq -n \
+  --argjson audit "$audit_report" \
+  --argjson wal "$wal_rerun_report" \
+  --argjson canonical_inventory_rust_module_present "$canonical_inventory_rust_module_present" \
+  --argjson canonical_inventory_report_script_present "$canonical_inventory_report_script_present" \
+  --argjson canonical_inventory_gate_script_present "$canonical_inventory_gate_script_present" \
+  --argjson multi_agent_v2_surface_present "$multi_agent_v2_surface_present" \
+  --argjson agent_jobs_surface_present "$agent_jobs_surface_present" \
+  --argjson task_board_surface_present "$task_board_surface_present" \
+  --argjson worker_tasks_surface_present "$worker_tasks_surface_present" \
+  --argjson scheduler_store_surface_present "$scheduler_store_surface_present" \
+  '
+  def edge_kinds($id):
+    if $id == "update_plan_tool" then ["depends_on", "observes"]
+    elif $id == "plan_mode_proposed_plan_blocks" then ["depends_on", "replaces"]
+    elif $id == "app_server_turn_plan_notification" then ["observes", "updates"]
+    elif $id == "multi_agent_v2_thread_spawn" then ["spawned_by", "depends_on", "reports_to"]
+    elif $id == "multi_agent_v2_mailbox_wait" then ["observes", "unblocks"]
+    elif $id == "hepta_runtime_multi_agent_reducer" then ["reduces", "verifies"]
+    elif $id == "agent_jobs_batch_workers" then ["assigned_to", "reports_result"]
+    elif $id == "hepta_runtime_task_board" then ["depends_on", "lease_claim"]
+    elif $id == "hepta_runtime_worker_tasks" then ["depends_on", "produces", "reports_result"]
+    elif $id == "hepta_runtime_scheduler_store" then ["admits", "blocks", "leases"]
+    elif $id == "hepta_runtime_approval_broker" then ["requires_approval", "supersedes"]
+    elif $id == "hepta_runtime_agent_harness" then ["handoff_to", "produces", "blocked_by_approval"]
+    else []
+    end;
+  def identity_fields($category):
+    if $category == "planning" then ["sourceSurfaceId", "traceId", "planStepId"]
+    elif $category == "multi_agent" then ["sourceSurfaceId", "traceId", "agentPath", "threadId"]
+    elif $category == "batch_agent_jobs" then ["sourceSurfaceId", "traceId", "jobId", "itemId"]
+    elif $category == "runtime_scheduler" then ["sourceSurfaceId", "traceId", "taskId", "leaseId"]
+    elif $category == "operator_control" then ["sourceSurfaceId", "traceId", "approvalId"]
+    elif $category == "external_handoff" then ["sourceSurfaceId", "traceId", "handoffId"]
+    else ["sourceSurfaceId", "traceId", "sourceRecordId"]
+    end;
+  def adapter_state($present): if $present then "present_preview" else "missing" end;
+  def task_result_state($required; $present):
+    if $present then "present_preview"
+    elif $required then "missing"
+    else "not_required"
+    end;
+  def inventory_state($coverage):
+    if $coverage == "contract_ready_preview" then "canonical_contract_ready_preview"
+    elif $coverage == "partial_projection_preview" then "canonical_partial_preview"
+    elif $coverage == "timeline_only_preview" then "canonical_timeline_only_preview"
+    elif $coverage == "projection_gap" then "canonical_projection_gap"
+    else "canonical_unknown"
+    end;
+  def next_step($surface):
+    if $surface.coverage_state == "contract_ready_preview" then
+      "readback_canonical_adapter_inventory_projection"
+    else
+      $surface.next_projection_step
+    end;
+  def inventory_blocker_ids($surface):
+    (
+      $surface.blocker_ids
+      + [
+        "canonical_adapter_inventory_readback_missing",
+        "append_only_work_graph_events_disabled",
+        "runtime_canonical_adapter_enforcement_disabled"
+      ]
+      + if $surface.coverage_state != "contract_ready_preview" then
+          ["canonical_adapter_projection_incomplete"]
+        else
+          []
+        end
+    ) | unique;
+  def canonical_adapter($surface): {
+    source_surface_id: $surface.source_surface_id,
+    source_category: $surface.source_category,
+    canonical_node_kind: (
+      if ($surface.source_surface_id | IN("update_plan_tool", "plan_mode_proposed_plan_blocks", "app_server_turn_plan_notification")) then "plan_step"
+      elif ($surface.source_surface_id | IN("multi_agent_v2_thread_spawn", "multi_agent_v2_mailbox_wait", "hepta_runtime_multi_agent_reducer")) then "agent_task"
+      elif ($surface.source_surface_id | IN("agent_jobs_batch_workers", "hepta_runtime_task_board", "hepta_runtime_worker_tasks")) then "worker_task"
+      elif $surface.source_surface_id == "hepta_runtime_scheduler_store" then "scheduler_run"
+      elif $surface.source_surface_id == "hepta_runtime_approval_broker" then "human_approval"
+      elif $surface.source_surface_id == "hepta_runtime_agent_harness" then "external_handoff"
+      else "unknown"
+      end
+    ),
+    canonical_edge_kinds: edge_kinds($surface.source_surface_id),
+    canonical_identity_fields: identity_fields($surface.source_category),
+    canonical_collection_ids: $surface.projected_collection_ids,
+    timeline_event_type_ids: $surface.timeline_event_type_ids,
+    terminal_task_result_required: $surface.requires_terminal_task_result,
+    store_adapter_state: adapter_state($surface.has_unified_store_projection),
+    task_result_adapter_state: task_result_state($surface.requires_terminal_task_result; $surface.has_task_result_projection),
+    timeline_adapter_state: adapter_state($surface.has_observability_timeline_projection),
+    scheduler_admission_adapter_state: adapter_state($surface.has_scheduler_admission_projection),
+    role_manifest_adapter_state: adapter_state($surface.has_role_manifest_projection),
+    canonical_inventory_state: inventory_state($surface.coverage_state),
+    source_blocker_ids: $surface.blocker_ids,
+    inventory_blocker_ids: inventory_blocker_ids($surface),
+    next_inventory_step: next_step($surface)
+  };
+  def inventory_blocker($id; $severity; $sources; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_source_surface_ids: $sources,
+    blocks_append_only_fact_source: true,
+    recommended_fix: $fix
+  };
+  ($audit.source_surfaces | map(canonical_adapter(.))) as $adapters
+  | ($audit.source_surfaces | map(.source_surface_id)) as $all_sources
+  | ([
+      inventory_blocker("canonical_adapter_inventory_readback_missing"; "high"; $all_sources; "prove every canonical adapter row can be read back before promoting a fact source"),
+      inventory_blocker("append_only_work_graph_events_disabled"; "high"; $all_sources; "shadow-write PlanStep, AgentTask, TaskResult, Artifact, Approval, Lease, Gate, and Timeline events before enforcement"),
+      inventory_blocker("runtime_canonical_adapter_enforcement_disabled"; "high"; $all_sources; "keep runtime adapters preview-only until readback, replay, and operator-review gates are complete")
+    ]
+    + ($audit.coverage_gaps | map(
+      inventory_blocker(.id; .severity; .source_surface_ids; .recommended_fix)
+    ))) as $inventory_blockers
+  | ($audit.required_prior_gates + [
+      "hepta_work_graph_unified_projection_audit_preview_gate",
+      "hepta_work_graph_unified_projection_enforcement_readiness_runtime_wal_write_boundary_execution_rerun_preview_gate"
+    ]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_canonical_adapter_inventory_preview_gate",
+      schema_version: "work_graph_canonical_adapter_inventory_preview_v1",
+      preview_mode: "read_only_canonical_adapter_inventory_no_persistence",
+      source_surface_count: ($adapters | length),
+      source_category_count: ($adapters | map(.source_category) | unique | length),
+      canonical_adapter_count: ($adapters | length),
+      canonical_node_kind_count: ($adapters | map(.canonical_node_kind) | unique | length),
+      canonical_edge_kind_count: ($adapters | map(.canonical_edge_kinds[]) | unique | length),
+      canonical_collection_count: 6,
+      canonical_collection_binding_count: ($adapters | map(.canonical_collection_ids | length) | add),
+      canonical_timeline_event_binding_count: ($adapters | map(.timeline_event_type_ids | length) | add),
+      terminal_task_result_required_count: ($adapters | map(select(.terminal_task_result_required == true)) | length),
+      store_adapter_present_count: ($adapters | map(select(.store_adapter_state == "present_preview")) | length),
+      task_result_adapter_present_count: ($adapters | map(select(.task_result_adapter_state == "present_preview")) | length),
+      timeline_adapter_present_count: ($adapters | map(select(.timeline_adapter_state == "present_preview")) | length),
+      scheduler_admission_adapter_present_count: ($adapters | map(select(.scheduler_admission_adapter_state == "present_preview")) | length),
+      role_manifest_adapter_present_count: ($adapters | map(select(.role_manifest_adapter_state == "present_preview")) | length),
+      contract_ready_adapter_count: ($adapters | map(select(.canonical_inventory_state == "canonical_contract_ready_preview")) | length),
+      partial_or_gap_adapter_count: ($adapters | map(select(.canonical_inventory_state != "canonical_contract_ready_preview")) | length),
+      inventory_blocker_count: ($inventory_blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      canonical_collections: ["nodes", "edges", "taskResults", "artifacts", "approvals", "timelineEvents"],
+      adapters: $adapters,
+      inventory_blockers: $inventory_blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_canonical_adapter_inventory_readback_preview_gate",
+      ready_for_canonical_adapter_inventory_readback_preview: true,
+      ready_for_append_only_work_graph_events: false,
+      ready_for_runtime_adapter_enforcement: false,
+      ready_for_scheduler_admission_enforcement: false,
+      ready_for_task_result_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        canonical_adapter_inventory: {
+          rust_module_present: $canonical_inventory_rust_module_present,
+          report_script_present: $canonical_inventory_report_script_present,
+          gate_script_present: $canonical_inventory_gate_script_present
+        },
+        unified_projection_audit: {
+          gate: $audit.gate,
+          status: $audit.status,
+          ready_for_state_store_persistence_preview: $audit.ready_for_state_store_persistence_preview
+        },
+        wal_write_boundary_execution_rerun: {
+          gate: $wal.gate,
+          status: $wal.status,
+          residual_blocker_count: $wal.residual_blocker_count,
+          recommended_next_gate: $wal.recommended_next_gate
+        },
+        source_surfaces: {
+          multi_agent_v2_present: $multi_agent_v2_surface_present,
+          agent_jobs_present: $agent_jobs_surface_present,
+          task_board_present: $task_board_surface_present,
+          worker_tasks_present: $worker_tasks_surface_present,
+          scheduler_store_present: $scheduler_store_surface_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_events_persisted: false,
+        adapter_projection_enforced: false,
+        runtime_mutation_performed: false,
+        scheduler_admission_enforced: false,
+        task_result_enforcement_enabled: false,
+        role_manifest_enforcement_enabled: false,
+        approval_recorded: false,
+        side_effect_lock_established: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

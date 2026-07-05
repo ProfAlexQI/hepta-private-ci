@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+LEAN_CONTRACT_REPORT="$ROOT/scripts/hepta-systems-gate-recursion-lean-contract-readback-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/hepta_systems_workgraph_legacy_gate_recursion_inventory_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_WORKGRAPH_LEGACY_GATE_RECURSION_INVENTORY_READBACK_2026-06-30.md"
+
+ACK_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview-gate.sh"
+ACK_REPLAY_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview-gate.sh"
+ACK_REPLAY_CLOSEOUT_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview-gate.sh"
+ACK_REPLAY_CLOSEOUT_ACK_REPLAY_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview-gate.sh"
+RUNTIME_ADAPTER_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview-gate.sh"
+REPLAY_EXECUTION_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview-gate.sh"
+WAL_WRITE_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview-gate.sh"
+OPERATOR_PACKET_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview-gate.sh"
+
+fail() {
+  printf 'hepta-systems-workgraph-legacy-gate-recursion-inventory-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$LEAN_CONTRACT_REPORT" ]] || fail "missing executable lean contract report: $LEAN_CONTRACT_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing WorkGraph legacy recursion inventory Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing WorkGraph legacy recursion inventory architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the WorkGraph legacy recursion inventory report"
+fi
+if ! command -v rg >/dev/null 2>&1; then
+  fail "rg is required to inspect legacy WorkGraph gate routes"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+"$LEAN_CONTRACT_REPORT" >"$tmpdir/lean.json" || fail "failed to render lean contract report"
+jq -e . "$tmpdir/lean.json" >/dev/null || fail "lean contract report did not render valid JSON"
+
+bool_for() {
+  if "$@"; then printf 'true\n'; else printf 'false\n'; fi
+}
+
+route_present() { [[ -f "$1" ]]; }
+route_executable() { [[ -x "$1" ]]; }
+required_count() {
+  local value
+  value="$(rg -o 'required_prior_gate_count == [0-9]+' "$1" | head -1 | awk '{print $3}')"
+  [[ -n "$value" ]] || fail "missing required_prior_gate_count in $1"
+  printf '%s\n' "$value"
+}
+
+lib_export_present=false
+if grep -q 'hepta_systems_workgraph_legacy_gate_recursion_inventory_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile lean "$tmpdir/lean.json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg route_ack "scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview-gate.sh" \
+  --arg route_ack_replay "scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview-gate.sh" \
+  --arg route_ack_replay_closeout "scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview-gate.sh" \
+  --arg route_ack_replay_closeout_ack_replay "scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview-gate.sh" \
+  --arg route_runtime_adapter "scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview-gate.sh" \
+  --arg route_replay_execution "scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview-gate.sh" \
+  --arg route_wal_write "scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview-gate.sh" \
+  --arg route_operator_packet "scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview-gate.sh" \
+  --argjson count_ack "$(required_count "$ACK_GATE")" \
+  --argjson count_ack_replay "$(required_count "$ACK_REPLAY_GATE")" \
+  --argjson count_ack_replay_closeout "$(required_count "$ACK_REPLAY_CLOSEOUT_GATE")" \
+  --argjson count_ack_replay_closeout_ack_replay "$(required_count "$ACK_REPLAY_CLOSEOUT_ACK_REPLAY_GATE")" \
+  --argjson count_runtime_adapter "$(required_count "$RUNTIME_ADAPTER_GATE")" \
+  --argjson count_replay_execution "$(required_count "$REPLAY_EXECUTION_GATE")" \
+  --argjson count_wal_write "$(required_count "$WAL_WRITE_GATE")" \
+  --argjson count_operator_packet "$(required_count "$OPERATOR_PACKET_GATE")" \
+  --argjson present_ack "$(bool_for route_present "$ACK_GATE")" \
+  --argjson present_ack_replay "$(bool_for route_present "$ACK_REPLAY_GATE")" \
+  --argjson present_ack_replay_closeout "$(bool_for route_present "$ACK_REPLAY_CLOSEOUT_GATE")" \
+  --argjson present_ack_replay_closeout_ack_replay "$(bool_for route_present "$ACK_REPLAY_CLOSEOUT_ACK_REPLAY_GATE")" \
+  --argjson present_runtime_adapter "$(bool_for route_present "$RUNTIME_ADAPTER_GATE")" \
+  --argjson present_replay_execution "$(bool_for route_present "$REPLAY_EXECUTION_GATE")" \
+  --argjson present_wal_write "$(bool_for route_present "$WAL_WRITE_GATE")" \
+  --argjson present_operator_packet "$(bool_for route_present "$OPERATOR_PACKET_GATE")" \
+  --argjson executable_ack "$(bool_for route_executable "$ACK_GATE")" \
+  --argjson executable_ack_replay "$(bool_for route_executable "$ACK_REPLAY_GATE")" \
+  --argjson executable_ack_replay_closeout "$(bool_for route_executable "$ACK_REPLAY_CLOSEOUT_GATE")" \
+  --argjson executable_ack_replay_closeout_ack_replay "$(bool_for route_executable "$ACK_REPLAY_CLOSEOUT_ACK_REPLAY_GATE")" \
+  --argjson executable_runtime_adapter "$(bool_for route_executable "$RUNTIME_ADAPTER_GATE")" \
+  --argjson executable_replay_execution "$(bool_for route_executable "$REPLAY_EXECUTION_GATE")" \
+  --argjson executable_wal_write "$(bool_for route_executable "$WAL_WRITE_GATE")" \
+  --argjson executable_operator_packet "$(bool_for route_executable "$OPERATOR_PACKET_GATE")" \
+  --arg gate "scripts/hepta-systems-workgraph-legacy-gate-recursion-inventory-readback-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_WORKGRAPH_LEGACY_GATE_RECURSION_INVENTORY_READBACK_2026-06-30.md" \
+  '
+  def entry($id; $family; $route; $count; $risk; $present; $executable): {
+    entry_id:$id,
+    gate_family:$family,
+    route:$route,
+    route_present:$present,
+    route_executable:$executable,
+    required_prior_gate_count:$count,
+    observed_risk:$risk,
+    projected_contract:"migrate legacy gate to source-report smoke plus targeted Rust test before extending suffix",
+    projected_in_memory:true,
+    legacy_full_upstream_gate_chain_present:true,
+    migrate_to_source_report_smoke:true,
+    targeted_rust_test_contract_required:true,
+    full_upstream_gate_chain_allowed:false,
+    source_report_semantics_changed:false,
+    matrix_cache_written:false,
+    compact_cache_persisted:false,
+    workflow_execution_started:false,
+    replay_executed:false,
+    event_log_written:false,
+    sqlite_written:false,
+    live_execution_started:false
+  };
+  ($lean[0]) as $lean_report |
+  [
+    entry("terminal_no_cutover_receipt_acknowledgement_rerun_preview"; "terminal_no_cutover_receipt_chain"; $route_ack; $count_ack; "rerun preview gate carries a 96-step prior-gate ladder before the next receipt acknowledgement suffix"; $present_ack; $executable_ack),
+    entry("terminal_no_cutover_receipt_acknowledgement_replay_idempotency_rerun_preview"; "replay_idempotency_chain"; $route_ack_replay; $count_ack_replay; "replay idempotency suffix adds another full prior-gate ladder with no runtime execution opened"; $present_ack_replay; $executable_ack_replay),
+    entry("terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_rerun_preview"; "closeout_receipt_chain"; $route_ack_replay_closeout; $count_ack_replay_closeout; "closeout suffix expands the chain while still staying preview-only and read-only"; $present_ack_replay_closeout; $executable_ack_replay_closeout),
+    entry("terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_rerun_preview"; "closeout_receipt_chain"; $route_ack_replay_closeout_ack_replay; $count_ack_replay_closeout_ack_replay; "second closeout receipt acknowledgement replay idempotency suffix is the current largest prior-gate burden"; $present_ack_replay_closeout_ack_replay; $executable_ack_replay_closeout_ack_replay),
+    entry("event_store_cutover_runtime_adapter_enforcement_closure_rerun_preview"; "runtime_write_boundary_chain"; $route_runtime_adapter; $count_runtime_adapter; "runtime adapter enforcement closure keeps execution closed but still carries a full legacy ladder"; $present_runtime_adapter; $executable_runtime_adapter),
+    entry("event_store_cutover_replay_readback_execution_closure_rerun_preview"; "runtime_write_boundary_chain"; $route_replay_execution; $count_replay_execution; "replay readback execution closure names execution while keeping it disabled behind the legacy ladder"; $present_replay_execution; $executable_replay_execution),
+    entry("runtime_wal_write_boundary_execution_rerun_preview"; "runtime_write_boundary_chain"; $route_wal_write; $count_wal_write; "WAL write boundary execution suffix remains blocked but is easy to confuse with a runtime write path"; $present_wal_write; $executable_wal_write),
+    entry("event_store_cutover_operator_review_packet_rerun_preview"; "operator_review_packet_chain"; $route_operator_packet; $count_operator_packet; "operator review packet rerun path should consume source report smoke instead of expanding the suffix chain"; $present_operator_packet; $executable_operator_packet)
+  ] as $entries |
+  ($entries | length) as $inventory_entry_count |
+  ($entries | map(select(.route_present == true)) | length) as $route_present_count |
+  ($entries | map(select(.route_executable == true)) | length) as $route_executable_count |
+  ($entries | map(select(.legacy_full_upstream_gate_chain_present == true)) | length) as $legacy_full_upstream_gate_chain_count |
+  ($entries | map(select(.full_upstream_gate_chain_allowed == true)) | length) as $full_upstream_gate_chain_allowed_count |
+  ($entries | map(select(.migrate_to_source_report_smoke == true)) | length) as $source_report_smoke_migration_target_count |
+  ($entries | map(select(.targeted_rust_test_contract_required == true)) | length) as $targeted_rust_test_contract_target_count |
+  ($entries | map(select(.gate_family == "terminal_no_cutover_receipt_chain")) | length) as $terminal_no_cutover_receipt_chain_count |
+  ($entries | map(select(.gate_family == "replay_idempotency_chain")) | length) as $replay_idempotency_chain_count |
+  ($entries | map(select(.gate_family == "closeout_receipt_chain")) | length) as $closeout_chain_count |
+  ($entries | map(select(.gate_family == "runtime_write_boundary_chain")) | length) as $runtime_write_boundary_chain_count |
+  ($entries | map(select(.gate_family == "operator_review_packet_chain")) | length) as $operator_review_packet_chain_count |
+  ($entries | map(.required_prior_gate_count) | add) as $required_prior_gate_count_total |
+  ($entries | map(.required_prior_gate_count) | max) as $required_prior_gate_count_max |
+  ($lean_report.lean_contract_readback_ready == true
+    and $lean_report.legacy_recursion_inventory_count == 2
+    and $lib_export_present == true
+    and $inventory_entry_count == 8
+    and $route_present_count == 8
+    and $route_executable_count == 8
+    and $legacy_full_upstream_gate_chain_count == 8
+    and $full_upstream_gate_chain_allowed_count == 0
+    and $source_report_smoke_migration_target_count == 8
+    and $targeted_rust_test_contract_target_count == 8
+    and $terminal_no_cutover_receipt_chain_count == 1
+    and $replay_idempotency_chain_count == 1
+    and $closeout_chain_count == 2
+    and $runtime_write_boundary_chain_count == 3
+    and $operator_review_packet_chain_count == 1
+    and $required_prior_gate_count_total == 663
+    and $required_prior_gate_count_max == 116
+    and ($entries | all(.projected_in_memory == true
+      and .route_present == true
+      and .route_executable == true
+      and .legacy_full_upstream_gate_chain_present == true
+      and .migrate_to_source_report_smoke == true
+      and .targeted_rust_test_contract_required == true
+      and .full_upstream_gate_chain_allowed == false
+      and .source_report_semantics_changed == false
+      and .matrix_cache_written == false
+      and .compact_cache_persisted == false
+      and .workflow_execution_started == false
+      and .replay_executed == false
+      and .event_log_written == false
+      and .sqlite_written == false
+      and .live_execution_started == false))) as $ready |
+  {
+    runtime:"hepta",
+    surface:"hepta_systems_workgraph_legacy_gate_recursion_inventory_readback",
+    status:(if $ready then "ready_blocked" else "blocked" end),
+    gate:"hepta_systems_workgraph_legacy_gate_recursion_inventory_readback_gate",
+    schema_version:"hepta_systems_workgraph_legacy_gate_recursion_inventory_readback_v1",
+    source_lean_contract_ready:$lean_report.lean_contract_readback_ready,
+    source_legacy_inventory_target_count:$lean_report.legacy_recursion_inventory_count,
+    lib_export_present:$lib_export_present,
+    inventory_scope:"legacy_workgraph_rerun_preview_gate_chains_with_required_prior_gate_count",
+    inventory_entry_count:$inventory_entry_count,
+    route_present_count:$route_present_count,
+    route_executable_count:$route_executable_count,
+    legacy_full_upstream_gate_chain_count:$legacy_full_upstream_gate_chain_count,
+    full_upstream_gate_chain_allowed_count:$full_upstream_gate_chain_allowed_count,
+    source_report_smoke_migration_target_count:$source_report_smoke_migration_target_count,
+    targeted_rust_test_contract_target_count:$targeted_rust_test_contract_target_count,
+    terminal_no_cutover_receipt_chain_count:$terminal_no_cutover_receipt_chain_count,
+    replay_idempotency_chain_count:$replay_idempotency_chain_count,
+    closeout_chain_count:$closeout_chain_count,
+    runtime_write_boundary_chain_count:$runtime_write_boundary_chain_count,
+    operator_review_packet_chain_count:$operator_review_packet_chain_count,
+    required_prior_gate_count_total:$required_prior_gate_count_total,
+    required_prior_gate_count_max:$required_prior_gate_count_max,
+    source_report_semantics_change_allowed:false,
+    matrix_cache_write_allowed:false,
+    compact_cache_persistence_allowed:false,
+    workflow_execution_allowed:false,
+    replay_execution_allowed:false,
+    event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    live_execution_allowed:false,
+    workgraph_legacy_gate_recursion_inventory_ready:$ready,
+    entries:$entries,
+    blockers:[
+      "legacy_workgraph_full_upstream_gate_chain_inventory_required",
+      "source_report_smoke_migration_required",
+      "targeted_rust_test_contract_required",
+      "source_report_semantics_change_disabled",
+      "matrix_cache_write_disabled",
+      "compact_cache_persistence_disabled",
+      "workflow_execution_disabled",
+      "replay_execution_disabled",
+      "event_log_write_disabled",
+      "sqlite_write_disabled",
+      "live_execution_disabled"
+    ],
+    next_actions:[
+      "hepta_systems_tool_registry_minimal_read_only_invocation_ledger_receipt_readback"
+    ],
+    recommended_next_gate:"hepta_systems_tool_registry_minimal_read_only_invocation_ledger_receipt_readback",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      filesystem_written:false,
+      source_report_semantics_changed:false,
+      full_upstream_gate_chain_invoked:false,
+      cargo_test_executed_by_report:false,
+      matrix_cache_written:false,
+      compact_cache_persisted:false,
+      workflow_execution_started:false,
+      replay_executed:false,
+      event_log_written:false,
+      sqlite_written:false,
+      provider_invoked:false,
+      model_invoked:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      package_or_release_written:false,
+      canary_activated:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }
+  '

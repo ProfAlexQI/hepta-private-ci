@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-persistence-acceptance-authority-blocker-preview-report.sh"
+
+report="$(capture_json_report "hepta-work-graph-persistence-acceptance-authority-blocker-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_persistence_acceptance_authority_blocker_preview_gate"
+  and .schema_version == "work_graph_persistence_acceptance_authority_blocker_preview_v1"
+  and .preview_mode == "read_only_persistence_acceptance_authority_blocker_preview_no_authority"
+  and .authority_surface_count == 7
+  and (.authority_surfaces | length) == .authority_surface_count
+  and (.authority_surfaces | map(.id) == [
+    "operator_acceptance_authority",
+    "approval_recording_authority",
+    "live_persistence_authority",
+    "wal_checkpoint_authority",
+    "enforcement_rollout_authority",
+    "release_publication_authority",
+    "external_delivery_authority"
+  ])
+  and (.authority_surfaces | all(
+    .authority_granted == false
+    and .approval_recording_enabled == false
+    and .live_execution_enabled == false
+    and .external_delivery_enabled == false
+    and (.required_fields | length) >= 11
+    and (.required_fields | index("workflow_id") != null)
+    and (.required_fields | index("receipt_hash") != null)
+  ))
+  and .authority_denial_count == 9
+  and (.authority_denials | length) == .authority_denial_count
+  and (.authority_denials | map(.id) == [
+    "durable_identity_evidence_missing",
+    "readiness_packet_is_not_acceptance_authority",
+    "readiness_receipt_is_hash_only_evidence",
+    "acknowledgement_visibility_is_not_acceptance",
+    "signature_hash_is_not_live_signature",
+    "approval_ledger_write_is_blocked",
+    "live_persistence_enablement_is_blocked",
+    "release_publication_policy_is_incomplete",
+    "operator_scope_expired_or_revoked_blocks_authority"
+  ])
+  and (.authority_denials | all(.blocks_authority == true and (.applies_to_surface_ids | length) >= 2))
+  and .escalation_guard_count == 6
+  and (.escalation_guards | length) == .escalation_guard_count
+  and (.escalation_guards | map(.id) == [
+    "receipt_to_acceptance_guard",
+    "acknowledgement_to_approval_guard",
+    "approval_to_live_persistence_guard",
+    "persistence_to_rollout_guard",
+    "rollout_to_release_guard",
+    "release_to_external_delivery_guard"
+  ])
+  and (.escalation_guards | all(
+    .blocks_escalation == true
+    and (.required_denial_fields | length) >= 10
+    and (.required_denial_fields | index("workflow_id") != null)
+    and (.required_denial_fields | index("receipt_hash") != null)
+  ))
+  and .required_record_count == 6
+  and (.required_records | length) == .required_record_count
+  and (.required_records | map(.id) == [
+    "trusted_operator_acceptance_record",
+    "approval_decision_record",
+    "live_persistence_enablement_record",
+    "rollback_quarantine_owner_attestation",
+    "release_publication_owner_attestation",
+    "external_delivery_consent_record"
+  ])
+  and (.required_records | all(
+    .present_in_preview == false
+    and .accepted_in_preview == false
+    and .recording_enabled == false
+    and (.required_fields | length) >= 12
+    and (.required_fields | index("workflow_id") != null)
+    and (.required_fields | index("receipt_hash") != null)
+  ))
+  and .authority_view_count == 4
+  and (.authority_views | length) == .authority_view_count
+  and (.authority_views | map(.id) == [
+    "operator_authority_denial_view",
+    "auditor_authority_evidence_view",
+    "release_owner_authority_blocker_view",
+    "runtime_authority_zero_effect_view"
+  ])
+  and (.authority_views | all(
+    .external_delivery_enabled == false
+    and (.required_fields | length) >= 11
+    and (.required_fields | index("workflow_id") != null)
+    and (.required_fields | index("receipt_hash") != null)
+  ))
+  and .durable_identity_evidence.schema_version == "work_graph_durable_identity_preview_v1"
+  and .durable_identity_evidence.required_prior_gate == "hepta_work_graph_durable_identity_preview_gate"
+  and .durable_identity_evidence.required_field_ids == durable_fields
+  and .durable_identity_evidence.required_for_surface_ids == [
+    "operator_acceptance_authority",
+    "approval_recording_authority",
+    "live_persistence_authority",
+    "wal_checkpoint_authority",
+    "enforcement_rollout_authority",
+    "release_publication_authority",
+    "external_delivery_authority"
+  ]
+  and .durable_identity_evidence.durable_field_count == 7
+  and .durable_identity_evidence.preview_binding_count >= 5
+  and .durable_identity_evidence.invariant_count >= 7
+  and .durable_identity_evidence.currently_satisfied == false
+  and .invariant_count == 7
+  and (.invariants | length) == .invariant_count
+  and (.invariants | map(.id) == [
+    "acceptance_authority_requires_durable_identity_evidence",
+    "receipt_and_acknowledgement_cannot_grant_authority",
+    "authority_requires_explicit_record_intake",
+    "approval_recording_is_blocked",
+    "live_persistence_and_rollout_are_blocked",
+    "release_and_external_delivery_are_blocked",
+    "acceptance_authority_blocker_preview_has_no_side_effects"
+  ])
+  and (.invariants | all(.required == true))
+  and (.required_prior_gates == [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_promotion_precondition_preview_gate",
+    "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+    "hepta_work_graph_shadow_adapter_readback_preview_gate",
+    "hepta_work_graph_persistence_feature_flag_preview_gate",
+    "hepta_work_graph_persistence_canary_dry_run_preview_gate",
+    "hepta_work_graph_persistence_canary_readback_receipt_preview_gate",
+    "hepta_work_graph_persistence_promotion_blocker_preview_gate",
+    "hepta_work_graph_persistence_shadow_live_readback_comparison_preview_gate",
+    "hepta_work_graph_persistence_enforcement_rollout_blocker_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_packet_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_acknowledgement_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ])
+  and .recommended_next_gate == "hepta_work_graph_persistence_acceptance_record_intake_preview_gate"
+  and .ready_for_acceptance_record_intake_preview == true
+  and .ready_for_operator_acceptance == false
+  and .ready_for_live_persistence == false
+  and .source_probes.persistence_acceptance_authority_blocker.rust_module_present == true
+  and .source_probes.persistence_acceptance_authority_blocker.report_script_present == true
+  and .source_probes.persistence_acceptance_authority_blocker.gate_script_present == true
+  and .source_probes.persistence_operator_readiness_receipt_acknowledgement.rust_module_present == true
+  and .source_probes.persistence_operator_readiness_receipt_acknowledgement.gate_script_present == true
+  and .source_probes.durable_identity.rust_module_present == true
+  and .source_probes.durable_identity.report_script_present == true
+  and .source_probes.durable_identity.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_persistence_acceptance_authority_blocker_preview --lib
+
+echo "Hepta WorkGraph persistence acceptance authority blocker preview gate passed"

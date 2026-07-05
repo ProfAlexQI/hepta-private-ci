@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-historical-canonical-gate-post-claim-impact-preflight-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_GATE_POST_CLAIM_IMPACT_PREFLIGHT_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-historical-canonical-gate-post-claim-impact-preflight-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable historical canonical gate post-claim impact preflight report: $REPORT"
+[[ -f "$DOC" ]] || fail "missing historical canonical gate post-claim impact preflight architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the historical canonical gate post-claim impact preflight report"
+fi
+
+grep -q 'Post-Claim Impact Preflight' "$DOC" \
+  || fail "architecture note must document Post-Claim Impact Preflight"
+grep -q 'live absence probe' "$DOC" \
+  || fail "architecture note must document live absence probe impact"
+grep -q 'snapshot decoupling' "$DOC" \
+  || fail "architecture note must document snapshot decoupling"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "historical_canonical_gate_post_claim_impact_preflight"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_claim_preflight_surface == "historical_canonical_gate_name_thin_wrapper_claim_preflight"
+  and .source_claim_preflight_ready == true
+  and .source_claim_allowed == true
+  and .source_next_migration_step == "validate_historical_canonical_gate_thin_wrapper_without_live_invocation"
+  and .source_claim_probe_basis == "historical_snapshot_evidence"
+  and .source_claim_current_filesystem_probe_used == false
+  and .source_snapshot_surface == "historical_canonical_missing_path_snapshot_evidence"
+  and .source_snapshot_ready == true
+  and .source_snapshot_decouples_from_current_filesystem_state == true
+  and .historical_canonical_gate_path == "scripts/hepta-systems-canonical-gate.sh"
+  and .historical_canonical_gate_path_present == false
+  and .historical_canonical_gate_path_present_at_snapshot == false
+  and .historical_canonical_gate_path_probe_basis == "historical_snapshot_evidence"
+  and .historical_canonical_gate_path_current_filesystem_probe_used == false
+  and .proposed_alias_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+  and .proposed_alias_kind == "thin_local_wrapper"
+  and .post_claim_impact_consumer_count == 12
+  and .post_claim_live_absence_probe_consumer_count == 0
+  and .post_claim_affected_consumer_count == 0
+  and .post_claim_blocking_consumer_count == 0
+  and any(.post_claim_impact_consumers[]; .id == "canonical_summary_attachment_index_report" and .live_absence_probe == false and .snapshot_decoupled == true and .affected_if_historical_gate_created == false)
+  and any(.post_claim_impact_consumers[]; .id == "thin_wrapper_claim_preflight_gate" and .live_absence_probe == false and .snapshot_decoupled == true and .affected_if_historical_gate_created == false)
+  and .snapshot_decoupling_required == false
+  and .snapshot_decoupling_complete == true
+  and .historical_snapshot_evidence_required == true
+  and .wrapper_creation_deferred == false
+  and .historical_canonical_gate_name_claim_allowed_by_source == true
+  and .historical_canonical_gate_name_creation_allowed_now == true
+  and .historical_canonical_gate_name_claimed == true
+  and .historical_canonical_gate_created == true
+  and .historical_canonical_gate_executable == true
+  and .historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+  and .historical_canonical_gate_wrapper_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+  and .historical_canonical_gate_wrapper_exec_count == 1
+  and .historical_canonical_gate_mutated == true
+  and .historical_canonical_gate_mutated_by_report == false
+  and .wrapper_creation_performed == true
+  and .wrapper_creation_performed_by_report == false
+  and .wrapper_body_present == true
+  and .wrapper_target_invoked == false
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .post_claim_impact_preflight_ready == true
+  and .next_migration_step == "validate_historical_canonical_gate_thin_wrapper_without_live_invocation"
+  and (.impact_blockers | index("historical_canonical_gate_thin_wrapper_validation_pending")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+printf 'hepta-systems-historical-canonical-gate-post-claim-impact-preflight-gate: PASS: live absence probes are snapshot-decoupled and wrapper creation is recorded without invocation\n'

@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-promoted-current-canonical-consumer-cutover-final-gate-report.sh"
+ACCEPTANCE_PREFLIGHT_GATE="$ROOT/scripts/hepta-systems-promoted-current-canonical-consumer-cutover-packet-acceptance-preflight-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PROMOTED_CURRENT_CANONICAL_CONSUMER_CUTOVER_FINAL_GATE_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-promoted-current-canonical-consumer-cutover-final-gate-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable promoted current canonical consumer cutover final gate report: $REPORT"
+[[ -x "$ACCEPTANCE_PREFLIGHT_GATE" ]] || fail "missing executable promoted current canonical consumer cutover packet acceptance preflight gate: $ACCEPTANCE_PREFLIGHT_GATE"
+[[ -f "$DOC" ]] || fail "missing promoted current canonical consumer cutover final gate architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the promoted current canonical consumer cutover final gate report"
+fi
+
+grep -q 'Promoted Current Canonical Consumer Cutover Final Gate' "$DOC" \
+  || fail "architecture note must document Promoted Current Canonical Consumer Cutover Final Gate"
+grep -q 'final gate is ready but blocked' "$DOC" \
+  || fail "architecture note must document that the final gate is ready but blocked"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that the final gate does not invoke the alias"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "promoted_current_canonical_consumer_cutover_final_gate"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .source_acceptance_preflight_surface == "promoted_current_canonical_consumer_cutover_packet_acceptance_preflight"
+  and .source_acceptance_preflight_ready == true
+  and .terminal_successor_canonical_consumer_cutover_final_gate_ready == true
+  and .terminal_successor_canonical_consumer_cutover_final_gate_blocked == true
+  and .final_gate_policy_present == true
+  and .final_cutover_ticket_present == true
+  and .final_operator_readback_required == true
+  and .manual_operator_live_cutover_approval_required == true
+  and .explicit_live_cutover_approval_present == false
+  and .operator_live_cutover_approval_recorded == false
+  and .cutover_packet_recorded == false
+  and .cutover_packet_accepted == false
+  and .cutover_packet_acceptance_allowed == false
+  and .successor_consumer_cutover_allowed == false
+  and .current_canonical_consumer_replaced_in_place == false
+  and .current_canonical_consumer_mutated == false
+  and .promoted_current_canonical_consumer_mutated == false
+  and .rollback_anchor == "current_canonical_consumer"
+  and .acceptance_requirement_count == 5
+  and .acceptance_satisfied_requirement_count == 1
+  and .acceptance_missing_requirement_count == 4
+  and .final_blocker_count == 14
+  and (.final_blockers | index("operator_live_cutover_approval_missing")) != null
+  and (.final_blockers | index("cutover_packet_not_recorded")) != null
+  and (.final_blockers | index("cutover_packet_not_accepted")) != null
+  and (.final_blockers | index("successor_consumer_cutover_disallowed")) != null
+  and (.final_blockers | index("public_ga_disabled")) != null
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "attach_terminal_successor_canonical_consumer_cutover_final_gate_to_current_canonical_governance_without_live_invocation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$ACCEPTANCE_PREFLIGHT_GATE" >/dev/null
+
+printf 'hepta-systems-promoted-current-canonical-consumer-cutover-final-gate-gate: PASS: terminal successor canonical consumer cutover final gate is ready but blocked without live invocation\n'

@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PROMOTED_SUMMARY_REPORT="$ROOT/scripts/hepta-systems-promoted-post-canonical-closure-compact-capability-summary-report.sh"
+PROMOTED_SUMMARY_GATE="$ROOT/scripts/hepta-systems-promoted-post-canonical-closure-compact-capability-summary-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PROMOTED_CURRENT_CANONICAL_CONSUMER_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-promoted-current-canonical-consumer-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$PROMOTED_SUMMARY_REPORT" ]] || fail "missing executable promoted post-canonical closure summary report: $PROMOTED_SUMMARY_REPORT"
+[[ -x "$PROMOTED_SUMMARY_GATE" ]] || fail "missing executable promoted post-canonical closure summary gate: $PROMOTED_SUMMARY_GATE"
+[[ -f "$DOC" ]] || fail "missing promoted current canonical consumer architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the promoted current canonical consumer report"
+fi
+
+jq -n \
+  --slurpfile summary <("$PROMOTED_SUMMARY_REPORT") \
+  --arg gate "scripts/hepta-systems-promoted-current-canonical-consumer-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_PROMOTED_CURRENT_CANONICAL_CONSUMER_2026-06-21.md" \
+  '
+  ($summary[0]) as $summary |
+  [
+    {
+      id:"promoted_post_canonical_closure_compact_capability_summary",
+      surface:$summary.surface,
+      source_ready:$summary.promoted_post_canonical_closure_compact_capability_summary_ready,
+      active_successor_canonical_consumer:true,
+      supersedes:"current_canonical_consumer",
+      invoked_by_report:false,
+      gate:"scripts/hepta-systems-promoted-post-canonical-closure-compact-capability-summary-gate.sh"
+    }
+  ] as $consumer_inputs |
+  [
+    "manual_operator_live_cutover_approval_required",
+    "tool_execution_live_cutover_allowed_false",
+    "tool_execution_public_ga_allowed_false",
+    "canonical_gate_not_invoked_by_promoted_current_consumer",
+    "wrapper_target_not_invoked_by_promoted_current_consumer",
+    "current_canonical_consumer_not_replaced_in_place",
+    "successor_consumer_cutover_preflight_pending",
+    "terminal_live_gates_not_invoked",
+    "live_url_not_contacted",
+    "long_soak_not_started"
+  ] as $consumer_blockers |
+  ($summary.promoted_post_canonical_closure_compact_capability_summary_ready == true
+    and $summary.promoted_closure_index_attached == true
+    and $summary.promoted_current_canonical_closure_attached == true
+    and $summary.promoted_current_canonical_wrapper_attached == true
+    and $summary.current_canonical_consumer_attached == true
+    and $summary.local_surface_count == 7
+    and $summary.local_surface_ready_count == 7
+    and $summary.execution_enabled_count == 0
+    and $summary.public_ga_enabled_count == 0
+    and $summary.stale_pre_creation_blockers_present == false
+    and ($summary.summary_blockers | index("canonical_wrapper_not_restored_yet") == null)
+    and $summary.canonical_gate_wrapper_invoked == false
+    and $summary.wrapper_target_invoked == false
+    and $summary.tool_execution_live_cutover_allowed == false
+    and $summary.tool_execution_public_ga_allowed == false
+    and ($consumer_inputs | all(.source_ready == true and .active_successor_canonical_consumer == true and .invoked_by_report == false))
+    and ($consumer_blockers | index("canonical_wrapper_not_restored_yet") == null)
+    and ($summary.side_effects | to_entries | all(.value == false))) as $consumer_ready |
+  {
+    runtime:"hepta",
+    surface:"promoted_current_canonical_consumer",
+    plugin_id:$summary.plugin_id,
+    status:(if $consumer_ready then "ready" else "blocked" end),
+    source_promoted_post_canonical_closure_summary_surface:$summary.surface,
+    source_promoted_post_canonical_closure_summary_ready:$summary.promoted_post_canonical_closure_compact_capability_summary_ready,
+    source_promoted_closure_index_attached:$summary.promoted_closure_index_attached,
+    source_promoted_current_canonical_closure_attached:$summary.promoted_current_canonical_closure_attached,
+    source_promoted_current_canonical_wrapper_attached:$summary.promoted_current_canonical_wrapper_attached,
+    source_current_canonical_consumer_attached:$summary.current_canonical_consumer_attached,
+    promoted_current_canonical_consumer_ready:$consumer_ready,
+    promoted_current_canonical_consumer_surface:"promoted_post_canonical_closure_compact_capability_summary",
+    promoted_current_canonical_consumer_report:"scripts/hepta-systems-promoted-post-canonical-closure-compact-capability-summary-report.sh",
+    promoted_current_canonical_consumer_gate:"scripts/hepta-systems-promoted-post-canonical-closure-compact-capability-summary-gate.sh",
+    previous_current_canonical_consumer_surface:"current_canonical_consumer",
+    previous_current_canonical_consumer_replaced_in_place:false,
+    promoted_consumer_promotion_kind:"successor_report_only",
+    successor_consumer_cutover_preflight_required:true,
+    canonical_consumer_input_count:($consumer_inputs | length),
+    canonical_consumer_inputs:$consumer_inputs,
+    local_surface_count:$summary.local_surface_count,
+    local_surface_ready_count:$summary.local_surface_ready_count,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    stale_pre_creation_blockers_present:false,
+    promoted_current_summary_blocker_count:($consumer_blockers | length),
+    promoted_current_summary_blockers:$consumer_blockers,
+    current_canonical_consumer_mutated:false,
+    promoted_current_canonical_consumer_mutated:false,
+    canonical_summary_mutated:false,
+    historical_canonical_gate_mutated:false,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    capability_matrix_gate_invoked:false,
+    terminal_live_gate_invoked:false,
+    live_url_required:false,
+    long_soak_required:false,
+    manual_operator_live_cutover_approval_required:true,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    upstream_gate_reexecution_required:false,
+    next_migration_step:"evaluate_successor_canonical_consumer_cutover_preflight_without_live_invocation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      promoted_post_canonical_closure_compact_capability_summary_report:"scripts/hepta-systems-promoted-post-canonical-closure-compact-capability-summary-report.sh",
+      promoted_post_canonical_closure_compact_capability_summary_gate:"scripts/hepta-systems-promoted-post-canonical-closure-compact-capability-summary-gate.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      promoted_post_canonical_summary_mutated:false,
+      current_canonical_consumer_mutated:false,
+      promoted_current_canonical_consumer_mutated:false,
+      current_canonical_wrapper_mutated:false,
+      promoted_current_canonical_wrapper_mutated:false,
+      current_canonical_closure_mutated:false,
+      promoted_current_canonical_closure_mutated:false,
+      promoted_current_canonical_closure_index_mutated:false,
+      historical_canonical_gate_mutated:false,
+      strict_missing_consumer_mutated:false,
+      historical_snapshot_evidence_written:false,
+      wrapper_body_emitted_by_report:false,
+      canonical_gate_invoked:false,
+      wrapper_target_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

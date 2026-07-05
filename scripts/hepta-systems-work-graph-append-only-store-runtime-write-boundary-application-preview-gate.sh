@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-append-only-store-runtime-write-boundary-application-preview-report.sh"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-store-runtime-write-boundary-application-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_append_only_store_runtime_write_boundary_application_preview_gate"
+  and .schema_version == "work_graph_append_only_store_runtime_write_boundary_application_preview_v1"
+  and .preview_mode == "read_only_append_only_store_runtime_write_boundary_application_no_runtime_mutation"
+  and .readback_plan_count == 12
+  and .application_plan_count == 12
+  and .source_outcome_count == 12
+  and .runtime_write_boundary_contract_ready_preview_count == 12
+  and .stage_application_count == 5
+  and .evidence_field_application_count == 12
+  and .guard_application_count == 8
+  and .blocker_application_count == 7
+  and .application_guard_count == 10
+  and .blocker_count == 8
+  and .required_prior_gate_count == 54
+  and .stage_source_ref_count == 60
+  and .stage_contract_ref_count == 27
+  and .plan_stage_ref_count == 60
+  and .evidence_field_ref_count == 108
+  and .blocker_mapping_source_ref_count == 84
+  and .blocker_mapping_stage_ref_count == 15
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.application_plans | map(.source_surface_id) == [
+    "update_plan_tool",
+    "plan_mode_proposed_plan_blocks",
+    "app_server_turn_plan_notification",
+    "multi_agent_v2_thread_spawn",
+    "multi_agent_v2_mailbox_wait",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_approval_broker",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.application_plans | all(
+    .application_scope == "runtime_write_boundary_application_binding"
+    and .application_state == "preview_application_defined_runtime_write_boundary_not_enabled"
+    and .readback_verified_by_preview == true
+    and .runtime_write_boundary_contract_ready_preview == true
+    and .applies_to_runtime == false
+    and .writes_wal == false
+    and .writes_checkpoint == false
+    and .switches_durable_store == false
+    and .mutates_idempotency_index == false
+    and .executes_readback == false
+    and .executes_rollback == false
+    and .mutates_runtime == false
+    and (.required_write_boundary_stage_ids | length) == 5
+    and (.expected_evidence_field_ids | length) == 9
+  ))
+  and (.source_outcomes | all(
+    .post_application_runtime_write_boundary_state == "runtime_write_boundary_contract_ready_preview_after_application"
+    and .runtime_write_boundary_contract_ready_preview == true
+    and .ready_for_unified_projection_enforcement_readiness_runtime_write_boundary_rerun_preview == true
+    and .ready_for_wal_write == false
+    and .applies_to_runtime == false
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.stage_applications | map({id: .stage_id, category, source_count: (.affected_source_surface_ids | length), contract_count: (.required_contract_ref_ids | length)}) == [
+    {"id": "wal_write_boundary", "category": "wal_boundary", "source_count": 12, "contract_count": 6},
+    {"id": "durable_store_runtime_switch_guard", "category": "durable_store_switch", "source_count": 12, "contract_count": 5},
+    {"id": "idempotency_mutation_policy", "category": "idempotency_policy", "source_count": 12, "contract_count": 5},
+    {"id": "rollback_readback_execution_boundary", "category": "rollback_readback", "source_count": 12, "contract_count": 5},
+    {"id": "no_mutation_guard", "category": "preview_no_mutation", "source_count": 12, "contract_count": 6}
+  ])
+  and (.stage_applications | all(
+    .expected_stage_state == "stage_contract_ready_preview_after_application_runtime_disabled"
+    and .stage_contract_ready_preview == true
+    and .readback_verified_by_preview == true
+    and .enables_runtime_after_application == false
+    and .writes_wal == false
+    and .writes_checkpoint == false
+    and .switches_durable_store == false
+    and .mutates_idempotency_index == false
+    and .executes_readback == false
+    and .executes_rollback == false
+    and .mutates_runtime == false
+  ))
+  and (.stage_applications | map(select(.stage_id == "wal_write_boundary" and .declared_writes_wal == true and .declared_writes_checkpoint == true)) | length) == 1
+  and (.stage_applications | map(select(.stage_id == "durable_store_runtime_switch_guard" and .declared_switches_durable_store == true)) | length) == 1
+  and (.stage_applications | map(select(.stage_id == "idempotency_mutation_policy" and .declared_mutates_idempotency_index == true)) | length) == 1
+  and (.stage_applications | map(select(.stage_id == "rollback_readback_execution_boundary" and .declared_executes_readback == true and .declared_executes_rollback == true)) | length) == 1
+  and (.stage_applications | map(select(.stage_id == "no_mutation_guard" and .declared_writes_wal == false and .declared_writes_checkpoint == false and .declared_switches_durable_store == false and .declared_mutates_idempotency_index == false and .declared_executes_readback == false and .declared_executes_rollback == false)) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.evidence_field_applications | all(
+    .expected_evidence_state == "evidence_contract_ready_preview_after_application_not_persisted"
+    and .evidence_contract_ready_preview == true
+    and .readback_verified_by_preview == true
+    and .persists_evidence == false
+    and .writes_store == false
+    and (.required_evidence_field_ids | length) == 9
+  ))
+  and (.guard_applications | map(.guard_id) == [
+    "runtime_write_boundary_preview_only",
+    "wal_write_boundary_disabled",
+    "durable_store_runtime_switch_disabled",
+    "idempotency_index_mutation_disabled",
+    "rollback_readback_execution_disabled",
+    "readback_execution_disabled",
+    "checkpoint_write_disabled",
+    "runtime_mutation_disabled"
+  ])
+  and (.guard_applications | all(
+    .expected_guard_state == "guard_contract_ready_preview_after_application_runtime_mutation_prevented"
+    and .guard_contract_ready_preview == true
+    and .readback_verified_by_preview == true
+    and .satisfied_by_preview == false
+    and .mutates_runtime == false
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.application_guards | map(.id) == [
+    "runtime_write_boundary_application_is_preview_only",
+    "readback_execution_disabled",
+    "wal_write_boundary_disabled",
+    "checkpoint_write_disabled",
+    "durable_store_runtime_switch_disabled",
+    "idempotency_mutation_disabled",
+    "rollback_readback_execution_disabled",
+    "append_only_store_enablement_disabled",
+    "runtime_mutation_disabled",
+    "model_invocation_disabled"
+  ])
+  and (.application_guards | all(.required_before_runtime_write_boundary == true and .satisfied_by_preview == false))
+  and (.blocker_applications | map({id: .blocker_id, count: (.affected_source_surface_ids | length), stages: (.affected_runtime_write_boundary_stage_ids | length), plans: (.affected_application_plan_ids | length)}) == [
+    {"id": "readback_execution_disabled", "count": 12, "stages": 1, "plans": 12},
+    {"id": "durable_store_runtime_switch_disabled", "count": 12, "stages": 1, "plans": 12},
+    {"id": "wal_write_boundary_not_enabled", "count": 12, "stages": 1, "plans": 12},
+    {"id": "idempotency_index_mutation_disabled", "count": 12, "stages": 1, "plans": 12},
+    {"id": "rollback_readback_not_executed", "count": 12, "stages": 1, "plans": 12},
+    {"id": "runtime_write_boundary_readback_missing", "count": 12, "stages": 5, "plans": 12},
+    {"id": "runtime_write_boundary_application_missing", "count": 12, "stages": 5, "plans": 12}
+  ])
+  and (.blocker_applications | all(
+    .expected_blocker_state == "blocker_mapping_contract_ready_preview_after_application_runtime_still_blocked"
+    and .blocker_contract_ready_preview == true
+    and .readback_verified_by_preview == true
+    and .clears_runtime_write_boundary_blocker == false
+    and .mutates_runtime == false
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.blockers | map({id, count: (.affected_source_surface_ids | length), stages: (.affected_runtime_write_boundary_stage_ids | length), plans: (.affected_application_plan_ids | length)}) == [
+    {"id": "readback_execution_disabled", "count": 12, "stages": 1, "plans": 12},
+    {"id": "durable_store_runtime_switch_disabled", "count": 12, "stages": 1, "plans": 12},
+    {"id": "wal_write_boundary_not_enabled", "count": 12, "stages": 1, "plans": 12},
+    {"id": "idempotency_index_mutation_disabled", "count": 12, "stages": 1, "plans": 12},
+    {"id": "rollback_readback_not_executed", "count": 12, "stages": 1, "plans": 12},
+    {"id": "runtime_write_boundary_readback_missing", "count": 12, "stages": 5, "plans": 12},
+    {"id": "runtime_write_boundary_application_missing", "count": 12, "stages": 5, "plans": 12},
+    {"id": "runtime_write_boundary_readiness_rerun_missing", "count": 12, "stages": 5, "plans": 12}
+  ])
+  and (.blockers | all(.required_before_runtime_write_boundary == true))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.required_prior_gates | length == (unique | length))
+  and (.required_prior_gates[-1] == "hepta_work_graph_append_only_store_runtime_write_boundary_readback_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_unified_projection_enforcement_readiness_runtime_write_boundary_rerun_preview_gate"
+  and .ready_for_unified_projection_enforcement_readiness_runtime_write_boundary_rerun_preview == true
+  and .ready_for_wal_write == false
+  and .ready_for_checkpoint_write == false
+  and .ready_for_durable_store_switch == false
+  and .ready_for_idempotency_mutation == false
+  and .ready_for_readback_execution == false
+  and .ready_for_rollback_execution == false
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_projection_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.runtime_write_boundary_application.rust_module_present == true
+  and .source_probes.runtime_write_boundary_application.report_script_present == true
+  and .source_probes.runtime_write_boundary_application.gate_script_present == true
+  and .source_probes.runtime_write_boundary_readback.upstream_gate == true
+  and .source_probes.runtime_write_boundary_readback.gate_script_present == true
+  and .source_probes.runtime_write_boundary_readback.recommended_next_matches == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_store_runtime_write_boundary_application --lib
+
+echo "Hepta WorkGraph append-only store runtime write-boundary application preview gate passed"

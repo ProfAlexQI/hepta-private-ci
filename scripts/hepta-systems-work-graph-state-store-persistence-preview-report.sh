@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+state_store_persistence_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_state_store_persistence_preview.rs
+)"
+state_store_persistence_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-state-store-persistence-preview-report.sh
+)"
+state_store_persistence_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-state-store-persistence-preview-gate.sh
+)"
+adapter_projection_fixture_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_adapter_projection_fixture.rs
+)"
+adapter_projection_fixture_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-adapter-projection-fixture-report.sh
+)"
+adapter_projection_fixture_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-adapter-projection-fixture-gate.sh
+)"
+unified_state_store_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_state_store.rs
+)"
+
+jq -n \
+  --argjson state_store_persistence_rust_module_present "$state_store_persistence_rust_module_present" \
+  --argjson state_store_persistence_report_script_present "$state_store_persistence_report_script_present" \
+  --argjson state_store_persistence_gate_script_present "$state_store_persistence_gate_script_present" \
+  --argjson adapter_projection_fixture_rust_module_present "$adapter_projection_fixture_rust_module_present" \
+  --argjson adapter_projection_fixture_report_script_present "$adapter_projection_fixture_report_script_present" \
+  --argjson adapter_projection_fixture_gate_script_present "$adapter_projection_fixture_gate_script_present" \
+  --argjson unified_state_store_rust_module_present "$unified_state_store_rust_module_present" \
+  '
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate"
+  ];
+  def wal($id; $kind; $fields; $ordering): {
+    id: $id,
+    record_kind: $kind,
+    required_fields: $fields,
+    ordering_rule: $ordering,
+    mutates_store: false
+  };
+  def checkpoint($id; $collections; $hashes; $policy): {
+    id: $id,
+    included_collection_ids: $collections,
+    required_hash_fields: $hashes,
+    write_policy: $policy,
+    mutates_store: false
+  };
+  def idempotency_guard($id; $source; $keys; $policy): {
+    id: $id,
+    source_surface_id: $source,
+    key_fields: $keys,
+    collision_policy: $policy,
+    required_before_persistence: true
+  };
+  def readback($id; $collection; $inputs; $blocker): {
+    id: $id,
+    target_collection_id: $collection,
+    required_inputs: $inputs,
+    promotion_blocker: $blocker,
+    mutates_store: false
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    wal("preview_append_node_record"; "node"; ["traceId", "nodeId", "nodeKind", "status", "sourceSurfaceId"]; "append_after_projection_validation_before_index_visibility"),
+    wal("preview_append_edge_record"; "edge"; ["traceId", "edgeId", "edgeKind", "fromNodeId", "toNodeId"]; "append_after_endpoint_nodes_are_known"),
+    wal("preview_append_task_result_record"; "task_result"; ["traceId", "taskId", "status", "summaryHash", "evidenceRefs"]; "append_after_task_result_contract_validation"),
+    wal("preview_append_artifact_record"; "artifact"; ["traceId", "artifactId", "producerNodeId", "artifactHash"]; "append_after_redaction_and_hashing"),
+    wal("preview_append_approval_record"; "approval"; ["traceId", "approvalId", "operatorScope", "status", "expiresAtUnixMs"]; "append_without_recording_live_operator_decisions"),
+    wal("preview_append_timeline_event_record"; "timeline_event"; ["traceId", "eventId", "eventKind", "nodeId", "redactionState"]; "append_after_source_record_projection")
+  ] as $wal_operations
+  | [
+    checkpoint(
+      "preview_full_graph_checkpoint";
+      ["nodes", "edges", "taskResults", "artifacts", "approvals", "timelineEvents"];
+      ["walHeadHash", "checkpointHash", "collectionMerkleRoot"];
+      "disabled_until_wal_replay_and_readback_gate_passes"
+    ),
+    checkpoint(
+      "preview_trace_checkpoint";
+      ["nodes", "edges", "taskResults", "timelineEvents"];
+      ["traceId", "traceHash", "timelineHash"];
+      "disabled_until_trace_replay_is_deterministic"
+    ),
+    checkpoint(
+      "preview_artifact_checkpoint";
+      ["artifacts", "timelineEvents"];
+      ["artifactHash", "producerNodeHash", "redactionHash"];
+      "disabled_until_artifact_redaction_readback_is_verified"
+    ),
+    checkpoint(
+      "preview_approval_checkpoint";
+      ["approvals", "timelineEvents"];
+      ["approvalHash", "operatorScopeHash", "expiryHash"];
+      "disabled_until_operator_authority_and_expiry_are_enforced"
+    )
+  ] as $checkpoint_contracts
+  | [
+    idempotency_guard("update_plan_projection_idempotency"; "update_plan_tool"; ["turnId", "stepIndex", "traceId"]; "same_key_replays_same_plan_step_node"),
+    idempotency_guard("plan_mode_projection_idempotency"; "plan_mode_proposed_plan_blocks"; ["proposalId", "blockIndex", "traceId"]; "same_plan_mode_block_replays_same_plan_step_node"),
+    idempotency_guard("app_server_turn_plan_notification_idempotency"; "app_server_turn_plan_notification"; ["turnId", "notificationSeq", "traceId"]; "same_plan_notification_replays_same_observed_plan_step"),
+    idempotency_guard("multi_agent_spawn_projection_idempotency"; "multi_agent_v2_thread_spawn"; ["parentThreadId", "childThreadId", "roleId"]; "same_child_thread_cannot_spawn_duplicate_agent_task"),
+    idempotency_guard("multi_agent_mailbox_wait_projection_idempotency"; "multi_agent_v2_mailbox_wait"; ["parentThreadId", "mailboxSeq", "traceId"]; "same_mailbox_progress_sequence_replays_same_wait_event"),
+    idempotency_guard("multi_agent_reducer_projection_idempotency"; "hepta_runtime_multi_agent_reducer"; ["reducerRunId", "agentPath", "traceId"]; "same_reducer_run_replays_same_terminal_result"),
+    idempotency_guard("agent_job_result_projection_idempotency"; "agent_jobs_batch_workers"; ["jobId", "itemId", "attempt"]; "same_job_item_attempt_replays_same_worker_task_result"),
+    idempotency_guard("task_board_projection_idempotency"; "hepta_runtime_task_board"; ["taskId", "claimTokenHash", "traceId"]; "same_task_board_claim_replays_same_worker_task_node"),
+    idempotency_guard("worker_task_projection_idempotency"; "hepta_runtime_worker_tasks"; ["workerTaskId", "attempt", "artifactHash"]; "same_worker_attempt_replays_same_artifact_and_result"),
+    idempotency_guard("scheduler_run_projection_idempotency"; "hepta_runtime_scheduler_store"; ["schedulerRunId", "leaseId", "admissionDecision"]; "same_scheduler_decision_cannot_double_promote_or_double_block"),
+    idempotency_guard("approval_projection_idempotency"; "hepta_runtime_approval_broker"; ["approvalId", "operatorScope", "requestHash"]; "same_approval_request_replays_same_pending_approval_node"),
+    idempotency_guard("agent_harness_handoff_projection_idempotency"; "hepta_runtime_agent_harness"; ["handoffId", "target", "payloadHash"]; "same_handoff_replays_same_blocked_external_handoff_node")
+  ] as $idempotency_guards
+  | [
+    readback("preview_readback_nodes_by_trace"; "nodes"; ["traceId", "expectedNodeIds"]; "node_visibility_required_before_edge_or_status_promotion"),
+    readback("preview_readback_edges_by_trace"; "edges"; ["traceId", "expectedEdgeIds"]; "edge_visibility_required_before_dependency_resolution"),
+    readback("preview_readback_task_results_by_status"; "taskResults"; ["status", "taskId", "traceId"]; "terminal_result_visibility_required_before_reducer_promotion"),
+    readback("preview_readback_artifacts_by_producer"; "artifacts"; ["producerNodeId", "artifactHash"]; "artifact_visibility_required_before_handoff_or_verifier_promotion"),
+    readback("preview_readback_approvals_by_scope"; "approvals"; ["operatorScope", "approvalId", "expiresAtUnixMs"]; "approval_visibility_required_before_scheduler_unblock"),
+    readback("preview_readback_timeline_by_trace"; "timelineEvents"; ["traceId", "eventKind", "redactionState"]; "timeline_visibility_required_before_operator_audit_or_replay")
+  ] as $readback_probes
+  | [
+    invariant("wal_records_are_append_only"; "state persistence must append immutable records before indexes observe them"),
+    invariant("checkpoints_are_derived_from_wal"; "checkpoint snapshots cannot be authoritative without replayable WAL evidence"),
+    invariant("idempotency_index_precedes_write"; "duplicate source records must be detected before a persistence write is allowed"),
+    invariant("readback_precedes_promotion"; "status, delivery, approval, and scheduler promotion require readback evidence"),
+    invariant("payloads_are_redacted_before_persistence"; "raw prompts, tool payloads, credentials, and private transcripts are never persisted"),
+    invariant("recovery_is_preview_only"; "this gate describes recovery contracts but cannot replay or mutate runtime state"),
+    invariant("persistence_preview_has_no_side_effects"; "the preview cannot write graph state, checkpoints, WAL records, or indexes")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_state_store_persistence_preview_gate",
+      schema_version: "work_graph_state_store_persistence_preview_v1",
+      preview_mode: "read_only_persistence_contract_preview_no_store_writes",
+      wal_operation_count: ($wal_operations | length),
+      checkpoint_contract_count: ($checkpoint_contracts | length),
+      idempotency_guard_count: ($idempotency_guards | length),
+      readback_probe_count: ($readback_probes | length),
+      invariant_count: ($invariants | length),
+      source_surface_count: ($idempotency_guards | map(.source_surface_id) | unique | length),
+      required_prior_gates: prior_gates,
+      wal_operations: $wal_operations,
+      checkpoint_contracts: $checkpoint_contracts,
+      idempotency_guards: $idempotency_guards,
+      readback_probes: $readback_probes,
+      invariants: $invariants,
+      recommended_next_gate: "hepta_work_graph_replay_readback_preview_gate",
+      ready_for_replay_readback_preview: true,
+      ready_for_store_persistence: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        state_store_persistence: {
+          rust_module_present: $state_store_persistence_rust_module_present,
+          report_script_present: $state_store_persistence_report_script_present,
+          gate_script_present: $state_store_persistence_gate_script_present
+        },
+        adapter_projection_fixture: {
+          rust_module_present: $adapter_projection_fixture_rust_module_present,
+          report_script_present: $adapter_projection_fixture_report_script_present,
+          gate_script_present: $adapter_projection_fixture_gate_script_present
+        },
+        unified_state_store: {
+          rust_module_present: $unified_state_store_rust_module_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        recovery_performed: false,
+        idempotency_index_mutated: false,
+        adapter_projection_enforced: false,
+        runtime_mutation_performed: false,
+        scheduler_cutover_performed: false,
+        approval_recorded: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

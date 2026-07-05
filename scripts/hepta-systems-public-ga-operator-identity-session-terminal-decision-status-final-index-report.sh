@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-terminal-decision-status-readback-report.sh"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable Public GA operator identity/session terminal decision/status readback report: $SOURCE_REPORT" >&2
+  exit 1
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required to build the Public GA operator identity/session terminal decision/status final index report" >&2
+  exit 1
+fi
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_terminal_decision_status_promotion_readback"
+  and .public_ga_operator_identity_session_terminal_decision_status_promotion_readback_ready == true
+  and .public_ga_operator_identity_session_terminal_decision_status_promotion_readback_blocked == true
+  and .terminal_decision_recorded == false
+  and .status_promotion_recorded == false
+  and .operator_approval_from_terminal_status_derived == false
+  and .activation_authority_from_terminal_status_derived == false
+  and .source_canonical_governance_tool_execution_closure_backfeed_ready == true
+  and .source_canonical_governance_tool_execution_closure_backfeed_blocker_count == 17
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_count == 4
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_ready_count == 4
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count == 17
+  and .source_canonical_governance_tool_execution_closure_backfeed_categorization_ready == true
+' <<<"$source_json" >/dev/null
+
+jq -n \
+  --argjson source "$source_json" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_terminal_decision_status_promotion_final_index",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_terminal_decision_status_promotion_readback_surface: $source.surface,
+    source_public_ga_operator_identity_session_terminal_decision_status_promotion_readback_ready: $source.public_ga_operator_identity_session_terminal_decision_status_promotion_readback_ready,
+    source_public_ga_operator_identity_session_terminal_decision_status_promotion_readback_blocked: $source.public_ga_operator_identity_session_terminal_decision_status_promotion_readback_blocked,
+    public_ga_operator_identity_session_terminal_decision_status_promotion_final_index_ready: true,
+    public_ga_operator_identity_session_terminal_decision_status_promotion_final_index_blocked: true,
+    public_ga_operator_identity_session_terminal_decision_status_promotion_readback_attached: true,
+    public_ga_operator_identity_session_final_acknowledgement_non_acceptance_final_index_attached: $source.public_ga_operator_identity_session_final_acknowledgement_non_acceptance_final_index_attached,
+    source_canonical_governance_tool_execution_closure_backfeed_ready: $source.source_canonical_governance_tool_execution_closure_backfeed_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_blocker_count: $source.source_canonical_governance_tool_execution_closure_backfeed_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_ready_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_categorization_ready: $source.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_categories: $source.source_canonical_governance_tool_execution_closure_backfeed_categories,
+    operator_identity_session_terminal_decision_status_promotion_denial_gate_present: $source.operator_identity_session_terminal_decision_status_promotion_denial_gate_present,
+    operator_identity_session_terminal_decision_status_promotion_denial_doc_present: $source.operator_identity_session_terminal_decision_status_promotion_denial_doc_present,
+    operator_identity_session_terminal_decision_status_promotion_denial_gate_invoked: false,
+    operator_identity_session_final_acknowledgement_non_acceptance_gate_invoked: false,
+    long_soak_required_by_source_terminal_decision_status_gate: $source.long_soak_required_by_source_terminal_decision_status_gate,
+    long_soak_started: false,
+    terminal_decision_accepted: false,
+    terminal_decision_recorded: false,
+    terminal_decision_persisted: false,
+    terminal_decision_materialized: false,
+    terminal_decision_filesystem_written: false,
+    terminal_decision_delivered: false,
+    terminal_status_recorded: false,
+    terminal_status_persisted: false,
+    terminal_status_materialized: false,
+    terminal_status_filesystem_written: false,
+    status_promotion_recorded: false,
+    revocation_replay_terminal_decision_recorded: false,
+    logout_replay_status_promoted: false,
+    identity_reinstatement_terminal_status_recorded: false,
+    session_reinstatement_decision_recorded: false,
+    channel_decision_delivered: false,
+    external_decision_sent: false,
+    telegram_decision_sent: false,
+    acceptance_from_terminal_decision_recorded: false,
+    operator_approval_from_terminal_status_derived: false,
+    release_publication_authority_from_terminal_status_derived: false,
+    activation_authority_from_terminal_status_derived: false,
+    activation_command_from_terminal_status_derived: false,
+    activation_from_terminal_status_allowed: false,
+    live_execution_from_terminal_status_allowed: false,
+    download_link_from_terminal_status_rendered: false,
+    install_command_from_terminal_status_rendered: false,
+    install_from_terminal_status_executed: false,
+    service_restart_from_terminal_status_performed: false,
+    active_binary_from_terminal_status_mutated: false,
+    public_status_exposed: false,
+    public_ga_status_exposed: false,
+    public_release_status_exposed: false,
+    public_ga_claim_allowed: false,
+    public_ga_claimed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    memory_store_write_performed: false,
+    live_kg_write_performed: false,
+    telegram_send_performed: false,
+    external_send_performed: false,
+    public_ga_readiness_script_invoked: false,
+    public_claim_non_promotion_denial_gate_invoked: false,
+    terminal_live_gates_invoked: false,
+    final_blocker_count: 46,
+    manual_operator_live_cutover_approval_required: true,
+    terminal_live_url_required: false,
+    long_soak_required: false,
+    next_migration_step: "attach_public_ga_operator_identity_session_terminal_decision_status_promotion_final_index_to_public_ga_operator_identity_session_operator_intent_consent_reconfirmation_without_status_promotion",
+    local_gate: "scripts/hepta-systems-public-ga-operator-identity-session-terminal-decision-status-final-index-gate.sh",
+    architecture_note: "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_IDENTITY_SESSION_TERMINAL_DECISION_STATUS_FINAL_INDEX_2026-06-21.md",
+    source_files: {
+      public_ga_operator_identity_session_terminal_decision_status_readback_report: "scripts/hepta-systems-public-ga-operator-identity-session-terminal-decision-status-readback-report.sh"
+    },
+    side_effect_free: true,
+    side_effects: ($source.side_effects)
+  }'

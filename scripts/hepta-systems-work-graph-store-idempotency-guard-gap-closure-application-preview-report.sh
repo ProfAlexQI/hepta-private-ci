@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-store-guard-gap-closure-application.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+capture_json_report \
+  "hepta-work-graph-store-idempotency-guard-gap-closure-readback-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-store-idempotency-guard-gap-closure-readback-preview-report.sh" \
+  >"$tmpdir/store_guard_readback.json"
+
+application_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_store_idempotency_guard_gap_closure_application_preview.rs
+)"
+application_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-store-idempotency-guard-gap-closure-application-preview-report.sh
+)"
+application_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-store-idempotency-guard-gap-closure-application-preview-gate.sh
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-store-idempotency-guard-gap-closure-readback-preview-gate.sh
+)"
+
+jq -n \
+  --slurpfile readback "$tmpdir/store_guard_readback.json" \
+  --argjson application_rust_module_present "$application_rust_module_present" \
+  --argjson application_report_script_present "$application_report_script_present" \
+  --argjson application_gate_script_present "$application_gate_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  '
+  $readback[0] as $readback
+  | def source_category($source):
+      if $source == "plan_mode_proposed_plan_blocks" or $source == "app_server_turn_plan_notification" then "planning"
+      elif $source == "multi_agent_v2_mailbox_wait" or $source == "hepta_runtime_multi_agent_reducer" then "multi_agent"
+      elif $source == "hepta_runtime_task_board" then "runtime_scheduler"
+      else "unknown"
+      end;
+  def requires_task_result($source):
+      $source == "hepta_runtime_multi_agent_reducer" or $source == "hepta_runtime_task_board";
+  def app_plan_id($source):
+      "apply_" + $source + "_store_idempotency_guard_preview";
+  def probe_binding_for($source):
+      [$readback.probe_binding_assertions[] | select(.source_surface_id == $source)][0];
+  def application_plan($plan):
+      (probe_binding_for($plan.source_surface_id)) as $probe
+      | {
+          application_plan_id: app_plan_id($plan.source_surface_id),
+          readback_plan_id: $plan.id,
+          source_surface_id: $plan.source_surface_id,
+          source_category: source_category($plan.source_surface_id),
+          candidate_guard_id: $plan.candidate_guard_id,
+          key_formula_assertion_id: $plan.key_formula_assertion_id,
+          collision_policy_assertion_id: $plan.collision_policy_assertion_id,
+          probe_binding_assertion_id: $plan.probe_binding_assertion_id,
+          collection_ref_assertion_id: $plan.collection_ref_assertion_id,
+          application_scope: "store_idempotency_guard_runtime_binding",
+          expected_key_fields: $plan.expected_key_fields,
+          expected_collection_ids: $plan.expected_collection_ids,
+          readback_probe_contract_ids: $plan.readback_probe_contract_ids,
+          readback_evidence_fields: $probe.readback_evidence_fields,
+          application_state: "preview_application_defined_runtime_guard_not_attached",
+          readback_verified_by_preview: true,
+          applies_to_runtime: false,
+          mutates_idempotency_index: false,
+          persists_state_store_guard: false,
+          enables_append_only_store: false,
+          enforces_projection: false
+        };
+  def source_outcome($plan): {
+      source_surface_id: $plan.source_surface_id,
+      source_category: $plan.source_category,
+      candidate_guard_id: $plan.candidate_guard_id,
+      application_plan_id: $plan.application_plan_id,
+      expected_collection_ids: $plan.expected_collection_ids,
+      readback_probe_contract_ids: $plan.readback_probe_contract_ids,
+      post_application_store_guard_state: "store_guard_contract_ready_preview_after_application",
+      store_idempotency_guard_ready_preview: true,
+      ready_for_enforcement_readiness_store_guard_rerun: true,
+      ready_for_projection_enforcement: false,
+      applies_to_runtime: false
+    };
+  def app_group($id; $priority; $sources; $plans): {
+      id: $id,
+      priority: $priority,
+      source_surface_ids: $sources,
+      application_plan_ids: ($plans | map(select(.source_surface_id as $source | $sources | index($source)) | .application_plan_id)),
+      expected_store_guard_ready_source_count_after_application: ($sources | length),
+      mutates_runtime: false,
+      mutates_idempotency_index: false,
+      enables_append_only_store: false
+    };
+  def app_guard($id; $severity; $scope): {
+      id: $id,
+      severity: $severity,
+      guard_scope: $scope,
+      required_before_projection_enforcement: true,
+      satisfied_by_preview: false
+    };
+  def affected_sources($plans; $predicate):
+      reduce ($plans[] | select($predicate)) as $plan ([]; if index($plan.source_surface_id) then . else . + [$plan.source_surface_id] end);
+  def app_plan_ids($plans; $predicate):
+      $plans | map(select($predicate) | .application_plan_id);
+  def blocker($id; $severity; $sources; $plan_ids; $fix): {
+      id: $id,
+      severity: $severity,
+      affected_source_surface_ids: $sources,
+      affected_application_plan_ids: $plan_ids,
+      required_before_projection_enforcement: true,
+      recommended_fix: $fix
+    };
+  ($readback.readback_plans | map(application_plan(.))) as $application_plans
+  | ($application_plans | map(source_outcome(.))) as $source_outcomes
+  | [
+      app_group("planning_store_idempotency_guard_application"; "p0"; ["plan_mode_proposed_plan_blocks", "app_server_turn_plan_notification"]; $application_plans),
+      app_group("multi_agent_store_idempotency_guard_application"; "p0"; ["multi_agent_v2_mailbox_wait", "hepta_runtime_multi_agent_reducer"]; $application_plans),
+      app_group("task_board_store_idempotency_guard_application"; "p0"; ["hepta_runtime_task_board"]; $application_plans)
+    ] as $application_groups
+  | [
+      app_guard("runtime_guard_attachment_disabled"; "critical"; "runtime"),
+      app_guard("idempotency_index_mutation_disabled"; "critical"; "idempotency_index"),
+      app_guard("state_store_guard_persistence_disabled"; "critical"; "state_store"),
+      app_guard("append_only_store_enablement_disabled"; "critical"; "append_only_store"),
+      app_guard("task_result_enforcement_disabled"; "high"; "task_result"),
+      app_guard("operator_review_required"; "high"; "operator_review"),
+      app_guard("enforcement_readiness_store_guard_rerun_required"; "high"; "readiness_rerun")
+    ] as $application_guards
+  | ($application_plans | map(.source_surface_id)) as $all_sources
+  | [
+      blocker("store_guard_application_is_preview_only"; "medium"; $all_sources; app_plan_ids($application_plans; true); "keep store guard application as a no-mutation preview until readiness rerun proves the blocker moved"),
+      blocker("runtime_guard_application_disabled"; "high"; $all_sources; app_plan_ids($application_plans; true); "attach store idempotency guards to runtime adapters only after operator review and persistence gates are promoted"),
+      blocker("idempotency_index_mutation_disabled"; "high"; $all_sources; app_plan_ids($application_plans; true); "do not mutate idempotency indexes until collision handling and replay evidence are enforced"),
+      blocker("state_store_guard_persistence_disabled"; "high"; $all_sources; app_plan_ids($application_plans; true); "keep candidate guard rows preview-only until append-only store intake is promoted"),
+      blocker("append_only_store_enablement_disabled"; "high"; $all_sources; app_plan_ids($application_plans; true); "do not allow append-only writes until store guard application is promoted and rerun confirms readiness"),
+      blocker(
+        "terminal_task_result_enforcement_disabled";
+        "high";
+        ($application_plans | map(select(.source_surface_id == "hepta_runtime_multi_agent_reducer" or .source_surface_id == "hepta_runtime_task_board") | .source_surface_id));
+        ($application_plans | map(select(.source_surface_id == "hepta_runtime_multi_agent_reducer" or .source_surface_id == "hepta_runtime_task_board") | .application_plan_id));
+        "enforce terminal TaskResult output before promoting reducer and task_board store guards"
+      ),
+      blocker("enforcement_readiness_store_guard_rerun_missing"; "high"; $all_sources; app_plan_ids($application_plans; true); "rerun unified projection enforcement-readiness against the store guard application preview outcomes")
+    ] as $blockers
+  | ($readback.required_prior_gates + [$readback.gate]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_store_idempotency_guard_gap_closure_application_preview_gate",
+      schema_version: "work_graph_store_idempotency_guard_gap_closure_application_preview_v1",
+      preview_mode: "read_only_store_idempotency_guard_gap_closure_application_preview_no_runtime_mutation",
+      readback_plan_count: $readback.readback_plan_count,
+      application_plan_count: ($application_plans | length),
+      source_outcome_count: ($source_outcomes | length),
+      source_store_guard_contract_ready_preview_count: ($source_outcomes | map(select(.store_idempotency_guard_ready_preview)) | length),
+      application_group_count: ($application_groups | length),
+      expected_collection_ref_count: ($application_plans | map(.expected_collection_ids | length) | add),
+      readback_probe_contract_ref_count: ($application_plans | map(.readback_probe_contract_ids | length) | add),
+      readback_evidence_field_ref_count: ($application_plans | map(.readback_evidence_fields | length) | add),
+      task_result_guard_dependency_count: ($application_plans | map(select(requires_task_result(.source_surface_id))) | length),
+      application_guard_count: ($application_guards | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      application_plans: $application_plans,
+      source_outcomes: $source_outcomes,
+      application_groups: $application_groups,
+      application_guards: $application_guards,
+      blockers: $blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_unified_projection_enforcement_readiness_store_guard_rerun_preview_gate",
+      ready_for_unified_projection_enforcement_readiness_store_guard_rerun_preview: true,
+      ready_for_runtime_guard_application: false,
+      ready_for_append_only_store_enablement: false,
+      ready_for_projection_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        store_idempotency_guard_gap_closure_application: {
+          rust_module_present: $application_rust_module_present,
+          report_script_present: $application_report_script_present,
+          gate_script_present: $application_gate_script_present
+        },
+        store_idempotency_guard_gap_closure_readback: {
+          upstream_gate: ($readback.gate == "hepta_work_graph_store_idempotency_guard_gap_closure_readback_preview_gate"),
+          gate_script_present: $readback_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        idempotency_index_mutated: false,
+        store_guard_attached: false,
+        append_only_store_enabled: false,
+        projection_enforcement_enabled: false,
+        readback_performed: false,
+        task_result_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        role_manifest_enforcement_enabled: false,
+        approval_recorded: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

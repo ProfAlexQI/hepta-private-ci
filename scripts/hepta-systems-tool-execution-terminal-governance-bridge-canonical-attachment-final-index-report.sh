@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+READBACK_REPORT="$ROOT/scripts/hepta-systems-tool-execution-terminal-governance-bridge-canonical-attachment-readback-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_TERMINAL_GOVERNANCE_BRIDGE_CANONICAL_ATTACHMENT_FINAL_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-execution-terminal-governance-bridge-canonical-attachment-final-index-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$READBACK_REPORT" ]] || fail "missing executable terminal governance bridge canonical attachment readback report: $READBACK_REPORT"
+[[ -f "$DOC" ]] || fail "missing terminal governance bridge canonical attachment final index architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the terminal governance bridge canonical attachment final index report"
+fi
+
+jq -n \
+  --slurpfile readback <("$READBACK_REPORT") \
+  --arg gate "scripts/hepta-systems-tool-execution-terminal-governance-bridge-canonical-attachment-final-index-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_TERMINAL_GOVERNANCE_BRIDGE_CANONICAL_ATTACHMENT_FINAL_INDEX_2026-06-21.md" \
+  '
+  ($readback[0]) as $readback |
+  [
+    "manual_operator_live_cutover_approval_required",
+    "canonical_successor_consumer_cutover_disallowed",
+    "current_canonical_consumer_rollback_anchor_retained",
+    "terminal_live_gates_not_invoked",
+    "canonical_gate_not_invoked",
+    "wrapper_target_not_invoked",
+    "tool_execution_live_cutover_allowed_false",
+    "tool_execution_public_ga_allowed_false",
+    "live_url_not_contacted",
+    "long_soak_not_started"
+  ] as $final_blockers |
+  ($readback.bridge_canonical_attachment_readback_ready == true
+    and $readback.bridge_source_count == 2
+    and $readback.source_closure_ready == true
+    and $readback.source_closure_blocker_count == 17
+    and $readback.source_closure_blocker_category_count == 4
+    and $readback.source_closure_blocker_category_ready_count == 4
+    and $readback.source_closure_blocker_category_blocker_count == 17
+    and $readback.source_closure_blocker_categorization_ready == true
+    and $readback.source_current_canonical_governance_terminal_index_ready == true
+    and $readback.source_current_canonical_governance_terminal_index_blocked == true
+    and $readback.source_canonical_governance_tool_execution_closure_backfeed_ready == true
+    and $readback.source_canonical_governance_tool_execution_closure_backfeed_blocker_count == 17
+    and $readback.source_canonical_governance_tool_execution_closure_backfeed_category_count == 4
+    and $readback.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count == 4
+    and $readback.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count == 17
+    and $readback.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready == true
+    and $readback.source_successor_consumer_cutover_allowed == false
+    and $readback.source_canonical_governance_rollback_anchor == "current_canonical_consumer"
+    and $readback.canonical_governance_terminal_index_attached == true
+    and $readback.terminal_source_probe_ready_count == 4
+    and $readback.terminal_live_gates_invoked == false
+    and $readback.canonical_gate_wrapper_invoked == false
+    and $readback.wrapper_target_invoked == false
+    and $readback.terminal_live_url_required == false
+    and $readback.long_soak_required == false
+    and $readback.tool_execution_live_cutover_allowed == false
+    and $readback.tool_execution_public_ga_allowed == false
+    and ($readback.side_effects | to_entries | all(.value == false))) as $final_index_ready |
+  {
+    runtime:"hepta",
+    surface:"tool_execution_terminal_governance_bridge_canonical_attachment_final_index",
+    plugin_id:$readback.plugin_id,
+    status:(if $final_index_ready then "ready_blocked" else "blocked" end),
+    source_bridge_canonical_attachment_readback_surface:$readback.surface,
+    source_bridge_canonical_attachment_readback_ready:$readback.bridge_canonical_attachment_readback_ready,
+    terminal_governance_bridge_canonical_attachment_final_index_ready:$final_index_ready,
+    terminal_governance_bridge_canonical_attachment_final_index_blocked:true,
+    bridge_source_count:$readback.bridge_source_count,
+    tool_execution_closure_attached:true,
+    source_closure_blocker_count:$readback.source_closure_blocker_count,
+    source_closure_blocker_category_count:$readback.source_closure_blocker_category_count,
+    source_closure_blocker_category_ready_count:$readback.source_closure_blocker_category_ready_count,
+    source_closure_blocker_category_blocker_count:$readback.source_closure_blocker_category_blocker_count,
+    source_closure_blocker_categorization_ready:$readback.source_closure_blocker_categorization_ready,
+    source_closure_blocker_categories:$readback.source_closure_blocker_categories,
+    current_canonical_governance_terminal_index_attached:$readback.canonical_governance_terminal_index_attached,
+    terminal_source_probe_count:$readback.terminal_source_probe_count,
+    terminal_source_probe_ready_count:$readback.terminal_source_probe_ready_count,
+    source_active_current_canonical_consumer_surface:$readback.source_active_current_canonical_consumer_surface,
+    source_successor_cutover_final_gate_attached:$readback.source_successor_cutover_final_gate_attached,
+    source_successor_consumer_cutover_allowed:false,
+    source_canonical_governance_tool_execution_closure_backfeed_ready:$readback.source_canonical_governance_tool_execution_closure_backfeed_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_blocker_count:$readback.source_canonical_governance_tool_execution_closure_backfeed_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_count:$readback.source_canonical_governance_tool_execution_closure_backfeed_category_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_ready_count:$readback.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count:$readback.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_categorization_ready:$readback.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_categories:$readback.source_canonical_governance_tool_execution_closure_backfeed_categories,
+    source_canonical_governance_rollback_anchor:$readback.source_canonical_governance_rollback_anchor,
+    final_blocker_count:($final_blockers | length),
+    final_blockers:$final_blockers,
+    manual_operator_live_cutover_approval_required:true,
+    terminal_live_gates_invoked:false,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    terminal_live_url_required:false,
+    long_soak_required:false,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"attach_terminal_governance_bridge_canonical_attachment_final_index_to_next_terminal_denial_summary_without_live_gate_invocation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      terminal_governance_bridge_canonical_attachment_readback_report:"scripts/hepta-systems-tool-execution-terminal-governance-bridge-canonical-attachment-readback-report.sh"
+    },
+    side_effect_free:true,
+    side_effects:$readback.side_effects
+  }'
