@@ -486,6 +486,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_
     "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-receipt-acceptance-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_ROLLBACK_TOMBSTONE_ZERO_RESIDUE_ACCEPTANCE_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-rollback-tombstone-zero-residue-acceptance-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -496,7 +498,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 266;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 267;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -2024,6 +2026,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-rollback-tombstone-zero-residue-acceptance-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-rollback-tombstone-zero-residue-acceptance-boundary",
         side_effect_boundary: "minimal scoped Memory real-write canary durable store write rollback/tombstone zero-residue acceptance boundary; consumes the durable store write receipt acceptance boundary as source evidence while accepting only rollback restore, tombstone cleanup, artifact cleanup, post-rollback absence, and zero-residue evidence, without performing a new canary store write, executing rollback/tombstone cleanup, writing the production durable Memory backend, KG, providers/models, credentials, channels, public/release artifacts, install/restart authority, or the active binary",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary",
+        side_effect_boundary: "scoped production durable Memory write preflight boundary; consumes the minimal scoped canary rollback/tombstone zero-residue acceptance boundary as source evidence while binding a production durable Memory target, operator approval packet, single-use nonce, explicit command, WAL/receipt/readback/rollback/tombstone/zero-residue protections, and denial of KG, provider/model, credential, channel, release, install, restart, and active-binary side effects; performs no production durable Memory write",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4482,6 +4491,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_preflight_boundary_report(),
                     ),
                 );
             }
@@ -101836,6 +101855,745 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_preflight_boundary_report()
+-> serde_json::Value {
+    const PREFLIGHT_SURFACES: &[&str] = &[
+        "source_zero_residue_acceptance_boundary_required",
+        "production_durable_memory_target_required",
+        "operator_approval_packet_required",
+        "single_use_nonce_required",
+        "explicit_command_required",
+        "payload_redaction_required",
+        "wal_receipt_plan_required",
+        "post_write_readback_plan_required",
+        "rollback_tombstone_zero_residue_plan_required",
+        "replay_idempotency_guard_required",
+        "operator_preflight_handoff_required",
+        "production_write_execution_forbidden_on_preflight_route",
+    ];
+    const PREFLIGHT_DENIALS: &[&str] = &[
+        "source_zero_residue_acceptance_boundary_required",
+        "source_zero_residue_acceptance_hash_required",
+        "approved_production_namespace_required",
+        "approved_production_store_required",
+        "approved_production_scope_required",
+        "production_durable_memory_target_required",
+        "operator_approval_packet_required",
+        "operator_identity_session_required",
+        "operator_scope_binding_required",
+        "single_use_nonce_required",
+        "explicit_command_required",
+        "command_budget_required",
+        "payload_redaction_required",
+        "raw_plaintext_payload_denied",
+        "wal_plan_required",
+        "receipt_plan_required",
+        "receipt_hash_chain_required",
+        "post_write_readback_plan_required",
+        "rollback_plan_required",
+        "tombstone_cleanup_plan_required",
+        "zero_residue_plan_required",
+        "replay_idempotency_guard_required",
+        "preflight_result_record_required",
+        "preflight_result_readback_required",
+        "production_write_execution_report_route_denied",
+        "production_durable_memory_backend_write_denied",
+        "durable_memory_backend_read_or_rollback_denied",
+        "memory_store_mutation_denied",
+        "wal_write_report_route_denied",
+        "receipt_persist_report_route_denied",
+        "rollback_execution_report_route_denied",
+        "tombstone_write_report_route_denied",
+        "kg_live_write_denied",
+        "provider_model_invocation_denied",
+        "credential_channel_release_install_denied",
+        "unrestricted_full_live_activation_denied",
+    ];
+    const FALSE_PREFLIGHT_SIDE_EFFECT_KEYS: &[&str] = &[
+        "production_durable_memory_write_executed",
+        "production_durable_memory_backend_present",
+        "production_durable_memory_store_write_performed",
+        "actual_production_durable_memory_write_performed",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "wal_write_performed",
+        "wal_recorded",
+        "wal_persisted",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_materialized",
+        "receipt_delivered",
+        "post_write_readback_performed",
+        "readback_result_recorded",
+        "readback_result_persisted",
+        "readback_result_accepted",
+        "rollback_executed",
+        "rollback_performed",
+        "rollback_result_recorded",
+        "rollback_result_persisted",
+        "rollback_result_accepted",
+        "tombstone_write_performed",
+        "tombstone_cleanup_executed",
+        "tombstone_cleanup_result_recorded",
+        "tombstone_cleanup_result_accepted",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_claim_promoted",
+        "public_release_published",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "service_restart_performed",
+        "active_binary_mutated",
+    ];
+    const TRUE_PREFLIGHT_KEYS: &[&str] = &[
+        "scoped_production_durable_memory_write_preflight_performed",
+        "scoped_production_durable_memory_write_preflight_result_recorded",
+        "scoped_production_durable_memory_write_preflight_result_accepted",
+        "source_zero_residue_acceptance_boundary_accepted",
+        "production_durable_memory_target_bound",
+        "operator_approval_packet_preflight_bound",
+        "operator_identity_session_preflight_bound",
+        "single_use_nonce_preflight_bound",
+        "explicit_command_preflight_bound",
+        "payload_redaction_preflight_bound",
+        "wal_receipt_preflight_bound",
+        "post_write_readback_preflight_bound",
+        "rollback_tombstone_zero_residue_preflight_bound",
+        "replay_idempotency_preflight_bound",
+        "production_write_execution_forbidden_on_preflight_route",
+        "kg_provider_channel_release_install_active_binary_forbidden",
+    ];
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-production-durable-preflight-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary_ready": false,
+                "minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_accepted": false,
+                "source_scoped_production_durable_memory_write_preflight_source_report_thread_failed": true
+            })
+        });
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_next_action_preflight = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.get(1))
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some("prepare_scoped_production_durable_memory_write_preflight_boundary")
+                && item
+                    .get(
+                        "requires_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary",
+                    )
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && item
+                    .get("writes_production_durable_memory")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_side_effects_ok = source
+        .get("side_effects")
+        .and_then(serde_json::Value::as_object)
+        .map(|effects| {
+            effects
+                .get("durable_store_write_rollback_tombstone_zero_residue_acceptance_performed")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+                && effects
+                    .get(
+                        "durable_store_write_rollback_tombstone_zero_residue_acceptance_result_accepted",
+                    )
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && effects
+                    .get("memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("wal_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("receipt_persisted")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("rollback_executed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("tombstone_cleanup_executed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("durable_memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("external_send_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_ready = source.get("status").and_then(serde_json::Value::as_str) == Some("ready")
+        && json_bool(
+            &source,
+            "memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_accepted",
+        )
+        && json_u64(
+            &source,
+            "accepted_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_fixture_count",
+        ) == 1
+        && json_u64(
+            &source,
+            "blocked_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_fixture_count",
+        ) == 9
+        && json_u64(&source, "zero_residue_acceptance_result_accepted_count") == 1
+        && json_bool(&source, "rollback_tombstone_cleanup_absence_verified")
+        && json_bool(&source, "artifact_zero_residue_verified")
+        && json_bool(
+            &source,
+            "source_single_shot_canary_artifact_zero_residue_confirmed",
+        )
+        && json_u64(
+            &source,
+            "source_single_shot_canary_post_rollback_memory_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "source_single_shot_canary_artifact_post_cleanup_count",
+        ) == 0
+        && json_u64(
+            &source,
+            "source_single_shot_memory_store_write_performed_count",
+        ) == 1
+        && json_u64(&source, "source_single_shot_wal_write_performed_count") == 1
+        && json_u64(&source, "source_single_shot_receipt_persisted_count") == 1
+        && json_u64(
+            &source,
+            "source_single_shot_post_write_readback_performed_count",
+        ) == 1
+        && json_u64(&source, "source_single_shot_rollback_executed_count") == 1
+        && json_u64(
+            &source,
+            "source_single_shot_tombstone_cleanup_executed_count",
+        ) == 1
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "wal_write_performed")
+        && !json_bool(&source, "receipt_persisted")
+        && !json_bool(&source, "rollback_executed")
+        && !json_bool(&source, "tombstone_cleanup_executed")
+        && !json_bool(&source, "production_durable_memory_store_write_performed")
+        && !json_bool(&source, "actual_production_durable_memory_write_performed")
+        && !json_bool(&source, "durable_memory_store_write_performed")
+        && !json_bool(&source, "durable_memory_store_read_performed")
+        && !json_bool(&source, "durable_memory_store_rollback_performed")
+        && !json_bool(&source, "live_kg_write_performed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "credential_read")
+        && !json_bool(&source, "channel_send_performed")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "install_executed")
+        && !json_bool(&source, "service_restarted")
+        && !json_bool(&source, "active_binary_mutated")
+        && source_next_action_preflight
+        && source_side_effects_ok;
+
+    let approved_production_namespace = "hepta.memory.production.scoped";
+    let approved_production_store = "hepta-memory-durable-store-production-preflight-only";
+    let approved_production_scope = "operator-approved-session";
+    let production_durable_memory_target_id =
+        "hepta-scoped-production-durable-memory-write-target-v1";
+    let production_durable_memory_payload_class = "redacted-minimal-operator-approved-memory-fact";
+    let operator_packet_scope = "hepta.memory.production.scoped:session:single-write-preflight";
+    let source_report_sha256 = sha256_text_value(&source.to_string());
+    let source_zero_residue_acceptance_boundary_hash_sha256 = json_str(
+        &source,
+        "minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary_hash_sha256",
+    );
+    let source_zero_residue_acceptance_policy_hash_sha256 = json_str(
+        &source,
+        "minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_policy_hash_sha256",
+    );
+    let source_zero_residue_acceptance_hash_sha256 =
+        json_str(&source, "zero_residue_acceptance_hash_sha256");
+    let target_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-target:v1:namespace={approved_production_namespace}:store={approved_production_store}:scope={approved_production_scope}:target={production_durable_memory_target_id}:source={source_zero_residue_acceptance_hash_sha256}"
+    ));
+    let operator_packet_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-operator-packet-preflight:v1:scope={operator_packet_scope}:target={target_hash_sha256}:requires-fresh-approval=true"
+    ));
+    let nonce_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-nonce-preflight:v1:packet={operator_packet_hash_sha256}:single-use=true"
+    ));
+    let command_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-explicit-command-preflight:v1:nonce={nonce_hash_sha256}:budget=single-write"
+    ));
+    let payload_redaction_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-payload-redaction-preflight:v1:class={production_durable_memory_payload_class}:raw-plaintext-recording=false"
+    ));
+    let wal_receipt_plan_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-wal-receipt-plan:v1:command={command_hash_sha256}:payload={payload_redaction_hash_sha256}:persist-now=false"
+    ));
+    let readback_plan_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-readback-plan:v1:wal-receipt={wal_receipt_plan_hash_sha256}:execute-now=false"
+    ));
+    let rollback_tombstone_zero_residue_plan_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-rollback-tombstone-zero-residue-plan:v1:readback={readback_plan_hash_sha256}:source-zero-residue={source_zero_residue_acceptance_hash_sha256}:execute-now=false"
+    ));
+    let preflight_result_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-preflight-result:v1:target={target_hash_sha256}:operator={operator_packet_hash_sha256}:command={command_hash_sha256}:rollback={rollback_tombstone_zero_residue_plan_hash_sha256}:accepted=true"
+    ));
+    let preflight_boundary_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-preflight-boundary:v1:source={source_report_sha256}:result={preflight_result_hash_sha256}:fixtures=10:accepted=1:denials={}:production-write=false",
+        PREFLIGHT_DENIALS.len()
+    ));
+    let preflight_policy_hash_sha256 = sha256_text_value(
+        "scoped-production-durable-memory-write-preflight-policy:v1:bind-target-operator-nonce-command-wal-receipt-readback-rollback-tombstone-zero-residue:no-production-write:no-kg:no-provider:no-channel:no-release:no-install",
+    );
+    let target_bound = !source_zero_residue_acceptance_boundary_hash_sha256.is_empty()
+        && !source_zero_residue_acceptance_policy_hash_sha256.is_empty()
+        && !source_zero_residue_acceptance_hash_sha256.is_empty();
+    let surfaces_ready = source_ready && target_bound;
+    let report_ready = route_count_source_command_accepted && surfaces_ready;
+    let accepted_fixture_count = if report_ready { 1 } else { 0 };
+    let blocked_fixture_count = 10 - accepted_fixture_count;
+
+    let mut fixtures = Vec::new();
+    fixtures.push(serde_json::json!({
+        "id": "scoped-production-durable-memory-write-preflight",
+        "fixture_id": "scoped-production-durable-memory-write-preflight",
+        "scoped_production_durable_memory_write_preflight_accepted": report_ready,
+        "reason": if report_ready { "production_durable_memory_write_preflight_guards_bound_without_execution" } else { "source_zero_residue_or_route_count_not_ready" },
+        "source_zero_residue_acceptance_boundary_bound": report_ready,
+        "production_durable_memory_target_bound": report_ready,
+        "operator_approval_packet_preflight_bound": report_ready,
+        "single_use_nonce_preflight_bound": report_ready,
+        "explicit_command_preflight_bound": report_ready,
+        "wal_receipt_preflight_bound": report_ready,
+        "post_write_readback_preflight_bound": report_ready,
+        "rollback_tombstone_zero_residue_preflight_bound": report_ready,
+        "production_durable_memory_store_write_performed": false,
+        "external_send_performed": false
+    }));
+    for id in [
+        "missing-zero-residue-source",
+        "wrong-production-namespace",
+        "missing-operator-approval-packet",
+        "missing-single-use-nonce",
+        "missing-explicit-command",
+        "missing-wal-receipt-plan",
+        "missing-post-write-readback-plan",
+        "missing-rollback-tombstone-zero-residue-plan",
+        "production-write-or-external-side-effect-attempt",
+    ] {
+        fixtures.push(serde_json::json!({
+            "id": id,
+            "fixture_id": id,
+            "scoped_production_durable_memory_write_preflight_accepted": false,
+            "reason": "blocked_noop",
+            "production_durable_memory_store_write_performed": false,
+            "external_send_performed": false
+        }));
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for &key in FALSE_PREFLIGHT_SIDE_EFFECT_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+        side_effects.insert(format!("{key}_count"), serde_json::json!(0));
+    }
+    for &key in TRUE_PREFLIGHT_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(report_ready));
+        side_effects.insert(
+            format!("{key}_count"),
+            serde_json::json!(if report_ready { 1 } else { 0 }),
+        );
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "endpoint": HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT,
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary --json",
+        "native_route": true,
+        "side_effect_free": false,
+        "external_side_effect_free": true,
+        "audit_date": "2026-07-05"
+    });
+    let report_object = report
+        .as_object_mut()
+        .expect("scoped production durable Memory write preflight report object");
+    macro_rules! insert_report {
+        ($key:expr, $value:expr) => {
+            report_object.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report!("route_count", route_matrix.route_count);
+    insert_report!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report!("missing_route_count", route_matrix.missing_route_count);
+    insert_report!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report!(
+        "memory_write_execution_scoped_production_durable_memory_write_preflight_boundary_ready",
+        report_ready
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_ready",
+        report_ready
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_performed",
+        report_ready
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_accepted",
+        report_ready
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_mode",
+        "preflight_only_no_production_durable_memory_mutation"
+    );
+    insert_report!(
+        "source_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary_ready",
+        source_ready
+    );
+    insert_report!(
+        "source_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary_report_sha256",
+        source_report_sha256
+    );
+    insert_report!(
+        "source_zero_residue_acceptance_boundary_hash_sha256",
+        source_zero_residue_acceptance_boundary_hash_sha256
+    );
+    insert_report!(
+        "source_zero_residue_acceptance_policy_hash_sha256",
+        source_zero_residue_acceptance_policy_hash_sha256
+    );
+    insert_report!(
+        "source_zero_residue_acceptance_hash_sha256",
+        source_zero_residue_acceptance_hash_sha256
+    );
+    insert_report!(
+        "source_accepted_zero_residue_acceptance_fixture_count",
+        json_u64(
+            &source,
+            "accepted_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_fixture_count"
+        )
+    );
+    insert_report!(
+        "source_blocked_zero_residue_acceptance_fixture_count",
+        json_u64(
+            &source,
+            "blocked_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_fixture_count"
+        )
+    );
+    insert_report!(
+        "source_zero_residue_acceptance_result_accepted_count",
+        json_u64(&source, "zero_residue_acceptance_result_accepted_count")
+    );
+    insert_report!(
+        "source_single_shot_memory_store_write_performed_count",
+        json_u64(
+            &source,
+            "source_single_shot_memory_store_write_performed_count"
+        )
+    );
+    insert_report!(
+        "source_single_shot_wal_write_performed_count",
+        json_u64(&source, "source_single_shot_wal_write_performed_count")
+    );
+    insert_report!(
+        "source_single_shot_receipt_persisted_count",
+        json_u64(&source, "source_single_shot_receipt_persisted_count")
+    );
+    insert_report!(
+        "source_single_shot_post_write_readback_performed_count",
+        json_u64(
+            &source,
+            "source_single_shot_post_write_readback_performed_count"
+        )
+    );
+    insert_report!(
+        "source_single_shot_rollback_executed_count",
+        json_u64(&source, "source_single_shot_rollback_executed_count")
+    );
+    insert_report!(
+        "source_single_shot_tombstone_cleanup_executed_count",
+        json_u64(
+            &source,
+            "source_single_shot_tombstone_cleanup_executed_count"
+        )
+    );
+    insert_report!(
+        "source_single_shot_canary_post_rollback_memory_count",
+        json_u64(
+            &source,
+            "source_single_shot_canary_post_rollback_memory_count"
+        )
+    );
+    insert_report!(
+        "source_single_shot_canary_artifact_post_cleanup_count",
+        json_u64(
+            &source,
+            "source_single_shot_canary_artifact_post_cleanup_count"
+        )
+    );
+    insert_report!(
+        "source_single_shot_canary_artifact_zero_residue_confirmed",
+        json_bool(
+            &source,
+            "source_single_shot_canary_artifact_zero_residue_confirmed"
+        )
+    );
+    insert_report!("source_current_memory_store_write_performed_count", 0);
+    insert_report!("source_current_wal_write_performed_count", 0);
+    insert_report!("source_current_receipt_persisted_count", 0);
+    insert_report!("source_current_rollback_executed_count", 0);
+    insert_report!("source_current_tombstone_cleanup_executed_count", 0);
+    insert_report!(
+        "source_current_durable_memory_store_write_performed_count",
+        0
+    );
+    insert_report!("source_current_external_send_performed_count", 0);
+    insert_report!(
+        "approved_production_namespace",
+        approved_production_namespace
+    );
+    insert_report!("approved_production_store", approved_production_store);
+    insert_report!("approved_production_scope", approved_production_scope);
+    insert_report!(
+        "production_durable_memory_target_id",
+        production_durable_memory_target_id
+    );
+    insert_report!(
+        "production_durable_memory_payload_class",
+        production_durable_memory_payload_class
+    );
+    insert_report!("operator_packet_scope", operator_packet_scope);
+    insert_report!(
+        "production_durable_memory_write_preflight_target_hash_sha256",
+        target_hash_sha256
+    );
+    insert_report!(
+        "production_durable_memory_write_preflight_operator_packet_hash_sha256",
+        operator_packet_hash_sha256
+    );
+    insert_report!(
+        "production_durable_memory_write_preflight_nonce_hash_sha256",
+        nonce_hash_sha256
+    );
+    insert_report!(
+        "production_durable_memory_write_preflight_command_hash_sha256",
+        command_hash_sha256
+    );
+    insert_report!(
+        "production_durable_memory_write_preflight_payload_redaction_hash_sha256",
+        payload_redaction_hash_sha256
+    );
+    insert_report!(
+        "production_durable_memory_write_preflight_wal_receipt_plan_hash_sha256",
+        wal_receipt_plan_hash_sha256
+    );
+    insert_report!(
+        "production_durable_memory_write_preflight_readback_plan_hash_sha256",
+        readback_plan_hash_sha256
+    );
+    insert_report!(
+        "production_durable_memory_write_preflight_rollback_tombstone_zero_residue_plan_hash_sha256",
+        rollback_tombstone_zero_residue_plan_hash_sha256
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_result_hash_sha256",
+        preflight_result_hash_sha256
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_boundary_hash_sha256",
+        preflight_boundary_hash_sha256
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_policy_hash_sha256",
+        preflight_policy_hash_sha256
+    );
+    insert_report!(
+        "required_scoped_production_durable_memory_write_preflight_surface_count",
+        PREFLIGHT_SURFACES.len()
+    );
+    insert_report!(
+        "ready_scoped_production_durable_memory_write_preflight_surface_count",
+        if surfaces_ready {
+            PREFLIGHT_SURFACES.len()
+        } else {
+            0
+        }
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_surfaces",
+        PREFLIGHT_SURFACES
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_fixture_count",
+        fixtures.len()
+    );
+    insert_report!(
+        "accepted_scoped_production_durable_memory_write_preflight_fixture_count",
+        accepted_fixture_count
+    );
+    insert_report!(
+        "blocked_scoped_production_durable_memory_write_preflight_fixture_count",
+        blocked_fixture_count
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_preflight_fixtures",
+        fixtures
+    );
+    insert_report!(
+        "denied_by_scoped_production_durable_memory_write_preflight_boundary",
+        PREFLIGHT_DENIALS
+    );
+    insert_report!(
+        "denied_by_scoped_production_durable_memory_write_preflight_boundary_count",
+        PREFLIGHT_DENIALS.len()
+    );
+    insert_report!(
+        "allowed_next_actions",
+        [
+            serde_json::json!({
+                "action": "run_scoped_production_durable_memory_write_preflight_boundary_require_live_gate",
+                "status": "allowed_verification_only",
+                "accepts_preflight_evidence": true,
+                "writes_production_durable_memory": false,
+                "writes_memory_store": false,
+                "writes_wal": false,
+                "persists_receipt": false,
+                "executes_rollback": false,
+                "writes_tombstone": false
+            }),
+            serde_json::json!({
+                "action": "prepare_scoped_production_durable_memory_write_operator_packet_acceptance_boundary",
+                "status": "requires_separate_operator_packet_acceptance_gate",
+                "requires_scoped_production_durable_memory_write_preflight_boundary": true,
+                "writes_production_durable_memory": false
+            }),
+        ]
+    );
+    for &key in FALSE_PREFLIGHT_SIDE_EFFECT_KEYS {
+        report_object.insert(key.to_string(), serde_json::json!(false));
+        report_object.insert(format!("{key}_count"), serde_json::json!(0));
+    }
+    for &key in TRUE_PREFLIGHT_KEYS {
+        report_object.insert(key.to_string(), serde_json::json!(report_ready));
+        report_object.insert(
+            format!("{key}_count"),
+            serde_json::json!(if report_ready { 1 } else { 0 }),
+        );
+    }
+    for key in [
+        "source_zero_residue_acceptance_boundary_bound",
+        "approved_production_namespace_bound",
+        "approved_production_store_bound",
+        "approved_production_scope_bound",
+        "production_durable_memory_target_bound",
+        "operator_approval_packet_preflight_bound",
+        "operator_identity_session_preflight_bound",
+        "single_use_nonce_preflight_bound",
+        "explicit_command_preflight_bound",
+        "payload_redaction_preflight_bound",
+        "wal_receipt_preflight_bound",
+        "post_write_readback_preflight_bound",
+        "rollback_tombstone_zero_residue_preflight_bound",
+        "replay_idempotency_preflight_bound",
+        "production_write_execution_forbidden_on_preflight_route",
+        "production_durable_memory_write_forbidden",
+        "memory_store_mutation_forbidden",
+        "wal_write_forbidden_on_preflight_route",
+        "receipt_persist_forbidden_on_preflight_route",
+        "rollback_execution_forbidden_on_preflight_route",
+        "tombstone_write_forbidden_on_preflight_route",
+        "kg_live_write_forbidden",
+        "provider_model_invocation_forbidden",
+        "credential_channel_public_release_forbidden",
+        "install_restart_active_binary_mutation_forbidden",
+    ] {
+        report_object.insert(key.to_string(), serde_json::json!(true));
+    }
+    report_object.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+    report
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -149508,6 +150266,367 @@ mod tests {
             side_effects["durable_memory_store_write_performed"].as_bool(),
             Some(false)
         );
+        assert_eq!(
+            side_effects["external_send_performed"].as_bool(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_scoped_production_durable_memory_write_preflight_binds_target_without_production_or_external_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .expect("scoped production durable Memory write preflight boundary json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_scoped_production_durable_memory_write_preflight_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_preflight_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_preflight_performed"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_preflight_accepted"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_preflight_mode"],
+            "preflight_only_no_production_durable_memory_mutation"
+        );
+        assert_eq!(
+            value["source_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_accepted_zero_residue_acceptance_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["source_blocked_zero_residue_acceptance_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["source_zero_residue_acceptance_result_accepted_count"],
+            1
+        );
+        assert_eq!(
+            value["source_single_shot_memory_store_write_performed_count"],
+            1
+        );
+        assert_eq!(value["source_single_shot_wal_write_performed_count"], 1);
+        assert_eq!(value["source_single_shot_receipt_persisted_count"], 1);
+        assert_eq!(
+            value["source_single_shot_post_write_readback_performed_count"],
+            1
+        );
+        assert_eq!(value["source_single_shot_rollback_executed_count"], 1);
+        assert_eq!(
+            value["source_single_shot_tombstone_cleanup_executed_count"],
+            1
+        );
+        assert_eq!(
+            value["source_single_shot_canary_post_rollback_memory_count"],
+            0
+        );
+        assert_eq!(
+            value["source_single_shot_canary_artifact_post_cleanup_count"],
+            0
+        );
+        assert_eq!(
+            value["source_single_shot_canary_artifact_zero_residue_confirmed"],
+            true
+        );
+        assert_eq!(
+            value["source_current_memory_store_write_performed_count"],
+            0
+        );
+        assert_eq!(value["source_current_wal_write_performed_count"], 0);
+        assert_eq!(value["source_current_receipt_persisted_count"], 0);
+        assert_eq!(value["source_current_rollback_executed_count"], 0);
+        assert_eq!(value["source_current_tombstone_cleanup_executed_count"], 0);
+        assert_eq!(
+            value["source_current_durable_memory_store_write_performed_count"],
+            0
+        );
+        assert_eq!(value["source_current_external_send_performed_count"], 0);
+        assert_eq!(
+            value["approved_production_namespace"],
+            "hepta.memory.production.scoped"
+        );
+        assert_eq!(
+            value["approved_production_store"],
+            "hepta-memory-durable-store-production-preflight-only"
+        );
+        assert_eq!(
+            value["approved_production_scope"],
+            "operator-approved-session"
+        );
+        assert_eq!(
+            value["production_durable_memory_target_id"],
+            "hepta-scoped-production-durable-memory-write-target-v1"
+        );
+        assert_eq!(
+            value["production_durable_memory_payload_class"],
+            "redacted-minimal-operator-approved-memory-fact"
+        );
+        for key in [
+            "source_zero_residue_acceptance_boundary_hash_sha256",
+            "source_zero_residue_acceptance_policy_hash_sha256",
+            "source_zero_residue_acceptance_hash_sha256",
+            "production_durable_memory_write_preflight_target_hash_sha256",
+            "production_durable_memory_write_preflight_operator_packet_hash_sha256",
+            "production_durable_memory_write_preflight_nonce_hash_sha256",
+            "production_durable_memory_write_preflight_command_hash_sha256",
+            "production_durable_memory_write_preflight_payload_redaction_hash_sha256",
+            "production_durable_memory_write_preflight_wal_receipt_plan_hash_sha256",
+            "production_durable_memory_write_preflight_readback_plan_hash_sha256",
+            "production_durable_memory_write_preflight_rollback_tombstone_zero_residue_plan_hash_sha256",
+            "scoped_production_durable_memory_write_preflight_result_hash_sha256",
+            "scoped_production_durable_memory_write_preflight_boundary_hash_sha256",
+            "scoped_production_durable_memory_write_preflight_policy_hash_sha256",
+        ] {
+            assert_ne!(
+                value[key], "",
+                "scoped production durable Memory write preflight hash should be present: {key}"
+            );
+        }
+        assert_eq!(
+            value["required_scoped_production_durable_memory_write_preflight_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["ready_scoped_production_durable_memory_write_preflight_surface_count"],
+            12
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_preflight_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["accepted_scoped_production_durable_memory_write_preflight_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["blocked_scoped_production_durable_memory_write_preflight_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["denied_by_scoped_production_durable_memory_write_preflight_boundary_count"],
+            36
+        );
+        for key in [
+            "scoped_production_durable_memory_write_preflight_performed_count",
+            "scoped_production_durable_memory_write_preflight_result_recorded_count",
+            "scoped_production_durable_memory_write_preflight_result_accepted_count",
+            "source_zero_residue_acceptance_boundary_accepted_count",
+            "production_durable_memory_target_bound_count",
+            "operator_approval_packet_preflight_bound_count",
+            "single_use_nonce_preflight_bound_count",
+            "explicit_command_preflight_bound_count",
+            "payload_redaction_preflight_bound_count",
+            "wal_receipt_preflight_bound_count",
+            "post_write_readback_preflight_bound_count",
+            "rollback_tombstone_zero_residue_preflight_bound_count",
+            "replay_idempotency_preflight_bound_count",
+        ] {
+            assert_eq!(
+                value[key], 1,
+                "scoped production durable Memory write preflight count should be one: {key}"
+            );
+        }
+        for key in [
+            "production_durable_memory_write_executed_count",
+            "production_durable_memory_store_write_performed_count",
+            "actual_production_durable_memory_write_performed_count",
+            "durable_memory_store_write_performed_count",
+            "durable_memory_store_read_performed_count",
+            "durable_memory_store_rollback_performed_count",
+            "memory_store_write_performed_count",
+            "wal_write_performed_count",
+            "receipt_persisted_count",
+            "post_write_readback_performed_count",
+            "rollback_performed_count",
+            "tombstone_cleanup_executed_count",
+            "live_kg_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "channel_send_performed_count",
+            "external_send_performed_count",
+            "release_artifact_written_count",
+            "install_executed_count",
+            "service_restarted_count",
+            "active_binary_mutated_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "scoped production durable Memory write preflight side-effect count should stay zero: {key}"
+            );
+        }
+        for key in [
+            "source_zero_residue_acceptance_boundary_bound",
+            "approved_production_namespace_bound",
+            "approved_production_store_bound",
+            "approved_production_scope_bound",
+            "production_durable_memory_target_bound",
+            "operator_approval_packet_preflight_bound",
+            "operator_identity_session_preflight_bound",
+            "single_use_nonce_preflight_bound",
+            "explicit_command_preflight_bound",
+            "payload_redaction_preflight_bound",
+            "wal_receipt_preflight_bound",
+            "post_write_readback_preflight_bound",
+            "rollback_tombstone_zero_residue_preflight_bound",
+            "replay_idempotency_preflight_bound",
+            "production_write_execution_forbidden_on_preflight_route",
+            "production_durable_memory_write_forbidden",
+            "memory_store_mutation_forbidden",
+            "kg_live_write_forbidden",
+            "provider_model_invocation_forbidden",
+            "credential_channel_public_release_forbidden",
+            "install_restart_active_binary_mutation_forbidden",
+        ] {
+            assert_eq!(
+                value[key], true,
+                "scoped production durable Memory write preflight field should be true: {key}"
+            );
+        }
+        for key in [
+            "production_durable_memory_write_executed",
+            "production_durable_memory_store_write_performed",
+            "actual_production_durable_memory_write_performed",
+            "durable_memory_store_write_performed",
+            "durable_memory_store_read_performed",
+            "durable_memory_store_rollback_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "wal_recorded",
+            "wal_persisted",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_materialized",
+            "post_write_readback_performed",
+            "rollback_executed",
+            "rollback_performed",
+            "tombstone_write_performed",
+            "tombstone_cleanup_executed",
+            "raw_payload_plaintext_recorded",
+            "raw_payload_plaintext_persisted",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "scoped production durable Memory write preflight external or mutation field should stay false: {key}"
+            );
+        }
+        let fixtures = value["scoped_production_durable_memory_write_preflight_fixtures"]
+            .as_array()
+            .expect("scoped production durable Memory write preflight fixtures");
+        assert_eq!(fixtures.len(), 10);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["scoped_production_durable_memory_write_preflight_accepted"] == true
+                })
+                .count(),
+            1
+        );
+        let denied = value["denied_by_scoped_production_durable_memory_write_preflight_boundary"]
+            .as_array()
+            .expect("scoped production durable Memory write preflight denials");
+        assert_eq!(denied.len(), 36);
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_scoped_production_durable_memory_write_preflight_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_production_durable_memory"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_memory_store"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_scoped_production_durable_memory_write_operator_packet_acceptance_boundary"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["requires_scoped_production_durable_memory_write_preflight_boundary"],
+            true
+        );
+        let side_effects = value["side_effects"]
+            .as_object()
+            .expect("scoped production durable Memory write preflight side effects");
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_preflight_performed"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_preflight_result_accepted"]
+                .as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["production_durable_memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(side_effects["wal_write_performed"].as_bool(), Some(false));
+        assert_eq!(side_effects["receipt_persisted"].as_bool(), Some(false));
         assert_eq!(
             side_effects["external_send_performed"].as_bool(),
             Some(false)
