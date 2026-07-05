@@ -1,0 +1,9 @@
+{
+  "apps": {
+    "hepta_system_local_app": {
+      "id": "hepta_system_local_app",
+      "description": "Read-only Hepta local app connector fixture.",
+      "enabled": false
+    }
+  }
+}

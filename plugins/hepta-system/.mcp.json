@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "hepta_system_local_mcp": {
+      "command": "hepta-system-local-mcp",
+      "args": [
+        "--dry-run"
+      ],
+      "env": {}
+    }
+  }
+}
