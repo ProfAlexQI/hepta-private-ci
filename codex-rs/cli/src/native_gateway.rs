@@ -498,6 +498,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURA
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -508,7 +510,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 272;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 273;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -2078,6 +2080,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary",
         side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt replay/idempotency denial boundary; consumes the dry-run execution result receipt boundary as source evidence while accepting only a non-persistent replay/idempotency denial matrix for duplicate receipts, stale receipts, nonce reuse, identity/session cross-binding, hash-chain mismatch, and ordering preconditions; performs no replay state persistence, idempotency ledger write, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary",
+        side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt ordering/monotonicity denial boundary; consumes the dry-run execution result receipt replay/idempotency denial boundary as source evidence while accepting only a non-persistent ordering/monotonicity denial matrix for late receipts, future receipts, rollback sequence attempts, same-sequence replacements, latest-wins promotion, and sequence gaps; performs no ordering cursor persistence, monotonic sequence recording, replay state persistence, idempotency ledger write, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4596,6 +4605,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_report(),
                     ),
                 );
             }
@@ -106587,6 +106606,886 @@ fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable
     report
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_report()
+-> serde_json::Value {
+    const ORDERING_SURFACES: &[&str] = &[
+        "source_replay_idempotency_denial_boundary_required",
+        "source_replay_idempotency_result_required",
+        "dry_run_execution_result_receipt_ordering_monotonicity_matrix_required",
+        "dry_run_execution_result_receipt_ordering_sequence_policy_required",
+        "dry_run_execution_result_receipt_late_receipt_denial_required",
+        "dry_run_execution_result_receipt_future_receipt_denial_required",
+        "dry_run_execution_result_receipt_rollback_sequence_denial_required",
+        "dry_run_execution_result_receipt_same_sequence_denial_required",
+        "dry_run_execution_result_receipt_latest_wins_promotion_denial_required",
+        "dry_run_execution_result_receipt_sequence_gap_denial_required",
+        "dry_run_execution_result_receipt_ordering_handoff_required",
+        "dry_run_execution_result_receipt_ordering_cursor_persistence_forbidden",
+        "dry_run_execution_result_receipt_monotonic_sequence_recording_forbidden",
+        "dry_run_execution_execution_forbidden_on_ordering_monotonicity_route",
+        "production_write_execution_forbidden_on_ordering_monotonicity_route",
+        "kg_provider_channel_release_install_active_binary_forbidden",
+    ];
+    const ORDERING_DENIALS: &[&str] = &[
+        "source_replay_idempotency_denial_boundary_required",
+        "source_replay_idempotency_result_hash_required",
+        "source_replay_idempotency_policy_hash_required",
+        "source_replay_idempotency_matrix_required",
+        "source_replay_idempotency_identity_session_required",
+        "source_replay_idempotency_nonce_scope_required",
+        "source_duplicate_receipt_denial_required",
+        "source_stale_receipt_denial_required",
+        "source_hash_chain_mismatch_denial_required",
+        "source_cross_session_denial_required",
+        "approved_production_namespace_required",
+        "approved_production_store_required",
+        "approved_production_scope_required",
+        "production_durable_memory_target_required",
+        "ordering_monotonicity_matrix_required",
+        "ordering_sequence_policy_required",
+        "ordering_identity_session_required",
+        "ordering_latest_sequence_required",
+        "late_receipt_acceptance_denied",
+        "future_receipt_acceptance_denied",
+        "rollback_sequence_acceptance_denied",
+        "same_sequence_replacement_denied",
+        "latest_wins_promotion_denied",
+        "sequence_gap_acceptance_denied",
+        "ordering_cursor_persistence_denied",
+        "monotonic_sequence_recording_denied",
+        "ordering_ledger_write_denied",
+        "ordering_guard_state_recording_denied",
+        "replay_state_persistence_denied",
+        "idempotency_ledger_write_denied",
+        "dry_run_execution_execution_denied",
+        "dry_run_execution_envelope_persistence_denied",
+        "dry_run_execution_result_persistence_denied",
+        "dry_run_execution_result_receipt_persistence_denied",
+        "dry_run_execution_result_receipt_filesystem_write_denied",
+        "dry_run_execution_result_receipt_ledger_recording_denied",
+        "dry_run_execution_result_receipt_delivery_denied",
+        "dry_run_execution_result_receipt_materialization_denied",
+        "acceptance_receipt_persistence_denied",
+        "operator_packet_persistence_denied",
+        "production_write_execution_denied",
+        "production_durable_memory_backend_write_denied",
+        "durable_memory_backend_read_or_rollback_denied",
+        "memory_store_mutation_denied",
+        "wal_write_denied",
+        "receipt_persistence_denied",
+        "post_write_readback_denied",
+        "rollback_execution_denied",
+        "tombstone_write_denied",
+        "raw_payload_plaintext_denied",
+        "kg_live_write_denied",
+        "provider_model_invocation_denied",
+        "credential_channel_release_install_denied",
+        "active_binary_mutation_denied",
+        "unrestricted_full_live_activation_denied",
+    ];
+    const FALSE_ORDERING_SIDE_EFFECT_KEYS: &[&str] = &[
+        "dry_run_execution_result_receipt_ordering_cursor_persisted",
+        "dry_run_execution_result_receipt_ordering_cursor_recorded",
+        "dry_run_execution_result_receipt_ordering_ledger_written",
+        "dry_run_execution_result_receipt_ordering_guard_state_recorded",
+        "dry_run_execution_result_receipt_monotonic_sequence_recorded",
+        "dry_run_execution_result_receipt_late_receipt_accepted",
+        "dry_run_execution_result_receipt_future_receipt_accepted",
+        "dry_run_execution_result_receipt_rollback_sequence_accepted",
+        "dry_run_execution_result_receipt_same_sequence_replacement_accepted",
+        "dry_run_execution_result_receipt_latest_wins_promoted",
+        "dry_run_execution_result_receipt_sequence_gap_accepted",
+        "dry_run_execution_result_receipt_ordering_attempt_accepted",
+        "dry_run_execution_result_receipt_replay_state_persisted",
+        "dry_run_execution_result_receipt_idempotency_ledger_written",
+        "dry_run_execution_result_receipt_replay_guard_state_recorded",
+        "dry_run_execution_result_receipt_duplicate_receipt_accepted",
+        "dry_run_execution_result_receipt_stale_receipt_accepted",
+        "dry_run_execution_result_receipt_cross_session_replay_accepted",
+        "dry_run_execution_result_receipt_hash_chain_mismatch_accepted",
+        "dry_run_execution_result_receipt_persisted",
+        "dry_run_execution_result_receipt_filesystem_written",
+        "dry_run_execution_result_receipt_ledger_recorded",
+        "dry_run_execution_result_receipt_delivered",
+        "dry_run_execution_result_receipt_materialized",
+        "dry_run_execution_envelope_persisted",
+        "dry_run_execution_executed",
+        "dry_run_execution_result_persisted",
+        "acceptance_receipt_persisted",
+        "operator_packet_persisted",
+        "operator_packet_acceptance_receipt_persisted",
+        "production_durable_memory_write_executed",
+        "production_durable_memory_backend_present",
+        "production_durable_memory_store_write_performed",
+        "actual_production_durable_memory_write_performed",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "wal_write_performed",
+        "wal_recorded",
+        "wal_persisted",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_materialized",
+        "receipt_delivered",
+        "post_write_readback_performed",
+        "readback_result_recorded",
+        "readback_result_persisted",
+        "readback_result_accepted",
+        "rollback_executed",
+        "rollback_performed",
+        "rollback_result_recorded",
+        "rollback_result_persisted",
+        "rollback_result_accepted",
+        "tombstone_write_performed",
+        "tombstone_cleanup_executed",
+        "tombstone_cleanup_result_recorded",
+        "tombstone_cleanup_result_accepted",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_claim_promoted",
+        "public_release_published",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "service_restart_performed",
+        "active_binary_mutated",
+    ];
+    const TRUE_ORDERING_KEYS: &[&str] = &[
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_performed",
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_result_recorded",
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_result_accepted",
+        "source_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_accepted",
+        "dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_bound",
+        "dry_run_execution_result_receipt_ordering_sequence_policy_bound",
+        "dry_run_execution_result_receipt_ordering_identity_session_bound",
+        "dry_run_execution_result_receipt_ordering_latest_sequence_bound",
+        "dry_run_execution_result_receipt_late_receipt_denied",
+        "dry_run_execution_result_receipt_future_receipt_denied",
+        "dry_run_execution_result_receipt_rollback_sequence_denied",
+        "dry_run_execution_result_receipt_same_sequence_replacement_denied",
+        "dry_run_execution_result_receipt_latest_wins_promotion_denied",
+        "dry_run_execution_result_receipt_sequence_gap_denied",
+        "dry_run_execution_result_receipt_ordering_handoff_bound",
+        "dry_run_execution_result_receipt_ordering_cursor_persistence_forbidden",
+        "dry_run_execution_result_receipt_monotonic_sequence_recording_forbidden",
+        "dry_run_execution_execution_forbidden_on_ordering_monotonicity_route",
+        "production_write_execution_forbidden_on_ordering_monotonicity_route",
+        "kg_provider_channel_release_install_active_binary_forbidden",
+    ];
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-production-durable-dry-run-result-receipt-ordering-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_ready": false,
+                "scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_accepted": false,
+                "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_source_report_thread_failed": true
+            })
+        });
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_next_action_ordering = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.get(1))
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some("prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary")
+                && item
+                    .get("requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && item
+                    .get("executes_dry_run")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && item
+                    .get("writes_production_durable_memory")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_side_effects_ok = source
+        .get("side_effects")
+        .and_then(serde_json::Value::as_object)
+        .map(|effects| {
+            effects
+                .get("scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_performed")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+                && effects
+                    .get("scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_result_accepted")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && effects
+                    .get("dry_run_execution_result_receipt_replay_state_persisted")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_result_receipt_idempotency_ledger_written")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_executed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("production_durable_memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("wal_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("receipt_persisted")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("external_send_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_ready = source.get("status").and_then(serde_json::Value::as_str) == Some("ready")
+        && json_bool(
+            &source,
+            "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_accepted",
+        )
+        && json_u64(
+            &source,
+            "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count",
+        ) == 1
+        && json_u64(
+            &source,
+            "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count",
+        ) == 9
+        && json_u64(
+            &source,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_result_accepted_count",
+        ) == 1
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_replay_state_persisted",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_idempotency_ledger_written",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_duplicate_receipt_accepted",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_stale_receipt_accepted",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_cross_session_replay_accepted",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_hash_chain_mismatch_accepted",
+        )
+        && !json_bool(&source, "dry_run_execution_executed")
+        && !json_bool(&source, "dry_run_execution_result_receipt_persisted")
+        && !json_bool(&source, "production_durable_memory_write_executed")
+        && !json_bool(&source, "production_durable_memory_store_write_performed")
+        && !json_bool(&source, "actual_production_durable_memory_write_performed")
+        && !json_bool(&source, "durable_memory_store_write_performed")
+        && !json_bool(&source, "durable_memory_store_read_performed")
+        && !json_bool(&source, "durable_memory_store_rollback_performed")
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "wal_write_performed")
+        && !json_bool(&source, "receipt_persisted")
+        && !json_bool(&source, "post_write_readback_performed")
+        && !json_bool(&source, "rollback_executed")
+        && !json_bool(&source, "tombstone_cleanup_executed")
+        && !json_bool(&source, "live_kg_write_performed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "credential_read")
+        && !json_bool(&source, "channel_send_performed")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "install_executed")
+        && !json_bool(&source, "service_restarted")
+        && !json_bool(&source, "active_binary_mutated")
+        && source_next_action_ordering
+        && source_side_effects_ok;
+
+    let approved_production_namespace = json_str(&source, "approved_production_namespace");
+    let approved_production_store = json_str(&source, "approved_production_store");
+    let approved_production_scope = json_str(&source, "approved_production_scope");
+    let production_durable_memory_target_id =
+        json_str(&source, "production_durable_memory_target_id");
+    let production_durable_memory_payload_class =
+        json_str(&source, "production_durable_memory_payload_class");
+    let operator_packet_scope = json_str(&source, "operator_packet_scope");
+    let source_report_sha256 = sha256_text_value(&source.to_string());
+    let source_replay_boundary_hash_sha256 = json_str(
+        &source,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_hash_sha256",
+    );
+    let source_replay_policy_hash_sha256 = json_str(
+        &source,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_policy_hash_sha256",
+    );
+    let source_replay_matrix_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_denial_matrix_hash_sha256",
+    );
+    let source_replay_identity_session_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_identity_session_hash_sha256",
+    );
+    let source_replay_nonce_scope_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_nonce_scope_hash_sha256",
+    );
+    let source_duplicate_receipt_denial_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_duplicate_receipt_denial_hash_sha256",
+    );
+    let source_stale_receipt_denial_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_stale_receipt_denial_hash_sha256",
+    );
+    let source_hash_chain_mismatch_denial_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_hash_chain_mismatch_denial_hash_sha256",
+    );
+    let source_cross_session_denial_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_cross_session_denial_hash_sha256",
+    );
+    let source_replay_handoff_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_handoff_hash_sha256",
+    );
+    let source_replay_result_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_replay_idempotency_result_hash_sha256",
+    );
+    let ordering_monotonicity_matrix_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-ordering-monotonicity-denial-matrix:v1:source-replay={source_replay_result_hash_sha256}:duplicate={source_duplicate_receipt_denial_hash_sha256}:stale={source_stale_receipt_denial_hash_sha256}:late=deny:future=deny:rollback=deny:same-sequence=deny:latest-wins=deny:sequence-gap=deny:persist-cursor=false"
+    ));
+    let ordering_sequence_policy_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-ordering-sequence-policy:v1:matrix={ordering_monotonicity_matrix_hash_sha256}:source-policy={source_replay_policy_hash_sha256}:monotonic-record=false:cursor=false"
+    ));
+    let ordering_identity_session_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-ordering-identity-session:v1:source-identity={source_replay_identity_session_hash_sha256}:source-cross-session={source_cross_session_denial_hash_sha256}:cross-session=false"
+    ));
+    let ordering_latest_sequence_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-ordering-latest-sequence:v1:source-nonce={source_replay_nonce_scope_hash_sha256}:latest-wins=false:same-sequence=false"
+    ));
+    let late_receipt_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-late-denial:v1:policy={ordering_sequence_policy_hash_sha256}:accepted=false"
+    ));
+    let future_receipt_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-future-denial:v1:policy={ordering_sequence_policy_hash_sha256}:accepted=false"
+    ));
+    let rollback_sequence_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-rollback-sequence-denial:v1:policy={ordering_sequence_policy_hash_sha256}:accepted=false"
+    ));
+    let same_sequence_replacement_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-same-sequence-replacement-denial:v1:latest={ordering_latest_sequence_hash_sha256}:accepted=false"
+    ));
+    let latest_wins_promotion_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-latest-wins-promotion-denial:v1:latest={ordering_latest_sequence_hash_sha256}:accepted=false"
+    ));
+    let sequence_gap_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-sequence-gap-denial:v1:matrix={ordering_monotonicity_matrix_hash_sha256}:accepted=false"
+    ));
+    let ordering_handoff_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-ordering-handoff:v1:late={late_receipt_denial_hash_sha256}:future={future_receipt_denial_hash_sha256}:rollback={rollback_sequence_denial_hash_sha256}:same={same_sequence_replacement_denial_hash_sha256}:latest={latest_wins_promotion_denial_hash_sha256}:gap={sequence_gap_denial_hash_sha256}:next=cancellation-supersession-denial-boundary"
+    ));
+    let ordering_result_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-ordering-result:v1:matrix={ordering_monotonicity_matrix_hash_sha256}:handoff={ordering_handoff_hash_sha256}:accepted=true:cursor=false:sequence-record=false:ledger=false:executed=false:production-write=false"
+    ));
+    let ordering_boundary_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-ordering-monotonicity-denial-boundary:v1:source={source_report_sha256}:result={ordering_result_hash_sha256}:fixtures=10:accepted=1:denials={}:ordering-cursor=false:monotonic-sequence=false:dry-run-executed=false:production-write=false",
+        ORDERING_DENIALS.len()
+    ));
+    let ordering_policy_hash_sha256 = sha256_text_value(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-ordering-monotonicity-denial-policy:v1:bind-source-replay-matrix-sequence-late-future-rollback-same-sequence-latest-wins-gap-handoff:no-ordering-cursor:no-monotonic-sequence:no-execution:no-production-write:no-kg:no-provider:no-channel:no-release:no-install",
+    );
+    let ordering_bound = !source_replay_boundary_hash_sha256.is_empty()
+        && !source_replay_policy_hash_sha256.is_empty()
+        && !source_replay_matrix_hash_sha256.is_empty()
+        && !source_replay_identity_session_hash_sha256.is_empty()
+        && !source_replay_nonce_scope_hash_sha256.is_empty()
+        && !source_duplicate_receipt_denial_hash_sha256.is_empty()
+        && !source_stale_receipt_denial_hash_sha256.is_empty()
+        && !source_hash_chain_mismatch_denial_hash_sha256.is_empty()
+        && !source_cross_session_denial_hash_sha256.is_empty()
+        && !source_replay_handoff_hash_sha256.is_empty()
+        && !source_replay_result_hash_sha256.is_empty()
+        && approved_production_namespace == "hepta.memory.production.scoped"
+        && approved_production_store == "hepta-memory-durable-store-production-preflight-only"
+        && approved_production_scope == "operator-approved-session"
+        && production_durable_memory_target_id
+            == "hepta-scoped-production-durable-memory-write-target-v1"
+        && production_durable_memory_payload_class
+            == "redacted-minimal-operator-approved-memory-fact";
+    let surfaces_ready = source_ready && ordering_bound;
+    let report_ready = route_count_source_command_accepted && surfaces_ready;
+    let accepted_fixture_count = if report_ready { 1 } else { 0 };
+    let blocked_fixture_count = 10 - accepted_fixture_count;
+
+    let mut fixtures = Vec::new();
+    fixtures.push(serde_json::json!({
+        "id": "scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial",
+        "fixture_id": "scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial",
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_accepted": report_ready,
+        "reason": if report_ready { "dry_run_execution_result_receipt_ordering_monotonicity_denial_bound_without_cursor_sequence_execution_or_production_write" } else { "source_replay_idempotency_or_route_count_not_ready" },
+        "source_replay_idempotency_denial_boundary_bound": report_ready,
+        "dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_bound": report_ready,
+        "dry_run_execution_result_receipt_late_receipt_denied": report_ready,
+        "dry_run_execution_result_receipt_future_receipt_denied": report_ready,
+        "dry_run_execution_result_receipt_rollback_sequence_denied": report_ready,
+        "dry_run_execution_result_receipt_same_sequence_replacement_denied": report_ready,
+        "dry_run_execution_result_receipt_latest_wins_promotion_denied": report_ready,
+        "dry_run_execution_result_receipt_sequence_gap_denied": report_ready,
+        "dry_run_execution_result_receipt_ordering_cursor_persisted": false,
+        "dry_run_execution_result_receipt_monotonic_sequence_recorded": false,
+        "dry_run_execution_executed": false,
+        "production_durable_memory_store_write_performed": false,
+        "external_send_performed": false
+    }));
+    for id in [
+        "missing-replay-idempotency-source",
+        "missing-replay-idempotency-result-hash",
+        "missing-ordering-monotonicity-matrix",
+        "late-result-receipt-attempt",
+        "future-result-receipt-attempt",
+        "rollback-sequence-result-receipt-attempt",
+        "same-sequence-replacement-attempt",
+        "latest-wins-promotion-attempt",
+        "ordering-cursor-or-monotonic-sequence-persistence-attempt",
+    ] {
+        fixtures.push(serde_json::json!({
+            "id": id,
+            "fixture_id": id,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_accepted": false,
+            "reason": "blocked_noop",
+            "dry_run_execution_result_receipt_ordering_cursor_persisted": false,
+            "dry_run_execution_result_receipt_monotonic_sequence_recorded": false,
+            "dry_run_execution_executed": false,
+            "production_durable_memory_store_write_performed": false,
+            "external_send_performed": false
+        }));
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for &key in FALSE_ORDERING_SIDE_EFFECT_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+        side_effects.insert(format!("{key}_count"), serde_json::json!(0));
+    }
+    for &key in TRUE_ORDERING_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(report_ready));
+        side_effects.insert(
+            format!("{key}_count"),
+            serde_json::json!(if report_ready { 1 } else { 0 }),
+        );
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "endpoint": HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_BOUNDARY_ENDPOINT,
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary --json",
+        "native_route": true,
+        "side_effect_free": false,
+        "external_side_effect_free": true,
+        "audit_date": "2026-07-05"
+    });
+    let report_object = report.as_object_mut().expect(
+        "scoped production durable Memory write dry-run execution result receipt ordering/monotonicity denial report object",
+    );
+    macro_rules! insert_report {
+        ($key:expr, $value:expr) => {
+            report_object.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report!("route_count", route_matrix.route_count);
+    insert_report!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report!("missing_route_count", route_matrix.missing_route_count);
+    insert_report!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report!(
+        "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_ready",
+        report_ready
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_ready",
+        report_ready
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_performed",
+        report_ready
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_accepted",
+        report_ready
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_mode",
+        "dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_no_ordering_cursor_no_monotonic_sequence_no_execution_no_production_durable_memory_mutation"
+    );
+    insert_report!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_ready",
+        source_ready
+    );
+    insert_report!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_report_sha256",
+        source_report_sha256
+    );
+    insert_report!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_accepted_count",
+        json_u64(
+            &source,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_result_accepted_count"
+        )
+    );
+    insert_report!(
+        "source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count",
+        json_u64(
+            &source,
+            "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count"
+        )
+    );
+    insert_report!(
+        "source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count",
+        json_u64(
+            &source,
+            "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count"
+        )
+    );
+    insert_report!(
+        "source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_count",
+        json_u64(
+            &source,
+            "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_count"
+        )
+    );
+    insert_report!(
+        "approved_production_namespace",
+        approved_production_namespace
+    );
+    insert_report!("approved_production_store", approved_production_store);
+    insert_report!("approved_production_scope", approved_production_scope);
+    insert_report!(
+        "production_durable_memory_target_id",
+        production_durable_memory_target_id
+    );
+    insert_report!(
+        "production_durable_memory_payload_class",
+        production_durable_memory_payload_class
+    );
+    insert_report!("operator_packet_scope", operator_packet_scope);
+    insert_report!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_hash_sha256",
+        source_replay_boundary_hash_sha256
+    );
+    insert_report!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_policy_hash_sha256",
+        source_replay_policy_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_denial_matrix_hash_sha256",
+        source_replay_matrix_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_identity_session_hash_sha256",
+        source_replay_identity_session_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_nonce_scope_hash_sha256",
+        source_replay_nonce_scope_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_duplicate_receipt_denial_hash_sha256",
+        source_duplicate_receipt_denial_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_stale_receipt_denial_hash_sha256",
+        source_stale_receipt_denial_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_hash_chain_mismatch_denial_hash_sha256",
+        source_hash_chain_mismatch_denial_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_cross_session_denial_hash_sha256",
+        source_cross_session_denial_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_handoff_hash_sha256",
+        source_replay_handoff_hash_sha256
+    );
+    insert_report!(
+        "source_dry_run_execution_result_receipt_replay_idempotency_result_hash_sha256",
+        source_replay_result_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_hash_sha256",
+        ordering_monotonicity_matrix_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_ordering_sequence_policy_hash_sha256",
+        ordering_sequence_policy_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_ordering_identity_session_hash_sha256",
+        ordering_identity_session_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_ordering_latest_sequence_hash_sha256",
+        ordering_latest_sequence_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_late_receipt_denial_hash_sha256",
+        late_receipt_denial_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_future_receipt_denial_hash_sha256",
+        future_receipt_denial_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_rollback_sequence_denial_hash_sha256",
+        rollback_sequence_denial_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_same_sequence_replacement_denial_hash_sha256",
+        same_sequence_replacement_denial_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_latest_wins_promotion_denial_hash_sha256",
+        latest_wins_promotion_denial_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_sequence_gap_denial_hash_sha256",
+        sequence_gap_denial_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_ordering_handoff_hash_sha256",
+        ordering_handoff_hash_sha256
+    );
+    insert_report!(
+        "dry_run_execution_result_receipt_ordering_result_hash_sha256",
+        ordering_result_hash_sha256
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_hash_sha256",
+        ordering_boundary_hash_sha256
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_policy_hash_sha256",
+        ordering_policy_hash_sha256
+    );
+    insert_report!(
+        "required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_surface_count",
+        ORDERING_SURFACES.len()
+    );
+    insert_report!(
+        "ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_surface_count",
+        if surfaces_ready {
+            ORDERING_SURFACES.len()
+        } else {
+            0
+        }
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_surfaces",
+        ORDERING_SURFACES
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count",
+        fixtures.len()
+    );
+    insert_report!(
+        "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count",
+        accepted_fixture_count
+    );
+    insert_report!(
+        "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count",
+        blocked_fixture_count
+    );
+    insert_report!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixtures",
+        fixtures
+    );
+    insert_report!(
+        "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary",
+        ORDERING_DENIALS
+    );
+    insert_report!(
+        "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_count",
+        ORDERING_DENIALS.len()
+    );
+    insert_report!(
+        "allowed_next_actions",
+        [
+            serde_json::json!({
+                "action": "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_require_live_gate",
+                "status": "allowed_verification_only",
+                "accepts_ordering_monotonicity_denial_matrix": true,
+                "persists_ordering_cursor": false,
+                "records_monotonic_sequence": false,
+                "writes_ordering_ledger": false,
+                "executes_dry_run": false,
+                "persists_dry_run_result_receipt": false,
+                "writes_production_durable_memory": false,
+                "writes_memory_store": false,
+                "writes_wal": false,
+                "persists_receipt": false,
+                "executes_rollback": false,
+                "writes_tombstone": false
+            }),
+            serde_json::json!({
+                "action": "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary",
+                "status": "requires_separate_result_receipt_cancellation_supersession_denial_gate",
+                "requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary": true,
+                "persists_ordering_cursor": false,
+                "records_monotonic_sequence": false,
+                "executes_dry_run": false,
+                "writes_production_durable_memory": false,
+                "persists_dry_run_result_receipt": false
+            }),
+        ]
+    );
+    for &key in FALSE_ORDERING_SIDE_EFFECT_KEYS {
+        report_object.insert(key.to_string(), serde_json::json!(false));
+        report_object.insert(format!("{key}_count"), serde_json::json!(0));
+    }
+    for &key in TRUE_ORDERING_KEYS {
+        report_object.insert(key.to_string(), serde_json::json!(report_ready));
+        report_object.insert(
+            format!("{key}_count"),
+            serde_json::json!(if report_ready { 1 } else { 0 }),
+        );
+    }
+    for key in [
+        "source_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_bound",
+        "approved_production_namespace_bound",
+        "approved_production_store_bound",
+        "approved_production_scope_bound",
+        "production_durable_memory_target_bound",
+        "dry_run_execution_result_receipt_replay_idempotency_denial_matrix_bound",
+        "dry_run_execution_result_receipt_replay_idempotency_identity_session_bound",
+        "dry_run_execution_result_receipt_replay_idempotency_nonce_scope_bound",
+        "dry_run_execution_result_receipt_replay_idempotency_duplicate_receipt_denied",
+        "dry_run_execution_result_receipt_replay_idempotency_stale_receipt_denied",
+        "dry_run_execution_result_receipt_replay_idempotency_hash_chain_mismatch_denied",
+        "dry_run_execution_result_receipt_replay_idempotency_cross_session_denied",
+        "dry_run_execution_result_receipt_replay_idempotency_handoff_bound",
+        "dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_bound",
+        "dry_run_execution_result_receipt_ordering_sequence_policy_bound",
+        "dry_run_execution_result_receipt_ordering_identity_session_bound",
+        "dry_run_execution_result_receipt_ordering_latest_sequence_bound",
+        "dry_run_execution_result_receipt_late_receipt_denied",
+        "dry_run_execution_result_receipt_future_receipt_denied",
+        "dry_run_execution_result_receipt_rollback_sequence_denied",
+        "dry_run_execution_result_receipt_same_sequence_replacement_denied",
+        "dry_run_execution_result_receipt_latest_wins_promotion_denied",
+        "dry_run_execution_result_receipt_sequence_gap_denied",
+        "dry_run_execution_result_receipt_ordering_handoff_bound",
+        "dry_run_execution_result_receipt_ordering_cursor_persistence_forbidden",
+        "dry_run_execution_result_receipt_monotonic_sequence_recording_forbidden",
+        "dry_run_execution_execution_forbidden_on_ordering_monotonicity_route",
+        "dry_run_execution_result_receipt_persistence_forbidden_on_ordering_monotonicity_route",
+        "production_write_execution_forbidden_on_ordering_monotonicity_route",
+        "production_durable_memory_write_forbidden",
+        "memory_store_mutation_forbidden",
+        "wal_write_forbidden_on_ordering_monotonicity_route",
+        "receipt_persist_forbidden_on_ordering_monotonicity_route",
+        "rollback_execution_forbidden_on_ordering_monotonicity_route",
+        "tombstone_write_forbidden_on_ordering_monotonicity_route",
+        "kg_live_write_forbidden",
+        "provider_model_invocation_forbidden",
+        "credential_channel_public_release_forbidden",
+        "install_restart_active_binary_mutation_forbidden",
+    ] {
+        report_object.insert(key.to_string(), serde_json::json!(report_ready));
+    }
+    report_object.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+    report
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -156377,6 +157276,374 @@ mod tests {
         );
         assert_eq!(
             side_effects["dry_run_execution_result_receipt_duplicate_receipt_accepted"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_executed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["production_durable_memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(side_effects["wal_write_performed"].as_bool(), Some(false));
+        assert_eq!(side_effects["receipt_persisted"].as_bool(), Some(false));
+        assert_eq!(
+            side_effects["external_send_performed"].as_bool(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_blocks_ordering_without_cursor_sequence_execution_or_production_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "scoped production durable Memory write dry-run execution result receipt ordering/monotonicity denial json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_accepted"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_mode"],
+            "dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_no_ordering_cursor_no_monotonic_sequence_no_execution_no_production_durable_memory_mutation"
+        );
+        assert_eq!(
+            value["source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_accepted_count"],
+            1
+        );
+        assert_eq!(
+            value["source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["approved_production_namespace"],
+            "hepta.memory.production.scoped"
+        );
+        assert_eq!(
+            value["approved_production_store"],
+            "hepta-memory-durable-store-production-preflight-only"
+        );
+        assert_eq!(
+            value["approved_production_scope"],
+            "operator-approved-session"
+        );
+        assert_eq!(
+            value["production_durable_memory_target_id"],
+            "hepta-scoped-production-durable-memory-write-target-v1"
+        );
+        for key in [
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_hash_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_policy_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_denial_matrix_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_identity_session_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_nonce_scope_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_duplicate_receipt_denial_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_stale_receipt_denial_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_hash_chain_mismatch_denial_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_cross_session_denial_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_handoff_hash_sha256",
+            "source_dry_run_execution_result_receipt_replay_idempotency_result_hash_sha256",
+            "dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_hash_sha256",
+            "dry_run_execution_result_receipt_ordering_sequence_policy_hash_sha256",
+            "dry_run_execution_result_receipt_ordering_identity_session_hash_sha256",
+            "dry_run_execution_result_receipt_ordering_latest_sequence_hash_sha256",
+            "dry_run_execution_result_receipt_late_receipt_denial_hash_sha256",
+            "dry_run_execution_result_receipt_future_receipt_denial_hash_sha256",
+            "dry_run_execution_result_receipt_rollback_sequence_denial_hash_sha256",
+            "dry_run_execution_result_receipt_same_sequence_replacement_denial_hash_sha256",
+            "dry_run_execution_result_receipt_latest_wins_promotion_denial_hash_sha256",
+            "dry_run_execution_result_receipt_sequence_gap_denial_hash_sha256",
+            "dry_run_execution_result_receipt_ordering_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_ordering_result_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_policy_hash_sha256",
+        ] {
+            assert_ne!(
+                value[key], "",
+                "dry-run execution result receipt ordering/monotonicity denial hash should be present: {key}"
+            );
+        }
+        assert_eq!(
+            value["required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_surface_count"],
+            16
+        );
+        assert_eq!(
+            value["ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_surface_count"],
+            16
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_count"],
+            55
+        );
+        for key in [
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_performed_count",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_result_recorded_count",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_result_accepted_count",
+            "source_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_accepted_count",
+            "dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_bound_count",
+            "dry_run_execution_result_receipt_ordering_sequence_policy_bound_count",
+            "dry_run_execution_result_receipt_ordering_identity_session_bound_count",
+            "dry_run_execution_result_receipt_ordering_latest_sequence_bound_count",
+            "dry_run_execution_result_receipt_late_receipt_denied_count",
+            "dry_run_execution_result_receipt_future_receipt_denied_count",
+            "dry_run_execution_result_receipt_rollback_sequence_denied_count",
+            "dry_run_execution_result_receipt_same_sequence_replacement_denied_count",
+            "dry_run_execution_result_receipt_latest_wins_promotion_denied_count",
+            "dry_run_execution_result_receipt_sequence_gap_denied_count",
+            "dry_run_execution_result_receipt_ordering_handoff_bound_count",
+        ] {
+            assert_eq!(
+                value[key], 1,
+                "ordering/monotonicity denial count should be one: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_ordering_cursor_persisted_count",
+            "dry_run_execution_result_receipt_ordering_ledger_written_count",
+            "dry_run_execution_result_receipt_ordering_guard_state_recorded_count",
+            "dry_run_execution_result_receipt_monotonic_sequence_recorded_count",
+            "dry_run_execution_result_receipt_late_receipt_accepted_count",
+            "dry_run_execution_result_receipt_future_receipt_accepted_count",
+            "dry_run_execution_result_receipt_rollback_sequence_accepted_count",
+            "dry_run_execution_result_receipt_same_sequence_replacement_accepted_count",
+            "dry_run_execution_result_receipt_latest_wins_promoted_count",
+            "dry_run_execution_result_receipt_sequence_gap_accepted_count",
+            "dry_run_execution_result_receipt_persisted_count",
+            "dry_run_execution_executed_count",
+            "production_durable_memory_write_executed_count",
+            "production_durable_memory_store_write_performed_count",
+            "actual_production_durable_memory_write_performed_count",
+            "durable_memory_store_write_performed_count",
+            "durable_memory_store_read_performed_count",
+            "durable_memory_store_rollback_performed_count",
+            "memory_store_write_performed_count",
+            "wal_write_performed_count",
+            "receipt_persisted_count",
+            "post_write_readback_performed_count",
+            "rollback_performed_count",
+            "tombstone_cleanup_executed_count",
+            "live_kg_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "channel_send_performed_count",
+            "external_send_performed_count",
+            "release_artifact_written_count",
+            "install_executed_count",
+            "service_restarted_count",
+            "active_binary_mutated_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "ordering/monotonicity denial side-effect count should stay zero: {key}"
+            );
+        }
+        for key in [
+            "source_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_bound",
+            "dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_bound",
+            "dry_run_execution_result_receipt_ordering_sequence_policy_bound",
+            "dry_run_execution_result_receipt_late_receipt_denied",
+            "dry_run_execution_result_receipt_future_receipt_denied",
+            "dry_run_execution_result_receipt_rollback_sequence_denied",
+            "dry_run_execution_result_receipt_same_sequence_replacement_denied",
+            "dry_run_execution_result_receipt_latest_wins_promotion_denied",
+            "dry_run_execution_result_receipt_sequence_gap_denied",
+            "dry_run_execution_result_receipt_ordering_cursor_persistence_forbidden",
+            "dry_run_execution_result_receipt_monotonic_sequence_recording_forbidden",
+            "dry_run_execution_execution_forbidden_on_ordering_monotonicity_route",
+            "production_write_execution_forbidden_on_ordering_monotonicity_route",
+            "production_durable_memory_write_forbidden",
+            "memory_store_mutation_forbidden",
+            "kg_live_write_forbidden",
+            "provider_model_invocation_forbidden",
+            "credential_channel_public_release_forbidden",
+            "install_restart_active_binary_mutation_forbidden",
+        ] {
+            assert_eq!(
+                value[key], true,
+                "ordering/monotonicity denial field should be true: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_ordering_cursor_persisted",
+            "dry_run_execution_result_receipt_ordering_ledger_written",
+            "dry_run_execution_result_receipt_ordering_guard_state_recorded",
+            "dry_run_execution_result_receipt_monotonic_sequence_recorded",
+            "dry_run_execution_result_receipt_late_receipt_accepted",
+            "dry_run_execution_result_receipt_future_receipt_accepted",
+            "dry_run_execution_result_receipt_rollback_sequence_accepted",
+            "dry_run_execution_result_receipt_same_sequence_replacement_accepted",
+            "dry_run_execution_result_receipt_latest_wins_promoted",
+            "dry_run_execution_result_receipt_sequence_gap_accepted",
+            "dry_run_execution_result_receipt_persisted",
+            "dry_run_execution_executed",
+            "production_durable_memory_write_executed",
+            "production_durable_memory_store_write_performed",
+            "actual_production_durable_memory_write_performed",
+            "durable_memory_store_write_performed",
+            "durable_memory_store_read_performed",
+            "durable_memory_store_rollback_performed",
+            "memory_write_execution_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "receipt_persisted",
+            "post_write_readback_performed",
+            "rollback_executed",
+            "rollback_performed",
+            "tombstone_write_performed",
+            "tombstone_cleanup_executed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "ordering/monotonicity persistence, mutation, execution, or external field should stay false: {key}"
+            );
+        }
+        let fixtures = value
+            ["scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixtures"]
+            .as_array()
+            .expect(
+                "scoped production durable Memory write dry-run execution result receipt ordering/monotonicity denial fixtures",
+            );
+        assert_eq!(fixtures.len(), 10);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_accepted"]
+                        == true
+                })
+                .count(),
+            1
+        );
+        let denied = value
+            ["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary"]
+            .as_array()
+            .expect("scoped production durable Memory write dry-run execution result receipt ordering/monotonicity denials");
+        assert_eq!(denied.len(), 55);
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["persists_ordering_cursor"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["records_monotonic_sequence"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["executes_dry_run"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_production_durable_memory"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary"],
+            true
+        );
+        let side_effects = value["side_effects"].as_object().expect(
+            "scoped production durable Memory write dry-run execution result receipt ordering/monotonicity side effects",
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_performed"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_result_accepted"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_ordering_cursor_persisted"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_monotonic_sequence_recorded"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_late_receipt_accepted"].as_bool(),
             Some(false)
         );
         assert_eq!(
