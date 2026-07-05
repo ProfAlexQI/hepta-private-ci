@@ -386,6 +386,8 @@ required_markers=(
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt final operator acknowledgement non-acceptance denial boundary route gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt terminal operator decision public claim non-promotion denial boundary gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt terminal operator decision public claim non-promotion denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication denial boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -558,6 +560,7 @@ fixture_rc=0
 capture_fixture_report() {
   local fixture_text="$1"
   local min_marker_count="$2"
+  local live_mutation_denial_min_count="${3:-}"
   local output
   local report
   local rc=0
@@ -566,6 +569,7 @@ capture_fixture_report() {
   output="$(
     HEPTA_PREFLIGHT_TERMINAL_COVERAGE_PREFLIGHT_TEXT="$fixture_text" \
     HEPTA_PREFLIGHT_TERMINAL_COVERAGE_MIN_MARKER_COUNT="$min_marker_count" \
+    HEPTA_PREFLIGHT_TERMINAL_COVERAGE_LIVE_MUTATION_DENIAL_MIN_COUNT="$live_mutation_denial_min_count" \
       scripts/hepta-preflight-terminal-coverage-inventory-gate.sh 2>&1
   )"
   rc=$?
@@ -646,7 +650,7 @@ capture_fixture_report "$out_of_order_final_status_fixture" 0
 out_of_order_final_status_report="$fixture_report"
 out_of_order_final_status_rc="$fixture_rc"
 
-capture_fixture_report "$missing_phase_family_budget_fixture" 0
+capture_fixture_report "$missing_phase_family_budget_fixture" 0 999
 missing_phase_family_budget_report="$fixture_report"
 missing_phase_family_budget_rc="$fixture_rc"
 
@@ -839,7 +843,7 @@ if [[ "$missing_phase_family_budget_rc" -eq 1 ]] \
     and (.phase_family_budget_failures[] | select(
       .id == "live-mutation-denial"
       and .current_count < .minimum_count
-      and .minimum_count == 102
+      and .minimum_count == 999
     ))
   ' >/dev/null <<<"$missing_phase_family_budget_report"; then
   missing_phase_family_budget_fixture_ok=true
