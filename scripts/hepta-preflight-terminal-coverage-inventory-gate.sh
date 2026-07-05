@@ -362,6 +362,8 @@ required_markers=(
   "memory live mutation operator write execution minimal scoped memory real write canary durable store write single shot execution boundary route gate"
   "memory live mutation operator write execution minimal scoped memory real write canary durable store write receipt acceptance boundary gate"
   "memory live mutation operator write execution minimal scoped memory real write canary durable store write receipt acceptance boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write rollback tombstone zero residue acceptance boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write rollback tombstone zero residue acceptance boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
