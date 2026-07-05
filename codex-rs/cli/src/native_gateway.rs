@@ -516,6 +516,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURA
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-denial-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -526,7 +528,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 281;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 282;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -2159,6 +2161,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-denial-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-denial-boundary",
         side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt release artifact/publication denial boundary; consumes the dry-run execution result receipt terminal operator decision/public-claim non-promotion denial boundary as source evidence while accepting only a non-persistent release artifact/publication denial matrix for artifact writes, public artifacts, signatures, notarization, publication queues, manifests, distribution, release tags, release notes/changelogs, terminal decision release approval, authority promotion, and activation; performs no release artifact or public artifact write, signature/notarization, publication enqueue, manifest write, distribution, public release/GA claim, terminal decision promotion, activation, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, install/restart authority, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary",
+        side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt release artifact/publication result receipt no-persistence boundary; consumes the release artifact/publication denial boundary as source evidence while accepting only a report-only publication result receipt non-persistence matrix; performs no publication result receipt recording, persistence, materialization, filesystem write, ledger write, indexing, queueing, delivery, export, query registration, observability recording, completion acknowledgement, authority promotion, release artifact/public artifact publication, public release claim, dry-run execution, production durable Memory write, WAL/receipt persistence, KG write, provider/model invocation, credential read, channel/external send, install/restart authority, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4767,6 +4776,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_report(),
                     ),
                 );
             }
@@ -113919,6 +113938,761 @@ fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable
     report
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_report()
+-> serde_json::Value {
+    const RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_SURFACES: &[&str] = &[
+        "source_release_artifact_publication_denial_report_required",
+        "publication_result_receipt_recording_denied",
+        "publication_result_receipt_persistence_denied",
+        "publication_result_receipt_materialization_denied",
+        "publication_result_receipt_filesystem_write_denied",
+        "publication_result_receipt_ledger_index_denied",
+        "publication_result_receipt_queue_delivery_denied",
+        "publication_result_receipt_export_query_denied",
+        "publication_result_receipt_observability_denied",
+        "publication_result_receipt_signature_timestamp_status_denied",
+        "publication_completion_ack_denied",
+        "publication_result_receipt_authority_promotion_denied",
+        "release_artifact_publication_still_denied",
+        "execution_memory_kg_provider_channel_install_still_denied",
+    ];
+    const RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_DENIALS: &[&str] = &[
+        "source_release_artifact_publication_denial_report_required",
+        "publication_result_receipt_recording_denied",
+        "publication_result_receipt_acceptance_denied",
+        "publication_result_receipt_persistence_denied",
+        "publication_result_receipt_materialization_denied",
+        "publication_result_receipt_filesystem_write_denied",
+        "publication_result_receipt_ledger_write_denied",
+        "publication_result_receipt_index_denied",
+        "publication_result_receipt_queue_denied",
+        "publication_result_receipt_delivery_denied",
+        "publication_result_receipt_export_denied",
+        "publication_result_receipt_query_registration_denied",
+        "publication_result_receipt_observability_denied",
+        "publication_result_receipt_signature_timestamp_status_denied",
+        "publication_completion_ack_recording_denied",
+        "publication_completion_ack_persistence_denied",
+        "publication_result_receipt_authority_promotion_denied",
+        "release_artifact_publication_result_receipt_no_persistence_only",
+        "release_artifact_public_artifact_publication_remain_denied",
+        "execution_memory_kg_provider_channel_install_active_binary_remain_denied",
+    ];
+
+    fn release_artifact_publication_result_receipt_fixture(
+        id: &str,
+        status: &str,
+        accepted: bool,
+        reason: &str,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut fixture = serde_json::Map::new();
+        macro_rules! insert_fixture_json {
+            ($key:literal, $value:expr) => {
+                fixture.insert($key.to_string(), serde_json::json!($value));
+            };
+        }
+        insert_fixture_json!("id", id);
+        insert_fixture_json!("fixture_id", id);
+        insert_fixture_json!(
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_status",
+            status
+        );
+        insert_fixture_json!(
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_accepted",
+            accepted
+        );
+        insert_fixture_json!("source_release_artifact_publication_denial_present", true);
+        insert_fixture_json!("source_release_artifact_publication_denial_ready", true);
+        insert_fixture_json!(
+            "publication_result_receipt_no_persistence_noop_confirmed",
+            true
+        );
+        insert_fixture_json!("reason", reason);
+        for key in [
+            "publication_result_receipt_requested",
+            "publication_result_receipt_recording_requested",
+            "publication_result_receipt_persistence_requested",
+            "publication_result_receipt_materialization_requested",
+            "publication_result_receipt_filesystem_write_requested",
+            "publication_result_receipt_ledger_write_requested",
+            "publication_result_receipt_index_requested",
+            "publication_result_receipt_queue_requested",
+            "publication_result_receipt_delivery_requested",
+            "publication_result_receipt_export_requested",
+            "publication_result_receipt_query_requested",
+            "publication_result_receipt_observability_requested",
+            "publication_result_receipt_signature_requested",
+            "publication_result_receipt_timestamp_requested",
+            "publication_result_receipt_status_requested",
+            "publication_completion_ack_requested",
+            "publication_result_receipt_authority_promotion_requested",
+            "release_artifact_publication_retry_requested",
+            "release_artifact_write_requested",
+            "public_artifact_write_requested",
+            "public_release_publish_requested",
+            "public_ga_claim_requested",
+            "dry_run_execution_publication_result_receipt_requested",
+            "production_memory_write_publication_result_receipt_requested",
+            "memory_write_publication_result_receipt_requested",
+            "kg_write_publication_result_receipt_requested",
+            "provider_prompt_publication_result_receipt_requested",
+            "credential_publication_result_receipt_requested",
+            "channel_delivery_publication_result_receipt_requested",
+            "install_publication_result_receipt_requested",
+            "service_restart_publication_result_receipt_requested",
+            "active_binary_publication_result_receipt_requested",
+        ] {
+            fixture.insert(key.to_string(), serde_json::json!(false));
+        }
+        for key in [
+            "publication_result_receipt_recorded",
+            "publication_result_receipt_accepted",
+            "publication_result_receipt_persisted",
+            "publication_result_receipt_materialized",
+            "publication_result_receipt_filesystem_written",
+            "publication_result_receipt_ledger_written",
+            "publication_result_receipt_indexed",
+            "publication_result_receipt_queued",
+            "publication_result_receipt_enqueued",
+            "publication_result_receipt_delivered",
+            "publication_result_receipt_exported",
+            "publication_result_receipt_query_registered",
+            "publication_result_receipt_observability_recorded",
+            "publication_result_receipt_signature_accepted",
+            "publication_result_receipt_timestamp_accepted",
+            "publication_result_receipt_status_accepted",
+            "publication_completion_ack_recorded",
+            "publication_completion_ack_persisted",
+            "publication_completion_ack_accepted",
+            "publication_result_receipt_authority_promoted",
+            "release_artifact_publication_recorded",
+            "release_artifact_publication_persisted",
+            "release_artifact_publication_materialized",
+            "release_artifact_written",
+            "public_artifact_written",
+            "public_release_published",
+            "public_ga_claimed",
+            "activation_allowed",
+            "activation_performed",
+            "dry_run_execution_executed",
+            "production_durable_memory_write_executed",
+            "production_durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "receipt_persisted",
+            "rollback_executed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "service_restart_performed",
+            "active_binary_mutated",
+        ] {
+            fixture.insert(key.to_string(), serde_json::json!(false));
+        }
+        if let Some(extra) = extra.as_object() {
+            for (key, value) in extra {
+                fixture.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(fixture)
+    }
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-scoped-production-memory-release-publication-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_report)
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_ready": false,
+                "source_release_artifact_publication_denial_report_thread_failed": true
+            })
+        });
+
+    let source_bool = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_str = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_next_action_result_receipt = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.get(1))
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some(
+                    "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary",
+                )
+                && item
+                    .get("persists_publication_result_receipt")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && item
+                    .get("publishes_release_artifact")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_ready = source_str("status") == "ready"
+        && source_bool(
+            "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_ready",
+        )
+        && source_bool(
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_accepted",
+        )
+        && source_u64(
+            "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_fixture_count",
+        ) == 1
+        && source_u64(
+            "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_fixture_count",
+        ) == 9
+        && source_u64(
+            "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_count",
+        ) >= 100
+        && !source_bool("dry_run_execution_result_receipt_release_artifact_publication_recorded")
+        && !source_bool("dry_run_execution_result_receipt_release_artifact_publication_accepted")
+        && !source_bool("dry_run_execution_result_receipt_release_artifact_written")
+        && !source_bool("dry_run_execution_result_receipt_public_artifact_written")
+        && !source_bool("dry_run_execution_result_receipt_publication_queue_enqueued")
+        && !source_bool("dry_run_execution_result_receipt_publication_manifest_written")
+        && !source_bool("dry_run_execution_result_receipt_public_distribution_performed")
+        && !source_bool("dry_run_execution_result_receipt_public_release_published")
+        && !source_bool(
+            "dry_run_execution_result_receipt_authority_promoted_from_release_artifact_publication",
+        )
+        && !source_bool("activation_performed")
+        && !source_bool("dry_run_execution_executed")
+        && !source_bool("production_durable_memory_store_write_performed")
+        && !source_bool("memory_store_write_performed")
+        && !source_bool("wal_write_performed")
+        && !source_bool("receipt_persisted")
+        && !source_bool("live_kg_write_performed")
+        && !source_bool("provider_invoked")
+        && !source_bool("model_invoked")
+        && !source_bool("credential_read")
+        && !source_bool("channel_send_performed")
+        && !source_bool("external_send_performed")
+        && !source_bool("install_executed")
+        && !source_bool("service_restarted")
+        && !source_bool("active_binary_mutated")
+        && source_next_action_result_receipt;
+
+    let fixtures = serde_json::Value::Array(vec![
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-report-only-binding",
+            "accepted_report_only",
+            true,
+            "publication_result_receipt_no_persistence_matrix_bound_without_receipt_recording_or_publication",
+            serde_json::json!({}),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-missing-source",
+            "blocked_noop",
+            false,
+            "source_release_artifact_publication_denial_report_required",
+            serde_json::json!({
+                "source_release_artifact_publication_denial_present": false,
+                "source_release_artifact_publication_denial_ready": false,
+                "publication_result_receipt_requested": true
+            }),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-recording-request",
+            "blocked_receipt_noop",
+            false,
+            "publication_result_receipt_recording_denied",
+            serde_json::json!({
+                "publication_result_receipt_requested": true,
+                "publication_result_receipt_recording_requested": true
+            }),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-persistence-request",
+            "blocked_receipt_noop",
+            false,
+            "publication_result_receipt_persistence_materialization_filesystem_denied",
+            serde_json::json!({
+                "publication_result_receipt_requested": true,
+                "publication_result_receipt_persistence_requested": true,
+                "publication_result_receipt_materialization_requested": true,
+                "publication_result_receipt_filesystem_write_requested": true
+            }),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-ledger-index-request",
+            "blocked_receipt_noop",
+            false,
+            "publication_result_receipt_ledger_index_denied",
+            serde_json::json!({
+                "publication_result_receipt_requested": true,
+                "publication_result_receipt_ledger_write_requested": true,
+                "publication_result_receipt_index_requested": true
+            }),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-queue-delivery-request",
+            "blocked_delivery_noop",
+            false,
+            "publication_result_receipt_queue_delivery_denied",
+            serde_json::json!({
+                "publication_result_receipt_requested": true,
+                "publication_result_receipt_queue_requested": true,
+                "publication_result_receipt_delivery_requested": true,
+                "channel_delivery_publication_result_receipt_requested": true
+            }),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-export-query-observability-request",
+            "blocked_reporting_noop",
+            false,
+            "publication_result_receipt_export_query_observability_denied",
+            serde_json::json!({
+                "publication_result_receipt_requested": true,
+                "publication_result_receipt_export_requested": true,
+                "publication_result_receipt_query_requested": true,
+                "publication_result_receipt_observability_requested": true
+            }),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-signature-status-completion-ack-request",
+            "blocked_ack_noop",
+            false,
+            "publication_result_receipt_signature_timestamp_status_and_completion_ack_denied",
+            serde_json::json!({
+                "publication_result_receipt_requested": true,
+                "publication_result_receipt_signature_requested": true,
+                "publication_result_receipt_timestamp_requested": true,
+                "publication_result_receipt_status_requested": true,
+                "publication_completion_ack_requested": true
+            }),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-authority-publication-retry-request",
+            "blocked_authority_noop",
+            false,
+            "publication_result_receipt_authority_and_publication_retry_denied",
+            serde_json::json!({
+                "publication_result_receipt_requested": true,
+                "publication_result_receipt_authority_promotion_requested": true,
+                "release_artifact_publication_retry_requested": true,
+                "release_artifact_write_requested": true,
+                "public_artifact_write_requested": true,
+                "public_release_publish_requested": true,
+                "public_ga_claim_requested": true
+            }),
+        ),
+        release_artifact_publication_result_receipt_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-execution-memory-provider-install-request",
+            "blocked_execution_noop",
+            false,
+            "execution_memory_provider_channel_install_active_binary_result_receipt_denied",
+            serde_json::json!({
+                "publication_result_receipt_requested": true,
+                "dry_run_execution_publication_result_receipt_requested": true,
+                "production_memory_write_publication_result_receipt_requested": true,
+                "memory_write_publication_result_receipt_requested": true,
+                "kg_write_publication_result_receipt_requested": true,
+                "provider_prompt_publication_result_receipt_requested": true,
+                "credential_publication_result_receipt_requested": true,
+                "channel_delivery_publication_result_receipt_requested": true,
+                "install_publication_result_receipt_requested": true,
+                "service_restart_publication_result_receipt_requested": true,
+                "active_binary_publication_result_receipt_requested": true
+            }),
+        ),
+    ]);
+
+    let source_report_sha256 = sha256_json_value(&source);
+    let fixtures_hash_sha256 = sha256_json_value(&fixtures);
+    let publication_result_receipt_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-no-persistence:v1:source={}:record=false:persist=false:materialize=false:deliver=false",
+        source_str(
+            "dry_run_execution_result_receipt_release_artifact_publication_result_hash_sha256"
+        )
+    ));
+    let publication_result_receipt_matrix_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-no-persistence-matrix:v1:receipt={publication_result_receipt_hash_sha256}:fixtures={fixtures_hash_sha256}"
+    ));
+    let publication_result_receipt_handoff_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-no-persistence-handoff:v1:matrix={publication_result_receipt_matrix_hash_sha256}:next=release-artifact-publication-result-receipt-replay-idempotency-denial-boundary"
+    ));
+    let publication_result_receipt_result_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-no-persistence-result:v1:receipt={publication_result_receipt_hash_sha256}:handoff={publication_result_receipt_handoff_hash_sha256}:accepted=true:record=false:persist=false:publication=false:authority=false:execution=false:production-write=false"
+    ));
+    let publication_result_receipt_boundary_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary:v1:source={source_report_sha256}:result={publication_result_receipt_result_hash_sha256}:accepted=1:blocked=9:receipt-persist=false:publication=false:authority=false:execution=false:production-write=false"
+    ));
+    let publication_result_receipt_policy_hash_sha256 = sha256_text_value(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-result-receipt-no-persistence-policy:v1:no-receipt-recording-no-receipt-persistence-no-ledger-no-index-no-queue-no-delivery-no-export-no-query-no-observability-no-completion-ack-no-release-artifact-no-publication-no-authority-no-execution-no-production-write",
+    );
+
+    let mut denials = source
+        .get("denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for &denial in RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_DENIALS {
+        denials.push(serde_json::json!(denial));
+    }
+    let denial_count = denials.len();
+
+    let report_ready = source_ready
+        && route_count_source_command_accepted
+        && fixtures.as_array().map(Vec::len) == Some(10)
+        && RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_SURFACES.len() == 14
+        && RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_DENIALS.len() == 20
+        && denial_count >= 115;
+
+    let mut side_effects = serde_json::Map::new();
+    side_effects.insert(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_performed".to_string(),
+        serde_json::json!(true),
+    );
+    side_effects.insert(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_result_accepted".to_string(),
+        serde_json::json!(true),
+    );
+    for key in [
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_requested",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_recorded",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_accepted",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_persisted",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_materialized",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_filesystem_written",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_ledger_written",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_indexed",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_queued",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_delivered",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_exported",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_query_registered",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_observability_recorded",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_signature_accepted",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_timestamp_accepted",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_status_accepted",
+        "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_recorded",
+        "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_persisted",
+        "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_accepted",
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_authority_promoted",
+        "dry_run_execution_result_receipt_release_artifact_publication_recorded",
+        "dry_run_execution_result_receipt_release_artifact_publication_persisted",
+        "dry_run_execution_result_receipt_release_artifact_publication_materialized",
+        "dry_run_execution_result_receipt_release_artifact_written",
+        "dry_run_execution_result_receipt_public_artifact_written",
+        "dry_run_execution_result_receipt_publication_queue_enqueued",
+        "dry_run_execution_result_receipt_publication_manifest_written",
+        "dry_run_execution_result_receipt_public_distribution_performed",
+        "dry_run_execution_result_receipt_public_release_published",
+        "dry_run_execution_result_receipt_public_ga_claimed",
+        "dry_run_execution_result_receipt_authority_promoted_from_release_artifact_publication",
+        "activation_performed",
+        "dry_run_execution_executed",
+        "production_durable_memory_write_executed",
+        "production_durable_memory_store_write_performed",
+        "actual_production_durable_memory_write_performed",
+        "durable_memory_store_write_performed",
+        "memory_write_execution_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "wal_write_performed",
+        "receipt_persisted",
+        "rollback_executed",
+        "tombstone_cleanup_executed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "secret_file_read",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_release_published",
+        "public_ga_claimed",
+        "install_executed",
+        "launchd_mutated",
+        "service_restart_performed",
+        "service_restarted",
+        "active_binary_mutated",
+        "filesystem_written",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "endpoint": HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT,
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_ready": report_ready,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_ready": report_ready,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_accepted": report_ready,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_mode": "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_no_receipt_persistence_no_publication_no_authority_no_execution_no_production_durable_memory_mutation",
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_ready": source_bool("memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_ready"),
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_report_sha256": source_report_sha256,
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_hash_sha256": source_str("scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_hash_sha256"),
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_policy_hash_sha256": source_str("scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_policy_hash_sha256"),
+        "source_dry_run_execution_result_receipt_release_artifact_publication_result_hash_sha256": source_str("dry_run_execution_result_receipt_release_artifact_publication_result_hash_sha256"),
+        "source_dry_run_execution_result_receipt_release_artifact_publication_handoff_hash_sha256": source_str("dry_run_execution_result_receipt_release_artifact_publication_handoff_hash_sha256"),
+        "source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_fixture_count": source_u64("accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_fixture_count"),
+        "source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_fixture_count": source_u64("blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_fixture_count"),
+        "source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_count": source_u64("denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_count"),
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_hash_sha256": publication_result_receipt_hash_sha256,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_matrix_hash_sha256": publication_result_receipt_matrix_hash_sha256,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_handoff_hash_sha256": publication_result_receipt_handoff_hash_sha256,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_result_hash_sha256": publication_result_receipt_result_hash_sha256,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_hash_sha256": publication_result_receipt_boundary_hash_sha256,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_policy_hash_sha256": publication_result_receipt_policy_hash_sha256,
+        "required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_surface_count": 14,
+        "ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_surface_count": 14,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_fixture_count": 10,
+        "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_fixture_count": 1,
+        "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_fixture_count": 9,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_fixtures": fixtures,
+        "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary": denials,
+        "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_count": denial_count,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_performed_count": 1,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_result_accepted_count": 1,
+        "source_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_bound_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_rendered_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_recording_denied_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_persistence_denied_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_ledger_index_denied_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_queue_delivery_denied_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_export_query_observability_denied_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_signature_timestamp_status_denied_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_denied_count": 1,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_authority_denied_count": 1,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_recorded_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_accepted_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_persisted_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_materialized_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_filesystem_written_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_ledger_written_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_indexed_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_queued_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_delivered_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_exported_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_query_registered_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_observability_recorded_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_recorded_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_authority_promoted_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_publication_recorded_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_written_count": 0,
+        "dry_run_execution_result_receipt_public_artifact_written_count": 0,
+        "dry_run_execution_result_receipt_public_distribution_performed_count": 0,
+        "dry_run_execution_result_receipt_public_release_published_count": 0,
+        "dry_run_execution_result_receipt_public_ga_claimed_count": 0,
+        "activation_performed_count": 0,
+        "dry_run_execution_executed_count": 0,
+        "production_durable_memory_write_executed_count": 0,
+        "production_durable_memory_store_write_performed_count": 0,
+        "memory_store_write_performed_count": 0,
+        "wal_write_performed_count": 0,
+        "receipt_persisted_count": 0,
+        "live_kg_write_performed_count": 0,
+        "provider_invoked_count": 0,
+        "model_invoked_count": 0,
+        "credential_read_count": 0,
+        "channel_send_performed_count": 0,
+        "external_send_performed_count": 0,
+        "release_artifact_written_count": 0,
+        "public_artifact_written_count": 0,
+        "install_executed_count": 0,
+        "service_restarted_count": 0,
+        "active_binary_mutated_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_requested": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_recorded": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_accepted": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_persisted": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_materialized": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_filesystem_written": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_ledger_written": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_indexed": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_queued": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_delivered": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_exported": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_query_registered": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_observability_recorded": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_signature_accepted": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_timestamp_accepted": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_status_accepted": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_recorded": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_persisted": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_accepted": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_authority_promoted": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "dry_run_execution_result_receipt_release_artifact_publication_recorded": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_persisted": false,
+        "dry_run_execution_result_receipt_release_artifact_publication_materialized": false,
+        "dry_run_execution_result_receipt_release_artifact_written": false,
+        "dry_run_execution_result_receipt_public_artifact_written": false,
+        "dry_run_execution_result_receipt_publication_queue_enqueued": false,
+        "dry_run_execution_result_receipt_publication_manifest_written": false,
+        "dry_run_execution_result_receipt_public_distribution_performed": false,
+        "dry_run_execution_result_receipt_public_release_published": false,
+        "dry_run_execution_result_receipt_public_ga_claimed": false,
+        "dry_run_execution_result_receipt_authority_promoted_from_release_artifact_publication": false,
+        "activation_allowed": false,
+        "activation_performed": false,
+        "dry_run_execution_executed": false,
+        "production_durable_memory_write_executed": false,
+        "production_durable_memory_store_write_performed": false,
+        "actual_production_durable_memory_write_performed": false,
+        "durable_memory_store_write_performed": false,
+        "memory_write_execution_performed": false,
+        "memory_store_write_performed": false,
+        "memory_store_mutated": false,
+        "wal_write_performed": false,
+        "receipt_persisted": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "rollback_executed": false,
+        "tombstone_cleanup_executed": false,
+        "live_kg_write_performed": false,
+        "provider_invoked": false,
+        "model_invoked": false,
+        "credential_read": false,
+        "secret_file_read": false,
+        "telegram_send_performed": false,
+        "channel_send_performed": false,
+        "external_send_performed": false,
+        "release_artifact_publication_allowed": false,
+        "release_artifact_publication_requested": false,
+        "release_artifact_publication_accepted": false,
+        "release_artifact_publication_recorded": false,
+        "release_artifact_publication_persisted": false,
+        "release_artifact_publication_materialized": false,
+        "release_artifact_filesystem_written": false,
+        "release_artifact_written": false,
+        "public_artifact_written": false,
+        "publication_queue_enqueued": false,
+        "publication_manifest_written": false,
+        "public_distribution_performed": false,
+        "public_release_published": false,
+        "public_ga_claimed": false,
+        "public_claim_promoted": false,
+        "install_executed": false,
+        "launchd_mutated": false,
+        "service_restart_performed": false,
+        "service_restarted": false,
+        "active_binary_mutated": false,
+        "filesystem_written": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "allowed_next_actions": [
+            {
+                "action": "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_require_live_gate",
+                "status": "allowed_verification_only",
+                "records_publication_result_receipt": false,
+                "persists_publication_result_receipt": false,
+                "writes_receipt_ledger": false,
+                "indexes_receipt": false,
+                "queues_or_delivers_receipt": false,
+                "exports_or_queries_receipt": false,
+                "records_observability": false,
+                "records_completion_ack": false,
+                "publishes_release_artifact": false,
+                "claims_public_release": false,
+                "writes_release_artifact": false,
+                "promotes_activation_authority": false,
+                "executes_dry_run": false,
+                "writes_production_durable_memory": false,
+                "writes_memory_or_kg": false,
+                "invokes_provider": false,
+                "sends_externally": false,
+                "installs_or_restarts": false,
+                "mutates_active_binary": false
+            },
+            {
+                "action": "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_replay_idempotency_denial_boundary",
+                "status": "allowed_report_only_next_slice",
+                "accepts_replay": false,
+                "records_publication_result_receipt": false,
+                "persists_publication_result_receipt": false,
+                "publishes_release_artifact": false,
+                "claims_public_release": false,
+                "promotes_activation_authority": false,
+                "executes_dry_run": false,
+                "writes_production_durable_memory": false,
+                "writes_memory_or_kg": false,
+                "invokes_model": false,
+                "sends_externally": false,
+                "installs_or_restarts": false,
+                "mutates_active_binary": false
+            }
+        ],
+        "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -166998,6 +167772,380 @@ mod tests {
             "dry_run_execution_result_receipt_public_distribution_performed",
             "dry_run_execution_result_receipt_public_release_published",
             "dry_run_execution_result_receipt_authority_promoted_from_release_artifact_publication",
+            "activation_performed",
+            "dry_run_execution_executed",
+            "production_durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "wal_write_performed",
+            "receipt_persisted",
+            "external_send_performed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(side_effects[key].as_bool(), Some(false), "{key}");
+        }
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_blocks_receipt_persistence_publication_authority_execution_and_production_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "scoped production durable Memory write dry-run execution result receipt release artifact publication result receipt no-persistence json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_NO_PERSISTENCE_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_accepted"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_mode"],
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_no_receipt_persistence_no_publication_no_authority_no_execution_no_production_durable_memory_mutation"
+        );
+        assert_eq!(
+            value["source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_fixture_count"],
+            9
+        );
+        assert!(
+            value["source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_count"]
+                .as_u64()
+                .unwrap_or(0)
+                >= 100
+        );
+        for key in [
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_report_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_hash_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_policy_hash_sha256",
+            "source_dry_run_execution_result_receipt_release_artifact_publication_result_hash_sha256",
+            "source_dry_run_execution_result_receipt_release_artifact_publication_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_hash_sha256",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_matrix_hash_sha256",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_result_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_policy_hash_sha256",
+        ] {
+            assert_ne!(
+                value[key], "",
+                "publication result receipt no-persistence hash missing: {key}"
+            );
+        }
+        assert_eq!(
+            value["required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_surface_count"],
+            14
+        );
+        assert_eq!(
+            value["ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_surface_count"],
+            14
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_fixture_count"],
+            9
+        );
+        assert!(
+            value["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_count"]
+                .as_u64()
+                .unwrap_or(0)
+                >= 115
+        );
+        for key in [
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_performed_count",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_result_accepted_count",
+            "source_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary_bound_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_rendered_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_recording_denied_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_persistence_denied_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_ledger_index_denied_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_queue_delivery_denied_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_export_query_observability_denied_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_signature_timestamp_status_denied_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_denied_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_authority_denied_count",
+        ] {
+            assert_eq!(
+                value[key], 1,
+                "publication result receipt no-persistence count should be one: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_recorded_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_accepted_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_persisted_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_materialized_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_filesystem_written_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_ledger_written_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_indexed_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_queued_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_delivered_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_exported_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_query_registered_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_observability_recorded_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_recorded_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_authority_promoted_count",
+            "dry_run_execution_result_receipt_release_artifact_publication_recorded_count",
+            "dry_run_execution_result_receipt_release_artifact_written_count",
+            "dry_run_execution_result_receipt_public_artifact_written_count",
+            "dry_run_execution_result_receipt_public_distribution_performed_count",
+            "dry_run_execution_result_receipt_public_release_published_count",
+            "dry_run_execution_result_receipt_public_ga_claimed_count",
+            "activation_performed_count",
+            "dry_run_execution_executed_count",
+            "production_durable_memory_store_write_performed_count",
+            "memory_store_write_performed_count",
+            "wal_write_performed_count",
+            "receipt_persisted_count",
+            "live_kg_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "channel_send_performed_count",
+            "external_send_performed_count",
+            "release_artifact_written_count",
+            "public_artifact_written_count",
+            "install_executed_count",
+            "service_restarted_count",
+            "active_binary_mutated_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "publication result receipt, publication, authority, execution, or mutation count should stay zero: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_recorded",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_accepted",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_persisted",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_materialized",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_filesystem_written",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_ledger_written",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_indexed",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_queued",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_delivered",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_exported",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_query_registered",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_observability_recorded",
+            "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_recorded",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_authority_promoted",
+            "dry_run_execution_result_receipt_release_artifact_publication_recorded",
+            "dry_run_execution_result_receipt_release_artifact_written",
+            "dry_run_execution_result_receipt_public_artifact_written",
+            "dry_run_execution_result_receipt_publication_queue_enqueued",
+            "dry_run_execution_result_receipt_publication_manifest_written",
+            "dry_run_execution_result_receipt_public_distribution_performed",
+            "dry_run_execution_result_receipt_public_release_published",
+            "dry_run_execution_result_receipt_public_ga_claimed",
+            "dry_run_execution_result_receipt_authority_promoted_from_release_artifact_publication",
+            "activation_performed",
+            "dry_run_execution_executed",
+            "production_durable_memory_write_executed",
+            "production_durable_memory_store_write_performed",
+            "actual_production_durable_memory_write_performed",
+            "durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "receipt_persisted",
+            "rollback_executed",
+            "tombstone_cleanup_executed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "public_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "publication result receipt, publication, authority, mutation, execution, or external field should stay false: {key}"
+            );
+        }
+        let fixtures = value
+            ["scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_fixtures"]
+            .as_array()
+            .expect(
+                "scoped production durable Memory write dry-run execution result receipt release artifact publication result receipt no-persistence fixtures",
+            );
+        assert_eq!(fixtures.len(), 10);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_accepted"]
+                        == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(
+                    |fixture| fixture["source_release_artifact_publication_denial_present"]
+                        == false
+                )
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["publication_result_receipt_requested"] == true)
+                .count(),
+            9
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["publication_result_receipt_ledger_write_requested"] == true
+                        && fixture["publication_result_receipt_index_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["publication_result_receipt_export_requested"] == true
+                        && fixture["publication_result_receipt_query_requested"] == true
+                        && fixture["publication_result_receipt_observability_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["release_artifact_write_requested"] == true
+                        && fixture["public_artifact_write_requested"] == true
+                        && fixture["public_release_publish_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["install_publication_result_receipt_requested"] == true
+                        && fixture["service_restart_publication_result_receipt_requested"] == true
+                        && fixture["active_binary_publication_result_receipt_requested"] == true
+                })
+                .count(),
+            1
+        );
+        let denied = value
+            ["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary"]
+            .as_array()
+            .expect("scoped production durable Memory write dry-run execution result receipt release artifact publication result receipt no-persistence denials");
+        assert!(denied.len() >= 115);
+        assert_eq!(
+            value["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["persists_publication_result_receipt"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["publishes_release_artifact"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_replay_idempotency_denial_boundary"
+        );
+        assert_eq!(value["allowed_next_actions"][1]["accepts_replay"], false);
+        let side_effects = value["side_effects"].as_object().expect(
+            "scoped production durable Memory write dry-run execution result receipt release artifact publication result receipt no-persistence side effects",
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_boundary_performed"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_result_receipt_no_persistence_result_accepted"].as_bool(),
+            Some(true)
+        );
+        for key in [
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_recorded",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_persisted",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_ledger_written",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_indexed",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_delivered",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_exported",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_query_registered",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_observability_recorded",
+            "dry_run_execution_result_receipt_release_artifact_publication_completion_ack_recorded",
+            "dry_run_execution_result_receipt_release_artifact_publication_result_receipt_authority_promoted",
+            "dry_run_execution_result_receipt_release_artifact_written",
+            "dry_run_execution_result_receipt_public_artifact_written",
             "activation_performed",
             "dry_run_execution_executed",
             "production_durable_memory_store_write_performed",

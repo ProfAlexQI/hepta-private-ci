@@ -394,6 +394,8 @@ required_markers=(
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt terminal operator decision public claim non-promotion denial boundary route gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication denial boundary gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication result receipt no-persistence boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication result receipt no-persistence boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
