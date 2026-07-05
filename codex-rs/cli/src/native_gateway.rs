@@ -512,6 +512,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURA
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-final-operator-acknowledgement-non-acceptance-denial-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -522,7 +524,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 279;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 280;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -2141,6 +2143,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-final-operator-acknowledgement-non-acceptance-denial-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-final-operator-acknowledgement-non-acceptance-denial-boundary",
         side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt final operator acknowledgement non-acceptance denial boundary; consumes the dry-run execution result receipt operator-facing summary/briefing non-persistence denial boundary as source evidence while accepting only a non-persistent final acknowledgement/readback/receipt/terminal decision/status denial matrix; performs no operator acknowledgement recording, acceptance, persistence, materialization, delivery, terminal decision/status recording, authority promotion, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary",
+        side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt terminal operator decision/public-claim non-promotion denial boundary; consumes the dry-run execution result receipt final operator acknowledgement non-acceptance denial boundary as source evidence while accepting only a non-persistent terminal decision/status/public claim denial matrix; performs no terminal decision recording, acceptance, persistence, materialization, delivery, terminal status recording, public claim, release/GA/publication promotion, authority promotion, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4729,6 +4738,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_report(),
                     ),
                 );
             }
@@ -112531,6 +112550,619 @@ fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable
     serde_json::Value::Object(report)
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_report()
+-> serde_json::Value {
+    fn terminal_operator_decision_public_claim_fixture(
+        id: &str,
+        status: &str,
+        accepted: bool,
+        reason: &str,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut fixture = serde_json::Map::new();
+        macro_rules! insert_fixture_json {
+            ($key:literal, $value:expr) => {
+                fixture.insert($key.to_string(), serde_json::json!($value));
+            };
+        }
+        insert_fixture_json!("id", id);
+        insert_fixture_json!("fixture_id", id);
+        insert_fixture_json!(
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_status",
+            status
+        );
+        insert_fixture_json!(
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_accepted",
+            accepted
+        );
+        insert_fixture_json!("source_final_acknowledgement_present", true);
+        insert_fixture_json!("source_final_acknowledgement_ready", true);
+        insert_fixture_json!(
+            "terminal_operator_decision_public_claim_noop_confirmed",
+            true
+        );
+        insert_fixture_json!("reason", reason);
+        for key in [
+            "terminal_operator_decision_requested",
+            "terminal_operator_status_requested",
+            "terminal_operator_decision_recording_requested",
+            "terminal_operator_decision_persistence_requested",
+            "terminal_operator_decision_materialization_requested",
+            "terminal_operator_decision_filesystem_write_requested",
+            "terminal_operator_decision_delivery_requested",
+            "terminal_operator_decision_acceptance_requested",
+            "terminal_operator_status_recording_requested",
+            "terminal_operator_status_persistence_requested",
+            "terminal_operator_status_acceptance_requested",
+            "terminal_operator_decision_promotion_requested",
+            "terminal_operator_status_promotion_requested",
+            "public_claim_requested",
+            "public_claim_promotion_requested",
+            "public_ga_claim_requested",
+            "public_release_claim_requested",
+            "public_distribution_requested",
+            "public_artifact_write_requested",
+            "release_artifact_write_requested",
+            "channel_delivery_requested",
+            "telegram_send_requested",
+            "external_send_requested",
+            "dry_run_execution_requested",
+            "production_write_requested",
+            "memory_write_decision_requested",
+            "rollback_decision_requested",
+            "kg_write_decision_requested",
+            "provider_prompt_decision_requested",
+            "credential_decision_requested",
+            "install_decision_requested",
+            "service_restart_decision_requested",
+            "active_binary_decision_requested",
+        ] {
+            fixture.insert(key.to_string(), serde_json::json!(false));
+        }
+        for key in [
+            "terminal_operator_decision_allowed",
+            "terminal_operator_decision_request_accepted",
+            "terminal_operator_decision_accepted",
+            "terminal_operator_decision_recorded",
+            "terminal_operator_decision_persisted",
+            "terminal_operator_decision_materialized",
+            "terminal_operator_decision_filesystem_written",
+            "terminal_operator_decision_delivered",
+            "terminal_operator_decision_channel_delivery_performed",
+            "terminal_operator_status_recorded",
+            "terminal_operator_status_persisted",
+            "terminal_operator_status_materialized",
+            "terminal_operator_status_filesystem_written",
+            "terminal_operator_status_accepted",
+            "terminal_operator_decision_promoted",
+            "terminal_operator_status_promoted",
+            "public_claim_accepted",
+            "public_claim_recorded",
+            "public_claim_persisted",
+            "public_claim_materialized",
+            "public_claim_promoted",
+            "public_ga_claimed",
+            "public_release_published",
+            "public_distribution_performed",
+            "public_artifact_written",
+            "release_artifact_written",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "dry_run_execution_executed",
+            "production_durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "rollback_executed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            fixture.insert(key.to_string(), serde_json::json!(false));
+        }
+        if let Some(extra) = extra.as_object() {
+            for (key, value) in extra {
+                fixture.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(fixture)
+    }
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-scoped-production-memory-final-ack-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_report)
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_ready": false,
+                "source_final_acknowledgement_non_acceptance_report_thread_failed": true
+            })
+        });
+
+    let source_bool = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let source_u64 = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let source_str = |key: &str| {
+        source
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_ready = source_str("status") == "ready"
+        && source_bool(
+            "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_ready",
+        )
+        && source_bool(
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_accepted",
+        )
+        && source_u64(
+            "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_fixture_count",
+        ) == 1
+        && source_u64(
+            "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_fixture_count",
+        ) == 9
+        && source_u64(
+            "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_count",
+        ) >= 64
+        && !source_bool("dry_run_execution_result_receipt_final_operator_acknowledgement_recorded")
+        && !source_bool("dry_run_execution_result_receipt_final_operator_acknowledgement_accepted")
+        && !source_bool("dry_run_execution_result_receipt_terminal_operator_decision_recorded")
+        && !source_bool("dry_run_execution_result_receipt_terminal_operator_status_recorded")
+        && !source_bool(
+            "dry_run_execution_result_receipt_authority_promoted_from_final_acknowledgement",
+        )
+        && !source_bool("dry_run_execution_executed")
+        && !source_bool("production_durable_memory_store_write_performed")
+        && !source_bool("memory_store_write_performed")
+        && !source_bool("wal_write_performed")
+        && !source_bool("receipt_persisted")
+        && !source_bool("live_kg_write_performed")
+        && !source_bool("provider_invoked")
+        && !source_bool("model_invoked")
+        && !source_bool("credential_read")
+        && !source_bool("channel_send_performed")
+        && !source_bool("external_send_performed")
+        && !source_bool("release_artifact_written")
+        && !source_bool("install_executed")
+        && !source_bool("service_restarted")
+        && !source_bool("active_binary_mutated");
+
+    let fixtures = serde_json::Value::Array(vec![
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-decision-public-claim-report-only-binding",
+            "accepted_report_only",
+            true,
+            "terminal_operator_decision_public_claim_non_promotion_denial_matrix_bound_without_terminal_decision_or_public_claim",
+            serde_json::json!({}),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-decision-public-claim-missing-source-final-acknowledgement",
+            "blocked_noop",
+            false,
+            "source_final_operator_acknowledgement_non_acceptance_report_required",
+            serde_json::json!({
+                "source_final_acknowledgement_present": false,
+                "source_final_acknowledgement_ready": false,
+                "terminal_operator_decision_requested": true
+            }),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-decision-request",
+            "blocked_decision_noop",
+            false,
+            "terminal_operator_decision_request_denied",
+            serde_json::json!({
+                "terminal_operator_decision_requested": true,
+                "terminal_operator_decision_recording_requested": true,
+                "terminal_operator_decision_acceptance_requested": true
+            }),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-status-request",
+            "blocked_status_noop",
+            false,
+            "terminal_operator_status_recording_denied",
+            serde_json::json!({
+                "terminal_operator_status_requested": true,
+                "terminal_operator_status_recording_requested": true,
+                "terminal_operator_status_acceptance_requested": true
+            }),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-decision-persistence-request",
+            "blocked_decision_noop",
+            false,
+            "terminal_operator_decision_persistence_materialization_filesystem_write_denied",
+            serde_json::json!({
+                "terminal_operator_decision_requested": true,
+                "terminal_operator_decision_persistence_requested": true,
+                "terminal_operator_decision_materialization_requested": true,
+                "terminal_operator_decision_filesystem_write_requested": true
+            }),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-decision-delivery-request",
+            "blocked_delivery_noop",
+            false,
+            "terminal_operator_decision_delivery_denied",
+            serde_json::json!({
+                "terminal_operator_decision_requested": true,
+                "terminal_operator_decision_delivery_requested": true,
+                "telegram_send_requested": true,
+                "channel_delivery_requested": true,
+                "external_send_requested": true
+            }),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-decision-public-claim-promotion-request",
+            "blocked_public_claim_noop",
+            false,
+            "public_claim_public_release_public_ga_promotion_denied",
+            serde_json::json!({
+                "terminal_operator_decision_requested": true,
+                "terminal_operator_decision_promotion_requested": true,
+                "terminal_operator_status_promotion_requested": true,
+                "public_claim_requested": true,
+                "public_claim_promotion_requested": true,
+                "public_ga_claim_requested": true,
+                "public_release_claim_requested": true
+            }),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-release-artifact-publication-request",
+            "blocked_publication_noop",
+            false,
+            "release_artifact_public_artifact_public_distribution_denied",
+            serde_json::json!({
+                "terminal_operator_decision_requested": true,
+                "public_distribution_requested": true,
+                "public_artifact_write_requested": true,
+                "release_artifact_write_requested": true
+            }),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-decision-production-memory-provider-request",
+            "blocked_authority_noop",
+            false,
+            "production_memory_rollback_kg_provider_credential_authority_denied",
+            serde_json::json!({
+                "terminal_operator_decision_requested": true,
+                "dry_run_execution_requested": true,
+                "production_write_requested": true,
+                "memory_write_decision_requested": true,
+                "rollback_decision_requested": true,
+                "kg_write_decision_requested": true,
+                "provider_prompt_decision_requested": true,
+                "credential_decision_requested": true
+            }),
+        ),
+        terminal_operator_decision_public_claim_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-decision-install-restart-active-binary-request",
+            "blocked_install_noop",
+            false,
+            "install_restart_active_binary_terminal_decision_denied",
+            serde_json::json!({
+                "terminal_operator_decision_requested": true,
+                "install_decision_requested": true,
+                "service_restart_decision_requested": true,
+                "active_binary_decision_requested": true
+            }),
+        ),
+    ]);
+
+    let source_report_sha256 = sha256_json_value(&source);
+    let fixtures_hash_sha256 = sha256_json_value(&fixtures);
+    let terminal_decision_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-decision-denial:v1:source={}:decision=false:record=false:persist=false:deliver=false",
+        source_str(
+            "dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_result_hash_sha256"
+        )
+    ));
+    let public_claim_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-public-claim-denial:v1:decision={terminal_decision_denial_hash_sha256}:claim=false:ga=false:release=false:artifact=false"
+    ));
+    let terminal_public_claim_matrix_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-matrix:v1:decision={terminal_decision_denial_hash_sha256}:public={public_claim_denial_hash_sha256}:fixtures={fixtures_hash_sha256}"
+    ));
+    let terminal_public_claim_handoff_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-handoff:v1:matrix={terminal_public_claim_matrix_hash_sha256}:next=release-artifact-publication-denial-boundary"
+    ));
+    let terminal_public_claim_result_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-result:v1:decision={terminal_decision_denial_hash_sha256}:public={public_claim_denial_hash_sha256}:handoff={terminal_public_claim_handoff_hash_sha256}:accepted=true:terminal=false:public=false:execution=false:production-write=false"
+    ));
+    let terminal_public_claim_boundary_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary:v1:source={source_report_sha256}:result={terminal_public_claim_result_hash_sha256}:accepted=1:blocked=9:decision=false:public=false:authority=false:execution=false:production-write=false"
+    ));
+    let terminal_public_claim_policy_hash_sha256 = sha256_text_value(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-policy:v1:no-terminal-decision-recording-no-terminal-status-no-public-claim-no-publication-no-release-artifact-no-authority-no-execution-no-production-write-no-kg-no-provider-no-release-no-install",
+    );
+
+    let mut denials = source
+        .get("denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for denial in [
+        "terminal_operator_decision_request_denied",
+        "terminal_operator_decision_recording_denied",
+        "terminal_operator_decision_persistence_denied",
+        "terminal_operator_decision_materialization_denied",
+        "terminal_operator_decision_filesystem_write_denied",
+        "terminal_operator_decision_delivery_denied",
+        "terminal_operator_status_recording_denied",
+        "terminal_operator_status_persistence_denied",
+        "terminal_operator_decision_promotion_denied",
+        "terminal_operator_status_promotion_denied",
+        "public_claim_recording_denied",
+        "public_claim_promotion_denied",
+        "public_ga_claim_denied",
+        "public_release_publication_denied",
+        "public_distribution_denied",
+        "public_artifact_write_denied",
+        "release_artifact_write_denied",
+        "dry_run_execution_and_production_memory_write_denied_by_terminal_decision_boundary",
+        "kg_provider_channel_release_install_active_binary_terminal_decision_denied",
+    ] {
+        denials.push(serde_json::json!(denial));
+    }
+    let denial_count = denials.len();
+
+    let report_ready = source_ready
+        && route_count_source_command_accepted
+        && fixtures.as_array().map(Vec::len) == Some(10)
+        && denial_count >= 80;
+
+    let mut side_effects = serde_json::Map::new();
+    side_effects.insert(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_performed".to_string(),
+        serde_json::json!(true),
+    );
+    side_effects.insert(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_result_accepted".to_string(),
+        serde_json::json!(true),
+    );
+    for key in [
+        "dry_run_execution_result_receipt_terminal_operator_decision_requested",
+        "dry_run_execution_result_receipt_terminal_operator_decision_recorded",
+        "dry_run_execution_result_receipt_terminal_operator_decision_accepted",
+        "dry_run_execution_result_receipt_terminal_operator_decision_persisted",
+        "dry_run_execution_result_receipt_terminal_operator_decision_materialized",
+        "dry_run_execution_result_receipt_terminal_operator_decision_filesystem_written",
+        "dry_run_execution_result_receipt_terminal_operator_decision_delivered",
+        "dry_run_execution_result_receipt_terminal_operator_status_recorded",
+        "dry_run_execution_result_receipt_terminal_operator_status_persisted",
+        "dry_run_execution_result_receipt_terminal_operator_decision_promoted",
+        "dry_run_execution_result_receipt_terminal_operator_status_promoted",
+        "dry_run_execution_result_receipt_public_claim_recorded",
+        "dry_run_execution_result_receipt_public_claim_promoted",
+        "dry_run_execution_result_receipt_public_ga_claimed",
+        "dry_run_execution_result_receipt_public_release_published",
+        "dry_run_execution_result_receipt_public_distribution_performed",
+        "dry_run_execution_result_receipt_public_artifact_written",
+        "dry_run_execution_result_receipt_release_artifact_written",
+        "dry_run_execution_result_receipt_authority_promoted_from_terminal_operator_decision",
+        "dry_run_execution_executed",
+        "production_durable_memory_write_executed",
+        "production_durable_memory_store_write_performed",
+        "actual_production_durable_memory_write_performed",
+        "durable_memory_store_write_performed",
+        "memory_store_write_performed",
+        "memory_store_mutated",
+        "wal_write_performed",
+        "receipt_persisted",
+        "rollback_executed",
+        "tombstone_cleanup_executed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "credential_read",
+        "channel_send_performed",
+        "external_send_performed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "public_ga_claimed",
+        "public_release_claimed",
+        "public_release_published",
+        "public_distribution_performed",
+        "install_executed",
+        "service_restarted",
+        "active_binary_mutated",
+    ] {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+
+    let mut report = serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": if report_ready { "ready" } else { "blocked" },
+        "base_url": "http://127.0.0.1:7373",
+        "endpoint": HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_BOUNDARY_ENDPOINT,
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary --json",
+        "native_route": true,
+        "side_effect_free": true,
+        "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+        "route_count": route_matrix.route_count,
+        "implemented_route_count": route_matrix.implemented_route_count,
+        "missing_route_count": route_matrix.missing_route_count,
+        "route_count_source_command_accepted": route_count_source_command_accepted,
+        "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_ready": report_ready,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_ready": report_ready,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_accepted": report_ready,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_mode": "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_no_terminal_decision_no_public_claim_no_authority_no_execution_no_production_durable_memory_mutation",
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_ready": source_bool("memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_ready"),
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_report_sha256": source_report_sha256,
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_hash_sha256": source_str("scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_hash_sha256"),
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_policy_hash_sha256": source_str("scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_policy_hash_sha256"),
+        "source_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_result_hash_sha256": source_str("dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_result_hash_sha256"),
+        "source_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_handoff_hash_sha256": source_str("dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_handoff_hash_sha256"),
+        "source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_fixture_count": source_u64("accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_fixture_count"),
+        "source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_fixture_count": source_u64("blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_fixture_count"),
+        "source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_count": source_u64("denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_count"),
+    });
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "dry_run_execution_result_receipt_terminal_operator_decision_denial_hash_sha256": terminal_decision_denial_hash_sha256,
+        "dry_run_execution_result_receipt_public_claim_denial_hash_sha256": public_claim_denial_hash_sha256,
+        "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_matrix_hash_sha256": terminal_public_claim_matrix_hash_sha256,
+        "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_handoff_hash_sha256": terminal_public_claim_handoff_hash_sha256,
+        "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_result_hash_sha256": terminal_public_claim_result_hash_sha256,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_hash_sha256": terminal_public_claim_boundary_hash_sha256,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_policy_hash_sha256": terminal_public_claim_policy_hash_sha256,
+        "required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_surface_count": 14,
+        "ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_surface_count": 14,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_fixture_count": 10,
+        "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_fixture_count": 1,
+        "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_fixture_count": 9,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_fixtures": fixtures,
+        "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary": denials,
+        "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_count": denial_count,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_performed_count": 1,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_result_accepted_count": 1,
+        "source_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_bound_count": 1,
+        "dry_run_execution_result_receipt_terminal_operator_decision_request_denied_count": 1,
+        "dry_run_execution_result_receipt_terminal_operator_decision_status_denied_count": 1,
+        "dry_run_execution_result_receipt_public_claim_denied_count": 1,
+        "dry_run_execution_result_receipt_public_release_publication_denied_count": 1,
+        "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_authority_denied_count": 1,
+        "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_handoff_bound_count": 1,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "dry_run_execution_result_receipt_terminal_operator_decision_recorded_count": 0,
+        "dry_run_execution_result_receipt_terminal_operator_decision_accepted_count": 0,
+        "dry_run_execution_result_receipt_terminal_operator_decision_persisted_count": 0,
+        "dry_run_execution_result_receipt_terminal_operator_status_recorded_count": 0,
+        "dry_run_execution_result_receipt_public_claim_recorded_count": 0,
+        "dry_run_execution_result_receipt_public_claim_promoted_count": 0,
+        "dry_run_execution_result_receipt_public_ga_claimed_count": 0,
+        "dry_run_execution_result_receipt_public_release_published_count": 0,
+        "dry_run_execution_result_receipt_release_artifact_written_count": 0,
+        "dry_run_execution_result_receipt_authority_promoted_from_terminal_operator_decision_count": 0,
+        "dry_run_execution_executed_count": 0,
+        "production_durable_memory_write_executed_count": 0,
+        "production_durable_memory_store_write_performed_count": 0,
+        "memory_store_write_performed_count": 0,
+        "wal_write_performed_count": 0,
+        "receipt_persisted_count": 0,
+        "live_kg_write_performed_count": 0,
+        "provider_invoked_count": 0,
+        "model_invoked_count": 0,
+        "credential_read_count": 0,
+        "channel_send_performed_count": 0,
+        "external_send_performed_count": 0,
+        "release_artifact_written_count": 0,
+        "install_executed_count": 0,
+        "service_restarted_count": 0,
+        "active_binary_mutated_count": 0,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "dry_run_execution_result_receipt_terminal_operator_decision_requested": false,
+        "dry_run_execution_result_receipt_terminal_operator_decision_recorded": false,
+        "dry_run_execution_result_receipt_terminal_operator_decision_accepted": false,
+        "dry_run_execution_result_receipt_terminal_operator_decision_persisted": false,
+        "dry_run_execution_result_receipt_terminal_operator_status_recorded": false,
+        "dry_run_execution_result_receipt_terminal_operator_status_persisted": false,
+        "dry_run_execution_result_receipt_terminal_operator_decision_promoted": false,
+        "dry_run_execution_result_receipt_terminal_operator_status_promoted": false,
+        "dry_run_execution_result_receipt_public_claim_recorded": false,
+        "dry_run_execution_result_receipt_public_claim_promoted": false,
+        "dry_run_execution_result_receipt_public_ga_claimed": false,
+        "dry_run_execution_result_receipt_public_release_published": false,
+        "dry_run_execution_result_receipt_release_artifact_written": false,
+        "dry_run_execution_result_receipt_authority_promoted_from_terminal_operator_decision": false,
+        "dry_run_execution_executed": false,
+        "production_durable_memory_write_executed": false,
+        "production_durable_memory_store_write_performed": false,
+        "actual_production_durable_memory_write_performed": false,
+        "durable_memory_store_write_performed": false,
+        "memory_store_write_performed": false,
+        "memory_store_mutated": false,
+        "wal_write_performed": false,
+        "receipt_persisted": false,
+        "rollback_executed": false,
+        "tombstone_cleanup_executed": false,
+        "live_kg_write_performed": false,
+        "provider_invoked": false,
+        "model_invoked": false,
+        "credential_read": false,
+        "channel_send_performed": false,
+        "external_send_performed": false,
+        "release_artifact_written": false,
+        "install_executed": false,
+        "service_restarted": false,
+        "active_binary_mutated": false,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+        "allowed_next_actions": [
+            {
+                "action": "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_require_live_gate",
+                "status": "allowed_verification_only",
+                "accepts_terminal_decision": false,
+                "records_terminal_decision": false,
+                "promotes_public_claim": false,
+                "claims_public_release": false,
+                "writes_release_artifact": false,
+                "executes_dry_run": false,
+                "writes_production_durable_memory": false,
+                "writes_memory_or_kg": false,
+                "invokes_provider": false,
+                "sends_externally": false,
+                "installs_or_restarts": false,
+                "mutates_active_binary": false
+            },
+            {
+                "action": "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary",
+                "status": "allowed_report_only_next_slice",
+                "publishes_release_artifact": false,
+                "writes_release_artifact": false,
+                "claims_public_release": false,
+                "mutates_runtime": false,
+                "invokes_model": false,
+                "writes_memory_or_kg": false
+            }
+        ],
+        "side_effects": side_effects
+        }),
+    );
+    report
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -164923,6 +165555,358 @@ mod tests {
             "wal_write_performed",
             "receipt_persisted",
             "external_send_performed",
+        ] {
+            assert_eq!(side_effects[key].as_bool(), Some(false), "{key}");
+        }
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_blocks_terminal_decision_public_claim_authority_execution_and_production_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "scoped production durable Memory write dry-run execution result receipt terminal operator decision public claim non-promotion denial json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_accepted"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_mode"],
+            "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_no_terminal_decision_no_public_claim_no_authority_no_execution_no_production_durable_memory_mutation"
+        );
+        assert_eq!(
+            value["source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_fixture_count"],
+            9
+        );
+        assert!(
+            value["source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_count"]
+                .as_u64()
+                .unwrap_or(0)
+                >= 64
+        );
+        for key in [
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_report_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_hash_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_policy_hash_sha256",
+            "source_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_result_hash_sha256",
+            "source_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_terminal_operator_decision_denial_hash_sha256",
+            "dry_run_execution_result_receipt_public_claim_denial_hash_sha256",
+            "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_matrix_hash_sha256",
+            "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_result_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_policy_hash_sha256",
+        ] {
+            assert_ne!(
+                value[key], "",
+                "terminal decision public claim denial hash missing: {key}"
+            );
+        }
+        assert_eq!(
+            value["required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_surface_count"],
+            14
+        );
+        assert_eq!(
+            value["ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_surface_count"],
+            14
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_fixture_count"],
+            9
+        );
+        assert!(
+            value["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_count"]
+                .as_u64()
+                .unwrap_or(0)
+                >= 80
+        );
+        for key in [
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_performed_count",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_result_accepted_count",
+            "source_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary_bound_count",
+            "dry_run_execution_result_receipt_terminal_operator_decision_request_denied_count",
+            "dry_run_execution_result_receipt_terminal_operator_decision_status_denied_count",
+            "dry_run_execution_result_receipt_public_claim_denied_count",
+            "dry_run_execution_result_receipt_public_release_publication_denied_count",
+            "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_authority_denied_count",
+            "dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_handoff_bound_count",
+        ] {
+            assert_eq!(
+                value[key], 1,
+                "terminal decision public claim denial count should be one: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_terminal_operator_decision_recorded_count",
+            "dry_run_execution_result_receipt_terminal_operator_decision_accepted_count",
+            "dry_run_execution_result_receipt_terminal_operator_decision_persisted_count",
+            "dry_run_execution_result_receipt_terminal_operator_status_recorded_count",
+            "dry_run_execution_result_receipt_public_claim_recorded_count",
+            "dry_run_execution_result_receipt_public_claim_promoted_count",
+            "dry_run_execution_result_receipt_public_ga_claimed_count",
+            "dry_run_execution_result_receipt_public_release_published_count",
+            "dry_run_execution_result_receipt_release_artifact_written_count",
+            "dry_run_execution_result_receipt_authority_promoted_from_terminal_operator_decision_count",
+            "dry_run_execution_executed_count",
+            "production_durable_memory_write_executed_count",
+            "production_durable_memory_store_write_performed_count",
+            "memory_store_write_performed_count",
+            "wal_write_performed_count",
+            "receipt_persisted_count",
+            "live_kg_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "channel_send_performed_count",
+            "external_send_performed_count",
+            "release_artifact_written_count",
+            "install_executed_count",
+            "service_restarted_count",
+            "active_binary_mutated_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "terminal decision, public claim, execution, or mutation count should stay zero: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_terminal_operator_decision_requested",
+            "dry_run_execution_result_receipt_terminal_operator_decision_recorded",
+            "dry_run_execution_result_receipt_terminal_operator_decision_accepted",
+            "dry_run_execution_result_receipt_terminal_operator_decision_persisted",
+            "dry_run_execution_result_receipt_terminal_operator_status_recorded",
+            "dry_run_execution_result_receipt_terminal_operator_status_persisted",
+            "dry_run_execution_result_receipt_terminal_operator_decision_promoted",
+            "dry_run_execution_result_receipt_terminal_operator_status_promoted",
+            "dry_run_execution_result_receipt_public_claim_recorded",
+            "dry_run_execution_result_receipt_public_claim_promoted",
+            "dry_run_execution_result_receipt_public_ga_claimed",
+            "dry_run_execution_result_receipt_public_release_published",
+            "dry_run_execution_result_receipt_release_artifact_written",
+            "dry_run_execution_result_receipt_authority_promoted_from_terminal_operator_decision",
+            "dry_run_execution_executed",
+            "production_durable_memory_write_executed",
+            "production_durable_memory_store_write_performed",
+            "actual_production_durable_memory_write_performed",
+            "durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "receipt_persisted",
+            "rollback_executed",
+            "tombstone_cleanup_executed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "terminal decision, public claim, authority, mutation, execution, or external field should stay false: {key}"
+            );
+        }
+        let fixtures = value
+            ["scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_fixtures"]
+            .as_array()
+            .expect(
+                "scoped production durable Memory write dry-run execution result receipt terminal operator decision public claim denial fixtures",
+            );
+        assert_eq!(fixtures.len(), 10);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_accepted"]
+                        == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["source_final_acknowledgement_present"] == false)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| { fixture["terminal_operator_decision_requested"] == true })
+                .count(),
+            8
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["terminal_operator_decision_requested"] == true
+                        && fixture["terminal_operator_decision_recording_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["terminal_operator_status_requested"] == true
+                        && fixture["terminal_operator_status_recording_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["public_claim_requested"] == true
+                        && fixture["public_ga_claim_requested"] == true
+                        && fixture["public_release_claim_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["release_artifact_write_requested"] == true
+                        && fixture["public_artifact_write_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["install_decision_requested"] == true
+                        && fixture["service_restart_decision_requested"] == true
+                        && fixture["active_binary_decision_requested"] == true
+                })
+                .count(),
+            1
+        );
+        let denied = value
+            ["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary"]
+            .as_array()
+            .expect("scoped production durable Memory write dry-run execution result receipt terminal decision public claim denials");
+        assert!(denied.len() >= 80);
+        assert_eq!(
+            value["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["accepts_terminal_decision"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["promotes_public_claim"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_release_artifact_publication_denial_boundary"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["writes_release_artifact"],
+            false
+        );
+        let side_effects = value["side_effects"].as_object().expect(
+            "scoped production durable Memory write dry-run execution result receipt terminal operator decision public claim side effects",
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_performed"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_result_accepted"].as_bool(),
+            Some(true)
+        );
+        for key in [
+            "dry_run_execution_result_receipt_terminal_operator_decision_recorded",
+            "dry_run_execution_result_receipt_terminal_operator_decision_accepted",
+            "dry_run_execution_result_receipt_terminal_operator_status_recorded",
+            "dry_run_execution_result_receipt_public_claim_recorded",
+            "dry_run_execution_result_receipt_public_claim_promoted",
+            "dry_run_execution_result_receipt_public_release_published",
+            "dry_run_execution_result_receipt_authority_promoted_from_terminal_operator_decision",
+            "dry_run_execution_executed",
+            "production_durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "wal_write_performed",
+            "receipt_persisted",
+            "external_send_performed",
+            "release_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
         ] {
             assert_eq!(side_effects[key].as_bool(), Some(false), "{key}");
         }
