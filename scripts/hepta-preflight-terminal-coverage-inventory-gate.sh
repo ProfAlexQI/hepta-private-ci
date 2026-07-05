@@ -370,6 +370,8 @@ required_markers=(
   "memory live mutation operator write execution scoped production durable memory write operator packet acceptance boundary route gate"
   "memory live mutation operator write execution scoped production durable memory write operator packet acceptance receipt boundary gate"
   "memory live mutation operator write execution scoped production durable memory write operator packet acceptance receipt boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution envelope boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution envelope boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
