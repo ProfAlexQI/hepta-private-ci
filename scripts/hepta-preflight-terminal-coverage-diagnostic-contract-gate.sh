@@ -362,6 +362,8 @@ required_markers=(
   "memory live mutation operator write execution scoped production durable memory write preflight boundary route gate"
   "memory live mutation operator write execution scoped production durable memory write operator packet acceptance boundary gate"
   "memory live mutation operator write execution scoped production durable memory write operator packet acceptance boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write operator packet acceptance receipt boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write operator packet acceptance receipt boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -413,7 +415,7 @@ emit_phase_family_budget_markers() {
   local live_marker_count=55
 
   if [[ "$mode" == "missing-phase-family-budget" ]]; then
-    live_marker_count=25
+    live_marker_count=23
   fi
 
   if [[ "$mode" != "missing-phase-family-anchor" ]]; then
