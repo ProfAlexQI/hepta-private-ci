@@ -1,9 +1,15 @@
-use hepta_core::{
-    MemorySourceSpan, MemoryUnit, MessageRole, SessionId, TranscriptEntry, TranscriptEntryKind,
-};
-use serde::{Deserialize, Serialize};
+use hepta_core::MemorySourceSpan;
+use hepta_core::MemoryUnit;
+use hepta_core::MessageRole;
+use hepta_core::SessionId;
+use hepta_core::TranscriptEntry;
+use hepta_core::TranscriptEntryKind;
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{HybridRecallHit, extract_memory_atoms_from_transcript, hybrid_recall};
+use crate::HybridRecallHit;
+use crate::extract_memory_atoms_from_transcript;
+use crate::hybrid_recall;
 
 pub const MEMORY_RUNTIME_HANDOFF_V1_CONTRACT: &str = "hepta-intelligence-memory-runtime-handoff-v1";
 

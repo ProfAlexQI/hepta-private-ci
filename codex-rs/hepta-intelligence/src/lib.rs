@@ -21,16 +21,28 @@ mod memory_runtime_store_readback;
 mod memory_temporal_graph;
 mod memory_turn_dispatch_gate;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use hepta_core::{
-    ContextRecallAvailability, ContextRecallBundle, ContextRecallCoverage,
-    ContextRecallTranscriptProvenanceSummary, HeptaNeuron, IntuitionBundle,
-    IntuitionFeedbackOutcome, IntuitionFeedbackRecord, MEMORY_NEURON_COMPRESSION_V2_POLICY,
-    ModelRef, TopicActivationScore, TopicGraphEdgeKind, TopicId, TopicLabel, TopicSession,
-    TopicSessionStatus, TopicShiftKind,
-};
-use serde::{Deserialize, Serialize};
+use hepta_core::ContextRecallAvailability;
+use hepta_core::ContextRecallBundle;
+use hepta_core::ContextRecallCoverage;
+use hepta_core::ContextRecallTranscriptProvenanceSummary;
+use hepta_core::HeptaNeuron;
+use hepta_core::IntuitionBundle;
+use hepta_core::IntuitionFeedbackOutcome;
+use hepta_core::IntuitionFeedbackRecord;
+use hepta_core::MEMORY_NEURON_COMPRESSION_V2_POLICY;
+use hepta_core::ModelRef;
+use hepta_core::TopicActivationScore;
+use hepta_core::TopicGraphEdgeKind;
+use hepta_core::TopicId;
+use hepta_core::TopicLabel;
+use hepta_core::TopicSession;
+use hepta_core::TopicSessionStatus;
+use hepta_core::TopicShiftKind;
+use serde::Deserialize;
+use serde::Serialize;
 
 pub use memory_activation_cutover_gate::*;
 pub use memory_atom_pipeline::*;
@@ -4362,7 +4374,8 @@ fn average_or_zero(total: f32, count: usize) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
 
     use super::*;
 

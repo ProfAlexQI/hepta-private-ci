@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-    MEMORY_PROVIDER_TURN_REHEARSAL_V1_CONTRACT, memory_provider_turn_rehearsal_sample_report,
-};
+use crate::MEMORY_PROVIDER_TURN_REHEARSAL_V1_CONTRACT;
+use crate::memory_provider_turn_rehearsal_sample_report;
 
 pub const MEMORY_INSTALLED_TELEMETRY_GATE_V1_CONTRACT: &str =
     "hepta-intelligence-memory-installed-telemetry-gate-v1";

@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{MEMORY_TURN_DISPATCH_GATE_V1_CONTRACT, memory_turn_dispatch_gate_sample_report};
+use crate::MEMORY_TURN_DISPATCH_GATE_V1_CONTRACT;
+use crate::memory_turn_dispatch_gate_sample_report;
 
 pub const MEMORY_PROVIDER_TURN_REHEARSAL_V1_CONTRACT: &str =
     "hepta-intelligence-memory-provider-turn-rehearsal-v1";

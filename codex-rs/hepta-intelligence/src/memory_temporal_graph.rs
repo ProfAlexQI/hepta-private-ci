@@ -1,7 +1,10 @@
-use hepta_core::{
-    MemorySourceKind, MemorySourceSpan, MemoryTemporalValidity, TemporalFactEdge, TranscriptRange,
-};
-use serde::{Deserialize, Serialize};
+use hepta_core::MemorySourceKind;
+use hepta_core::MemorySourceSpan;
+use hepta_core::MemoryTemporalValidity;
+use hepta_core::TemporalFactEdge;
+use hepta_core::TranscriptRange;
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const MEMORY_TEMPORAL_GRAPH_V1_CONTRACT: &str = "hepta-intelligence-temporal-graph-v1";
 
