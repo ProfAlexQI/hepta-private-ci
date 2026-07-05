@@ -7146,6 +7146,7 @@ name = "hepta-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "hepta-core",
  "hepta-gateway",
  "reqwest",
  "serde",
