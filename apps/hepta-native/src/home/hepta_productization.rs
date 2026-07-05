@@ -1,8 +1,6 @@
 use makepad_widgets::*;
 
-use crate::hepta_productization::{
-    sample_productization_snapshot, HeptaProductizationItem,
-};
+use crate::hepta_productization::{sample_productization_snapshot, HeptaProductizationItem};
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -111,7 +109,9 @@ impl Widget for HeptaProductizationPane {
 impl HeptaProductizationPane {
     fn populate(&mut self, cx: &mut Cx) {
         let snapshot = sample_productization_snapshot();
-        self.view.label(cx, ids!(title)).set_text(cx, snapshot.title);
+        self.view
+            .label(cx, ids!(title))
+            .set_text(cx, snapshot.title);
         self.view.label(cx, ids!(subtitle)).set_text(
             cx,
             &format!(
@@ -125,9 +125,17 @@ impl HeptaProductizationPane {
         self.set_row(cx, ids!(matrix_heart), snapshot.item("matrix_heart"));
         self.set_row(cx, ids!(cockpit), snapshot.item("hepta_cockpit"));
         self.set_row(cx, ids!(branding), snapshot.item("branding_metadata"));
-        self.set_row(cx, ids!(native_runtime_parity), snapshot.item("native_runtime_parity"));
+        self.set_row(
+            cx,
+            ids!(native_runtime_parity),
+            snapshot.item("native_runtime_parity"),
+        );
         self.set_row(cx, ids!(mobile_release), snapshot.item("mobile_release"));
-        self.set_row(cx, ids!(release_candidate), snapshot.item("release_candidate"));
+        self.set_row(
+            cx,
+            ids!(release_candidate),
+            snapshot.item("release_candidate"),
+        );
     }
 
     fn set_row(&mut self, cx: &mut Cx, row_id: &[LiveId], item: Option<&HeptaProductizationItem>) {
@@ -145,7 +153,8 @@ impl HeptaProductizationPane {
             row.label(cx, ids!(body)).set_text(cx, item.detail);
         } else {
             row.label(cx, ids!(title)).set_text(cx, "unknown lane");
-            row.label(cx, ids!(body)).set_text(cx, "No productization status available.");
+            row.label(cx, ids!(body))
+                .set_text(cx, "No productization status available.");
         }
     }
 }

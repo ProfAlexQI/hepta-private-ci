@@ -44,7 +44,7 @@ script_mod! {
                 text_overflow: Ellipsis
                 draw_text +: {
                     text_style: USERNAME_TEXT_STYLE { font_size: 10 },
-                    color: (USERNAME_TEXT_COLOR)
+                    color: (COLOR_TELEGRAM_BLUE)
                 }
                 text: "<Username not available>"
             }
@@ -90,6 +90,7 @@ script_mod! {
                 pt_label +: {
                     draw_text +: {
                         text_style: MESSAGE_TEXT_STYLE { font_size: (MESSAGE_REPLY_PREVIEW_FONT_SIZE) },
+                        color: (COLOR_TELEGRAM_MUTED)
                     }
                 }
             }
@@ -122,7 +123,7 @@ script_mod! {
 
                 draw_text +: {
                     text_style: USERNAME_TEXT_STYLE {},
-                    color: #222,
+                    color: (COLOR_TELEGRAM_BLUE),
                 }
                 text: "Replying to:"
             }
@@ -163,7 +164,7 @@ script_mod! {
             show_bg: true
             draw_bg +: {
                 color: instance(COLOR_TRANSPARENT)
-                vertical_bar_color: instance(USERNAME_TEXT_COLOR)
+                vertical_bar_color: instance(COLOR_TELEGRAM_BLUE)
                 vertical_bar_width: instance(2.0)
                 border_radius: instance(0.0)
 

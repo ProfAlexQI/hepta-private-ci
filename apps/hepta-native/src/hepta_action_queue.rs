@@ -353,9 +353,7 @@ pub fn inspect_action_payload(item: &HeptaActionQueueItem) -> HeptaActionPayload
     }
 }
 
-pub fn inspect_action_outbox(
-    items: &[HeptaActionQueueItem],
-) -> Vec<HeptaActionPayloadInspection> {
+pub fn inspect_action_outbox(items: &[HeptaActionQueueItem]) -> Vec<HeptaActionPayloadInspection> {
     items.iter().map(inspect_action_payload).collect()
 }
 
@@ -724,9 +722,11 @@ mod tests {
         let items = sample_action_queue_items();
         let inspections = inspect_action_outbox(&items);
         assert_eq!(inspections.len(), items.len());
-        assert!(inspections
-            .iter()
-            .all(|inspection| !inspection.external_mutation_enabled));
+        assert!(
+            inspections
+                .iter()
+                .all(|inspection| !inspection.external_mutation_enabled)
+        );
         let approval = inspections
             .iter()
             .find(|inspection| inspection.mutation_class == MUTATION_APPROVE_TOOL_EXEC)
@@ -745,10 +745,12 @@ mod tests {
         assert_eq!(snapshot.item_count, items.len());
         assert_eq!(snapshot.items.len(), items.len());
         assert_eq!(snapshot.payload_hashes.len(), items.len());
-        assert!(snapshot
-            .items
-            .iter()
-            .all(|item| item.get("exact_payload").is_some()));
+        assert!(
+            snapshot
+                .items
+                .iter()
+                .all(|item| item.get("exact_payload").is_some())
+        );
 
         let report = action_outbox_persistence_report(&items, 7);
         assert_eq!(report.item_count, items.len());
@@ -759,8 +761,10 @@ mod tests {
         assert!(report.mobile_inspection_badges_visible);
         assert!(!report.external_mutation_enabled);
         assert!(!report.live_mutation_performed);
-        assert!(report
-            .readback_evidence_id
-            .starts_with("action-outbox-readback-"));
+        assert!(
+            report
+                .readback_evidence_id
+                .starts_with("action-outbox-readback-")
+        );
     }
 }

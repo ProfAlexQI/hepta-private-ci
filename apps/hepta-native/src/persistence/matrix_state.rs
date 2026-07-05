@@ -6,15 +6,11 @@ use makepad_widgets::{log, Cx};
 use matrix_sdk::{
     authentication::matrix::MatrixSession,
     ruma::{OwnedUserId, UserId},
-    sliding_sync,
-    Client,
+    sliding_sync, Client,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    app_data_dir,
-    login::login_screen::LoginAction,
-};
+use crate::{app_data_dir, login::login_screen::LoginAction};
 
 /// The data needed to re-build a client.
 #[derive(Clone, Serialize, Deserialize)]
@@ -95,9 +91,7 @@ impl From<sliding_sync::Version> for SlidingSyncVersion {
 }
 
 fn user_id_to_file_name(user_id: &UserId) -> String {
-    user_id.as_str()
-        .replace(":", "_")
-        .replace("@", "")
+    user_id.as_str().replace(":", "_").replace("@", "")
 }
 
 /// Returns the path to the persistent state directory for the given user.
@@ -116,14 +110,12 @@ const LATEST_USER_ID_FILE_NAME: &str = "latest_user_id.txt";
 
 /// Returns the user ID of the most recently-logged in user session.
 pub async fn most_recent_user_id() -> Option<OwnedUserId> {
-    tokio::fs::read_to_string(
-        app_data_dir().join(LATEST_USER_ID_FILE_NAME)
-    )
-    .await
-    .ok()?
-    .trim()
-    .try_into()
-    .ok()
+    tokio::fs::read_to_string(app_data_dir().join(LATEST_USER_ID_FILE_NAME))
+        .await
+        .ok()?
+        .trim()
+        .try_into()
+        .ok()
 }
 
 /// Resolves the path that `restore_session()` would actually open.
@@ -170,7 +162,8 @@ async fn collect_referenced_db_paths() -> std::collections::HashSet<PathBuf> {
         let session: FullSessionPersisted = match serde_json::from_slice(&bytes) {
             Ok(s) => s,
             Err(e) => {
-                log!("collect_referenced_db_paths: skipping unparsable session file {}: {e}",
+                log!(
+                    "collect_referenced_db_paths: skipping unparsable session file {}: {e}",
                     session_file.display(),
                 );
                 continue;
@@ -193,7 +186,10 @@ pub async fn cleanup_orphan_db_dirs() {
     let mut entries = match tokio::fs::read_dir(data_dir).await {
         Ok(e) => e,
         Err(e) => {
-            log!("cleanup_orphan_db_dirs: could not read data dir {}: {e}", data_dir.display());
+            log!(
+                "cleanup_orphan_db_dirs: could not read data dir {}: {e}",
+                data_dir.display()
+            );
             return;
         }
     };
@@ -211,7 +207,10 @@ pub async fn cleanup_orphan_db_dirs() {
         }
         if active.contains(&path) {
             kept += 1;
-            log!("cleanup_orphan_db_dirs: preserving referenced db dir: {}", path.display());
+            log!(
+                "cleanup_orphan_db_dirs: preserving referenced db dir: {}",
+                path.display()
+            );
             continue;
         }
         let size = dir_size_bytes(&path).await.unwrap_or(0);
@@ -266,17 +265,17 @@ async fn save_latest_user_id(user_id: &UserId) -> anyhow::Result<()> {
     tokio::fs::write(
         app_data_dir().join(LATEST_USER_ID_FILE_NAME),
         user_id.as_str(),
-    ).await?;
+    )
+    .await?;
     Ok(())
 }
-
 
 /// Restores the given user's previous session from the filesystem.
 ///
 /// If no User ID is specified, the ID of the most recently-logged in user
 /// is retrieved from the filesystem.
 pub async fn restore_session(
-    user_id: Option<OwnedUserId>
+    user_id: Option<OwnedUserId>,
 ) -> anyhow::Result<(Client, Option<String>)> {
     let user_id = if let Some(user_id) = user_id {
         Some(user_id)
@@ -302,8 +301,12 @@ pub async fn restore_session(
 
     // The session was serialized as JSON in a file.
     let serialized_session = tokio::fs::read_to_string(session_file).await?;
-    let FullSessionPersisted { client_session, user_session, sync_token, sliding_sync_version } =
-        serde_json::from_str(&serialized_session)?;
+    let FullSessionPersisted {
+        client_session,
+        user_session,
+        sync_token,
+        sliding_sync_version,
+    } = serde_json::from_str(&serialized_session)?;
 
     let status_str = format!(
         "Loaded session file for:\n{user_id}\n\nTrying to connect to homeserver...\n{}",
@@ -328,7 +331,8 @@ pub async fn restore_session(
         db_path.display(),
         original_stored.display(),
     );
-    let store_config = crate::sliding_sync::build_sqlite_store_config(&db_path, &client_session.passphrase);
+    let store_config =
+        crate::sliding_sync::build_sqlite_store_config(&db_path, &client_session.passphrase);
     // Build the client with the previous settings from the session.
     let client = Client::builder()
         .homeserver_url(client_session.homeserver)
@@ -341,7 +345,10 @@ pub async fn restore_session(
         .await?;
     let sliding_sync_version = sliding_sync_version.into();
     client.set_sliding_sync_version(sliding_sync_version);
-    let status_str = format!("Authenticating previous login session for {}...", user_session.meta.user_id);
+    let status_str = format!(
+        "Authenticating previous login session for {}...",
+        user_session.meta.user_id
+    );
     log!("{status_str}");
     Cx::post_action(LoginAction::Status {
         title: "Authenticating session".into(),
@@ -378,7 +385,7 @@ pub async fn save_session(
         client_session,
         user_session,
         sync_token: None,
-        sliding_sync_version
+        sliding_sync_version,
     })?;
     if let Some(parent) = session_file.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -399,7 +406,8 @@ pub async fn delete_latest_user_id() -> anyhow::Result<bool> {
     let last_login_path = app_data_dir().join(LATEST_USER_ID_FILE_NAME);
 
     if last_login_path.exists() {
-        tokio::fs::remove_file(&last_login_path).await
+        tokio::fs::remove_file(&last_login_path)
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to remove latest user file: {e}"))
             .map(|_| true)
     } else {

@@ -2259,6 +2259,7 @@ dependencies = [
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
+ "hepta-core",
  "hepta-gateway",
  "http 1.4.0",
  "libc",

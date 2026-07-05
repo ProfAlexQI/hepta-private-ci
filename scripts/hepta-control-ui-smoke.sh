@@ -14,5 +14,9 @@ cargo test --manifest-path "${MANIFEST}" -q -p hepta-core operator_security_repo
 cargo test --manifest-path "${MANIFEST}" -q -p hepta-gateway native_post_execution_readiness_report_is_gateway_owned
 cargo test --manifest-path "${MANIFEST}" -q -p codex-cli --bin hepta native_gateway
 
+if [[ "${HEPTA_CONTROL_UI_SKIP_BROWSER_SMOKE:-0}" != "1" ]]; then
+  ./scripts/hepta-control-ui-browser-smoke.sh
+fi
+
 echo "Hepta Control UI hardening smoke passed (Rust-native retired Node suite)"
 echo "Hepta Control UI Rust/no-JS contract smoke passed"

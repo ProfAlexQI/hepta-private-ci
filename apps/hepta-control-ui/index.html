@@ -4,36 +4,508 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hepta Control UI</title>
-    <meta name="description" content="Rust-rendered local console for chat, tasks, sessions, and evidence." />
+    <meta name="description" content="Rust-rendered local Telegram-style workspace for chat, tasks, approvals, and evidence." />
     <meta name="hepta-ui-renderer" content="rust-no-js" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body data-view="chat" data-rust-rendered-control-ui="true" data-hepta-route-surface-first="false">
+  <body data-view="chat" data-rust-rendered-control-ui="true" data-hepta-route-surface-first="false" data-control-ui-product-first="true" data-control-ui-primary-path="telegram-chat-shell" data-control-ui-telegram-shell="true" data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow" data-control-ui-harsh-referee="2026-06-08-liquid-glass-menus-sidebars-scroll-search">
+    <svg class="hepta-icon-sprite" aria-hidden="true" focusable="false"><symbol id="hepta-icon-chat" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></symbol><symbol id="hepta-icon-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol><symbol id="hepta-icon-panels" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol><symbol id="hepta-icon-spark" viewBox="0 0 24 24"><path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></symbol><symbol id="hepta-icon-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol><symbol id="hepta-icon-command" viewBox="0 0 24 24"><path d="M9 9h6v6H9z"/><path d="M9 9H6.5A2.5 2.5 0 1 1 9 6.5z"/><path d="M15 9V6.5A2.5 2.5 0 1 1 17.5 9z"/><path d="M15 15h2.5A2.5 2.5 0 1 1 15 17.5z"/><path d="M9 15v2.5A2.5 2.5 0 1 1 6.5 15z"/></symbol><symbol id="hepta-icon-paperclip" viewBox="0 0 24 24"><path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol><symbol id="hepta-icon-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol><symbol id="hepta-icon-plan" viewBox="0 0 24 24"><path d="M9 11l2 2 4-5"/><path d="M20 6 9 17l-5-5"/></symbol><symbol id="hepta-icon-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></symbol><symbol id="hepta-icon-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></symbol><symbol id="hepta-icon-reply" viewBox="0 0 24 24"><path d="m9 17-6-6 6-6"/><path d="M3 11h12a6 6 0 0 1 6 6v1"/></symbol><symbol id="hepta-icon-scroll" viewBox="0 0 24 24"><path d="M12 4v16"/><path d="m8 8 4-4 4 4"/><path d="m16 16-4 4-4-4"/></symbol><symbol id="hepta-icon-close" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol></svg>
     <div class="shell shell--hepta-premium" data-hepta_runtime-ui-parity="true" data-premium-consumer-ui="linear-raycast-vercel-arc" data-rust-frontend-renderer="true" data-js-artifacts="removed">
       <aside class="shell-nav sidebar" aria-label="Hepta navigation">
         <div class="brand app-brand"><div class="brand-mark app-brand__mark" data-hepta-agent-logo="true"><img src="./assets/hepta-agent-logo.png" alt="" /></div><div class="app-brand__text"><p class="eyebrow">Control UI</p><h1>Hepta</h1></div></div>
         <nav class="nav nav-group nav-group--primary shell-nav__list" id="hepta-nav" aria-label="Control UI sections">
-          <a class="active" data-screen="chat" href="#chat"><span>◌</span><span>Chat</span></a>
-          <a data-screen="tasks" href="#tasks"><span>☷</span><span>Tasks</span></a>
-          <a data-screen="ops" href="#ops"><span>▣</span><span>Ops</span></a>
-          <a data-screen="external-agent-benchmark" href="#external-agent-benchmark"><span>✧</span><span>Benchmark</span></a>
+          <a class="active" data-screen="chat" href="#chat"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-chat"/></svg></span><span>Chat</span></a>
+          <a data-screen="tasks" href="#tasks"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span>Tasks</span></a>
+          <a data-screen="ops" href="#ops"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span>Ops</span></a>
+          <a data-screen="external-agent-benchmark" href="#external-agent-benchmark"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-spark"/></svg></span><span>Benchmark</span></a>
         </nav>
       </aside>
-      <header class="topbar"><div class="topnav-shell"><div class="topnav-shell__content"><div class="dashboard-header"><span>Hepta / Rust frontend</span></div></div><div class="topnav-shell__actions"><a class="topbar-search" data-open-command-palette href="#command-palette"><span class="topbar-search__label">Jump to commands</span><span class="topbar-search__kbd">⌘K</span></a><a class="btn btn--primary" href="#task-publisher">New Task</a></div></div></header>
+      <header class="topbar"><div class="topnav-shell"><div class="topnav-shell__content"><div class="dashboard-header"><span>Hepta / Telegram shell</span></div></div><div class="topnav-shell__actions"><a class="topbar-search" data-open-command-palette data-control-ui-topbar-action="light-glass" href="#command-palette" aria-label="Open command palette" title="Open command palette"><span class="topbar-search__label">Jump to chat</span><span class="topbar-search__kbd" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-command"/></svg></span></a><a class="btn btn--primary" data-control-ui-action-control="new-task" data-control-ui-topbar-action="light-glass" href="#task-publisher" aria-label="Create new task" title="Create new task"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plus"/></svg></span><span>New Task</span></a></div></div></header>
       <main class="content main">
-        <section class="workspace dashboard-grid"><section class="panel card wide" id="hepta-screen-panel">
-          <section class="focus-workspace telegram-chat-shell" data-chat-first-architecture="true" data-minimal-consumer-workspace="true" data-telegram-multi-agent-chat="true">
-            <header class="focus-header"><div class="focus-brand"><div class="focus-orb" data-hepta-agent-logo="true"><img src="./assets/hepta-agent-logo.png" alt="" /></div><span>Hepta</span></div><div class="focus-actions prompt-chip-row"><a class="ghost-action" data-open-command-palette href="#command-palette">⌘K</a></div></header>
-            <main class="focus-main focus-main--chat" data-merge-completion-endpoint="/api/hepta-merge-completion">
-              <aside class="tg-conversation-rail"><div class="tg-rail-header"><h2>Work</h2><span class="tg-rail-status__item">3</span></div><label class="tg-search-shell"><input data-chat-search type="search" placeholder="Search conversations…" /></label><div class="tg-folder-row"><button class="tg-folder-chip active" data-chat-folder="all">All</button><button class="tg-folder-chip" data-chat-folder="pinned">Pinned</button></div><section class="tg-conversation-list"><article class="tg-chat-item active"><div class="tg-chat-item__avatar tg-chat-item__avatar--hepta-logo" data-hepta-agent-logo="true"><img src="./assets/hepta-agent-logo.png" alt="" /></div><div class="tg-chat-item__body"><strong>Hepta Runtime</strong><p>Rust/no-JS chat workspace restored with old JS DOM parity.</p><span class="tg-chat-item__unread">1</span></div></article></section></aside>
-              <section class="tg-thread-panel" data-hepta-main-panel-active="false"><header class="tg-thread-header"><div class="tg-thread-header__main"><div class="tg-thread-avatar tg-thread-avatar--hepta-logo" data-hepta-agent-logo="true"><img src="./assets/hepta-agent-logo.png" alt="" /></div><div><h2>Hepta Runtime</h2><p>active now</p></div></div><div class="tg-thread-status"><span class="badge ok">Rust no-JS</span><span class="badge">chat-first</span></div></header><section class="hepta-entry-surface hepta-route-surface content"><header class="hepta-route-surface__header"><div><p class="eyebrow">HEPTA_ENTRY_CONTENT_ROWS</p><h3 class="page-title">Runtime control plane</h3></div></header><div class="hepta-route-surface__outlet"><div class="screen-grid"><article class="card route-card" data-screen="chat"><h3>Chat</h3><p>Conversation rail, thread, route surface, composer.</p></article><article class="card route-card" data-screen="tasks"><h3>Tasks</h3><p>/tasks · /subagents · guarded queue operations.</p></article><article class="card route-card" data-screen="merge-completion" data-endpoint="/api/hepta-merge-completion"><h3>Merge Completion</h3><p>82% source · 91% local function · 68% replacement, owner handoff gated.</p></article></div></div></section><section class="focus-thread tg-thread"><article class="tg-message tg-message--agent"><div class="tg-bubble"><span>hepta</span><p>The served UI is generated by <code>hepta-core::control_ui</code>; this fallback keeps the same structural markers.</p></div></article></section><section class="focus-compose chat-compose tg-compose-wrap" data-chat-composer-shell="telegram"><div class="tg-compose-bar"><textarea data-chat-composer-input rows="1" placeholder="Message Hepta Runtime…"></textarea><button class="tg-send-button" data-agent-chat-send>➤</button></div><pre id="agent-chat-output" class="json-box">Choose a workspace, then plan or send a message.</pre></section></section>
-              <aside class="tg-room-panel"><aside class="hepta-right-sidebar shell-nav sidebar sidebar-shell" data-hepta-left-sidebar-migrated="full"><header class="brand app-brand hepta-sidebar-block"><div class="brand-mark app-brand__mark" data-hepta-agent-logo="true"><img src="./assets/hepta-agent-logo.png" alt="" /></div><div class="app-brand__text"><p class="eyebrow">Hepta</p><h1>Runtime</h1></div></header><nav class="sidebar-nav hepta-right-sidebar__body"><section class="hepta-nav-section"><div class="hepta-nav-section__label"><span>Control</span></div><div class="hepta-nav-section__items"><a class="nav-item hepta-nav-item active" href="#chat" data-screen="chat"><span class="nav-item__icon">◌</span><span class="nav-item__text">Chat</span></a><a class="nav-item hepta-nav-item" href="#sessions" data-screen="sessions"><span class="nav-item__icon">☰</span><span class="nav-item__text">Sessions</span></a><a class="nav-item hepta-nav-item" href="#tasks" data-screen="tasks"><span class="nav-item__icon">☷</span><span class="nav-item__text">Tasks</span></a><a class="nav-item hepta-nav-item" href="#config" data-screen="config"><span class="nav-item__icon">⚙</span><span class="nav-item__text">Config</span></a></div></section></nav><footer class="hepta-right-sidebar__footer hepta-sidebar-block"><a class="nav-item hepta-nav-item" href="https://docs.hepta.ai/">Docs</a></footer></aside></aside>
-            </main>
+        <section class="workspace dashboard-grid">
+          <section class="panel card wide" id="hepta-screen-panel">
+            <section class="focus-workspace telegram-chat-shell" data-chat-first-architecture="true" data-minimal-consumer-workspace="true" data-telegram-multi-agent-chat="true" data-control-ui-telegram-shell="true" data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow" data-control-ui-harsh-referee="2026-06-08-liquid-glass-menus-sidebars-scroll-search" data-mobile-layered-chat="true" data-professional-first-screen="true" data-product-ia="telegram-chat-shell" data-control-ui-product-first="true" data-control-ui-primary-path="telegram-chat-shell" data-workspace-primary="thread" data-chat-mobile-active-pane="thread" data-chat-workspace-scope="local" data-chat-brain-scope="global" data-chat-shared-brain-mode="global-brain-isolated-context">
+              <header class="focus-header"><div class="focus-brand"><div class="focus-orb" data-hepta-agent-logo="true"><img src="./assets/hepta-agent-logo.png" alt="" /></div><span>Hepta</span></div><div class="focus-actions prompt-chip-row"><a class="ghost-action" data-open-command-palette href="#command-palette" aria-label="Open command palette" title="Open command palette"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg></a></div></header>
+              <main class="focus-main focus-main--chat" data-merge-completion-endpoint="/api/hepta-merge-completion">
+                <aside class="tg-conversation-rail" data-control-ui-work-rail="product-first">
+                  <div class="tg-rail-header"><div><h2>Chats</h2></div><div class="tg-rail-status tg-rail-status--minimal"><button class="tg-icon-action" data-control-ui-icon-button="new-conversation" data-chat-add aria-label="New conversation" title="New conversation"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-plus"/></svg></button><span class="tg-rail-status__item tg-rail-status__item--quiet">3</span></div></div>
+                  <label class="tg-search-shell" aria-label="Search chats"><input data-chat-search data-control-ui-rail-search-input="light-glass" type="search" placeholder="Search" aria-label="Search chats" title="Search chats" /></label>
+                  <div class="tg-folder-row" aria-label="Chat folders"><button class="tg-folder-chip active" data-chat-folder="all" aria-pressed="true" aria-label="All chats" title="All chats"><span>All</span></button><button class="tg-folder-chip" data-chat-folder="pinned" aria-pressed="false" aria-label="Pinned chats" title="Pinned chats"><span>Pinned</span></button><button class="tg-folder-chip" data-chat-folder="archived" aria-pressed="false" aria-label="Archived chats" title="Archived chats"><span>Archived</span></button></div>
+                  <section class="tg-conversation-list" aria-label="Agent conversations" role="listbox">
+                    <article class="tg-chat-item active" data-chat-conversation="ui-chat-agent" role="option" aria-selected="true" tabindex="0" aria-label="Hepta conversation, local review ready" title="Hepta conversation, local review ready"><div class="tg-chat-item__avatar tg-chat-item__avatar--hepta-logo" data-hepta-agent-logo="true"><img src="./assets/hepta-agent-logo.png" alt="" /></div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Hepta</strong><div class="tg-chat-item__actions"><span>now</span><button class="tg-row-menu-toggle active" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="ui-chat-agent" aria-label="Open Hepta conversation actions" title="Open Hepta conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p>Plan is ready in the thread. Review the evidence before approval.</p><span class="tg-chat-item__unread" data-control-ui-micro-surface="unread-count">1</span></div><div class="tg-row-action-popover" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="ui-chat-agent" role="menu" aria-label="Hepta conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" role="menuitem" aria-label="Pin Hepta conversation" title="Pin Hepta conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-evidence" role="menuitem" aria-label="Open Hepta evidence" title="Open Hepta evidence"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-row-action__label">Evidence</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" role="menuitem" aria-label="Archive Hepta conversation" title="Archive Hepta conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
+                    <article class="tg-chat-item" data-chat-conversation="task-queue" role="option" aria-selected="false" tabindex="0" aria-label="Actions conversation, local approval queue" title="Actions conversation, local approval queue"><div class="tg-chat-item__avatar">A</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Actions</strong><div class="tg-chat-item__actions"><span>local</span><button class="tg-row-menu-toggle" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="task-queue" aria-label="Open Actions conversation actions" title="Open Actions conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p>Pending steps wait for exact approval.</p></div><div class="tg-row-action-popover" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="task-queue" role="menu" aria-label="Actions conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" role="menuitem" aria-label="Pin Actions conversation" title="Pin Actions conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-approvals" role="menuitem" aria-label="Open Actions approvals" title="Open Actions approvals"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plan"/></svg></span><span class="tg-row-action__label">Approvals</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" role="menuitem" aria-label="Archive Actions conversation" title="Archive Actions conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
+                    <article class="tg-chat-item" data-chat-conversation="operator-plane" role="option" aria-selected="false" tabindex="0" aria-label="Evidence conversation, sources ready" title="Evidence conversation, sources ready"><div class="tg-chat-item__avatar">E</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Evidence</strong><div class="tg-chat-item__actions"><span>ready</span><button class="tg-row-menu-toggle" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="operator-plane" aria-label="Open Evidence conversation actions" title="Open Evidence conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p>Sources and decisions stay attached to chat.</p></div><div class="tg-row-action-popover" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="operator-plane" role="menu" aria-label="Evidence conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" role="menuitem" aria-label="Pin Evidence conversation" title="Pin Evidence conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-sources" role="menuitem" aria-label="Open Evidence sources" title="Open Evidence sources"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-row-action__label">Sources</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" role="menuitem" aria-label="Archive Evidence conversation" title="Archive Evidence conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
+                  </section>
+                </aside>
+                <section class="tg-thread-panel" data-hepta-main-panel-active="false">
+                  <header class="tg-thread-header"><div class="tg-thread-header__main"><div class="tg-thread-avatar tg-thread-avatar--hepta-logo" data-hepta-agent-logo="true"><img src="./assets/hepta-agent-logo.png" alt="" /></div><div><h2>Hepta</h2><p>local review ready</p></div></div><div class="tg-thread-status"><div class="tg-thread-status-summary" data-session-status-badges="compact" data-control-ui-status-trust-strip="local-safe-review" role="group" aria-label="Thread status trust"><span class="badge ok" data-control-ui-status-trust-badge="local" data-control-ui-micro-surface="thread-status-local" aria-label="Local trust status" title="Local trust status">Local</span><span class="badge" data-control-ui-status-trust-badge="safe-review" data-control-ui-micro-surface="thread-status-safe-review" aria-label="Safe review status" title="Safe review status">safe review</span></div><a class="tg-icon-action tg-command-palette-trigger" data-open-command-palette data-control-ui-command-palette-trigger="light-glass" href="#command-palette" aria-label="Open command palette" title="Open command palette"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg></a><details class="tg-thread-command-menu" data-thread-command-menu="true" name="control-ui-tools-menu"><summary data-control-ui-menu-trigger="icon" data-control-ui-thread-tools-trigger="light-glass" aria-label="Open thread tools" title="Open thread tools"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-more"/></svg></span><span class="sr-only">More</span></summary><div class="tg-thread-command-menu__panel tg-thread-search-bar__controls" data-control-ui-thread-tools-panel="light-glass" role="menu" aria-label="Thread tools"><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="history" href="#transcript" role="menuitem" aria-label="Open thread history" title="Open thread history"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-history"/></svg></span><span class="tg-menu-item__label">History</span></a><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="tasks" href="#tasks" role="menuitem" aria-label="Open thread tasks" title="Open thread tasks"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-menu-item__label">Tasks</span></a><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="sessions" href="#sessions" role="menuitem" aria-label="Open thread sessions" title="Open thread sessions"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-menu-item__label">Sessions</span></a></div></details></div></header>
+                  <section class="tg-thread-meta-strip tg-thread-intro" data-control-ui-product-first="true" data-control-ui-primary-path="telegram-chat-shell" data-control-ui-telegram-shell="true" data-control-ui-compact-product-path="narrow-mobile"><span class="badge ok" data-control-ui-thread-intro-badge="telegram-shell" data-control-ui-micro-surface="thread-intro-telegram-shell" aria-label="Telegram shell" title="Telegram shell">Telegram shell</span><span class="badge" data-control-ui-thread-intro-badge="message-workflow" data-control-ui-micro-surface="thread-intro-message-workflow" aria-label="Message-first workflow" title="Message-first workflow">message-first workflow</span><span class="badge" data-control-ui-thread-intro-badge="evidence-inline" data-control-ui-micro-surface="thread-intro-evidence-inline" aria-label="Evidence inline" title="Evidence inline">evidence inline</span><span class="badge" data-control-ui-thread-intro-badge="approval-chat" data-control-ui-micro-surface="thread-intro-approval-chat" aria-label="Approval in chat" title="Approval in chat">approval in chat</span></section>
+                  <section class="focus-thread tg-thread" data-thread-signature="rust-no-js-static:3">
+                    <div class="tg-date-divider" data-chat-date-divider="local-day"><span data-control-ui-micro-surface="date-divider">Today</span></div>
+                    <article class="tg-message tg-message--self"><div class="tg-bubble"><span>you</span><p>全量复刻 Telegram 的 UI，不要 dashboard。</p></div><small>16:47</small></article>
+                    <article class="tg-message tg-message--agent"><div class="tg-bubble"><span>hepta</span><p>收到。默认界面改成 Telegram 式聊天：左侧会话，中间消息流，底部只保留附件、文本和发送。</p></div><small>local · now</small></article>
+                    <article class="tg-message tg-message--agent"><div class="tg-bubble"><span>evidence</span><p>Approval, plan, and source notes stay inline in chat.</p><div class="badge-row tg-routing-badges"><span class="badge" data-control-ui-micro-surface="routing-safe-preview">safe preview</span><span class="badge" data-control-ui-micro-surface="routing-local-only">local only</span></div></div><small>local · now</small></article>
+                  </section>
+                  <details class="hepta-secondary-map" data-control-ui-secondary-map="collapsed"><summary><span>Workspace map</span><strong>Diagnostics collapsed</strong></summary><div class="hepta-secondary-map__body"><section class="hepta-entry-surface hepta-route-surface content" data-contract-marker="HEPTA_ENTRY_CONTENT_ROWS"><div class="screen-grid"><article class="card route-card" data-screen="chat"><h3>Chat</h3><p>Conversation rail, thread, side panel, composer.</p></article></div></section></div></details>
+                  <section class="focus-compose chat-compose tg-compose-wrap" data-chat-composer-shell="telegram" data-mobile-compact-composer="true" data-control-ui-composer-product-first="true">
+                    <div class="tg-compose-bar"><details class="tg-composer-picker" data-chat-composer-picker="artifact" name="control-ui-composer-popover"><summary class="tg-compose-icon" data-control-ui-icon-button="attach" data-chat-composer-popover-toggle="artifact" data-chat-attachment-placeholder aria-haspopup="menu" aria-controls="composer-popover-artifact" aria-label="Attach local context" title="Attach local context"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-paperclip"/></svg></summary><div class="tg-composer-popover" id="composer-popover-artifact" data-chat-composer-popover="artifact" data-control-ui-composer-popover-panel="light-glass" role="menu" aria-label="Attach local context options"><div class="tg-composer-popover__header"><strong>Attach context</strong><span>local only</span></div><input class="tg-composer-popover__search" data-chat-composer-picker-search="artifact" data-control-ui-composer-popover-search="light-glass" type="search" placeholder="Find local context" aria-label="Search local context" title="Search local context" /><button class="tg-composer-popover__item" data-chat-artifact-insert="evidence-note" data-chat-composer-picker-item="evidence-note" role="menuitem" aria-label="Attach evidence note" title="Attach evidence note"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-paperclip"/></svg></span><span><b>Evidence note</b><small>Local source summary</small></span></button><button class="tg-composer-popover__item" data-chat-artifact-insert="decision-log" data-chat-composer-picker-item="decision-log" role="menuitem" aria-label="Attach decision log" title="Attach decision log"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span><b>Decision log</b><small>Approval boundary</small></span></button></div></details><details class="tg-composer-picker" data-chat-composer-picker="command" name="control-ui-composer-popover"><summary class="tg-compose-icon" data-control-ui-icon-button="command" data-chat-composer-popover-toggle="command" data-chat-command-shortcut aria-haspopup="menu" aria-controls="composer-popover-command" aria-label="Insert command" title="Insert command"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg></summary><div class="tg-composer-popover" id="composer-popover-command" data-chat-composer-popover="command" data-control-ui-composer-popover-panel="light-glass" role="menu" aria-label="Insert command options"><div class="tg-composer-popover__header"><strong>Insert command</strong><span>read-only</span></div><input class="tg-composer-popover__search" data-chat-composer-picker-search="command" data-control-ui-composer-popover-search="light-glass" type="search" placeholder="Find command" aria-label="Search commands" title="Search commands" /><button class="tg-composer-popover__item" data-chat-command-insert="/control-ui --json" data-chat-composer-picker-item="control-ui-command" role="menuitem" aria-label="Insert /control-ui --json" title="Insert /control-ui --json"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-command"/></svg></span><span><b>Control UI</b><small>/control-ui --json</small></span></button><button class="tg-composer-popover__item" data-chat-command-insert="/hepta-merge-completion --json" data-chat-composer-picker-item="merge-completion-command" role="menuitem" aria-label="Insert /hepta-merge-completion --json" title="Insert /hepta-merge-completion --json"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span><b>Merge completion</b><small>/hepta-merge-completion --json</small></span></button></div></details><textarea data-chat-composer-input rows="1" placeholder="Message Hepta" aria-label="Message Hepta" title="Message Hepta"></textarea><button class="tg-send-button" data-control-ui-icon-button="send" data-agent-chat-send aria-label="Send message" title="Send message"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-send"/></svg></button></div>
+                    <div class="tg-compose-footer"><span data-chat-shortcut-hint>Plan first · send after review</span><button class="tg-compose-plan" data-control-ui-icon-button="plan" data-agent-chat-plan aria-label="Plan next step" title="Plan next step"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plan"/></svg></span><span class="sr-only">Plan</span></button><span class="tg-compose-status" data-chat-send-state="ready" data-control-ui-micro-surface="composer-status-ready">safe preview</span><details class="tg-thread-command-menu" data-control-ui-composer-more="collapsed" name="control-ui-tools-menu"><summary data-control-ui-menu-trigger="icon" data-control-ui-composer-tools-trigger="light-glass" aria-label="Open composer tools" title="Open composer tools"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-more"/></svg></span><span class="sr-only">More</span></summary><div class="tg-thread-command-menu__panel tg-thread-search-bar__controls" data-control-ui-composer-tools-panel="light-glass" role="menu" aria-label="Composer tools"><label class="tg-autoscroll-select tg-menu-item" data-control-ui-composer-tool-item="reply-mode" data-control-ui-menu-item="reply-mode" role="menuitem" aria-label="Set reply mode" title="Set reply mode"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-reply"/></svg></span><span class="tg-menu-item__label">Reply</span><select data-chat-routing-mode aria-label="Reply mode" title="Reply mode"><option selected>auto</option><option>direct</option><option>broadcast</option></select></label><label class="tg-autoscroll-select tg-menu-item" data-control-ui-composer-tool-item="scroll-mode" data-control-ui-menu-item="scroll-mode" data-chat-autoscroll-persisted="local-storage-contract" role="menuitem" aria-label="Set auto-scroll mode" title="Set auto-scroll mode"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-scroll"/></svg></span><span class="tg-menu-item__label">Scroll</span><select data-chat-autoscroll-mode aria-label="Auto-scroll mode" title="Auto-scroll mode"><option value="smart" selected>smart</option><option value="locked">locked</option><option value="off">off</option></select></label></div></details></div><pre id="agent-chat-output" class="json-box">Choose a workspace, then plan or send a message.</pre>
+                  </section>
+                </section>
+                <aside class="tg-room-panel" data-control-ui-runtime-rail="local-review-safety-evidence"><section class="hepta-right-sidebar"><header class="tg-room-panel__header"><span>Info</span><strong>Hepta</strong></header><section class="tg-room-section"><div class="tg-room-section__title"><span>Safety</span><strong>Local review locked</strong></div><p>Nothing leaves preview until an exact approval is selected.</p></section><section class="tg-room-section"><div class="tg-room-section__title"><span>Evidence</span><strong>3 attached notes</strong></div><p>Plan, source summary, and approval boundary stay in the chat context.</p></section><details class="tg-room-accordion" data-control-ui-secondary-nav="collapsed"><summary class="tg-room-section__title"><span>Diagnostics</span><strong>Routes and tools</strong></summary><div><a class="nav-item hepta-nav-item active" href="#chat" data-screen="chat">Chat</a><a class="nav-item hepta-nav-item" href="#sessions" data-screen="sessions">Sessions</a><a class="nav-item hepta-nav-item" href="#config" data-screen="config">Config</a></div></details></section></aside>
+              </main>
+            </section>
           </section>
-        </section><section class="panel card command-rail" id="hepta-command-panel"><div class="command-list" id="commands"><article class="command-item"><strong>Control UI</strong><code>/control-ui --json</code><button class="button small" data-run-command="read-only">Run read-only</button></article><article class="command-item"><strong>Merge Completion</strong><code>/hepta-merge-completion --json</code><button class="button small" data-run-command="read-only">Run read-only</button></article></div></section></section>
-        <section class="panel card wide evidence-panel" data-live-event-stream="true" data-diff-review="true" data-approval-cards="true" data-task-drilldown="true" data-transcript-preview="true" data-command-runner="true" data-task-publisher="true" data-agent-chat="true" data-external-agent-benchmark="true"><textarea id="json-input" placeholder="Manual JSON inspection surface"></textarea><pre id="json-preview">No browser JavaScript is required.</pre></section>
+          <section class="panel card command-rail" id="hepta-command-panel"><div class="command-list" id="commands"><article class="command-item"><strong>Control UI</strong><code>/control-ui --json</code><button class="button small" data-control-ui-action-control="run-control-ui-read-only" data-run-command="read-only" aria-label="Run Control UI read-only command" title="Run Control UI read-only command">Run read-only</button></article><article class="command-item"><strong>Merge Completion</strong><code>/hepta-merge-completion --json</code><button class="button small" data-control-ui-action-control="run-merge-completion-read-only" data-run-command="read-only" aria-label="Run merge completion read-only command" title="Run merge completion read-only command">Run read-only</button></article></div></section>
+        </section>
+        <section class="panel card wide evidence-panel" data-live-event-stream="true" data-diff-review="true" data-approval-cards="true" data-task-drilldown="true" data-transcript-preview="true" data-command-runner="true" data-task-publisher="true" data-agent-chat="true" data-external-agent-benchmark="true"><textarea id="json-input" placeholder="Manual JSON inspection surface" aria-label="Manual JSON inspection surface" title="Manual JSON inspection surface"></textarea><pre id="json-preview">No browser JavaScript is required.</pre></section>
       </main>
     </div>
-    <div class="command-palette-backdrop" id="command-palette"><section class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette"><div class="command-palette__input-row"><input id="command-palette-input" type="search" placeholder="Static Rust command index" /><a class="button small" href="#commands">Esc</a></div><div id="command-palette-results" class="command-palette__results"><a class="command-palette__item" href="#commands"><span class="command-palette__kind">command</span><span class="command-palette__copy"><strong>/control-ui --json</strong><small>Read-only status</small></span></a></div></section></div>
+    <div class="command-palette-backdrop" id="command-palette"><section class="command-palette" data-control-ui-command-palette-surface="light-glass" role="dialog" aria-modal="true" aria-label="Command palette"><div class="command-palette__input-row"><span aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-command"/></svg></span><input id="command-palette-input" data-control-ui-command-palette-input="light-glass" type="search" placeholder="Search" aria-label="Search command palette" title="Search command palette" /><a class="button small" data-control-ui-command-palette-close="light-glass" href="#commands" aria-label="Close command palette" title="Close command palette"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-close"/></svg></a></div><div id="command-palette-results" class="command-palette__results"><a class="command-palette__item" data-control-ui-command-palette-item="control-ui" data-control-ui-command-palette-result="light-glass" href="#commands" aria-label="Open command result: /control-ui --json" title="Open command result: /control-ui --json"><span class="command-palette__kind"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg><span>command</span></span><span class="command-palette__copy"><strong>/control-ui --json</strong><small>Read-only status</small></span></a></div></section></div>
+    <script>
+      (() => {
+        const groupSelector = 'details[name="control-ui-tools-menu"]';
+        const composerShellSelector = '[data-chat-composer-shell="telegram"]';
+        const composerOpenAttr = "data-chat-composer-popover-open";
+        const composerPopoverSelector = "[data-chat-composer-popover]";
+        const composerToggleSelector = "[data-chat-composer-popover-toggle]";
+        const composerPickerSelector = "details.tg-composer-picker";
+        const commandPaletteHash = "#command-palette";
+        const commandPaletteInputSelector = "#command-palette-input";
+        const commandPaletteOpenSelector = "[data-open-command-palette]";
+        const commandPaletteSurfaceSelector = ".command-palette";
+        const rowMenuToggleSelector = "[data-chat-row-menu-toggle]";
+        const rowMenuPanelSelector = "[data-chat-row-menu-panel]";
+        const rowMenuOpenClass = "tg-chat-item--menu-open";
+        const keyboardOpenAttr = "data-control-ui-keyboard-open";
+        const actionMenuItemSelector = [
+          `${rowMenuPanelSelector} button[role="menuitem"]`,
+          `${groupSelector} a[role="menuitem"]`,
+          `${groupSelector} button[role="menuitem"]`,
+          `${composerPopoverSelector} button[role="menuitem"]`,
+          `${composerPopoverSelector} a[role="menuitem"]`,
+          `${commandPaletteSurfaceSelector} [data-control-ui-command-palette-item]`,
+        ].join(",");
+        const popupPrimaryFocusSelector = [
+          'input:not([type="hidden"]):not([disabled])',
+          'select:not([disabled])',
+          'textarea:not([disabled])',
+          'button:not([disabled])',
+          'a[href]',
+          '[tabindex]:not([tabindex="-1"])',
+        ].join(",");
+        const popupFallbackFocusSelector = '[role="menuitem"]';
+        let popupReturnTarget = null;
+        let keyboardPopupIntentAt = 0;
+        const rememberPopupReturnTarget = (target) => {
+          if (target instanceof HTMLElement) popupReturnTarget = target;
+        };
+        const markKeyboardPopupIntent = (target) => {
+          rememberPopupReturnTarget(target);
+          keyboardPopupIntentAt = performance.now();
+        };
+        const consumeKeyboardPopupIntent = (trigger) => {
+          const isKeyboardOpen = trigger instanceof HTMLElement && popupReturnTarget === trigger && keyboardPopupIntentAt > 0 && performance.now() - keyboardPopupIntentAt < 800;
+          keyboardPopupIntentAt = 0;
+          return isKeyboardOpen;
+        };
+        const focusFirstPopupControl = (panel) => {
+          const target = panel?.querySelector(popupPrimaryFocusSelector) || panel?.querySelector(popupFallbackFocusSelector);
+          if (target instanceof HTMLElement) target.focus({ preventScroll: true });
+        };
+        const focusFirstPopupControlSoon = (panel) => {
+          if (!panel) return;
+          window.setTimeout(() => focusFirstPopupControl(panel), 0);
+        };
+        const isVisibleFocusTarget = (node) => {
+          if (!(node instanceof HTMLElement)) return false;
+          const rect = node.getBoundingClientRect();
+          const style = window.getComputedStyle(node);
+          return rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0.01 && !node.matches("[disabled], [aria-hidden='true']");
+        };
+        const focusablePopupItems = (panel) => {
+          if (!(panel instanceof Element)) return [];
+          return Array.from(panel.querySelectorAll(popupPrimaryFocusSelector)).filter(isVisibleFocusTarget);
+        };
+        const activePopupPanel = () => {
+          const active = document.activeElement;
+          if (!(active instanceof Element)) return null;
+          const palette = active.closest(commandPaletteSurfaceSelector);
+          if (palette && window.location.hash === commandPaletteHash) return palette;
+          const rowPanel = active.closest(rowMenuPanelSelector);
+          if (rowPanel && rowPanel.closest(`.${rowMenuOpenClass}`)) return rowPanel;
+          const toolsPanel = active.closest(`${groupSelector}[open] [role="menu"]`);
+          if (toolsPanel) return toolsPanel;
+          const composerPanel = active.closest(`${composerPickerSelector}[open] ${composerPopoverSelector}`);
+          if (composerPanel) return composerPanel;
+          return null;
+        };
+        const trapPopupTabFocus = (event) => {
+          if (event.key !== "Tab") return false;
+          const panel = activePopupPanel();
+          const items = focusablePopupItems(panel);
+          if (!panel || !items.length) return false;
+          event.preventDefault();
+          const active = document.activeElement;
+          const currentIndex = items.indexOf(active instanceof HTMLElement ? active : null);
+          const nextIndex = event.shiftKey
+            ? (currentIndex <= 0 ? items.length - 1 : currentIndex - 1)
+            : (currentIndex < 0 || currentIndex >= items.length - 1 ? 0 : currentIndex + 1);
+          items[nextIndex]?.focus({ preventScroll: true });
+          syncPopupSemantics();
+          return true;
+        };
+        const returnPopupFocusSoon = () => {
+          const target = popupReturnTarget;
+          popupReturnTarget = null;
+          if (target instanceof HTMLElement && document.contains(target)) {
+            window.setTimeout(() => target.focus({ preventScroll: true }), 0);
+          }
+        };
+        const ensureId = (element, id) => {
+          if (!(element instanceof Element)) return "";
+          if (!element.id) element.id = id;
+          return element.id;
+        };
+        const syncPopupSemantics = () => {
+          document.querySelectorAll(rowMenuToggleSelector).forEach((toggle) => {
+            const key = toggle.getAttribute("data-chat-row-menu-toggle") || "";
+            const panel = key ? document.querySelector(`${rowMenuPanelSelector}[data-chat-row-menu-panel="${key}"]`) : null;
+            if (!panel) return;
+            toggle.setAttribute("aria-haspopup", "menu");
+            toggle.setAttribute("aria-controls", ensureId(panel, `row-menu-panel-${key}`));
+            toggle.setAttribute("aria-expanded", toggle.closest(".tg-chat-item")?.classList.contains(rowMenuOpenClass) ? "true" : "false");
+          });
+          document.querySelectorAll(`${groupSelector} > summary`).forEach((summary) => {
+            const details = summary.closest("details");
+            const panel = details?.querySelector('[role="menu"]');
+            if (!details || !panel) return;
+            const key = panel.getAttribute("data-control-ui-thread-tools-panel")
+              ? "thread-tools-panel"
+              : panel.getAttribute("data-control-ui-composer-tools-panel")
+                ? "composer-tools-panel"
+                : "tools-panel";
+            summary.setAttribute("aria-haspopup", "menu");
+            summary.setAttribute("aria-controls", ensureId(panel, key));
+            summary.setAttribute("aria-expanded", details.open ? "true" : "false");
+          });
+          document.querySelectorAll(`${composerPickerSelector} > summary`).forEach((summary) => {
+            const details = summary.closest("details");
+            const panel = details?.querySelector(composerPopoverSelector);
+            if (!details || !panel) return;
+            const kind = details.getAttribute("data-chat-composer-picker") || panel.getAttribute("data-chat-composer-popover") || "composer-popover";
+            const shell = details.closest(composerShellSelector);
+            summary.setAttribute("aria-haspopup", "menu");
+            summary.setAttribute("aria-controls", ensureId(panel, `composer-popover-${kind}`));
+            summary.setAttribute("aria-expanded", details.open ? "true" : "false");
+          });
+          const palette = document.querySelector(commandPaletteSurfaceSelector);
+          if (palette) {
+            const paletteOpen = window.location.hash === commandPaletteHash;
+            const paletteId = ensureId(palette, "command-palette-dialog");
+            document.querySelectorAll(commandPaletteOpenSelector).forEach((trigger) => {
+              trigger.setAttribute("aria-haspopup", "dialog");
+              trigger.setAttribute("aria-controls", paletteId);
+              trigger.setAttribute("aria-expanded", paletteOpen ? "true" : "false");
+            });
+          }
+        };
+        const syncPopupSemanticsSoon = () => window.requestAnimationFrame(syncPopupSemantics);
+        const closePeers = (current) => {
+          document.querySelectorAll(`${groupSelector}[open]`).forEach((details) => {
+            if (details !== current) {
+              details.removeAttribute("open");
+              details.removeAttribute(keyboardOpenAttr);
+            }
+          });
+          syncPopupSemanticsSoon();
+        };
+        const closeAll = () => {
+          document.querySelectorAll(`${groupSelector}[open]`).forEach((details) => {
+            details.removeAttribute("open");
+            details.removeAttribute(keyboardOpenAttr);
+          });
+          document.querySelectorAll(`${composerPickerSelector}[open]`).forEach((details) => details.removeAttribute("open"));
+          closeRowMenus();
+          syncPopupSemantics();
+          syncPopupSemanticsSoon();
+        };
+        const closeRowMenus = (current) => {
+          document.querySelectorAll(`.${rowMenuOpenClass}`).forEach((row) => {
+            if (row !== current) {
+              row.classList.remove(rowMenuOpenClass);
+              resetRowMenuGeometry(row);
+            }
+          });
+          syncPopupSemanticsSoon();
+        };
+        const rowMenuNarrowTop = new Map([
+          ["ui-chat-agent", "62px"],
+          ["task-queue", "108px"],
+          ["operator-plane", "24px"],
+        ]);
+        const resetRowMenuGeometry = (row) => {
+          row?.querySelectorAll(rowMenuPanelSelector).forEach((panel) => {
+            ["position", "top", "right", "bottom", "left", "transform", "z-index"].forEach((name) => panel.style.removeProperty(name));
+            panel.removeAttribute("data-chat-row-menu-repositioned");
+          });
+        };
+        const syncRowMenuGeometry = (row) => {
+          if (!(row instanceof Element)) return;
+          const panel = row.querySelector(rowMenuPanelSelector);
+          if (!(panel instanceof HTMLElement)) return;
+          resetRowMenuGeometry(row);
+          if (!window.matchMedia("(min-width: 701px) and (max-width: 980px)").matches) return;
+          const top = rowMenuNarrowTop.get(panel.getAttribute("data-chat-row-menu-panel") || "");
+          if (!top) return;
+          panel.style.setProperty("position", "fixed", "important");
+          panel.style.setProperty("top", top, "important");
+          panel.style.setProperty("right", "80px", "important");
+          panel.style.setProperty("bottom", "auto", "important");
+          panel.style.setProperty("left", "auto", "important");
+          panel.style.setProperty("transform", "none", "important");
+          panel.style.setProperty("z-index", "980", "important");
+          panel.setAttribute("data-chat-row-menu-repositioned", "narrow");
+        };
+        const toggleRowMenu = (target) => {
+          if (!(target instanceof Element)) return false;
+          const toggle = target.closest(rowMenuToggleSelector);
+          if (!toggle) return false;
+          const row = toggle.closest(".tg-chat-item");
+          if (!row) return false;
+          const wasOpen = row.classList.contains(rowMenuOpenClass);
+          const shouldMoveFocus = consumeKeyboardPopupIntent(toggle);
+          closeAll();
+          if (!wasOpen) {
+            row.classList.add(rowMenuOpenClass);
+            syncRowMenuGeometry(row);
+            rememberPopupReturnTarget(toggle);
+            if (shouldMoveFocus) focusFirstPopupControlSoon(row.querySelector(rowMenuPanelSelector));
+          }
+          syncPopupSemanticsSoon();
+          return true;
+        };
+        const openComposerPopover = (kind, shell, moveFocus = false) => {
+          if (!kind || !shell) return;
+          shell.setAttribute(composerOpenAttr, kind);
+          const picker = shell.querySelector(`${composerPickerSelector}[data-chat-composer-picker="${kind}"]`);
+          const panel = picker?.querySelector(composerPopoverSelector);
+          if (picker instanceof HTMLDetailsElement) picker.open = true;
+          if (moveFocus) focusFirstPopupControlSoon(panel);
+          syncPopupSemanticsSoon();
+        };
+        const closeComposerPopovers = () => {
+          document.querySelectorAll(`${composerShellSelector}[${composerOpenAttr}]`).forEach((shell) => {
+            shell.removeAttribute(composerOpenAttr);
+          });
+          document.querySelectorAll(`${composerPickerSelector}[open]`).forEach((details) => details.removeAttribute("open"));
+          syncPopupSemantics();
+          syncPopupSemanticsSoon();
+        };
+        const openCommandPalette = (trigger) => {
+          rememberPopupReturnTarget(trigger);
+          if (window.location.hash !== commandPaletteHash) window.location.hash = commandPaletteHash;
+          syncPopupSemanticsSoon();
+          window.setTimeout(() => document.querySelector(commandPaletteInputSelector)?.focus(), 0);
+        };
+        const closeCommandPalette = () => {
+          if (window.location.hash !== commandPaletteHash) return;
+          window.location.hash = "#commands";
+          syncPopupSemantics();
+          syncPopupSemanticsSoon();
+        };
+        const closeTransientForViewportChange = () => {
+          closeAll();
+          closeComposerPopovers();
+          closeCommandPalette();
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        };
+        const closeTransientAfterMenuAction = () => {
+          window.setTimeout(() => {
+            closeAll();
+            closeComposerPopovers();
+            closeCommandPalette();
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          }, 0);
+        };
+        const activateToolMenuLink = (link) => {
+          const href = link.getAttribute("href") || "";
+          closeAll();
+          closeComposerPopovers();
+          closeCommandPalette();
+          if (href.startsWith("#") && href.length > 1) window.location.hash = href;
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          syncPopupSemanticsSoon();
+        };
+        let viewportChangeFrame = 0;
+        let rowMenuPointerHandled = false;
+        const handleViewportChange = () => {
+          if (viewportChangeFrame) window.cancelAnimationFrame(viewportChangeFrame);
+          viewportChangeFrame = window.requestAnimationFrame(() => {
+            viewportChangeFrame = 0;
+            closeTransientForViewportChange();
+          });
+        };
+        const syncComposerPopover = (target) => {
+          if (!(target instanceof Element)) return false;
+          const toggle = target.closest(composerToggleSelector);
+          if (toggle) {
+            const details = toggle.closest(composerPickerSelector);
+            if (details?.open) {
+              openComposerPopover(toggle.getAttribute("data-chat-composer-popover-toggle"), toggle.closest(composerShellSelector));
+              return true;
+            }
+            syncPopupSemanticsSoon();
+            return false;
+          }
+          const popover = target.closest(composerPopoverSelector);
+          if (popover) {
+            openComposerPopover(popover.getAttribute("data-chat-composer-popover"), popover.closest(composerShellSelector));
+            return true;
+          }
+          return false;
+        };
+        document.addEventListener("toggle", (event) => {
+          const details = event.target;
+          if (!(details instanceof HTMLDetailsElement) || !details.matches(groupSelector)) return;
+          if (!details.open) {
+            details.removeAttribute(keyboardOpenAttr);
+            syncPopupSemanticsSoon();
+            return;
+          }
+          closePeers(details);
+          const summary = details.querySelector("summary");
+          const openedByKeyboard = consumeKeyboardPopupIntent(summary);
+          details.toggleAttribute(keyboardOpenAttr, openedByKeyboard);
+          rememberPopupReturnTarget(summary);
+          if (openedByKeyboard) focusFirstPopupControlSoon(details.querySelector('[role="menu"]'));
+          syncPopupSemanticsSoon();
+        }, true);
+        document.addEventListener("toggle", (event) => {
+          const details = event.target;
+          if (!(details instanceof HTMLDetailsElement) || !details.matches(composerPickerSelector)) return;
+          const summary = details.querySelector("summary");
+          const panel = details.querySelector(composerPopoverSelector);
+          const shell = details.closest(composerShellSelector);
+          const kind = details.getAttribute("data-chat-composer-picker") || panel?.getAttribute("data-chat-composer-popover") || "";
+          if (details.open) {
+            if (shell && kind) shell.setAttribute(composerOpenAttr, kind);
+            rememberPopupReturnTarget(summary);
+            if (consumeKeyboardPopupIntent(summary)) focusFirstPopupControlSoon(panel);
+          } else if (shell?.getAttribute(composerOpenAttr) === kind) {
+            shell.removeAttribute(composerOpenAttr);
+          }
+          syncPopupSemanticsSoon();
+        }, true);
+        document.addEventListener("keydown", (event) => {
+          if (trapPopupTabFocus(event)) return;
+          if ((event.key === " " || event.key === "Enter") && event.target instanceof Element) {
+            const trigger = event.target.closest(`${rowMenuToggleSelector}, ${groupSelector} > summary, ${composerPickerSelector} > summary`);
+            if (trigger instanceof HTMLElement) markKeyboardPopupIntent(trigger);
+          }
+          if (event.key === " " && event.target instanceof Element && event.target.closest(commandPaletteOpenSelector)) {
+            event.preventDefault();
+            openCommandPalette(event.target.closest(commandPaletteOpenSelector));
+          }
+          if (event.key === "Enter" && event.target instanceof Element) {
+            const row = event.target.closest(".tg-chat-item[data-chat-conversation]");
+            if (row && !event.target.closest(rowMenuToggleSelector) && !event.target.closest(rowMenuPanelSelector)) {
+              event.preventDefault();
+              const wasOpen = row.classList.contains(rowMenuOpenClass);
+              const toggle = row.querySelector(rowMenuToggleSelector);
+              closeAll();
+              if (!wasOpen) {
+                row.classList.add(rowMenuOpenClass);
+                syncRowMenuGeometry(row);
+                rememberPopupReturnTarget(toggle instanceof HTMLElement ? toggle : row);
+                focusFirstPopupControlSoon(row.querySelector(rowMenuPanelSelector));
+              }
+              closeComposerPopovers();
+              closeCommandPalette();
+              return;
+            }
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closeAll();
+            closeComposerPopovers();
+            closeCommandPalette();
+            returnPopupFocusSoon();
+          }
+        });
+        document.addEventListener("focusin", (event) => {
+          if (!(event.target instanceof Element) || (!event.target.closest(".tg-chat-item") && !event.target.closest(rowMenuPanelSelector))) {
+            closeRowMenus();
+          }
+          if (event.target instanceof Element && event.target.closest(rowMenuToggleSelector)) {
+            syncRowMenuGeometry(event.target.closest(".tg-chat-item"));
+          }
+          syncComposerPopover(event.target);
+        });
+        document.addEventListener("focusout", (event) => {
+          const shell = event.target instanceof Element ? event.target.closest(composerShellSelector) : null;
+          if (!shell) return;
+          window.setTimeout(() => {
+            const active = document.activeElement;
+            if (!(active instanceof Element) || !shell.contains(active)) shell.removeAttribute(composerOpenAttr);
+          }, 0);
+        });
+        document.addEventListener("pointerdown", (event) => {
+          if (toggleRowMenu(event.target)) {
+            rowMenuPointerHandled = true;
+            window.setTimeout(() => {
+              rowMenuPointerHandled = false;
+            }, 0);
+            closeComposerPopovers();
+            closeCommandPalette();
+            return;
+          }
+          if (event.target instanceof Element && event.target.closest(rowMenuPanelSelector)) return;
+          if (event.target instanceof Element && event.target.closest(commandPaletteHash) && !event.target.closest(commandPaletteSurfaceSelector)) {
+            closeCommandPalette();
+            closeComposerPopovers();
+            closeAll();
+            return;
+          }
+          if (syncComposerPopover(event.target)) return;
+          closeComposerPopovers();
+          if (event.target instanceof Element && event.target.closest(groupSelector)) return;
+          closeAll();
+        }, true);
+        document.addEventListener("click", (event) => {
+          const toolMenuLink = event.target instanceof Element ? event.target.closest(`${groupSelector} a[role="menuitem"]`) : null;
+          if (!(toolMenuLink instanceof HTMLAnchorElement)) return;
+          event.preventDefault();
+          activateToolMenuLink(toolMenuLink);
+        }, true);
+        document.addEventListener("click", (event) => {
+          if (rowMenuPointerHandled) {
+            rowMenuPointerHandled = false;
+            return;
+          }
+          if (toggleRowMenu(event.target)) {
+            event.preventDefault();
+            closeComposerPopovers();
+            closeCommandPalette();
+            return;
+          }
+          if (event.target instanceof Element && event.target.closest(actionMenuItemSelector)) {
+            closeTransientAfterMenuAction();
+          }
+          if (!(event.target instanceof Element) || !event.target.closest(commandPaletteOpenSelector)) return;
+          event.preventDefault();
+          openCommandPalette(event.target.closest(commandPaletteOpenSelector));
+        });
+        document.addEventListener("change", (event) => {
+          if (!(event.target instanceof Element) || !event.target.matches("select")) return;
+          if (!event.target.closest(groupSelector)) return;
+          closeTransientAfterMenuAction();
+        });
+        window.addEventListener("resize", handleViewportChange, { passive: true });
+        window.addEventListener("orientationchange", handleViewportChange, { passive: true });
+        window.addEventListener("hashchange", syncPopupSemantics);
+        syncPopupSemantics();
+      })();
+    </script>
   </body>
 </html>

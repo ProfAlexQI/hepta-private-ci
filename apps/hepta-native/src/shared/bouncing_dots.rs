@@ -68,9 +68,12 @@ script_mod! {
 
 #[derive(Script, ScriptHook, Widget, Animator)]
 pub struct BouncingDots {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
-    #[apply_default] animator: Animator,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
+    #[apply_default]
+    animator: Animator,
 }
 impl Widget for BouncingDots {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
@@ -84,7 +87,6 @@ impl Widget for BouncingDots {
         self.view.draw_walk(cx, scope, walk)
     }
 }
-
 
 impl BouncingDotsRef {
     /// Starts animation of the bouncing dots.
