@@ -1,6 +1,11 @@
-use hepta_core::{DoctorArea, DoctorCheckOutcome, DoctorOwner, DoctorStatus};
+use hepta_core::DoctorArea;
+use hepta_core::DoctorCheckOutcome;
+use hepta_core::DoctorOwner;
+use hepta_core::DoctorStatus;
 
-use crate::{GatewayEnvelope, GatewayPluginResolutionSnapshot, GatewaySurface};
+use crate::GatewayEnvelope;
+use crate::GatewayPluginResolutionSnapshot;
+use crate::GatewaySurface;
 
 pub const GATEWAY_TRANSPORT_SUPPORTED: &str = "gateway.transport_supported";
 pub const GATEWAY_RESOLUTION_SNAPSHOT_CONSISTENT: &str = "gateway.resolution_snapshot_consistent";
@@ -291,17 +296,21 @@ fn owner(responsibility: &str) -> DoctorOwner {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{DoctorArea, DoctorStatus};
+    use hepta_core::DoctorArea;
+    use hepta_core::DoctorStatus;
 
-    use crate::{
-        GatewayEnvelope, GatewayPluginHandoffDraft, GatewayPluginResolutionSnapshot,
-        GatewayResolvedPluginCandidate, GatewayRoutePlan, GatewaySurface, GatewayTransport,
-    };
+    use crate::GatewayEnvelope;
+    use crate::GatewayPluginHandoffDraft;
+    use crate::GatewayPluginResolutionSnapshot;
+    use crate::GatewayResolvedPluginCandidate;
+    use crate::GatewayRoutePlan;
+    use crate::GatewaySurface;
+    use crate::GatewayTransport;
 
-    use super::{
-        GATEWAY_DISPATCH_READY, GATEWAY_RESOLUTION_SNAPSHOT_CONSISTENT,
-        GATEWAY_TRANSPORT_SUPPORTED, GatewayRouteIntegritySnapshot,
-    };
+    use super::GATEWAY_DISPATCH_READY;
+    use super::GATEWAY_RESOLUTION_SNAPSHOT_CONSISTENT;
+    use super::GATEWAY_TRANSPORT_SUPPORTED;
+    use super::GatewayRouteIntegritySnapshot;
 
     #[test]
     fn integrity_snapshot_reports_supported_transport_and_full_coverage() {

@@ -1,25 +1,33 @@
 use serde_json::Value;
 
-pub use hepta_runtime::{
-    NativeTelegramCandidateMaterial, NativeTelegramDuplicateDecision, NativeTelegramExecutionPlan,
-    NativeTelegramGatewayGateSummary, NativeTelegramGatewayGateSummaryInput,
-    NativeTelegramIngressInspection, NativeTelegramModelExecutionReport,
-    NativeTelegramModelInvocationRequestPlan, NativeTelegramModelTurnPlan,
-    NativeTelegramReplyTargetMaterial, NativeTelegramSendExecutionReport,
-    NativeTelegramSendRequestPlan, TELEGRAM_DRAIN_ONCE_STAGES,
-    build_native_telegram_gateway_gate_summary as build_telegram_gateway_gate_summary,
-    extract_native_telegram_candidate_material, inspect_native_telegram_updates,
-    native_telegram_drain_execution_plan as telegram_drain_execution_plan,
-    native_telegram_drain_first_missing_gate as telegram_drain_first_missing_gate,
-    native_telegram_drain_status_probe_executes_pipeline as telegram_drain_status_probe_executes_pipeline,
-    native_telegram_duplicate_decision,
-    native_telegram_first_model_candidate_for_updates_with_duplicate_decision,
-    native_telegram_message_has_reply_target, native_telegram_message_is_reply_candidate,
-    native_telegram_message_text_present,
-    native_telegram_model_invocation_request_plan_for_updates,
-    native_telegram_model_turn_plan_for_updates, native_telegram_next_update_offset,
-    native_telegram_update_already_drained,
-};
+pub use hepta_runtime::NativeTelegramCandidateMaterial;
+pub use hepta_runtime::NativeTelegramDuplicateDecision;
+pub use hepta_runtime::NativeTelegramExecutionPlan;
+pub use hepta_runtime::NativeTelegramGatewayGateSummary;
+pub use hepta_runtime::NativeTelegramGatewayGateSummaryInput;
+pub use hepta_runtime::NativeTelegramIngressInspection;
+pub use hepta_runtime::NativeTelegramModelExecutionReport;
+pub use hepta_runtime::NativeTelegramModelInvocationRequestPlan;
+pub use hepta_runtime::NativeTelegramModelTurnPlan;
+pub use hepta_runtime::NativeTelegramReplyTargetMaterial;
+pub use hepta_runtime::NativeTelegramSendExecutionReport;
+pub use hepta_runtime::NativeTelegramSendRequestPlan;
+pub use hepta_runtime::TELEGRAM_DRAIN_ONCE_STAGES;
+pub use hepta_runtime::build_native_telegram_gateway_gate_summary as build_telegram_gateway_gate_summary;
+pub use hepta_runtime::extract_native_telegram_candidate_material;
+pub use hepta_runtime::inspect_native_telegram_updates;
+pub use hepta_runtime::native_telegram_drain_execution_plan as telegram_drain_execution_plan;
+pub use hepta_runtime::native_telegram_drain_first_missing_gate as telegram_drain_first_missing_gate;
+pub use hepta_runtime::native_telegram_drain_status_probe_executes_pipeline as telegram_drain_status_probe_executes_pipeline;
+pub use hepta_runtime::native_telegram_duplicate_decision;
+pub use hepta_runtime::native_telegram_first_model_candidate_for_updates_with_duplicate_decision;
+pub use hepta_runtime::native_telegram_message_has_reply_target;
+pub use hepta_runtime::native_telegram_message_is_reply_candidate;
+pub use hepta_runtime::native_telegram_message_text_present;
+pub use hepta_runtime::native_telegram_model_invocation_request_plan_for_updates;
+pub use hepta_runtime::native_telegram_model_turn_plan_for_updates;
+pub use hepta_runtime::native_telegram_next_update_offset;
+pub use hepta_runtime::native_telegram_update_already_drained;
 
 pub fn telegram_update_already_drained(update_id: i64, next_update_offset: Option<i64>) -> bool {
     native_telegram_update_already_drained(update_id, next_update_offset)
@@ -96,16 +104,23 @@ pub fn first_model_candidate_with_duplicate_decision(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        NativeTelegramGatewayGateSummary, NativeTelegramGatewayGateSummaryInput,
-        NativeTelegramModelExecutionReport, NativeTelegramSendExecutionReport,
-        NativeTelegramSendRequestPlan, TELEGRAM_DRAIN_ONCE_STAGES,
-        build_model_invocation_request_plan, build_telegram_gateway_gate_summary,
-        extract_telegram_candidate_material, inspect_telegram_updates, plan_model_turn_for_updates,
-        telegram_drain_execution_plan, telegram_drain_first_missing_gate,
-        telegram_drain_status_probe_executes_pipeline, telegram_duplicate_decision,
-        telegram_next_update_offset, telegram_update_already_drained,
-    };
+    use super::NativeTelegramGatewayGateSummary;
+    use super::NativeTelegramGatewayGateSummaryInput;
+    use super::NativeTelegramModelExecutionReport;
+    use super::NativeTelegramSendExecutionReport;
+    use super::NativeTelegramSendRequestPlan;
+    use super::TELEGRAM_DRAIN_ONCE_STAGES;
+    use super::build_model_invocation_request_plan;
+    use super::build_telegram_gateway_gate_summary;
+    use super::extract_telegram_candidate_material;
+    use super::inspect_telegram_updates;
+    use super::plan_model_turn_for_updates;
+    use super::telegram_drain_execution_plan;
+    use super::telegram_drain_first_missing_gate;
+    use super::telegram_drain_status_probe_executes_pipeline;
+    use super::telegram_duplicate_decision;
+    use super::telegram_next_update_offset;
+    use super::telegram_update_already_drained;
 
     fn gates(
         delivery: bool,

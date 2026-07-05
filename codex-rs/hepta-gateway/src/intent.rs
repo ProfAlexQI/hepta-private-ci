@@ -1,4 +1,5 @@
-use crate::{GatewayPluginHandoffDraft, GatewayResolvedPluginTier};
+use crate::GatewayPluginHandoffDraft;
+use crate::GatewayResolvedPluginTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayHandoffLookupIntentNote {
@@ -92,7 +93,9 @@ fn lookup_intent_explanation(intent_label: &str, command_selector: Option<&str>)
 
 #[cfg(test)]
 mod tests {
-    use crate::{GatewayPluginHandoffDraft, GatewayRoutePlan, GatewayTransport};
+    use crate::GatewayPluginHandoffDraft;
+    use crate::GatewayRoutePlan;
+    use crate::GatewayTransport;
 
     #[test]
     fn handoff_draft_reports_command_lookup_intent() {

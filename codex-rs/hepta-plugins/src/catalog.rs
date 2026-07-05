@@ -1,4 +1,5 @@
-use hepta_core::{Plugin, PluginManifest};
+use hepta_core::Plugin;
+use hepta_core::PluginManifest;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PluginCatalog {

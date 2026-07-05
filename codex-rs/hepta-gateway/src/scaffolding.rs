@@ -1,4 +1,5 @@
-use crate::{GatewayPluginResolutionSnapshot, GatewayResolvedPluginTier};
+use crate::GatewayPluginResolutionSnapshot;
+use crate::GatewayResolvedPluginTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayResolutionScaffoldPlan {
@@ -293,12 +294,14 @@ fn slugify(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GatewayPluginHandoffDraft, GatewayPluginResolutionSnapshot,
-        GatewayResolutionBindingScaffoldNote, GatewayResolutionPluginScaffoldStub,
-        GatewayResolutionScaffoldPlan, GatewayResolvedPluginCandidate, GatewayRoutePlan,
-        GatewayTransport,
-    };
+    use crate::GatewayPluginHandoffDraft;
+    use crate::GatewayPluginResolutionSnapshot;
+    use crate::GatewayResolutionBindingScaffoldNote;
+    use crate::GatewayResolutionPluginScaffoldStub;
+    use crate::GatewayResolutionScaffoldPlan;
+    use crate::GatewayResolvedPluginCandidate;
+    use crate::GatewayRoutePlan;
+    use crate::GatewayTransport;
 
     #[test]
     fn resolution_snapshot_can_emit_binding_scaffold_notes_for_remaining_gaps() {

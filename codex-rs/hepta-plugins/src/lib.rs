@@ -10,35 +10,46 @@ mod scaffolding;
 mod telegram;
 mod trace;
 
-pub use adapter::{
-    EchoGatewayPluginAdapter, FailingGatewayPluginAdapter, GatewayPluginAdapter,
-    GatewayPluginAdapterResult, GatewayPluginExecutableHandoff, GatewayPluginExecutionAttempt,
-    GatewayPluginExecutionPlan, GatewayPluginExecutionPolicy, GatewayPluginExecutionTelemetry,
-    GatewayPluginExecutionTraceStep,
-};
-pub use binding::{
-    GatewayPluginBinding, GatewayPluginBindingCatalog, GatewayPluginBindingLookupResolution,
-    GatewayPluginBindingMatch, GatewayPluginBindingResolution, GatewayPluginBindingTier,
-};
+pub use adapter::EchoGatewayPluginAdapter;
+pub use adapter::FailingGatewayPluginAdapter;
+pub use adapter::GatewayPluginAdapter;
+pub use adapter::GatewayPluginAdapterResult;
+pub use adapter::GatewayPluginExecutableHandoff;
+pub use adapter::GatewayPluginExecutionAttempt;
+pub use adapter::GatewayPluginExecutionPlan;
+pub use adapter::GatewayPluginExecutionPolicy;
+pub use adapter::GatewayPluginExecutionTelemetry;
+pub use adapter::GatewayPluginExecutionTraceStep;
+pub use binding::GatewayPluginBinding;
+pub use binding::GatewayPluginBindingCatalog;
+pub use binding::GatewayPluginBindingLookupResolution;
+pub use binding::GatewayPluginBindingMatch;
+pub use binding::GatewayPluginBindingResolution;
+pub use binding::GatewayPluginBindingTier;
 pub use catalog::PluginCatalog;
 pub use coverage::GatewayPluginBindingCoverageDigest;
-pub use explanation::{GatewayPluginBindingDiagnosticNote, GatewayPluginCoverageGapNote};
-pub use integrity::{
-    PLUGIN_MANIFESTS_VALID, PLUGIN_OPERATIONAL_READY, PLUGIN_REGISTRATIONS_RESOLVED,
-    PluginIntegritySnapshot, PluginOperationalReadinessReport,
-};
+pub use explanation::GatewayPluginBindingDiagnosticNote;
+pub use explanation::GatewayPluginCoverageGapNote;
+pub use integrity::PLUGIN_MANIFESTS_VALID;
+pub use integrity::PLUGIN_OPERATIONAL_READY;
+pub use integrity::PLUGIN_REGISTRATIONS_RESOLVED;
+pub use integrity::PluginIntegritySnapshot;
+pub use integrity::PluginOperationalReadinessReport;
 pub use intent::GatewayPluginLookupIntentNote;
 pub use report::GatewayPluginBindingContractReport;
-pub use scaffolding::{
-    GatewayPluginBindingScaffoldNote, GatewayPluginBindingScaffoldPlan, GatewayPluginScaffoldStub,
-};
-pub use telegram::{
-    TELEGRAM_PLUGIN_ID, TelegramPluginDescriptor, TelegramPluginServiceMode,
-    telegram_plugin_bindings, telegram_plugin_descriptor, telegram_plugin_manifest,
-};
+pub use scaffolding::GatewayPluginBindingScaffoldNote;
+pub use scaffolding::GatewayPluginBindingScaffoldPlan;
+pub use scaffolding::GatewayPluginScaffoldStub;
+pub use telegram::TELEGRAM_PLUGIN_ID;
+pub use telegram::TelegramPluginDescriptor;
+pub use telegram::TelegramPluginServiceMode;
+pub use telegram::telegram_plugin_bindings;
+pub use telegram::telegram_plugin_descriptor;
+pub use telegram::telegram_plugin_manifest;
 pub use trace::GatewayPluginBindingLookupTraceStep;
 
-use hepta_core::{Plugin, PluginManifest};
+use hepta_core::Plugin;
+use hepta_core::PluginManifest;
 
 pub struct StaticPlugin {
     manifest: PluginManifest,
@@ -72,8 +83,12 @@ impl Plugin for StaticPlugin {
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayPluginBinding, GatewayPluginBindingCatalog, PluginCatalog, StaticPlugin};
-    use hepta_core::{Plugin, PluginManifest};
+    use super::GatewayPluginBinding;
+    use super::GatewayPluginBindingCatalog;
+    use super::PluginCatalog;
+    use super::StaticPlugin;
+    use hepta_core::Plugin;
+    use hepta_core::PluginManifest;
 
     #[test]
     fn static_plugin_wraps_manifest() {

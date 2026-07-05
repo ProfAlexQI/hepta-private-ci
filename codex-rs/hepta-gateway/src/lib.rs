@@ -18,211 +18,378 @@ mod telegram_status;
 mod telegram_transport;
 mod trace;
 
-pub use contracts::{GatewayEnvelope, GatewayRoutePlan, GatewayTransport};
+pub use contracts::GatewayEnvelope;
+pub use contracts::GatewayRoutePlan;
+pub use contracts::GatewayTransport;
 pub use coverage::GatewayPluginResolutionCoverageDigest;
-pub use dispatch::{GatewayPluginHandoffDraft, plugin_handoff_draft};
-pub use explanation::{GatewayResolutionCoverageGapNote, GatewayResolvedPluginDiagnosticNote};
-pub use hepta_runtime::{
-    CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
-    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
-    HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND, HEPTA_CORE_FUSION_READINESS_ENDPOINT,
-    HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND, HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
-    HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND, HEPTA_ENGINE_DEPENDENCY_CLOSURE_ENDPOINT,
-    HEPTA_ENGINE_DEPENDENCY_CLOSURE_SOURCE_COMMAND, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
-    HEPTA_KERNEL_TELEGRAM_RUNNER_KIND, HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY,
-    HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT, HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND,
-    HeptaCodexEngineAdapterBoundaryResponse, HeptaCodexEngineAdapterEnvelope,
-    HeptaCodexEngineAdapterEnvelopeInput, HeptaCodexEngineAdapterParityEvidence,
-    HeptaCodexEngineAdapterShadowReplayResult, HeptaCodexEngineAdapterSurface,
-    HeptaCodexEngineAdapterThreadingPlan, HeptaCoreFusionForbiddenSideEffects,
-    HeptaCoreFusionReadinessResponse, HeptaEngineDependencyClosureResponse,
-    HeptaEngineDependencyClosureSurface, HeptaKernelEngine, HeptaKernelTurnChannel,
-    HeptaKernelTurnInput, HeptaKernelTurnPlan, HeptaKernelTurnStagePlan,
-    HeptaNameRepositoryClosureResponse, HeptaNameRepositoryClosureSurface,
-    HeptaProductRuntimeEntrypointInput, HeptaProductRuntimeEntrypointPlan,
-    MAX_TELEGRAM_MLX_MAX_TOKENS, MAX_TELEGRAM_MODEL_TIMEOUT_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
-    NativeTelegramModelRunnerInvocationOutcome, NativeTelegramModelRunnerPlan,
-    classify_native_telegram_model_runner_error, extract_native_telegram_exec_child_final_message,
-    extract_native_telegram_openai_chat_completion_text,
-    hepta_codex_engine_adapter_boundary_report, hepta_codex_legacy_tui_cli_adapter_envelope,
-    hepta_codex_legacy_tui_cli_adapter_shadow_replay,
-    hepta_codex_legacy_tui_cli_adapter_threading_plan, hepta_codex_mcp_app_server_adapter_envelope,
-    hepta_codex_mcp_app_server_adapter_shadow_replay,
-    hepta_codex_mcp_app_server_adapter_threading_plan, hepta_codex_model_provider_adapter_envelope,
-    hepta_codex_model_provider_adapter_shadow_replay,
-    hepta_codex_model_provider_adapter_threading_plan, hepta_codex_sandbox_exec_adapter_envelope,
-    hepta_codex_sandbox_exec_adapter_shadow_replay,
-    hepta_codex_sandbox_exec_adapter_threading_plan,
-    hepta_codex_session_thread_store_adapter_envelope,
-    hepta_codex_session_thread_store_adapter_shadow_replay,
-    hepta_codex_session_thread_store_adapter_threading_plan,
-    hepta_codex_tool_invocation_adapter_envelope,
-    hepta_codex_tool_invocation_adapter_shadow_replay,
-    hepta_codex_tool_invocation_adapter_threading_plan, hepta_core_fusion_readiness_report,
-    hepta_engine_dependency_closure_report, hepta_kernel_telegram_prompt,
-    hepta_name_repository_closure_report, hepta_product_runtime_entrypoint_plan,
-    invoke_native_telegram_model_runner_with_plan, native_telegram_codex_core_prompt,
-    native_telegram_exec_child_args, native_telegram_exec_child_status_error,
-    native_telegram_hepta_kernel_prompt, native_telegram_mlx_chat_completion_body,
-    native_telegram_model_timeout, parse_native_telegram_mlx_model_ref,
-    plan_hepta_kernel_telegram_session_bridge, plan_hepta_kernel_turn,
-    redact_native_telegram_model_runner_error, select_native_telegram_model_runner,
-    wait_for_native_telegram_model_child,
-};
-pub use integrity::{
-    GATEWAY_DISPATCH_READY, GATEWAY_RESOLUTION_SNAPSHOT_CONSISTENT, GATEWAY_TRANSPORT_SUPPORTED,
-    GatewayDispatchReadinessReport, GatewayRouteIntegritySnapshot,
-};
+pub use dispatch::GatewayPluginHandoffDraft;
+pub use dispatch::plugin_handoff_draft;
+pub use explanation::GatewayResolutionCoverageGapNote;
+pub use explanation::GatewayResolvedPluginDiagnosticNote;
+pub use hepta_runtime::CODEX_ENGINE_ID;
+pub use hepta_runtime::DEFAULT_TELEGRAM_MLX_BASE_URL;
+pub use hepta_runtime::DEFAULT_TELEGRAM_MLX_MAX_TOKENS;
+pub use hepta_runtime::DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS;
+pub use hepta_runtime::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
+pub use hepta_runtime::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
+pub use hepta_runtime::HEPTA_CORE_FUSION_READINESS_ENDPOINT;
+pub use hepta_runtime::HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND;
+pub use hepta_runtime::HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
+pub use hepta_runtime::HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
+pub use hepta_runtime::HEPTA_ENGINE_DEPENDENCY_CLOSURE_ENDPOINT;
+pub use hepta_runtime::HEPTA_ENGINE_DEPENDENCY_CLOSURE_SOURCE_COMMAND;
+pub use hepta_runtime::HEPTA_KERNEL_CONTRACT;
+pub use hepta_runtime::HEPTA_KERNEL_OWNER;
+pub use hepta_runtime::HEPTA_KERNEL_TELEGRAM_RUNNER_KIND;
+pub use hepta_runtime::HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY;
+pub use hepta_runtime::HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT;
+pub use hepta_runtime::HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND;
+pub use hepta_runtime::HeptaCodexEngineAdapterBoundaryResponse;
+pub use hepta_runtime::HeptaCodexEngineAdapterEnvelope;
+pub use hepta_runtime::HeptaCodexEngineAdapterEnvelopeInput;
+pub use hepta_runtime::HeptaCodexEngineAdapterParityEvidence;
+pub use hepta_runtime::HeptaCodexEngineAdapterShadowReplayResult;
+pub use hepta_runtime::HeptaCodexEngineAdapterSurface;
+pub use hepta_runtime::HeptaCodexEngineAdapterThreadingPlan;
+pub use hepta_runtime::HeptaCoreFusionForbiddenSideEffects;
+pub use hepta_runtime::HeptaCoreFusionReadinessResponse;
+pub use hepta_runtime::HeptaEngineDependencyClosureResponse;
+pub use hepta_runtime::HeptaEngineDependencyClosureSurface;
+pub use hepta_runtime::HeptaKernelEngine;
+pub use hepta_runtime::HeptaKernelTurnChannel;
+pub use hepta_runtime::HeptaKernelTurnInput;
+pub use hepta_runtime::HeptaKernelTurnPlan;
+pub use hepta_runtime::HeptaKernelTurnStagePlan;
+pub use hepta_runtime::HeptaNameRepositoryClosureResponse;
+pub use hepta_runtime::HeptaNameRepositoryClosureSurface;
+pub use hepta_runtime::HeptaProductRuntimeEntrypointInput;
+pub use hepta_runtime::HeptaProductRuntimeEntrypointPlan;
+pub use hepta_runtime::MAX_TELEGRAM_MLX_MAX_TOKENS;
+pub use hepta_runtime::MAX_TELEGRAM_MODEL_TIMEOUT_MS;
+pub use hepta_runtime::MIN_TELEGRAM_MODEL_TIMEOUT_MS;
+pub use hepta_runtime::NativeTelegramModelRunnerInvocationOutcome;
+pub use hepta_runtime::NativeTelegramModelRunnerPlan;
+pub use hepta_runtime::classify_native_telegram_model_runner_error;
+pub use hepta_runtime::extract_native_telegram_exec_child_final_message;
+pub use hepta_runtime::extract_native_telegram_openai_chat_completion_text;
+pub use hepta_runtime::hepta_codex_engine_adapter_boundary_report;
+pub use hepta_runtime::hepta_codex_legacy_tui_cli_adapter_envelope;
+pub use hepta_runtime::hepta_codex_legacy_tui_cli_adapter_shadow_replay;
+pub use hepta_runtime::hepta_codex_legacy_tui_cli_adapter_threading_plan;
+pub use hepta_runtime::hepta_codex_mcp_app_server_adapter_envelope;
+pub use hepta_runtime::hepta_codex_mcp_app_server_adapter_shadow_replay;
+pub use hepta_runtime::hepta_codex_mcp_app_server_adapter_threading_plan;
+pub use hepta_runtime::hepta_codex_model_provider_adapter_envelope;
+pub use hepta_runtime::hepta_codex_model_provider_adapter_shadow_replay;
+pub use hepta_runtime::hepta_codex_model_provider_adapter_threading_plan;
+pub use hepta_runtime::hepta_codex_sandbox_exec_adapter_envelope;
+pub use hepta_runtime::hepta_codex_sandbox_exec_adapter_shadow_replay;
+pub use hepta_runtime::hepta_codex_sandbox_exec_adapter_threading_plan;
+pub use hepta_runtime::hepta_codex_session_thread_store_adapter_envelope;
+pub use hepta_runtime::hepta_codex_session_thread_store_adapter_shadow_replay;
+pub use hepta_runtime::hepta_codex_session_thread_store_adapter_threading_plan;
+pub use hepta_runtime::hepta_codex_tool_invocation_adapter_envelope;
+pub use hepta_runtime::hepta_codex_tool_invocation_adapter_shadow_replay;
+pub use hepta_runtime::hepta_codex_tool_invocation_adapter_threading_plan;
+pub use hepta_runtime::hepta_core_fusion_readiness_report;
+pub use hepta_runtime::hepta_engine_dependency_closure_report;
+pub use hepta_runtime::hepta_kernel_telegram_prompt;
+pub use hepta_runtime::hepta_name_repository_closure_report;
+pub use hepta_runtime::hepta_product_runtime_entrypoint_plan;
+pub use hepta_runtime::invoke_native_telegram_model_runner_with_plan;
+pub use hepta_runtime::native_telegram_codex_core_prompt;
+pub use hepta_runtime::native_telegram_exec_child_args;
+pub use hepta_runtime::native_telegram_exec_child_status_error;
+pub use hepta_runtime::native_telegram_hepta_kernel_prompt;
+pub use hepta_runtime::native_telegram_mlx_chat_completion_body;
+pub use hepta_runtime::native_telegram_model_timeout;
+pub use hepta_runtime::parse_native_telegram_mlx_model_ref;
+pub use hepta_runtime::plan_hepta_kernel_telegram_session_bridge;
+pub use hepta_runtime::plan_hepta_kernel_turn;
+pub use hepta_runtime::redact_native_telegram_model_runner_error;
+pub use hepta_runtime::select_native_telegram_model_runner;
+pub use hepta_runtime::wait_for_native_telegram_model_child;
+pub use integrity::GATEWAY_DISPATCH_READY;
+pub use integrity::GATEWAY_RESOLUTION_SNAPSHOT_CONSISTENT;
+pub use integrity::GATEWAY_TRANSPORT_SUPPORTED;
+pub use integrity::GatewayDispatchReadinessReport;
+pub use integrity::GatewayRouteIntegritySnapshot;
 pub use intent::GatewayHandoffLookupIntentNote;
-pub use native_post::{
-    DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR, DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS,
-    DEFAULT_NATIVE_POST_STORE_MAX_BYTES, DEFAULT_NATIVE_POST_STORE_MAX_LINES,
-    NATIVE_POST_ACTIVATION_PLAN_ENDPOINT, NATIVE_POST_EXECUTION_READINESS_ENDPOINT,
-    NATIVE_POST_EXECUTION_STORE_DIR_ENV, NATIVE_POST_EXECUTION_STORES_ENDPOINT,
-    NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT, NATIVE_POST_MAX_BODY_BYTES,
-    NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV, NATIVE_POST_REAL_HANDLER_APPROVAL_ENV,
-    NATIVE_POST_REAL_HANDLER_PLAN_KINDS, NATIVE_POST_REAL_HANDLER_SCOPE_ENV,
-    NATIVE_POST_REAL_HANDLERS_ENV, NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT,
-    NATIVE_POST_STORE_MAX_BYTES_ENV, NATIVE_POST_STORE_MAX_LINES_ENV, NativePostActivationGate,
-    NativePostActivationPlanResponse, NativePostAuditEventContract, NativePostBodyAdmission,
-    NativePostBodySchema, NativePostConfirmationContract, NativePostExecutionAdmission,
-    NativePostExecutionReadinessResponse, NativePostExecutionReadinessRoute,
-    NativePostExecutionStoreFileStatus, NativePostExecutionStoreLimits,
-    NativePostExecutionStoreRecord, NativePostExecutionStoreWriteReport,
-    NativePostExecutionStoresResponse, NativePostGrayReleaseEvidenceResponse,
-    NativePostIdempotencyEvidence, NativePostPlanResponse, NativePostPlanRouteSpec,
-    NativePostRealHandlerHarness, NativePostRealHandlerObservation, NativePostRollbackContract,
-    NativePostRolloutEvidencePlanKindCount, NativePostRolloutEvidenceRecordSummary,
-    NativePostRolloutEvidenceResponse, NativePostSelectedHandlerRolloutEvidence,
-    NativePostStoreEffectProjection, native_post_activation_plan_report,
-    native_post_audit_event_contract, native_post_body_admission, native_post_body_schema,
-    native_post_confirmation_contract, native_post_dispatch_plan_report,
-    native_post_duplicate_check_required, native_post_execution_admission_with_scope,
-    native_post_execution_readiness_report,
-    native_post_execution_store_capacity_allows_append_with_limits,
-    native_post_execution_store_contracts_ready, native_post_execution_store_record,
-    native_post_execution_stores_report, native_post_gray_release_evidence_report,
-    native_post_idempotency_evidence, native_post_plan_kind_has_real_handler,
-    native_post_plan_parameter, native_post_plan_report, native_post_plan_route_specs,
-    native_post_rate_limit_check_required, native_post_real_handler_harness,
-    native_post_real_handler_harness_from_observation, native_post_real_handler_scope_matches,
-    native_post_real_handler_scope_selected_kinds, native_post_redacted_fingerprint,
-    native_post_rollback_contract, native_post_rollout_evidence_report,
-    native_post_store_capacity_check_required, native_post_store_effect_projection,
-    native_post_store_write_attempt_required, persist_native_post_execution_store_record,
-};
+pub use native_post::DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR;
+pub use native_post::DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS;
+pub use native_post::DEFAULT_NATIVE_POST_STORE_MAX_BYTES;
+pub use native_post::DEFAULT_NATIVE_POST_STORE_MAX_LINES;
+pub use native_post::NATIVE_POST_ACTIVATION_PLAN_ENDPOINT;
+pub use native_post::NATIVE_POST_EXECUTION_READINESS_ENDPOINT;
+pub use native_post::NATIVE_POST_EXECUTION_STORE_DIR_ENV;
+pub use native_post::NATIVE_POST_EXECUTION_STORES_ENDPOINT;
+pub use native_post::NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT;
+pub use native_post::NATIVE_POST_MAX_BODY_BYTES;
+pub use native_post::NATIVE_POST_RATE_LIMIT_WINDOW_MS_ENV;
+pub use native_post::NATIVE_POST_REAL_HANDLER_APPROVAL_ENV;
+pub use native_post::NATIVE_POST_REAL_HANDLER_PLAN_KINDS;
+pub use native_post::NATIVE_POST_REAL_HANDLER_SCOPE_ENV;
+pub use native_post::NATIVE_POST_REAL_HANDLERS_ENV;
+pub use native_post::NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT;
+pub use native_post::NATIVE_POST_STORE_MAX_BYTES_ENV;
+pub use native_post::NATIVE_POST_STORE_MAX_LINES_ENV;
+pub use native_post::NativePostActivationGate;
+pub use native_post::NativePostActivationPlanResponse;
+pub use native_post::NativePostAuditEventContract;
+pub use native_post::NativePostBodyAdmission;
+pub use native_post::NativePostBodySchema;
+pub use native_post::NativePostConfirmationContract;
+pub use native_post::NativePostExecutionAdmission;
+pub use native_post::NativePostExecutionReadinessResponse;
+pub use native_post::NativePostExecutionReadinessRoute;
+pub use native_post::NativePostExecutionStoreFileStatus;
+pub use native_post::NativePostExecutionStoreLimits;
+pub use native_post::NativePostExecutionStoreRecord;
+pub use native_post::NativePostExecutionStoreWriteReport;
+pub use native_post::NativePostExecutionStoresResponse;
+pub use native_post::NativePostGrayReleaseEvidenceResponse;
+pub use native_post::NativePostIdempotencyEvidence;
+pub use native_post::NativePostPlanResponse;
+pub use native_post::NativePostPlanRouteSpec;
+pub use native_post::NativePostRealHandlerHarness;
+pub use native_post::NativePostRealHandlerObservation;
+pub use native_post::NativePostRollbackContract;
+pub use native_post::NativePostRolloutEvidencePlanKindCount;
+pub use native_post::NativePostRolloutEvidenceRecordSummary;
+pub use native_post::NativePostRolloutEvidenceResponse;
+pub use native_post::NativePostSelectedHandlerRolloutEvidence;
+pub use native_post::NativePostStoreEffectProjection;
+pub use native_post::native_post_activation_plan_report;
+pub use native_post::native_post_audit_event_contract;
+pub use native_post::native_post_body_admission;
+pub use native_post::native_post_body_schema;
+pub use native_post::native_post_confirmation_contract;
+pub use native_post::native_post_dispatch_plan_report;
+pub use native_post::native_post_duplicate_check_required;
+pub use native_post::native_post_execution_admission_with_scope;
+pub use native_post::native_post_execution_readiness_report;
+pub use native_post::native_post_execution_store_capacity_allows_append_with_limits;
+pub use native_post::native_post_execution_store_contracts_ready;
+pub use native_post::native_post_execution_store_record;
+pub use native_post::native_post_execution_stores_report;
+pub use native_post::native_post_gray_release_evidence_report;
+pub use native_post::native_post_idempotency_evidence;
+pub use native_post::native_post_plan_kind_has_real_handler;
+pub use native_post::native_post_plan_parameter;
+pub use native_post::native_post_plan_report;
+pub use native_post::native_post_plan_route_specs;
+pub use native_post::native_post_rate_limit_check_required;
+pub use native_post::native_post_real_handler_harness;
+pub use native_post::native_post_real_handler_harness_from_observation;
+pub use native_post::native_post_real_handler_scope_matches;
+pub use native_post::native_post_real_handler_scope_selected_kinds;
+pub use native_post::native_post_redacted_fingerprint;
+pub use native_post::native_post_rollback_contract;
+pub use native_post::native_post_rollout_evidence_report;
+pub use native_post::native_post_store_capacity_check_required;
+pub use native_post::native_post_store_effect_projection;
+pub use native_post::native_post_store_write_attempt_required;
+pub use native_post::persist_native_post_execution_store_record;
 pub use report::GatewayPluginResolutionContractReport;
-pub use resolution::{
-    GatewayPluginResolutionSnapshot, GatewayResolvedPluginCandidate, GatewayResolvedPluginTier,
-};
-pub use runtime::{
-    GatewayAdapter, GatewayAdapterDescriptor, GatewayAdapterSendResult, GatewayDeliveryLedger,
-    GatewayDeliveryRecord, GatewayDeliveryState, GatewayDeterministicAdapter,
-    GatewayDeterministicDispatcher, GatewayDispatchOutcome, GatewayFrameBridgeReport,
-    GatewayRetryPolicy, GatewayRuntime, GatewayRuntimeReadinessReport, GatewayRuntimeStatusReport,
-    default_gateway_adapters, envelope_from_inbound_message, frame_bridge_report,
-};
-pub use scaffolding::{
-    GatewayResolutionBindingScaffoldNote, GatewayResolutionPluginScaffoldStub,
-    GatewayResolutionScaffoldPlan,
-};
-pub use telegram_config::{
-    NativeTelegramConfigMetadata, NativeTelegramConfigStatus, NativeTelegramConfigStatusInput,
-    NativeTelegramTokenObservation, NativeTelegramTokenObservationInput,
-    build_native_telegram_config_status, extract_native_telegram_config_metadata,
-    normalize_telegram_binding_id, parse_telegram_env_truthy_value, parse_telegram_env_u64_value,
-    resolve_native_telegram_token_observation, resolve_telegram_secret_provider_path,
-};
-pub use telegram_cursor::{
-    DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH, NativeTelegramCursorPlan, NativeTelegramCursorStatus,
-    parse_telegram_cursor_next_update_offset, telegram_cursor_status,
-    telegram_cursor_status_from_path, write_telegram_cursor_next_update_offset,
-};
-pub use telegram_delivery::{
-    NativeTelegramDeliveryLedgerStatus, TELEGRAM_DELIVERY_MAX_RETRIES,
-    TELEGRAM_DELIVERY_STORE_IDENTIFIER, append_telegram_delivery_lifecycle_record,
-    telegram_delivery_backoff_ms, telegram_delivery_error_is_permanent,
-    telegram_delivery_ledger_status, telegram_delivery_ledger_status_from_path,
-    telegram_delivery_lifecycle_record,
-};
-pub use telegram_policy::{
-    NativeTelegramCandidateMaterial, NativeTelegramDuplicateDecision, NativeTelegramExecutionPlan,
-    NativeTelegramGatewayGateSummary, NativeTelegramGatewayGateSummaryInput,
-    NativeTelegramIngressInspection, NativeTelegramModelExecutionReport,
-    NativeTelegramModelInvocationRequestPlan, NativeTelegramModelTurnPlan,
-    NativeTelegramReplyTargetMaterial, NativeTelegramSendExecutionReport,
-    NativeTelegramSendRequestPlan, TELEGRAM_DRAIN_ONCE_STAGES, build_model_invocation_request_plan,
-    build_telegram_gateway_gate_summary, extract_telegram_candidate_material,
-    first_model_candidate_with_duplicate_decision, inspect_telegram_updates,
-    plan_model_turn_for_updates, telegram_drain_execution_plan, telegram_drain_first_missing_gate,
-    telegram_drain_status_probe_executes_pipeline, telegram_duplicate_decision,
-    telegram_message_has_reply_target, telegram_message_is_reply_candidate,
-    telegram_message_text_present, telegram_next_update_offset, telegram_update_already_drained,
-};
-pub use telegram_runtime::{
-    NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, NativeTelegramDrainPipelineFinalStatus,
-    NativeTelegramDrainPipelineInput, NativeTelegramDrainPipelineOutcome,
-    NativeTelegramModelExecutionInput, NativeTelegramModelExecutionOutcome,
-    NativeTelegramSessionBridgePlan, execute_telegram_drain_pipeline_for_updates,
-    execute_telegram_model_turn_after_candidate, finalize_telegram_drain_pipeline_status,
-    native_telegram_model_failure_fallback_message,
-};
-pub use telegram_status::{
-    DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION, DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
-    DEFAULT_TELEGRAM_SOAK_MIN_POLLS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
-    MAX_TELEGRAM_SOAK_MAX_ATTENTION, MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS,
-    MAX_TELEGRAM_SOAK_MIN_POLLS, MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS,
-    NativeTelegramDrainOnceApiResultInput, NativeTelegramDrainOnceApiResultPlan,
-    NativeTelegramDrainOncePreflightInput, NativeTelegramDrainOncePreflightPlan,
-    NativeTelegramDrainOnceShellReadinessInput, NativeTelegramDrainOnceShellReadinessPlan,
-    NativeTelegramDrainOnceStatus, NativeTelegramDrainOnceStatusInput,
-    NativeTelegramLiveSoakObservationReport, NativeTelegramLiveSoakObservationState,
-    NativeTelegramLiveSoakStatus, NativeTelegramLiveSoakStatusInput,
-    NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput,
-    NativeTelegramModelTurnPlanStatus, NativeTelegramModelTurnPlanStatusInput,
-    NativeTelegramPluginStatus, NativeTelegramPluginStatusInput, NativeTelegramPollLoopStatus,
-    NativeTelegramPollLoopStatusInput, NativeTelegramProductionGuardPolicyInput,
-    NativeTelegramProductionGuardStatus, NativeTelegramProductionGuardStatusInput,
-    NativeTelegramProductionReadinessInput, NativeTelegramProductionReadinessStatus,
-    NativeTelegramReceiveOnceApiResultInput, NativeTelegramReceiveOnceErrorInput,
-    NativeTelegramReceiveOncePreflightInput, NativeTelegramReceiveOnceShellReadinessInput,
-    NativeTelegramReceiveOnceShellReadinessPlan, NativeTelegramReceiveOnceStatus,
-    NativeTelegramReceiveOnceStatusInput, NativeTelegramSendPlanStatus,
-    NativeTelegramSendPlanStatusInput, build_telegram_drain_once_status,
-    build_telegram_live_soak_status, build_telegram_model_bridge_status,
-    build_telegram_model_turn_plan_status, build_telegram_plugin_status,
-    build_telegram_poll_loop_status, build_telegram_production_guard_status,
-    build_telegram_production_guard_status_from_policy, build_telegram_production_readiness_status,
-    build_telegram_receive_once_error_status, build_telegram_receive_once_status,
-    build_telegram_receive_once_status_from_api_result, build_telegram_send_plan_status,
-    plan_telegram_drain_once_api_result, plan_telegram_drain_once_preflight,
-    plan_telegram_drain_once_shell_readiness, plan_telegram_receive_once_preflight_status,
-    plan_telegram_receive_once_shell_readiness, telegram_poll_loop_interval_ms_policy,
-    telegram_poll_loop_should_spawn, telegram_receive_limit_policy,
-    telegram_soak_max_attention_count_policy, telegram_soak_max_observed_age_ms_policy,
-    telegram_soak_min_poll_iterations_policy, telegram_system_time_unix_ms,
-};
-pub use telegram_transport::{
-    DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS, DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS,
-    DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS, DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-    DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MAX_TELEGRAM_READ_MAX_ATTEMPTS,
-    MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
-    MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramSendExecutionInput,
-    NativeTelegramSendPlan, NativeTelegramTransportPlan, TELEGRAM_ALLOWED_UPDATES,
-    TelegramTypingKeepalive, execute_telegram_send_after_model_output, telegram_bot_token_shape_ok,
-    telegram_call_get_updates_once, telegram_call_send_chat_action, telegram_call_send_message,
-    telegram_get_updates_error_is_conflict, telegram_get_updates_error_is_transient,
-    telegram_get_updates_query, telegram_get_updates_should_retry, telegram_get_updates_with_retry,
-    telegram_read_max_attempts_policy, telegram_read_retry_backoff_policy,
-    telegram_redact_token_like_text, telegram_send_chat_action_request_body,
-    telegram_send_error_is_transient, telegram_send_max_attempts_policy,
-    telegram_send_message_request_body, telegram_send_min_interval_policy,
-    telegram_send_rate_limit_sleep_for, telegram_send_retry_backoff_policy,
-    telegram_send_should_retry, telegram_start_typing_keepalive,
-    telegram_transport_plan_for_config_status, telegram_typing_keepalive_interval_policy,
-    telegram_typing_keepalive_should_start, telegram_wait_for_send_rate_limit,
-};
+pub use resolution::GatewayPluginResolutionSnapshot;
+pub use resolution::GatewayResolvedPluginCandidate;
+pub use resolution::GatewayResolvedPluginTier;
+pub use runtime::GatewayAdapter;
+pub use runtime::GatewayAdapterDescriptor;
+pub use runtime::GatewayAdapterSendResult;
+pub use runtime::GatewayDeliveryLedger;
+pub use runtime::GatewayDeliveryRecord;
+pub use runtime::GatewayDeliveryState;
+pub use runtime::GatewayDeterministicAdapter;
+pub use runtime::GatewayDeterministicDispatcher;
+pub use runtime::GatewayDispatchOutcome;
+pub use runtime::GatewayFrameBridgeReport;
+pub use runtime::GatewayRetryPolicy;
+pub use runtime::GatewayRuntime;
+pub use runtime::GatewayRuntimeReadinessReport;
+pub use runtime::GatewayRuntimeStatusReport;
+pub use runtime::default_gateway_adapters;
+pub use runtime::envelope_from_inbound_message;
+pub use runtime::frame_bridge_report;
+pub use scaffolding::GatewayResolutionBindingScaffoldNote;
+pub use scaffolding::GatewayResolutionPluginScaffoldStub;
+pub use scaffolding::GatewayResolutionScaffoldPlan;
+pub use telegram_config::NativeTelegramConfigMetadata;
+pub use telegram_config::NativeTelegramConfigStatus;
+pub use telegram_config::NativeTelegramConfigStatusInput;
+pub use telegram_config::NativeTelegramTokenObservation;
+pub use telegram_config::NativeTelegramTokenObservationInput;
+pub use telegram_config::build_native_telegram_config_status;
+pub use telegram_config::extract_native_telegram_config_metadata;
+pub use telegram_config::normalize_telegram_binding_id;
+pub use telegram_config::parse_telegram_env_truthy_value;
+pub use telegram_config::parse_telegram_env_u64_value;
+pub use telegram_config::resolve_native_telegram_token_observation;
+pub use telegram_config::resolve_telegram_secret_provider_path;
+pub use telegram_cursor::DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH;
+pub use telegram_cursor::NativeTelegramCursorPlan;
+pub use telegram_cursor::NativeTelegramCursorStatus;
+pub use telegram_cursor::parse_telegram_cursor_next_update_offset;
+pub use telegram_cursor::telegram_cursor_status;
+pub use telegram_cursor::telegram_cursor_status_from_path;
+pub use telegram_cursor::write_telegram_cursor_next_update_offset;
+pub use telegram_delivery::NativeTelegramDeliveryLedgerStatus;
+pub use telegram_delivery::TELEGRAM_DELIVERY_MAX_RETRIES;
+pub use telegram_delivery::TELEGRAM_DELIVERY_STORE_IDENTIFIER;
+pub use telegram_delivery::append_telegram_delivery_lifecycle_record;
+pub use telegram_delivery::telegram_delivery_backoff_ms;
+pub use telegram_delivery::telegram_delivery_error_is_permanent;
+pub use telegram_delivery::telegram_delivery_ledger_status;
+pub use telegram_delivery::telegram_delivery_ledger_status_from_path;
+pub use telegram_delivery::telegram_delivery_lifecycle_record;
+pub use telegram_policy::NativeTelegramCandidateMaterial;
+pub use telegram_policy::NativeTelegramDuplicateDecision;
+pub use telegram_policy::NativeTelegramExecutionPlan;
+pub use telegram_policy::NativeTelegramGatewayGateSummary;
+pub use telegram_policy::NativeTelegramGatewayGateSummaryInput;
+pub use telegram_policy::NativeTelegramIngressInspection;
+pub use telegram_policy::NativeTelegramModelExecutionReport;
+pub use telegram_policy::NativeTelegramModelInvocationRequestPlan;
+pub use telegram_policy::NativeTelegramModelTurnPlan;
+pub use telegram_policy::NativeTelegramReplyTargetMaterial;
+pub use telegram_policy::NativeTelegramSendExecutionReport;
+pub use telegram_policy::NativeTelegramSendRequestPlan;
+pub use telegram_policy::TELEGRAM_DRAIN_ONCE_STAGES;
+pub use telegram_policy::build_model_invocation_request_plan;
+pub use telegram_policy::build_telegram_gateway_gate_summary;
+pub use telegram_policy::extract_telegram_candidate_material;
+pub use telegram_policy::first_model_candidate_with_duplicate_decision;
+pub use telegram_policy::inspect_telegram_updates;
+pub use telegram_policy::plan_model_turn_for_updates;
+pub use telegram_policy::telegram_drain_execution_plan;
+pub use telegram_policy::telegram_drain_first_missing_gate;
+pub use telegram_policy::telegram_drain_status_probe_executes_pipeline;
+pub use telegram_policy::telegram_duplicate_decision;
+pub use telegram_policy::telegram_message_has_reply_target;
+pub use telegram_policy::telegram_message_is_reply_candidate;
+pub use telegram_policy::telegram_message_text_present;
+pub use telegram_policy::telegram_next_update_offset;
+pub use telegram_policy::telegram_update_already_drained;
+pub use telegram_runtime::NATIVE_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE;
+pub use telegram_runtime::NativeTelegramDrainPipelineFinalStatus;
+pub use telegram_runtime::NativeTelegramDrainPipelineInput;
+pub use telegram_runtime::NativeTelegramDrainPipelineOutcome;
+pub use telegram_runtime::NativeTelegramModelExecutionInput;
+pub use telegram_runtime::NativeTelegramModelExecutionOutcome;
+pub use telegram_runtime::NativeTelegramSessionBridgePlan;
+pub use telegram_runtime::execute_telegram_drain_pipeline_for_updates;
+pub use telegram_runtime::execute_telegram_model_turn_after_candidate;
+pub use telegram_runtime::finalize_telegram_drain_pipeline_status;
+pub use telegram_runtime::native_telegram_model_failure_fallback_message;
+pub use telegram_status::DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION;
+pub use telegram_status::DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS;
+pub use telegram_status::DEFAULT_TELEGRAM_SOAK_MIN_POLLS;
+pub use telegram_status::MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS;
+pub use telegram_status::MAX_TELEGRAM_SOAK_MAX_ATTENTION;
+pub use telegram_status::MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS;
+pub use telegram_status::MAX_TELEGRAM_SOAK_MIN_POLLS;
+pub use telegram_status::MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS;
+pub use telegram_status::NativeTelegramDrainOnceApiResultInput;
+pub use telegram_status::NativeTelegramDrainOnceApiResultPlan;
+pub use telegram_status::NativeTelegramDrainOncePreflightInput;
+pub use telegram_status::NativeTelegramDrainOncePreflightPlan;
+pub use telegram_status::NativeTelegramDrainOnceShellReadinessInput;
+pub use telegram_status::NativeTelegramDrainOnceShellReadinessPlan;
+pub use telegram_status::NativeTelegramDrainOnceStatus;
+pub use telegram_status::NativeTelegramDrainOnceStatusInput;
+pub use telegram_status::NativeTelegramLiveSoakObservationReport;
+pub use telegram_status::NativeTelegramLiveSoakObservationState;
+pub use telegram_status::NativeTelegramLiveSoakStatus;
+pub use telegram_status::NativeTelegramLiveSoakStatusInput;
+pub use telegram_status::NativeTelegramModelBridgeStatus;
+pub use telegram_status::NativeTelegramModelBridgeStatusInput;
+pub use telegram_status::NativeTelegramModelTurnPlanStatus;
+pub use telegram_status::NativeTelegramModelTurnPlanStatusInput;
+pub use telegram_status::NativeTelegramPluginStatus;
+pub use telegram_status::NativeTelegramPluginStatusInput;
+pub use telegram_status::NativeTelegramPollLoopStatus;
+pub use telegram_status::NativeTelegramPollLoopStatusInput;
+pub use telegram_status::NativeTelegramProductionGuardPolicyInput;
+pub use telegram_status::NativeTelegramProductionGuardStatus;
+pub use telegram_status::NativeTelegramProductionGuardStatusInput;
+pub use telegram_status::NativeTelegramProductionReadinessInput;
+pub use telegram_status::NativeTelegramProductionReadinessStatus;
+pub use telegram_status::NativeTelegramReceiveOnceApiResultInput;
+pub use telegram_status::NativeTelegramReceiveOnceErrorInput;
+pub use telegram_status::NativeTelegramReceiveOncePreflightInput;
+pub use telegram_status::NativeTelegramReceiveOnceShellReadinessInput;
+pub use telegram_status::NativeTelegramReceiveOnceShellReadinessPlan;
+pub use telegram_status::NativeTelegramReceiveOnceStatus;
+pub use telegram_status::NativeTelegramReceiveOnceStatusInput;
+pub use telegram_status::NativeTelegramSendPlanStatus;
+pub use telegram_status::NativeTelegramSendPlanStatusInput;
+pub use telegram_status::build_telegram_drain_once_status;
+pub use telegram_status::build_telegram_live_soak_status;
+pub use telegram_status::build_telegram_model_bridge_status;
+pub use telegram_status::build_telegram_model_turn_plan_status;
+pub use telegram_status::build_telegram_plugin_status;
+pub use telegram_status::build_telegram_poll_loop_status;
+pub use telegram_status::build_telegram_production_guard_status;
+pub use telegram_status::build_telegram_production_guard_status_from_policy;
+pub use telegram_status::build_telegram_production_readiness_status;
+pub use telegram_status::build_telegram_receive_once_error_status;
+pub use telegram_status::build_telegram_receive_once_status;
+pub use telegram_status::build_telegram_receive_once_status_from_api_result;
+pub use telegram_status::build_telegram_send_plan_status;
+pub use telegram_status::plan_telegram_drain_once_api_result;
+pub use telegram_status::plan_telegram_drain_once_preflight;
+pub use telegram_status::plan_telegram_drain_once_shell_readiness;
+pub use telegram_status::plan_telegram_receive_once_preflight_status;
+pub use telegram_status::plan_telegram_receive_once_shell_readiness;
+pub use telegram_status::telegram_poll_loop_interval_ms_policy;
+pub use telegram_status::telegram_poll_loop_should_spawn;
+pub use telegram_status::telegram_receive_limit_policy;
+pub use telegram_status::telegram_soak_max_attention_count_policy;
+pub use telegram_status::telegram_soak_max_observed_age_ms_policy;
+pub use telegram_status::telegram_soak_min_poll_iterations_policy;
+pub use telegram_status::telegram_system_time_unix_ms;
+pub use telegram_transport::DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS;
+pub use telegram_transport::DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS;
+pub use telegram_transport::DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS;
+pub use telegram_transport::DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS;
+pub use telegram_transport::DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
+pub use telegram_transport::MAX_TELEGRAM_READ_MAX_ATTEMPTS;
+pub use telegram_transport::MAX_TELEGRAM_READ_RETRY_BACKOFF_MS;
+pub use telegram_transport::MAX_TELEGRAM_SEND_MAX_ATTEMPTS;
+pub use telegram_transport::MAX_TELEGRAM_SEND_MIN_INTERVAL_MS;
+pub use telegram_transport::MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS;
+pub use telegram_transport::MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
+pub use telegram_transport::NativeTelegramSendExecutionInput;
+pub use telegram_transport::NativeTelegramSendPlan;
+pub use telegram_transport::NativeTelegramTransportPlan;
+pub use telegram_transport::TELEGRAM_ALLOWED_UPDATES;
+pub use telegram_transport::TelegramTypingKeepalive;
+pub use telegram_transport::execute_telegram_send_after_model_output;
+pub use telegram_transport::telegram_bot_token_shape_ok;
+pub use telegram_transport::telegram_call_get_updates_once;
+pub use telegram_transport::telegram_call_send_chat_action;
+pub use telegram_transport::telegram_call_send_message;
+pub use telegram_transport::telegram_get_updates_error_is_conflict;
+pub use telegram_transport::telegram_get_updates_error_is_transient;
+pub use telegram_transport::telegram_get_updates_query;
+pub use telegram_transport::telegram_get_updates_should_retry;
+pub use telegram_transport::telegram_get_updates_with_retry;
+pub use telegram_transport::telegram_read_max_attempts_policy;
+pub use telegram_transport::telegram_read_retry_backoff_policy;
+pub use telegram_transport::telegram_redact_token_like_text;
+pub use telegram_transport::telegram_send_chat_action_request_body;
+pub use telegram_transport::telegram_send_error_is_transient;
+pub use telegram_transport::telegram_send_max_attempts_policy;
+pub use telegram_transport::telegram_send_message_request_body;
+pub use telegram_transport::telegram_send_min_interval_policy;
+pub use telegram_transport::telegram_send_rate_limit_sleep_for;
+pub use telegram_transport::telegram_send_retry_backoff_policy;
+pub use telegram_transport::telegram_send_should_retry;
+pub use telegram_transport::telegram_start_typing_keepalive;
+pub use telegram_transport::telegram_transport_plan_for_config_status;
+pub use telegram_transport::telegram_typing_keepalive_interval_policy;
+pub use telegram_transport::telegram_typing_keepalive_should_start;
+pub use telegram_transport::telegram_wait_for_send_rate_limit;
 pub use trace::GatewayResolutionLookupTraceStep;
 
 pub struct GatewaySurface;
@@ -279,7 +446,9 @@ impl Default for GatewaySurface {
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayEnvelope, GatewaySurface, GatewayTransport};
+    use super::GatewayEnvelope;
+    use super::GatewaySurface;
+    use super::GatewayTransport;
 
     #[test]
     fn surface_id_is_stable() {

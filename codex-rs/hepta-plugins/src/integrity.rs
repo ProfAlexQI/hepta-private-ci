@@ -1,8 +1,12 @@
 use std::collections::BTreeSet;
 
-use hepta_core::{DoctorArea, DoctorCheckOutcome, DoctorOwner, DoctorStatus};
+use hepta_core::DoctorArea;
+use hepta_core::DoctorCheckOutcome;
+use hepta_core::DoctorOwner;
+use hepta_core::DoctorStatus;
 
-use crate::{GatewayPluginBindingCatalog, PluginCatalog};
+use crate::GatewayPluginBindingCatalog;
+use crate::PluginCatalog;
 
 pub const PLUGIN_MANIFESTS_VALID: &str = "plugin.manifests_valid";
 pub const PLUGIN_REGISTRATIONS_RESOLVED: &str = "plugin.registrations_resolved";
@@ -289,14 +293,18 @@ fn owner(responsibility: &str) -> DoctorOwner {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{DoctorArea, DoctorStatus, PluginManifest};
+    use hepta_core::DoctorArea;
+    use hepta_core::DoctorStatus;
+    use hepta_core::PluginManifest;
 
-    use crate::{GatewayPluginBinding, GatewayPluginBindingCatalog, PluginCatalog};
+    use crate::GatewayPluginBinding;
+    use crate::GatewayPluginBindingCatalog;
+    use crate::PluginCatalog;
 
-    use super::{
-        PLUGIN_MANIFESTS_VALID, PLUGIN_OPERATIONAL_READY, PLUGIN_REGISTRATIONS_RESOLVED,
-        PluginIntegritySnapshot,
-    };
+    use super::PLUGIN_MANIFESTS_VALID;
+    use super::PLUGIN_OPERATIONAL_READY;
+    use super::PLUGIN_REGISTRATIONS_RESOLVED;
+    use super::PluginIntegritySnapshot;
 
     #[test]
     fn integrity_snapshot_tracks_manifest_and_binding_alignment() {

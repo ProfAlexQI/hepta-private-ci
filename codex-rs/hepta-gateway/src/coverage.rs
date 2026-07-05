@@ -1,4 +1,5 @@
-use crate::{GatewayPluginResolutionSnapshot, GatewayResolvedPluginTier};
+use crate::GatewayPluginResolutionSnapshot;
+use crate::GatewayResolvedPluginTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayPluginResolutionCoverageDigest {
@@ -69,10 +70,11 @@ impl GatewayPluginResolutionSnapshot {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GatewayPluginHandoffDraft, GatewayPluginResolutionSnapshot, GatewayResolvedPluginCandidate,
-        GatewayRoutePlan, GatewayTransport,
-    };
+    use crate::GatewayPluginHandoffDraft;
+    use crate::GatewayPluginResolutionSnapshot;
+    use crate::GatewayResolvedPluginCandidate;
+    use crate::GatewayRoutePlan;
+    use crate::GatewayTransport;
 
     #[test]
     fn resolution_snapshot_can_summarize_partial_lookup_coverage() {

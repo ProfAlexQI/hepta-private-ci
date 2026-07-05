@@ -1,13 +1,19 @@
 use hepta_core::DoctorStatus;
-use hepta_gateway::{
-    GatewayEnvelope, GatewayPluginResolutionSnapshot, GatewayResolvedPluginCandidate,
-    GatewayResolvedPluginTier, GatewayRouteIntegritySnapshot, GatewaySurface, GatewayTransport,
-};
-use hepta_plugins::{
-    EchoGatewayPluginAdapter, GatewayPluginBinding, GatewayPluginBindingCatalog,
-    GatewayPluginBindingTier, GatewayPluginExecutionPlan, PluginCatalog, PluginIntegritySnapshot,
-    StaticPlugin,
-};
+use hepta_gateway::GatewayEnvelope;
+use hepta_gateway::GatewayPluginResolutionSnapshot;
+use hepta_gateway::GatewayResolvedPluginCandidate;
+use hepta_gateway::GatewayResolvedPluginTier;
+use hepta_gateway::GatewayRouteIntegritySnapshot;
+use hepta_gateway::GatewaySurface;
+use hepta_gateway::GatewayTransport;
+use hepta_plugins::EchoGatewayPluginAdapter;
+use hepta_plugins::GatewayPluginBinding;
+use hepta_plugins::GatewayPluginBindingCatalog;
+use hepta_plugins::GatewayPluginBindingTier;
+use hepta_plugins::GatewayPluginExecutionPlan;
+use hepta_plugins::PluginCatalog;
+use hepta_plugins::PluginIntegritySnapshot;
+use hepta_plugins::StaticPlugin;
 
 #[test]
 fn gateway_and_plugin_lookup_intent_notes_share_command_contract_fields() {

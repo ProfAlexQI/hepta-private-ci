@@ -1,4 +1,5 @@
-use crate::{GatewayPluginBindingLookupResolution, GatewayPluginBindingTier};
+use crate::GatewayPluginBindingLookupResolution;
+use crate::GatewayPluginBindingTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayPluginBindingLookupTraceStep {
@@ -70,9 +71,9 @@ fn trace_note(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GatewayPluginBinding, GatewayPluginBindingCatalog, GatewayPluginBindingLookupTraceStep,
-    };
+    use crate::GatewayPluginBinding;
+    use crate::GatewayPluginBindingCatalog;
+    use crate::GatewayPluginBindingLookupTraceStep;
 
     #[test]
     fn lookup_resolution_can_emit_lookup_trace_steps() {

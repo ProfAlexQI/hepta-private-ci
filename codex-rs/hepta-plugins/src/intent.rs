@@ -123,7 +123,9 @@ fn lookup_intent_explanation(intent_label: &str, command_selector: Option<&str>)
 
 #[cfg(test)]
 mod tests {
-    use crate::{GatewayPluginBinding, GatewayPluginBindingCatalog, GatewayPluginLookupIntentNote};
+    use crate::GatewayPluginBinding;
+    use crate::GatewayPluginBindingCatalog;
+    use crate::GatewayPluginLookupIntentNote;
 
     #[test]
     fn lookup_resolution_reports_command_lookup_intent() {
