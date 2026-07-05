@@ -508,6 +508,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURA
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-export-query-observability-denial-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -518,7 +520,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 277;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 278;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -2123,6 +2125,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-export-query-observability-denial-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-export-query-observability-denial-boundary",
         side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt export/query/observability denial boundary; consumes the dry-run execution result receipt retention/expiry/garbage-collection denial boundary as source evidence while accepting only a non-persistent export/query/observability denial matrix for export request/snapshot/file/stream, query registration/execution/result/index/cache, metrics/logs/traces/events, dashboards/alerts/SLOs, operator summary/readback, and authority promotion; performs no export materialization, query registration, observability recording, dashboard or alert creation, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary",
+        side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt operator-facing summary/briefing non-persistence denial boundary; consumes the dry-run execution result receipt export/query/observability denial boundary as source evidence while accepting only a non-persistent operator summary/briefing/readout denial matrix for summary requests, briefing requests, materialization, filesystem persistence, delivery, terminal acknowledgements, operator decision/status preparation, and authority promotion; performs no operator-facing summary or briefing recording, persistence, materialization, delivery, acknowledgement acceptance, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4691,6 +4700,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_report(),
                     ),
                 );
             }
@@ -110422,6 +110441,1048 @@ fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable
     report
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_report()
+-> serde_json::Value {
+    const OPERATOR_SUMMARY_BRIEFING_SURFACES: &[&str] = &[
+        "source_export_query_observability_denial_boundary_required",
+        "source_export_query_observability_result_required",
+        "operator_facing_summary_request_denied",
+        "operator_briefing_request_denied",
+        "operator_facing_summary_materialization_denied",
+        "operator_briefing_materialization_denied",
+        "operator_facing_summary_persistence_denied",
+        "operator_briefing_persistence_denied",
+        "operator_facing_summary_delivery_denied",
+        "operator_briefing_delivery_denied",
+        "operator_readout_handoff_denied",
+        "final_acknowledgement_decision_status_denied",
+        "operator_summary_briefing_authority_promotion_denied",
+        "dry_run_execution_production_write_and_authority_forbidden_on_operator_summary_briefing_route",
+    ];
+    const DENIED_BY: &[&str] = &[
+        "source_export_query_observability_denial_boundary_required",
+        "source_export_query_observability_result_hash_required",
+        "source_export_query_observability_policy_hash_required",
+        "source_export_query_observability_handoff_hash_required",
+        "approved_production_namespace_required",
+        "approved_production_store_required",
+        "approved_production_scope_required",
+        "production_durable_memory_target_required",
+        "operator_facing_summary_request_acceptance_denied",
+        "operator_facing_summary_recording_denied",
+        "operator_facing_summary_persistence_denied",
+        "operator_facing_summary_materialization_denied",
+        "operator_facing_summary_filesystem_write_denied",
+        "operator_facing_summary_delivery_denied",
+        "operator_facing_summary_channel_delivery_denied",
+        "operator_briefing_request_acceptance_denied",
+        "operator_briefing_recording_denied",
+        "operator_briefing_persistence_denied",
+        "operator_briefing_materialization_denied",
+        "operator_briefing_filesystem_write_denied",
+        "operator_briefing_delivery_denied",
+        "operator_briefing_channel_delivery_denied",
+        "operator_readout_recording_denied",
+        "operator_readout_persistence_denied",
+        "operator_readout_materialization_denied",
+        "operator_readout_delivery_denied",
+        "operator_readout_readback_evidence_denied",
+        "operator_handoff_recording_denied",
+        "operator_handoff_persistence_denied",
+        "operator_handoff_delivery_denied",
+        "final_operator_acknowledgement_recording_denied",
+        "final_operator_acknowledgement_persistence_denied",
+        "final_operator_acknowledgement_acceptance_denied",
+        "final_operator_acknowledgement_delivery_denied",
+        "terminal_operator_decision_recording_denied",
+        "terminal_operator_decision_persistence_denied",
+        "terminal_operator_decision_acceptance_denied",
+        "terminal_operator_status_recording_denied",
+        "terminal_operator_status_persistence_denied",
+        "terminal_operator_status_promotion_denied",
+        "result_receipt_operator_summary_authority_promotion_denied",
+        "result_receipt_operator_briefing_authority_promotion_denied",
+        "result_receipt_operator_readout_authority_promotion_denied",
+        "result_receipt_final_acknowledgement_authority_promotion_denied",
+        "dry_run_execution_execution_denied",
+        "dry_run_execution_result_receipt_persistence_denied",
+        "export_query_observability_state_mutation_denied",
+        "production_write_execution_denied",
+        "production_durable_memory_backend_write_denied",
+        "durable_memory_backend_read_or_rollback_denied",
+        "memory_store_mutation_denied",
+        "wal_write_denied",
+        "receipt_persistence_denied",
+        "post_write_readback_denied",
+        "rollback_execution_denied",
+        "tombstone_write_denied",
+        "raw_payload_plaintext_denied",
+        "kg_live_write_denied",
+        "provider_model_invocation_denied",
+        "credential_secret_read_denied",
+        "telegram_channel_delivery_denied",
+        "external_send_denied",
+        "release_public_artifact_write_denied",
+        "install_restart_authority_denied",
+        "active_binary_mutation_denied",
+        "unrestricted_full_live_activation_denied",
+    ];
+    const FALSE_KEYS: &[&str] = &[
+        "dry_run_execution_result_receipt_operator_facing_summary_allowed",
+        "dry_run_execution_result_receipt_operator_facing_summary_request_accepted",
+        "dry_run_execution_result_receipt_operator_facing_summary_recorded",
+        "dry_run_execution_result_receipt_operator_facing_summary_persisted",
+        "dry_run_execution_result_receipt_operator_facing_summary_materialized",
+        "dry_run_execution_result_receipt_operator_facing_summary_filesystem_written",
+        "dry_run_execution_result_receipt_operator_facing_summary_delivered",
+        "dry_run_execution_result_receipt_operator_facing_summary_channel_delivery_performed",
+        "dry_run_execution_result_receipt_operator_briefing_allowed",
+        "dry_run_execution_result_receipt_operator_briefing_request_accepted",
+        "dry_run_execution_result_receipt_operator_briefing_recorded",
+        "dry_run_execution_result_receipt_operator_briefing_persisted",
+        "dry_run_execution_result_receipt_operator_briefing_materialized",
+        "dry_run_execution_result_receipt_operator_briefing_filesystem_written",
+        "dry_run_execution_result_receipt_operator_briefing_delivered",
+        "dry_run_execution_result_receipt_operator_briefing_channel_delivery_performed",
+        "dry_run_execution_result_receipt_operator_summary_briefing_channel_delivery_performed",
+        "dry_run_execution_result_receipt_operator_readout_recorded",
+        "dry_run_execution_result_receipt_operator_readout_persisted",
+        "dry_run_execution_result_receipt_operator_readout_materialized",
+        "dry_run_execution_result_receipt_operator_readout_delivered",
+        "dry_run_execution_result_receipt_operator_readback_evidence_recorded",
+        "dry_run_execution_result_receipt_operator_handoff_recorded",
+        "dry_run_execution_result_receipt_operator_handoff_persisted",
+        "dry_run_execution_result_receipt_operator_handoff_delivered",
+        "dry_run_execution_result_receipt_final_operator_acknowledgement_recorded",
+        "dry_run_execution_result_receipt_final_operator_acknowledgement_persisted",
+        "dry_run_execution_result_receipt_final_operator_acknowledgement_accepted",
+        "dry_run_execution_result_receipt_final_operator_acknowledgement_delivered",
+        "dry_run_execution_result_receipt_terminal_operator_decision_recorded",
+        "dry_run_execution_result_receipt_terminal_operator_decision_persisted",
+        "dry_run_execution_result_receipt_terminal_operator_decision_accepted",
+        "dry_run_execution_result_receipt_terminal_operator_status_recorded",
+        "dry_run_execution_result_receipt_terminal_operator_status_persisted",
+        "dry_run_execution_result_receipt_terminal_operator_status_promoted",
+        "dry_run_execution_result_receipt_authority_promoted_from_operator_summary",
+        "dry_run_execution_result_receipt_authority_promoted_from_operator_briefing",
+        "dry_run_execution_result_receipt_authority_promoted_from_operator_readout",
+        "dry_run_execution_result_receipt_authority_promoted_from_final_acknowledgement",
+        "dry_run_execution_result_receipt_export_recorded",
+        "dry_run_execution_result_receipt_export_persisted",
+        "dry_run_execution_result_receipt_export_snapshot_materialized",
+        "dry_run_execution_result_receipt_export_file_written",
+        "dry_run_execution_result_receipt_export_stream_opened",
+        "dry_run_execution_result_receipt_query_registered",
+        "dry_run_execution_result_receipt_query_executed",
+        "dry_run_execution_result_receipt_query_result_recorded",
+        "dry_run_execution_result_receipt_query_index_recorded",
+        "dry_run_execution_result_receipt_query_cache_written",
+        "dry_run_execution_result_receipt_observability_metric_recorded",
+        "dry_run_execution_result_receipt_observability_log_recorded",
+        "dry_run_execution_result_receipt_observability_trace_recorded",
+        "dry_run_execution_result_receipt_observability_event_recorded",
+        "dry_run_execution_result_receipt_observability_dashboard_materialized",
+        "dry_run_execution_result_receipt_observability_alert_registered",
+        "dry_run_execution_result_receipt_observability_slo_recorded",
+        "dry_run_execution_result_receipt_operator_summary_recorded",
+        "dry_run_execution_result_receipt_readback_evidence_recorded",
+        "dry_run_execution_result_receipt_authority_promoted_from_export",
+        "dry_run_execution_result_receipt_authority_promoted_from_query",
+        "dry_run_execution_result_receipt_authority_promoted_from_observability",
+        "dry_run_execution_result_receipt_persisted",
+        "dry_run_execution_result_receipt_filesystem_written",
+        "dry_run_execution_result_receipt_ledger_recorded",
+        "dry_run_execution_result_receipt_delivered",
+        "dry_run_execution_result_receipt_materialized",
+        "dry_run_execution_executed",
+        "dry_run_execution_result_persisted",
+        "acceptance_receipt_persisted",
+        "operator_packet_persisted",
+        "production_durable_memory_write_executed",
+        "production_durable_memory_backend_present",
+        "production_durable_memory_store_write_performed",
+        "actual_production_durable_memory_write_performed",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "wal_write_performed",
+        "wal_recorded",
+        "wal_persisted",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_materialized",
+        "receipt_delivered",
+        "post_write_readback_performed",
+        "readback_result_recorded",
+        "readback_result_persisted",
+        "readback_result_accepted",
+        "rollback_executed",
+        "rollback_performed",
+        "rollback_result_recorded",
+        "rollback_result_persisted",
+        "rollback_result_accepted",
+        "tombstone_write_performed",
+        "tombstone_cleanup_executed",
+        "tombstone_cleanup_result_recorded",
+        "tombstone_cleanup_result_accepted",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_claim_promoted",
+        "public_release_published",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "service_restart_performed",
+        "active_binary_mutated",
+        "filesystem_written",
+    ];
+    const TRUE_KEYS: &[&str] = &[
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_performed",
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_result_recorded",
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_result_accepted",
+        "source_dry_run_execution_result_receipt_export_query_observability_denial_boundary_bound",
+        "dry_run_execution_result_receipt_operator_facing_summary_request_denied",
+        "dry_run_execution_result_receipt_operator_briefing_request_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_materialization_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_persistence_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_delivery_denied",
+        "dry_run_execution_result_receipt_operator_readout_handoff_denied",
+        "dry_run_execution_result_receipt_final_acknowledgement_decision_status_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_authority_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_handoff_bound",
+    ];
+
+    fn operator_summary_briefing_fixture(
+        id: &str,
+        status: &str,
+        reason: &str,
+        accepted: bool,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut base = serde_json::Map::new();
+        base.insert("id".to_string(), serde_json::json!(id));
+        base.insert("fixture_id".to_string(), serde_json::json!(id));
+        base.insert(
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_status".to_string(),
+            serde_json::json!(status),
+        );
+        base.insert("reason".to_string(), serde_json::json!(reason));
+        base.insert(
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_accepted".to_string(),
+            serde_json::json!(accepted),
+        );
+        base.insert(
+            "source_export_query_observability_present".to_string(),
+            serde_json::json!(true),
+        );
+        base.insert(
+            "source_export_query_observability_ready".to_string(),
+            serde_json::json!(true),
+        );
+        base.insert(
+            "summary_briefing_noop_confirmed".to_string(),
+            serde_json::json!(true),
+        );
+        for key in [
+            "operator_summary_requested",
+            "operator_briefing_requested",
+            "operator_summary_materialization_requested",
+            "operator_briefing_materialization_requested",
+            "operator_summary_persistence_requested",
+            "operator_summary_filesystem_write_requested",
+            "operator_briefing_persistence_requested",
+            "operator_briefing_filesystem_write_requested",
+            "operator_readout_requested",
+            "operator_handoff_requested",
+            "final_operator_acknowledgement_requested",
+            "terminal_operator_decision_requested",
+            "terminal_operator_status_requested",
+            "channel_delivery_requested",
+            "telegram_send_requested",
+            "authority_promotion_requested",
+            "dry_run_execution_requested",
+            "production_write_requested",
+            "memory_write_summary_requested",
+            "rollback_summary_requested",
+            "secret_material_summary_requested",
+            "provider_prompt_summary_requested",
+            "external_send_summary_requested",
+            "public_claim_summary_requested",
+            "release_artifact_summary_requested",
+            "install_summary_requested",
+            "service_restart_summary_requested",
+            "active_binary_summary_requested",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        for key in [
+            "operator_summary_allowed",
+            "operator_summary_request_accepted",
+            "operator_summary_recorded",
+            "operator_summary_persisted",
+            "operator_summary_materialized",
+            "operator_summary_filesystem_written",
+            "operator_summary_delivered",
+            "operator_summary_channel_delivery_performed",
+            "operator_briefing_allowed",
+            "operator_briefing_request_accepted",
+            "operator_briefing_recorded",
+            "operator_briefing_persisted",
+            "operator_briefing_materialized",
+            "operator_briefing_filesystem_written",
+            "operator_briefing_delivered",
+            "operator_briefing_channel_delivery_performed",
+            "operator_readout_recorded",
+            "operator_readout_persisted",
+            "operator_readout_materialized",
+            "operator_readout_delivered",
+            "operator_handoff_recorded",
+            "operator_handoff_persisted",
+            "operator_handoff_delivered",
+            "final_operator_acknowledgement_recorded",
+            "final_operator_acknowledgement_persisted",
+            "final_operator_acknowledgement_accepted",
+            "final_operator_acknowledgement_delivered",
+            "terminal_operator_decision_recorded",
+            "terminal_operator_decision_persisted",
+            "terminal_operator_decision_accepted",
+            "terminal_operator_status_recorded",
+            "terminal_operator_status_persisted",
+            "terminal_operator_status_promoted",
+            "authority_promoted",
+            "telegram_send_performed",
+            "channel_send_performed",
+            "external_send_performed",
+            "receipt_recorded",
+            "receipt_persisted",
+            "receipt_accepted",
+            "receipt_materialized",
+            "receipt_filesystem_written",
+            "dry_run_execution_executed",
+            "production_durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "rollback_executed",
+            "secret_material_read",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "secret_file_read",
+            "public_release_published",
+            "release_artifact_written",
+            "install_executed",
+            "launchd_mutated",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            base.insert(key.to_string(), serde_json::json!(false));
+        }
+        if let Some(extra) = extra.as_object() {
+            for (key, value) in extra {
+                base.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(base)
+    }
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-production-durable-dry-run-result-receipt-summary-briefing-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_ready": false,
+                "scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_accepted": false,
+                "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_summary_briefing_source_report_thread_failed": true
+            })
+        });
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_next_action_operator_summary_briefing = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.get(1))
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some("prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary")
+                && item
+                    .get("requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && item
+                    .get("persists_operator_summary")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && item
+                    .get("delivers_operator_summary")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && item
+                    .get("executes_dry_run")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && item
+                    .get("writes_production_durable_memory")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_side_effects_ok = source
+        .get("side_effects")
+        .and_then(serde_json::Value::as_object)
+        .map(|effects| {
+            effects
+                .get("scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_result_accepted")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+                && effects
+                    .get("dry_run_execution_result_receipt_export_recorded")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_result_receipt_query_registered")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_result_receipt_observability_metric_recorded")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_result_receipt_observability_dashboard_materialized")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_result_receipt_authority_promoted_from_observability")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_executed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("production_durable_memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("wal_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("receipt_persisted")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("external_send_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_ready = json_str(&source, "status") == "ready"
+        && json_bool(
+            &source,
+            "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_accepted",
+        )
+        && json_u64(
+            &source,
+            "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_fixture_count",
+        ) == 1
+        && json_u64(
+            &source,
+            "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_fixture_count",
+        ) == 9
+        && json_u64(
+            &source,
+            "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_count",
+        ) == 64
+        && !json_bool(&source, "dry_run_execution_result_receipt_export_recorded")
+        && !json_bool(&source, "dry_run_execution_result_receipt_export_persisted")
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_export_file_written",
+        )
+        && !json_bool(&source, "dry_run_execution_result_receipt_query_registered")
+        && !json_bool(&source, "dry_run_execution_result_receipt_query_executed")
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_query_index_recorded",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_query_cache_written",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_observability_metric_recorded",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_observability_dashboard_materialized",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_operator_summary_recorded",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_authority_promoted_from_observability",
+        )
+        && !json_bool(&source, "dry_run_execution_executed")
+        && !json_bool(&source, "dry_run_execution_result_receipt_persisted")
+        && !json_bool(&source, "production_durable_memory_write_executed")
+        && !json_bool(&source, "production_durable_memory_store_write_performed")
+        && !json_bool(&source, "actual_production_durable_memory_write_performed")
+        && !json_bool(&source, "durable_memory_store_write_performed")
+        && !json_bool(&source, "durable_memory_store_read_performed")
+        && !json_bool(&source, "durable_memory_store_rollback_performed")
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "wal_write_performed")
+        && !json_bool(&source, "receipt_persisted")
+        && !json_bool(&source, "rollback_executed")
+        && !json_bool(&source, "tombstone_cleanup_executed")
+        && !json_bool(&source, "live_kg_write_performed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "credential_read")
+        && !json_bool(&source, "channel_send_performed")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "install_executed")
+        && !json_bool(&source, "service_restarted")
+        && !json_bool(&source, "active_binary_mutated")
+        && source_next_action_operator_summary_briefing
+        && source_side_effects_ok;
+
+    let fixtures = serde_json::Value::Array(vec![
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-report-only-denial",
+            "accepted_non_persistent_operator_summary_briefing_denial",
+            "source_export_query_observability_denial_bound_without_summary_briefing_persistence_delivery_or_authority",
+            true,
+            serde_json::json!({}),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-missing-source",
+            "blocked_noop",
+            "source_export_query_observability_report_required",
+            false,
+            serde_json::json!({
+                "source_export_query_observability_present": false,
+                "source_export_query_observability_ready": false,
+                "operator_summary_requested": true
+            }),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-request",
+            "blocked_summary_noop",
+            "operator_facing_summary_request_shape_denied",
+            false,
+            serde_json::json!({"operator_summary_requested": true}),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-briefing-request",
+            "blocked_briefing_noop",
+            "operator_briefing_request_shape_denied",
+            false,
+            serde_json::json!({"operator_briefing_requested": true}),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-materialization-request",
+            "blocked_materialization_noop",
+            "summary_briefing_materialization_denied",
+            false,
+            serde_json::json!({
+                "operator_summary_requested": true,
+                "operator_briefing_requested": true,
+                "operator_summary_materialization_requested": true,
+                "operator_briefing_materialization_requested": true
+            }),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-persistence-filesystem-write-request",
+            "blocked_persistence_noop",
+            "summary_briefing_persistence_filesystem_write_denied",
+            false,
+            serde_json::json!({
+                "operator_summary_requested": true,
+                "operator_briefing_requested": true,
+                "operator_summary_persistence_requested": true,
+                "operator_summary_filesystem_write_requested": true,
+                "operator_briefing_persistence_requested": true,
+                "operator_briefing_filesystem_write_requested": true
+            }),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-channel-delivery-request",
+            "blocked_delivery_noop",
+            "summary_briefing_channel_delivery_denied",
+            false,
+            serde_json::json!({
+                "operator_summary_requested": true,
+                "operator_briefing_requested": true,
+                "channel_delivery_requested": true,
+                "telegram_send_requested": true
+            }),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-readout-handoff-request",
+            "blocked_readout_noop",
+            "operator_readout_handoff_denied",
+            false,
+            serde_json::json!({
+                "operator_readout_requested": true,
+                "operator_handoff_requested": true
+            }),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-final-ack-decision-status-request",
+            "blocked_ack_decision_status_noop",
+            "final_acknowledgement_decision_status_denied",
+            false,
+            serde_json::json!({
+                "final_operator_acknowledgement_requested": true,
+                "terminal_operator_decision_requested": true,
+                "terminal_operator_status_requested": true
+            }),
+        ),
+        operator_summary_briefing_fixture(
+            "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-authority-memory-provider-external-request",
+            "blocked_authority_noop",
+            "operator_summary_briefing_authority_memory_provider_external_denied",
+            false,
+            serde_json::json!({
+                "operator_summary_requested": true,
+                "operator_briefing_requested": true,
+                "authority_promotion_requested": true,
+                "dry_run_execution_requested": true,
+                "production_write_requested": true,
+                "memory_write_summary_requested": true,
+                "rollback_summary_requested": true,
+                "secret_material_summary_requested": true,
+                "provider_prompt_summary_requested": true,
+                "external_send_summary_requested": true,
+                "public_claim_summary_requested": true,
+                "release_artifact_summary_requested": true,
+                "install_summary_requested": true,
+                "service_restart_summary_requested": true,
+                "active_binary_summary_requested": true
+            }),
+        ),
+    ]);
+    let accepted_fixture_count = fixtures
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| {
+                    item.get("scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_accepted")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true)
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    let blocked_fixture_count = fixtures
+        .as_array()
+        .map(std::vec::Vec::len)
+        .unwrap_or(0)
+        .saturating_sub(accepted_fixture_count);
+
+    let source_report_sha256 = sha256_json_value(&source);
+    let fixtures_hash_sha256 = sha256_json_value(&fixtures);
+    let source_export_query_observability_boundary_hash_sha256 = json_str(
+        &source,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_hash_sha256",
+    );
+    let source_export_query_observability_policy_hash_sha256 = json_str(
+        &source,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_policy_hash_sha256",
+    );
+    let source_export_query_observability_result_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_export_query_observability_result_hash_sha256",
+    );
+    let source_export_query_observability_handoff_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_export_query_observability_handoff_hash_sha256",
+    );
+    let summary_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-denial:v1:source={source_export_query_observability_result_hash_sha256}:record=false:persist=false:materialize=false:deliver=false:authority=false"
+    ));
+    let briefing_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-operator-briefing-denial:v1:summary={summary_denial_hash_sha256}:record=false:persist=false:materialize=false:deliver=false:authority=false"
+    ));
+    let readout_ack_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-operator-readout-ack-denial:v1:briefing={briefing_denial_hash_sha256}:readout=false:handoff=false:ack=false:decision=false:status=false:authority=false"
+    ));
+    let operator_summary_briefing_handoff_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-handoff:v1:readout_ack={readout_ack_denial_hash_sha256}:next=final-operator-acknowledgement-non-acceptance-denial-boundary"
+    ));
+    let operator_summary_briefing_result_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-result:v1:summary={summary_denial_hash_sha256}:briefing={briefing_denial_hash_sha256}:readout_ack={readout_ack_denial_hash_sha256}:handoff={operator_summary_briefing_handoff_hash_sha256}:accepted=true:persist=false:delivery=false:authority=false:execution=false:production-write=false"
+    ));
+    let operator_summary_briefing_boundary_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-non-persistence-denial-boundary:v1:source={source_report_sha256}:fixtures={fixtures_hash_sha256}:result={operator_summary_briefing_result_hash_sha256}:accepted=1:blocked=9:summary=false:briefing=false:ack=false:authority=false:execution=false:production-write=false"
+    ));
+    let operator_summary_briefing_policy_hash_sha256 = sha256_text_value(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-non-persistence-denial-policy:v1:bind-source-export-query-observability-no-summary-recording-no-briefing-recording-no-materialization-no-filesystem-no-channel-no-readout-no-handoff-no-final-ack-no-decision-status-no-authority-no-execution-no-production-write-no-kg-no-provider-no-release-no-install",
+    );
+    let operator_summary_briefing_matrix_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-operator-summary-briefing-denial-matrix:v1:summary={summary_denial_hash_sha256}:briefing={briefing_denial_hash_sha256}:readout_ack={readout_ack_denial_hash_sha256}:fixtures={fixtures_hash_sha256}"
+    ));
+    let report_ready = route_matrix.ready
+        && route_count_source_command_accepted
+        && source_ready
+        && OPERATOR_SUMMARY_BRIEFING_SURFACES.len() == 14
+        && fixtures.as_array().map(std::vec::Vec::len) == Some(10)
+        && accepted_fixture_count == 1
+        && blocked_fixture_count == 9
+        && DENIED_BY.len() >= 60;
+
+    let mut side_effects = serde_json::Map::new();
+    for &key in FALSE_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+    }
+    side_effects.insert(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_performed".to_string(),
+        serde_json::json!(report_ready),
+    );
+    side_effects.insert(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_result_accepted".to_string(),
+        serde_json::json!(report_ready),
+    );
+
+    let mut report = source
+        .as_object()
+        .cloned()
+        .unwrap_or_else(serde_json::Map::new);
+    macro_rules! insert_report_json {
+        ($key:literal, $value:expr) => {
+            report.insert($key.to_string(), serde_json::json!($value));
+        };
+    }
+
+    insert_report_json!("product", "Hepta");
+    insert_report_json!("runtime", "hepta");
+    insert_report_json!("status", if report_ready { "ready" } else { "blocked" });
+    insert_report_json!("base_url", "http://127.0.0.1:7373");
+    insert_report_json!(
+        "gate",
+        "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_route"
+    );
+    insert_report_json!(
+        "endpoint",
+        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_BOUNDARY_ENDPOINT
+    );
+    insert_report_json!(
+        "source_command",
+        "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary --json"
+    );
+    insert_report_json!("native_route", true);
+    insert_report_json!("side_effect_free", true);
+    insert_report_json!("audit_date", "2026-07-05");
+    insert_report_json!(
+        "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_schema_version",
+        "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_v1"
+    );
+    insert_report_json!(
+        "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_ready",
+        report_ready
+    );
+    insert_report_json!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_accepted",
+        report_ready
+    );
+    insert_report_json!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_mode",
+        "dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_no_summary_no_briefing_no_delivery_no_ack_no_authority_no_execution_no_production_durable_memory_mutation"
+    );
+    insert_report_json!(
+        "native_gateway_source_command_count",
+        NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+    );
+    insert_report_json!("route_count", route_matrix.route_count);
+    insert_report_json!(
+        "implemented_route_count",
+        route_matrix.implemented_route_count
+    );
+    insert_report_json!("missing_route_count", route_matrix.missing_route_count);
+    insert_report_json!(
+        "route_count_source_command_accepted",
+        route_count_source_command_accepted
+    );
+    insert_report_json!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_ready",
+        source_ready
+    );
+    insert_report_json!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_accepted_count",
+        if source_ready { 1 } else { 0 }
+    );
+    insert_report_json!(
+        "source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_fixture_count",
+        json_u64(
+            &source,
+            "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_fixture_count"
+        )
+    );
+    insert_report_json!(
+        "source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_fixture_count",
+        json_u64(
+            &source,
+            "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_fixture_count"
+        )
+    );
+    insert_report_json!(
+        "source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_count",
+        json_u64(
+            &source,
+            "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_count"
+        )
+    );
+    insert_report_json!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_report_sha256",
+        source_report_sha256
+    );
+    insert_report_json!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_hash_sha256",
+        source_export_query_observability_boundary_hash_sha256
+    );
+    insert_report_json!(
+        "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_policy_hash_sha256",
+        source_export_query_observability_policy_hash_sha256
+    );
+    insert_report_json!(
+        "source_dry_run_execution_result_receipt_export_query_observability_result_hash_sha256",
+        source_export_query_observability_result_hash_sha256
+    );
+    insert_report_json!(
+        "source_dry_run_execution_result_receipt_export_query_observability_handoff_hash_sha256",
+        source_export_query_observability_handoff_hash_sha256
+    );
+    insert_report_json!(
+        "dry_run_execution_result_receipt_operator_summary_denial_hash_sha256",
+        summary_denial_hash_sha256
+    );
+    insert_report_json!(
+        "dry_run_execution_result_receipt_operator_briefing_denial_hash_sha256",
+        briefing_denial_hash_sha256
+    );
+    insert_report_json!(
+        "dry_run_execution_result_receipt_operator_readout_ack_denial_hash_sha256",
+        readout_ack_denial_hash_sha256
+    );
+    insert_report_json!(
+        "dry_run_execution_result_receipt_operator_summary_briefing_denial_matrix_hash_sha256",
+        operator_summary_briefing_matrix_hash_sha256
+    );
+    insert_report_json!(
+        "dry_run_execution_result_receipt_operator_summary_briefing_handoff_hash_sha256",
+        operator_summary_briefing_handoff_hash_sha256
+    );
+    insert_report_json!(
+        "dry_run_execution_result_receipt_operator_summary_briefing_result_hash_sha256",
+        operator_summary_briefing_result_hash_sha256
+    );
+    insert_report_json!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_hash_sha256",
+        operator_summary_briefing_boundary_hash_sha256
+    );
+    insert_report_json!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_policy_hash_sha256",
+        operator_summary_briefing_policy_hash_sha256
+    );
+    insert_report_json!(
+        "required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_surface_count",
+        OPERATOR_SUMMARY_BRIEFING_SURFACES.len()
+    );
+    insert_report_json!(
+        "ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_surface_count",
+        if report_ready {
+            OPERATOR_SUMMARY_BRIEFING_SURFACES.len()
+        } else {
+            0
+        }
+    );
+    insert_report_json!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_surfaces",
+        OPERATOR_SUMMARY_BRIEFING_SURFACES
+    );
+    insert_report_json!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_fixture_count",
+        fixtures.as_array().map(std::vec::Vec::len).unwrap_or(0)
+    );
+    insert_report_json!(
+        "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_fixture_count",
+        accepted_fixture_count
+    );
+    insert_report_json!(
+        "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_fixture_count",
+        blocked_fixture_count
+    );
+    insert_report_json!(
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_fixtures",
+        fixtures
+    );
+    insert_report_json!(
+        "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary",
+        DENIED_BY
+    );
+    insert_report_json!(
+        "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_count",
+        DENIED_BY.len()
+    );
+    insert_report_json!(
+        "allowed_next_actions",
+        serde_json::json!([
+            {
+                "action": "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_require_live_gate",
+                "status": "allowed_verification_only",
+                "records_operator_summary": false,
+                "persists_operator_summary": false,
+                "materializes_operator_summary": false,
+                "writes_operator_summary_filesystem": false,
+                "records_operator_briefing": false,
+                "persists_operator_briefing": false,
+                "materializes_operator_briefing": false,
+                "writes_operator_briefing_filesystem": false,
+                "records_operator_readout": false,
+                "records_final_acknowledgement": false,
+                "records_terminal_decision": false,
+                "delivers_notification": false,
+                "sends_telegram": false,
+                "promotes_authority": false,
+                "executes_dry_run": false,
+                "writes_production_durable_memory": false,
+                "writes_memory_store": false,
+                "writes_wal": false,
+                "persists_receipt": false
+            },
+            {
+                "action": "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary",
+                "status": "requires_separate_result_receipt_final_operator_acknowledgement_denial_gate",
+                "requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary": true,
+                "accepts_operator_acknowledgement": false,
+                "persists_acknowledgement": false,
+                "records_terminal_decision": false,
+                "promotes_authority": false,
+                "executes_dry_run": false,
+                "writes_production_durable_memory": false,
+                "persists_dry_run_result_receipt": false
+            }
+        ])
+    );
+
+    for &key in FALSE_KEYS {
+        report.insert(key.to_string(), serde_json::json!(false));
+        report.insert(format!("{key}_count"), serde_json::json!(0));
+    }
+    for &key in TRUE_KEYS {
+        report.insert(key.to_string(), serde_json::json!(report_ready));
+        report.insert(
+            format!("{key}_count"),
+            serde_json::json!(if report_ready { 1 } else { 0 }),
+        );
+    }
+    for key in [
+        "source_dry_run_execution_result_receipt_export_query_observability_denial_boundary_bound",
+        "approved_production_namespace_bound",
+        "approved_production_store_bound",
+        "approved_production_scope_bound",
+        "production_durable_memory_target_bound",
+        "dry_run_execution_result_receipt_operator_summary_denial_bound",
+        "dry_run_execution_result_receipt_operator_briefing_denial_bound",
+        "dry_run_execution_result_receipt_operator_readout_ack_denial_bound",
+        "dry_run_execution_result_receipt_operator_facing_summary_briefing_request_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_materialization_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_persistence_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_delivery_denied",
+        "dry_run_execution_result_receipt_operator_readout_handoff_denied",
+        "dry_run_execution_result_receipt_final_acknowledgement_decision_status_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_authority_denied",
+        "dry_run_execution_result_receipt_operator_summary_briefing_handoff_bound",
+        "dry_run_execution_result_receipt_operator_summary_briefing_persistence_forbidden",
+        "dry_run_execution_execution_forbidden_on_operator_summary_briefing_route",
+        "dry_run_execution_result_receipt_persistence_forbidden_on_operator_summary_briefing_route",
+        "production_write_execution_forbidden_on_operator_summary_briefing_route",
+        "production_durable_memory_write_forbidden",
+        "memory_store_mutation_forbidden",
+        "wal_write_forbidden_on_operator_summary_briefing_route",
+        "receipt_persist_forbidden_on_operator_summary_briefing_route",
+        "rollback_execution_forbidden_on_operator_summary_briefing_route",
+        "tombstone_write_forbidden_on_operator_summary_briefing_route",
+        "kg_live_write_forbidden",
+        "provider_model_invocation_forbidden",
+        "credential_channel_public_release_forbidden",
+        "install_restart_active_binary_mutation_forbidden",
+    ] {
+        report.insert(key.to_string(), serde_json::json!(report_ready));
+    }
+    report.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+    serde_json::Value::Object(report)
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -162173,6 +163234,326 @@ mod tests {
             side_effects["external_send_performed"].as_bool(),
             Some(false)
         );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_summary_briefing_non_persistence_denial_blocks_delivery_ack_authority_execution_and_production_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "scoped production durable Memory write dry-run execution result receipt operator summary/briefing non-persistence denial json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_accepted"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_mode"],
+            "dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_no_summary_no_briefing_no_delivery_no_ack_no_authority_no_execution_no_production_durable_memory_mutation"
+        );
+        assert_eq!(
+            value["source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_count"],
+            64
+        );
+        for key in [
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_report_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary_hash_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_policy_hash_sha256",
+            "source_dry_run_execution_result_receipt_export_query_observability_result_hash_sha256",
+            "source_dry_run_execution_result_receipt_export_query_observability_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_operator_summary_denial_hash_sha256",
+            "dry_run_execution_result_receipt_operator_briefing_denial_hash_sha256",
+            "dry_run_execution_result_receipt_operator_readout_ack_denial_hash_sha256",
+            "dry_run_execution_result_receipt_operator_summary_briefing_denial_matrix_hash_sha256",
+            "dry_run_execution_result_receipt_operator_summary_briefing_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_operator_summary_briefing_result_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_policy_hash_sha256",
+        ] {
+            assert_ne!(
+                value[key], "",
+                "operator summary/briefing hash missing: {key}"
+            );
+        }
+        assert_eq!(
+            value["required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_surface_count"],
+            14
+        );
+        assert_eq!(
+            value["ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_surface_count"],
+            14
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_fixture_count"],
+            9
+        );
+        assert!(
+            value["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_count"]
+                .as_u64()
+                .unwrap_or(0)
+                >= 60
+        );
+        for key in [
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_performed_count",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_result_recorded_count",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_result_accepted_count",
+            "source_dry_run_execution_result_receipt_export_query_observability_denial_boundary_bound_count",
+            "dry_run_execution_result_receipt_operator_facing_summary_request_denied_count",
+            "dry_run_execution_result_receipt_operator_briefing_request_denied_count",
+            "dry_run_execution_result_receipt_operator_summary_briefing_materialization_denied_count",
+            "dry_run_execution_result_receipt_operator_summary_briefing_persistence_denied_count",
+            "dry_run_execution_result_receipt_operator_summary_briefing_delivery_denied_count",
+            "dry_run_execution_result_receipt_operator_readout_handoff_denied_count",
+            "dry_run_execution_result_receipt_final_acknowledgement_decision_status_denied_count",
+            "dry_run_execution_result_receipt_operator_summary_briefing_authority_denied_count",
+            "dry_run_execution_result_receipt_operator_summary_briefing_handoff_bound_count",
+        ] {
+            assert_eq!(
+                value[key], 1,
+                "operator summary/briefing denial count should be one: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_operator_facing_summary_recorded_count",
+            "dry_run_execution_result_receipt_operator_facing_summary_persisted_count",
+            "dry_run_execution_result_receipt_operator_facing_summary_materialized_count",
+            "dry_run_execution_result_receipt_operator_facing_summary_filesystem_written_count",
+            "dry_run_execution_result_receipt_operator_facing_summary_delivered_count",
+            "dry_run_execution_result_receipt_operator_briefing_recorded_count",
+            "dry_run_execution_result_receipt_operator_briefing_persisted_count",
+            "dry_run_execution_result_receipt_operator_briefing_materialized_count",
+            "dry_run_execution_result_receipt_operator_briefing_filesystem_written_count",
+            "dry_run_execution_result_receipt_operator_briefing_delivered_count",
+            "dry_run_execution_result_receipt_operator_readout_recorded_count",
+            "dry_run_execution_result_receipt_operator_handoff_recorded_count",
+            "dry_run_execution_result_receipt_final_operator_acknowledgement_recorded_count",
+            "dry_run_execution_result_receipt_terminal_operator_decision_recorded_count",
+            "dry_run_execution_result_receipt_terminal_operator_status_recorded_count",
+            "dry_run_execution_result_receipt_authority_promoted_from_operator_summary_count",
+            "dry_run_execution_result_receipt_authority_promoted_from_operator_briefing_count",
+            "dry_run_execution_result_receipt_authority_promoted_from_final_acknowledgement_count",
+            "dry_run_execution_executed_count",
+            "production_durable_memory_write_executed_count",
+            "production_durable_memory_store_write_performed_count",
+            "memory_store_write_performed_count",
+            "wal_write_performed_count",
+            "receipt_persisted_count",
+            "live_kg_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "channel_send_performed_count",
+            "external_send_performed_count",
+            "release_artifact_written_count",
+            "install_executed_count",
+            "service_restarted_count",
+            "active_binary_mutated_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "operator summary/briefing side-effect count should stay zero: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_operator_facing_summary_recorded",
+            "dry_run_execution_result_receipt_operator_facing_summary_persisted",
+            "dry_run_execution_result_receipt_operator_facing_summary_materialized",
+            "dry_run_execution_result_receipt_operator_facing_summary_filesystem_written",
+            "dry_run_execution_result_receipt_operator_facing_summary_delivered",
+            "dry_run_execution_result_receipt_operator_briefing_recorded",
+            "dry_run_execution_result_receipt_operator_briefing_persisted",
+            "dry_run_execution_result_receipt_operator_briefing_materialized",
+            "dry_run_execution_result_receipt_operator_briefing_filesystem_written",
+            "dry_run_execution_result_receipt_operator_briefing_delivered",
+            "dry_run_execution_result_receipt_operator_readout_recorded",
+            "dry_run_execution_result_receipt_operator_handoff_recorded",
+            "dry_run_execution_result_receipt_final_operator_acknowledgement_recorded",
+            "dry_run_execution_result_receipt_terminal_operator_decision_recorded",
+            "dry_run_execution_result_receipt_terminal_operator_status_recorded",
+            "dry_run_execution_result_receipt_authority_promoted_from_operator_summary",
+            "dry_run_execution_result_receipt_authority_promoted_from_operator_briefing",
+            "dry_run_execution_result_receipt_authority_promoted_from_final_acknowledgement",
+            "dry_run_execution_executed",
+            "production_durable_memory_write_executed",
+            "production_durable_memory_store_write_performed",
+            "actual_production_durable_memory_write_performed",
+            "durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "receipt_persisted",
+            "rollback_executed",
+            "tombstone_cleanup_executed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "operator summary/briefing reporting, ack, authority, mutation, execution, or external field should stay false: {key}"
+            );
+        }
+        let fixtures = value
+            ["scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_fixtures"]
+            .as_array()
+            .expect(
+                "scoped production durable Memory write dry-run execution result receipt operator summary/briefing denial fixtures",
+            );
+        assert_eq!(fixtures.len(), 10);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_accepted"]
+                        == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| fixture["telegram_send_requested"] == true)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["final_operator_acknowledgement_requested"] == true
+                        && fixture["terminal_operator_decision_requested"] == true
+                        && fixture["terminal_operator_status_requested"] == true
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["authority_promotion_requested"] == true
+                        && fixture["production_write_requested"] == true
+                        && fixture["active_binary_summary_requested"] == true
+                })
+                .count(),
+            1
+        );
+        let denied = value
+            ["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary"]
+            .as_array()
+            .expect("scoped production durable Memory write dry-run execution result receipt operator summary/briefing denials");
+        assert!(denied.len() >= 60);
+        assert_eq!(
+            value["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_count"],
+            serde_json::json!(denied.len())
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["delivers_notification"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_final_operator_acknowledgement_non_acceptance_denial_boundary"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["accepts_operator_acknowledgement"],
+            false
+        );
+        let side_effects = value["side_effects"].as_object().expect(
+            "scoped production durable Memory write dry-run execution result receipt operator summary/briefing side effects",
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_boundary_performed"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_operator_facing_summary_briefing_non_persistence_denial_result_accepted"].as_bool(),
+            Some(true)
+        );
+        for key in [
+            "dry_run_execution_result_receipt_operator_facing_summary_recorded",
+            "dry_run_execution_result_receipt_operator_briefing_recorded",
+            "dry_run_execution_result_receipt_operator_readout_recorded",
+            "dry_run_execution_result_receipt_final_operator_acknowledgement_recorded",
+            "dry_run_execution_result_receipt_authority_promoted_from_final_acknowledgement",
+            "dry_run_execution_executed",
+            "production_durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "wal_write_performed",
+            "receipt_persisted",
+            "external_send_performed",
+        ] {
+            assert_eq!(side_effects[key].as_bool(), Some(false), "{key}");
+        }
     }
 
     #[test]
