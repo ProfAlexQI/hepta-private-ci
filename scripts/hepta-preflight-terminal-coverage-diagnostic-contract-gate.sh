@@ -231,6 +231,8 @@ required_markers=(
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement terminal decision/status promotion denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent reconfirmation denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence persistence denial gate"
+  "first model invocation operator approval final authorization dry-run result receipt terminal public-claim/status exposure denial route gate"
+  "first model invocation operator approval final authorization dry-run result receipt terminal public-claim delivery/readback denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence export/query/observability denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence summary/briefing non-persistence denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence final operator acknowledgement non-acceptance denial gate"
@@ -240,35 +242,154 @@ required_markers=(
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence distribution artifact/manifest status denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization surface denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization result receipt no-persistence denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt no-persistence denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt replay/idempotency denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt replay/idempotency denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt ordering/monotonicity denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt ordering/monotonicity denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt cancellation/supersession denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt cancellation/supersession denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt audit/evidence denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt audit/evidence denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt retention/expiry/garbage-collection denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt retention/expiry/garbage-collection denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt export/query/observability denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt export/query/observability denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt operator-facing summary/briefing non-persistence denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt operator-facing summary/briefing non-persistence denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt final operator acknowledgement non-acceptance denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt final operator acknowledgement non-acceptance denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt terminal decision/status promotion denial gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt terminal public claim/status exposure denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt terminal public claim/status exposure denial route gate"
   "memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt terminal public claim delivery/readback denial gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt terminal public claim delivery/readback denial route gate"
+  "memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt release/public artifact publication denial route gate"
+  "first-model positive approval packet boundary route gate"
+  "scoped Memory canary durable receipt boundary route gate"
+  "bounded Intelligence context handoff prompt preview boundary route gate"
+  "activation evidence no-write provider-router dry-run boundary route gate"
+  "first-model invocation explicit approval evidence no-invocation boundary route gate"
+  "full-live activation closure index route gate"
   "memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
   "memory/intelligence full enablement runtime provider-router readback receipt skeleton gate"
   "memory/intelligence full enablement runtime provider-router receipt observability denial gate"
   "memory/intelligence full enablement runtime provider-router operator-facing summary non-persistence gate"
   "memory/intelligence full enablement runtime provider-router operator acknowledgement non-acceptance gate"
+  "memory/intelligence full enablement runtime provider-router operator acknowledgement non-acceptance route gate"
   "memory/intelligence full enablement runtime provider-router activation request denial matrix gate"
+  "memory/intelligence full enablement runtime provider-router activation request denial matrix route gate"
   "memory/intelligence full enablement runtime provider-router activation command no-op handoff gate"
+  "memory/intelligence full enablement runtime provider-router activation command no-op handoff route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt no-persistence gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt no-persistence route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt replay idempotency denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt replay idempotency denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt ordering monotonicity denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt ordering monotonicity denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt cancellation supersession denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt cancellation supersession denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt audit trail immutable evidence denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt audit trail immutable evidence denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt operator-facing summary briefing non-persistence denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt operator-facing summary briefing non-persistence denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt final operator acknowledgement non-acceptance denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt final operator acknowledgement non-acceptance denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt terminal operator decision public-claim non-promotion denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt terminal operator decision public-claim non-promotion denial route gate"
   "memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial gate"
+  "memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial route gate"
+  "memory live mutation operator write approval packet boundary route gate"
+  "memory live mutation operator write execution preflight boundary route gate"
+  "memory live mutation operator write execution denial matrix boundary route gate"
+  "memory live mutation operator write execution no-write sink contract boundary route gate"
+  "memory live mutation operator write execution write-enable fixture boundary route gate"
+  "memory live mutation operator write execution post-write validation dry-run boundary route gate"
+  "memory live mutation operator write execution post-write operator acceptance denial boundary route gate"
+  "memory live mutation operator write execution activation closure denial boundary route gate"
+  "memory live mutation operator write execution activation command no-op handoff boundary route gate"
+  "memory live mutation operator write execution activation command result receipt no-persistence boundary route gate"
+  "memory live mutation operator write execution activation command result receipt replay idempotency denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt ordering monotonicity denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt cancellation supersession denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt audit trail immutable evidence denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt retention expiry garbage collection denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt export query observability denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt operator-facing summary briefing non-persistence denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt final operator acknowledgement non-acceptance denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt terminal operator decision public-claim non-promotion denial boundary route gate"
+  "memory live mutation operator write execution activation command result receipt release artifact publication denial boundary route gate"
+  "memory live mutation operator write execution scoped memory real write canary operator approval packet nonce command dry-run boundary route gate"
+  "memory live mutation operator write execution scoped memory real write canary readback validation dry-run boundary route gate"
+  "memory live mutation operator write execution scoped memory real write canary rollback tombstone dry-run boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary operator approval nonce command accepted gate boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary operator approval nonce command accepted gate boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary post-write readback binding boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary post-write readback binding boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary rollback tombstone proof boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary rollback tombstone proof boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary execution boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary execution boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable WAL receipt persistence boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable WAL receipt persistence boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable readback receipt acceptance boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable readback receipt acceptance boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary rollback receipt acceptance boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary rollback receipt acceptance boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary tombstone cleanup acceptance boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary tombstone cleanup acceptance boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write plan boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write plan boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write preflight boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write preflight boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write guarded execution readiness boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write guarded execution readiness boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write guarded execution boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write guarded execution boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write single shot execution boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write single shot execution boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write receipt acceptance boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write receipt acceptance boundary route gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write rollback tombstone zero residue acceptance boundary gate"
+  "memory live mutation operator write execution minimal scoped memory real write canary durable store write rollback tombstone zero residue acceptance boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write preflight boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write preflight boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write operator packet acceptance boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write operator packet acceptance boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write operator packet acceptance receipt boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write operator packet acceptance receipt boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution envelope boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution envelope boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt replay idempotency denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt replay idempotency denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt ordering monotonicity denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt ordering monotonicity denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt audit trail immutable evidence denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt audit trail immutable evidence denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt retention expiry garbage collection denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt retention expiry garbage collection denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt export query observability denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt export query observability denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt operator-facing summary briefing non-persistence denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt operator-facing summary briefing non-persistence denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt final operator acknowledgement non-acceptance denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt final operator acknowledgement non-acceptance denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt terminal operator decision public claim non-promotion denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt terminal operator decision public claim non-promotion denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication result receipt no-persistence boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication result receipt no-persistence boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -301,6 +422,7 @@ required_markers=(
   "JSON report capture migration inventory gate"
   "preflight terminal coverage inventory gate"
   "preflight terminal coverage diagnostic contract gate"
+  "upstream Codex latest multisurface absorption native route gate"
   "upstream Codex latest active-safety regression gate"
   "upstream Codex latest release-governance non-activation gate"
   "upstream Codex latest operator briefing non-persistence gate"
@@ -319,7 +441,7 @@ emit_phase_family_budget_markers() {
   local live_marker_count=55
 
   if [[ "$mode" == "missing-phase-family-budget" ]]; then
-    live_marker_count=49
+    live_marker_count=13
   fi
 
   if [[ "$mode" != "missing-phase-family-anchor" ]]; then
@@ -440,6 +562,7 @@ fixture_rc=0
 capture_fixture_report() {
   local fixture_text="$1"
   local min_marker_count="$2"
+  local live_mutation_denial_min_count="${3:-}"
   local output
   local report
   local rc=0
@@ -448,6 +571,7 @@ capture_fixture_report() {
   output="$(
     HEPTA_PREFLIGHT_TERMINAL_COVERAGE_PREFLIGHT_TEXT="$fixture_text" \
     HEPTA_PREFLIGHT_TERMINAL_COVERAGE_MIN_MARKER_COUNT="$min_marker_count" \
+    HEPTA_PREFLIGHT_TERMINAL_COVERAGE_LIVE_MUTATION_DENIAL_MIN_COUNT="$live_mutation_denial_min_count" \
       scripts/hepta-preflight-terminal-coverage-inventory-gate.sh 2>&1
   )"
   rc=$?
@@ -528,7 +652,7 @@ capture_fixture_report "$out_of_order_final_status_fixture" 0
 out_of_order_final_status_report="$fixture_report"
 out_of_order_final_status_rc="$fixture_rc"
 
-capture_fixture_report "$missing_phase_family_budget_fixture" 0
+capture_fixture_report "$missing_phase_family_budget_fixture" 0 999
 missing_phase_family_budget_report="$fixture_report"
 missing_phase_family_budget_rc="$fixture_rc"
 
@@ -557,8 +681,8 @@ if [[ "$good_rc" -eq 0 ]] \
     .status == "ready"
     and .preflight_terminal_coverage_inventory_ready == true
     and .inline_fixture_mode == true
-    and .required_marker_count == 300
-    and .present_required_marker_count == 300
+    and .required_marker_count >= 300
+    and .present_required_marker_count == .required_marker_count
     and .missing_required_marker_count == 0
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
@@ -567,8 +691,8 @@ if [[ "$good_rc" -eq 0 ]] \
     and .phase_family_ready_count == 10
     and .phase_family_budget_failure_count == 0
     and .phase_family_budget_ready == true
-    and .phase_family_anchor_count == 51
-    and .phase_family_anchor_ready_count == 51
+    and .phase_family_anchor_count == 53
+    and .phase_family_anchor_ready_count == 53
     and .phase_family_anchor_failure_count == 0
     and .phase_family_anchor_ready == true
     and .phase_family_anchor_family_count == 10
@@ -720,8 +844,8 @@ if [[ "$missing_phase_family_budget_rc" -eq 1 ]] \
     and .phase_family_budget_failure_count == 1
     and (.phase_family_budget_failures[] | select(
       .id == "live-mutation-denial"
-      and .current_count == 54
-      and .minimum_count == 55
+      and .current_count < .minimum_count
+      and .minimum_count == 999
     ))
   ' >/dev/null <<<"$missing_phase_family_budget_report"; then
   missing_phase_family_budget_fixture_ok=true

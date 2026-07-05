@@ -151,6 +151,15 @@ impl InMemoryStore {
         Ok(guard.transcripts.clone())
     }
 
+    pub fn put_memory_sync(&self, record: MemoryRecord) -> Result<(), hepta_core::MemoryError> {
+        let mut guard = self
+            .state
+            .lock()
+            .map_err(|_| hepta_core::MemoryError("memory store mutex poisoned".into()))?;
+        guard.memories.push(record);
+        Ok(())
+    }
+
     pub fn append_transcript_sync(
         &self,
         entry: TranscriptEntry,
