@@ -372,6 +372,8 @@ required_markers=(
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt replay idempotency denial boundary route gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt ordering monotonicity denial boundary gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt ordering monotonicity denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -423,7 +425,7 @@ emit_phase_family_budget_markers() {
   local live_marker_count=55
 
   if [[ "$mode" == "missing-phase-family-budget" ]]; then
-    live_marker_count=15
+    live_marker_count=13
   fi
 
   if [[ "$mode" != "missing-phase-family-anchor" ]]; then

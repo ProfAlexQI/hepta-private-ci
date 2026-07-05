@@ -378,6 +378,8 @@ required_markers=(
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt replay idempotency denial boundary route gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt ordering monotonicity denial boundary gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt ordering monotonicity denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
