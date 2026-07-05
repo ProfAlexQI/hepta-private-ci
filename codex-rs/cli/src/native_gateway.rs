@@ -504,6 +504,8 @@ const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURA
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary";
 const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_BOUNDARY_ENDPOINT: &str =
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-audit-trail-immutable-evidence-denial-boundary";
+const HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT: &str =
+    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary";
 const HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT: &str =
     "/api/hepta-release-hardening-status-gate";
 const HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT: &str =
@@ -514,7 +516,7 @@ const HEPTA_PUBLIC_GA_OPERATOR_APPROVAL_PACKET_ENDPOINT: &str =
     "/api/hepta-public-ga-operator-approval-packet";
 const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-ga-readiness";
 const CURRENT_HEPTA_CODEX_SCRIPT_TOTAL: usize = 21;
-const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 275;
+const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 276;
 const NATIVE_GATEWAY_ROUTE_COUNT_CUTOVER_FLOOR: usize = 69;
 const HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV: &str =
     "HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED";
@@ -2105,6 +2107,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-audit-trail-immutable-evidence-denial-boundary --json",
         capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-audit-trail-immutable-evidence-denial-boundary",
         side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt audit-trail/immutable-evidence denial boundary; consumes the dry-run execution result receipt cancellation/supersession denial boundary as source evidence while accepting only a non-persistent audit/evidence denial matrix for append-only audit logs, immutable evidence wrappers, hash chains, Merkle roots, attestations, witnesses, notaries, ledger/index/delivery evidence, and authority promotion; performs no audit or evidence recording, persistence, materialization, filesystem write, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT,
+        source_command: "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary --json",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary",
+        side_effect_boundary: "scoped production durable Memory write dry-run execution result receipt retention/expiry/garbage-collection denial boundary; consumes the dry-run execution result receipt audit-trail/immutable-evidence denial boundary as source evidence while accepting only a non-persistent lifecycle denial matrix for retention policy, retention index, TTL lease, expiry scheduling/timer/ack, garbage-collection queue/scan/candidate/decision, delete/tombstone/sweep, archive, compaction, ledger/index/delivery evidence retention, and authority promotion; performs no lifecycle recording, persistence, scheduler registration, timer start, scan, delete, sweep, archive, compaction, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -4653,6 +4662,16 @@ fn route_native_gateway_request_with_body(
                     "application/json; charset=utf-8",
                     json_or_error(
                         &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_report(),
+                    ),
+                );
+            }
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT =>
+            {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(
+                        &hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_report(),
                     ),
                 );
             }
@@ -108959,6 +108978,721 @@ fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable
     report
 }
 
+fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_report()
+-> serde_json::Value {
+    const RETENTION_SURFACES: &[&str] = &[
+        "source_audit_trail_immutable_evidence_denial_boundary_required",
+        "source_audit_evidence_result_required",
+        "dry_run_execution_result_receipt_retention_policy_request_denied",
+        "dry_run_execution_result_receipt_retention_index_denied",
+        "dry_run_execution_result_receipt_ttl_lease_update_extension_denied",
+        "dry_run_execution_result_receipt_expiry_timestamp_scheduler_timer_ack_denied",
+        "dry_run_execution_result_receipt_expiry_state_persistence_denied",
+        "dry_run_execution_result_receipt_garbage_collection_queue_scan_candidate_denied",
+        "dry_run_execution_result_receipt_garbage_collection_decision_state_denied",
+        "dry_run_execution_result_receipt_delete_tombstone_sweep_denied",
+        "dry_run_execution_result_receipt_archive_compaction_denied",
+        "dry_run_execution_result_receipt_audit_immutable_hash_attestation_retention_denied",
+        "dry_run_execution_result_receipt_ledger_index_delivery_retention_denied",
+        "dry_run_execution_result_receipt_memory_kg_provider_channel_retention_denied",
+        "dry_run_execution_result_receipt_release_install_active_binary_gc_denied",
+        "dry_run_execution_production_write_and_authority_forbidden_on_retention_gc_route",
+    ];
+    const RETENTION_DENIALS: &[&str] = &[
+        "source_audit_trail_immutable_evidence_denial_boundary_required",
+        "source_audit_evidence_result_hash_required",
+        "source_audit_evidence_policy_hash_required",
+        "source_audit_evidence_handoff_hash_required",
+        "approved_production_namespace_required",
+        "approved_production_store_required",
+        "approved_production_scope_required",
+        "production_durable_memory_target_required",
+        "retention_policy_request_acceptance_denied",
+        "retention_policy_recording_denied",
+        "retention_policy_persistence_denied",
+        "retention_policy_materialization_denied",
+        "retention_policy_filesystem_write_denied",
+        "retention_index_recording_denied",
+        "retention_index_persistence_denied",
+        "ttl_lease_recording_denied",
+        "ttl_lease_persistence_denied",
+        "ttl_update_denied",
+        "ttl_extension_denied",
+        "expiry_timestamp_recording_denied",
+        "expiry_scheduler_registration_denied",
+        "expiry_timer_start_denied",
+        "expiry_ack_recording_denied",
+        "expiry_state_persistence_denied",
+        "garbage_collection_queue_recording_denied",
+        "garbage_collection_queue_persistence_denied",
+        "garbage_collection_scan_denied",
+        "garbage_collection_candidate_recording_denied",
+        "garbage_collection_decision_recording_denied",
+        "garbage_collection_state_persistence_denied",
+        "delete_marker_gc_denied",
+        "tombstone_gc_denied",
+        "sweep_execution_denied",
+        "archive_write_denied",
+        "compaction_execution_denied",
+        "compaction_artifact_write_denied",
+        "audit_evidence_retention_recording_denied",
+        "immutable_evidence_retention_persistence_denied",
+        "hash_attestation_retention_denied",
+        "ledger_index_delivery_retention_denied",
+        "result_receipt_retention_authority_promotion_denied",
+        "retention_expiry_gc_authority_promotion_denied",
+        "dry_run_execution_execution_denied",
+        "dry_run_execution_result_receipt_persistence_denied",
+        "production_write_execution_denied",
+        "production_durable_memory_backend_write_denied",
+        "durable_memory_backend_read_or_rollback_denied",
+        "memory_store_mutation_denied",
+        "wal_write_denied",
+        "receipt_persistence_denied",
+        "post_write_readback_denied",
+        "rollback_execution_denied",
+        "tombstone_write_denied",
+        "raw_payload_plaintext_denied",
+        "kg_live_write_denied",
+        "provider_model_invocation_denied",
+        "credential_secret_read_denied",
+        "channel_external_send_denied",
+        "release_public_artifact_write_denied",
+        "install_restart_authority_denied",
+        "active_binary_mutation_denied",
+        "unrestricted_full_live_activation_denied",
+    ];
+    const FALSE_RETENTION_SIDE_EFFECT_KEYS: &[&str] = &[
+        "dry_run_execution_result_receipt_retention_policy_accepted",
+        "dry_run_execution_result_receipt_retention_policy_recorded",
+        "dry_run_execution_result_receipt_retention_policy_persisted",
+        "dry_run_execution_result_receipt_retention_policy_materialized",
+        "dry_run_execution_result_receipt_retention_policy_filesystem_written",
+        "dry_run_execution_result_receipt_retention_index_recorded",
+        "dry_run_execution_result_receipt_retention_index_persisted",
+        "dry_run_execution_result_receipt_ttl_lease_recorded",
+        "dry_run_execution_result_receipt_ttl_lease_persisted",
+        "dry_run_execution_result_receipt_ttl_update_applied",
+        "dry_run_execution_result_receipt_ttl_extension_applied",
+        "dry_run_execution_result_receipt_expiry_timestamp_recorded",
+        "dry_run_execution_result_receipt_expiry_scheduler_registered",
+        "dry_run_execution_result_receipt_expiry_timer_started",
+        "dry_run_execution_result_receipt_expiry_ack_recorded",
+        "dry_run_execution_result_receipt_expiry_state_persisted",
+        "dry_run_execution_result_receipt_garbage_collection_queue_recorded",
+        "dry_run_execution_result_receipt_garbage_collection_queue_persisted",
+        "dry_run_execution_result_receipt_garbage_collection_scan_performed",
+        "dry_run_execution_result_receipt_garbage_collection_candidate_recorded",
+        "dry_run_execution_result_receipt_garbage_collection_decision_recorded",
+        "dry_run_execution_result_receipt_garbage_collection_state_persisted",
+        "dry_run_execution_result_receipt_delete_marker_garbage_collected",
+        "dry_run_execution_result_receipt_tombstone_garbage_collected",
+        "dry_run_execution_result_receipt_sweep_performed",
+        "dry_run_execution_result_receipt_archive_written",
+        "dry_run_execution_result_receipt_compaction_performed",
+        "dry_run_execution_result_receipt_compaction_artifact_written",
+        "dry_run_execution_result_receipt_audit_evidence_retention_recorded",
+        "dry_run_execution_result_receipt_immutable_evidence_retention_persisted",
+        "dry_run_execution_result_receipt_hash_attestation_retention_recorded",
+        "dry_run_execution_result_receipt_ledger_index_delivery_retention_recorded",
+        "dry_run_execution_result_receipt_authority_promoted_from_retention_policy",
+        "dry_run_execution_result_receipt_authority_promoted_from_expiry",
+        "dry_run_execution_result_receipt_authority_promoted_from_garbage_collection",
+        "dry_run_execution_result_receipt_audit_trail_recorded",
+        "dry_run_execution_result_receipt_immutable_evidence_persisted",
+        "dry_run_execution_result_receipt_hash_chain_recorded",
+        "dry_run_execution_result_receipt_persisted",
+        "dry_run_execution_result_receipt_filesystem_written",
+        "dry_run_execution_result_receipt_ledger_recorded",
+        "dry_run_execution_result_receipt_delivered",
+        "dry_run_execution_result_receipt_materialized",
+        "dry_run_execution_executed",
+        "dry_run_execution_result_persisted",
+        "acceptance_receipt_persisted",
+        "operator_packet_persisted",
+        "production_durable_memory_write_executed",
+        "production_durable_memory_backend_present",
+        "production_durable_memory_store_write_performed",
+        "actual_production_durable_memory_write_performed",
+        "durable_memory_store_write_performed",
+        "durable_memory_store_read_performed",
+        "durable_memory_store_rollback_performed",
+        "memory_write_execution_performed",
+        "memory_store_write_path_enabled",
+        "memory_store_write_allowed",
+        "memory_store_write_performed",
+        "memory_store_mutation_allowed",
+        "memory_store_mutated",
+        "wal_write_performed",
+        "wal_recorded",
+        "wal_persisted",
+        "receipt_recorded",
+        "receipt_persisted",
+        "receipt_materialized",
+        "receipt_delivered",
+        "post_write_readback_performed",
+        "readback_result_recorded",
+        "readback_result_persisted",
+        "readback_result_accepted",
+        "rollback_executed",
+        "rollback_performed",
+        "rollback_result_recorded",
+        "rollback_result_persisted",
+        "rollback_result_accepted",
+        "tombstone_write_performed",
+        "tombstone_cleanup_executed",
+        "tombstone_cleanup_result_recorded",
+        "tombstone_cleanup_result_accepted",
+        "raw_payload_plaintext_recorded",
+        "raw_payload_plaintext_persisted",
+        "secret_material_read",
+        "credential_read",
+        "secret_file_read",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "provider_invoked",
+        "model_invoked",
+        "telegram_send_performed",
+        "channel_send_performed",
+        "external_send_performed",
+        "public_claim_promoted",
+        "public_release_published",
+        "public_ga_claimed",
+        "release_artifact_written",
+        "public_artifact_written",
+        "install_executed",
+        "launchd_mutated",
+        "service_restarted",
+        "service_restart_performed",
+        "active_binary_mutated",
+    ];
+    const TRUE_RETENTION_KEYS: &[&str] = &[
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_performed",
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_result_recorded",
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_result_accepted",
+        "source_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_accepted",
+        "dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_matrix_bound",
+        "dry_run_execution_result_receipt_retention_policy_request_denied",
+        "dry_run_execution_result_receipt_retention_index_denied",
+        "dry_run_execution_result_receipt_ttl_lease_update_extension_denied",
+        "dry_run_execution_result_receipt_expiry_request_denied",
+        "dry_run_execution_result_receipt_expiry_scheduler_timer_denied",
+        "dry_run_execution_result_receipt_garbage_collection_request_denied",
+        "dry_run_execution_result_receipt_garbage_collection_scan_denied",
+        "dry_run_execution_result_receipt_delete_tombstone_sweep_denied",
+        "dry_run_execution_result_receipt_archive_compaction_denied",
+        "dry_run_execution_result_receipt_retention_gc_authority_denied",
+        "dry_run_execution_result_receipt_retention_expiry_garbage_collection_handoff_bound",
+    ];
+
+    let route_matrix = control_ui_route_parity_report();
+    let source = std::thread::Builder::new()
+        .name("hepta-memory-production-durable-dry-run-result-receipt-retention-source-report".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(
+            hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_report,
+        )
+        .ok()
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "status": "blocked",
+                "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_ready": false,
+                "scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_accepted": false,
+                "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_source_report_thread_failed": true
+            })
+        });
+    let json_bool = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let json_u64 = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let json_str = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let route_count_source_command_accepted = route_matrix.ready
+        && route_matrix.route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.implemented_route_count == NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        && route_matrix.missing_route_count == 0;
+    let source_next_action_retention = source
+        .get("allowed_next_actions")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.get(1))
+        .map(|item| {
+            item.get("action").and_then(serde_json::Value::as_str)
+                == Some("prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary")
+                && item
+                    .get("requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && item
+                    .get("executes_dry_run")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && item
+                    .get("writes_production_durable_memory")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_side_effects_ok = source
+        .get("side_effects")
+        .and_then(serde_json::Value::as_object)
+        .map(|effects| {
+            effects
+                .get("scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_result_accepted")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+                && effects
+                    .get("dry_run_execution_result_receipt_audit_trail_recorded")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_result_receipt_immutable_evidence_persisted")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_result_receipt_hash_chain_recorded")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_result_receipt_authority_promoted_from_audit_trail")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("dry_run_execution_executed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("production_durable_memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("memory_store_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("wal_write_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("receipt_persisted")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && effects
+                    .get("external_send_performed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .unwrap_or(false);
+    let source_ready = source.get("status").and_then(serde_json::Value::as_str) == Some("ready")
+        && json_bool(
+            &source,
+            "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_ready",
+        )
+        && json_bool(
+            &source,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_accepted",
+        )
+        && json_u64(
+            &source,
+            "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_fixture_count",
+        ) == 1
+        && json_u64(
+            &source,
+            "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_fixture_count",
+        ) == 9
+        && json_u64(
+            &source,
+            "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_count",
+        ) == 72
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_audit_trail_recorded",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_audit_trail_persisted",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_immutable_evidence_recorded",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_immutable_evidence_persisted",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_hash_chain_recorded",
+        )
+        && !json_bool(
+            &source,
+            "dry_run_execution_result_receipt_authority_promoted_from_audit_trail",
+        )
+        && !json_bool(&source, "dry_run_execution_executed")
+        && !json_bool(&source, "dry_run_execution_result_receipt_persisted")
+        && !json_bool(&source, "production_durable_memory_write_executed")
+        && !json_bool(&source, "production_durable_memory_store_write_performed")
+        && !json_bool(&source, "actual_production_durable_memory_write_performed")
+        && !json_bool(&source, "durable_memory_store_write_performed")
+        && !json_bool(&source, "durable_memory_store_read_performed")
+        && !json_bool(&source, "durable_memory_store_rollback_performed")
+        && !json_bool(&source, "memory_store_write_performed")
+        && !json_bool(&source, "wal_write_performed")
+        && !json_bool(&source, "receipt_persisted")
+        && !json_bool(&source, "post_write_readback_performed")
+        && !json_bool(&source, "rollback_executed")
+        && !json_bool(&source, "tombstone_cleanup_executed")
+        && !json_bool(&source, "live_kg_write_performed")
+        && !json_bool(&source, "provider_invoked")
+        && !json_bool(&source, "model_invoked")
+        && !json_bool(&source, "credential_read")
+        && !json_bool(&source, "channel_send_performed")
+        && !json_bool(&source, "external_send_performed")
+        && !json_bool(&source, "release_artifact_written")
+        && !json_bool(&source, "install_executed")
+        && !json_bool(&source, "service_restarted")
+        && !json_bool(&source, "active_binary_mutated")
+        && source_next_action_retention
+        && source_side_effects_ok;
+
+    let approved_production_namespace = json_str(&source, "approved_production_namespace");
+    let approved_production_store = json_str(&source, "approved_production_store");
+    let approved_production_scope = json_str(&source, "approved_production_scope");
+    let production_durable_memory_target_id =
+        json_str(&source, "production_durable_memory_target_id");
+    let production_durable_memory_payload_class =
+        json_str(&source, "production_durable_memory_payload_class");
+    let operator_packet_scope = json_str(&source, "operator_packet_scope");
+    let source_report_sha256 = sha256_text_value(&source.to_string());
+    let source_audit_boundary_hash_sha256 = json_str(
+        &source,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_hash_sha256",
+    );
+    let source_audit_policy_hash_sha256 = json_str(
+        &source,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_policy_hash_sha256",
+    );
+    let source_audit_result_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_audit_evidence_result_hash_sha256",
+    );
+    let source_audit_handoff_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_audit_evidence_handoff_hash_sha256",
+    );
+    let source_audit_trail_matrix_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_audit_trail_denial_matrix_hash_sha256",
+    );
+    let source_immutable_evidence_matrix_hash_sha256 = json_str(
+        &source,
+        "dry_run_execution_result_receipt_immutable_evidence_denial_matrix_hash_sha256",
+    );
+
+    let retention_policy_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-retention-policy-denial:v1:source={source_audit_result_hash_sha256}:retention-policy=false:record=false:persist=false:materialize=false:filesystem=false"
+    ));
+    let retention_index_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-retention-index-denial:v1:policy={retention_policy_denial_hash_sha256}:index=false:record=false:persist=false"
+    ));
+    let expiry_lifecycle_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-expiry-lifecycle-denial:v1:retention={retention_index_denial_hash_sha256}:ttl=false:expiry=false:scheduler=false:timer=false:ack=false:persist=false"
+    ));
+    let garbage_collection_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-garbage-collection-denial:v1:expiry={expiry_lifecycle_denial_hash_sha256}:queue=false:scan=false:candidate=false:decision=false:delete=false:tombstone=false:sweep=false"
+    ));
+    let archive_compaction_denial_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-archive-compaction-denial:v1:gc={garbage_collection_denial_hash_sha256}:archive=false:compaction=false:artifact=false"
+    ));
+    let retention_evidence_handoff_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-retention-expiry-garbage-collection-handoff:v1:archive={archive_compaction_denial_hash_sha256}:next=export-query-observability-denial-boundary"
+    ));
+    let retention_result_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-retention-expiry-garbage-collection-result:v1:retention={retention_policy_denial_hash_sha256}:expiry={expiry_lifecycle_denial_hash_sha256}:gc={garbage_collection_denial_hash_sha256}:handoff={retention_evidence_handoff_hash_sha256}:accepted=true:record=false:persist=false:delete=false:authority=false:execution=false:production-write=false"
+    ));
+    let retention_boundary_hash_sha256 = sha256_text_value(&format!(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-retention-expiry-garbage-collection-denial-boundary:v1:source={source_report_sha256}:result={retention_result_hash_sha256}:fixtures=10:accepted=1:denials=62:retention=false:expiry=false:gc=false:delete=false:archive=false:compaction=false:authority=false:dry-run-executed=false:production-write=false"
+    ));
+    let retention_boundary_policy_hash_sha256 = sha256_text_value(
+        "scoped-production-durable-memory-write-dry-run-result-receipt-retention-expiry-garbage-collection-denial-policy:v1:bind-source-audit-evidence-no-retention-policy-no-index-no-ttl-no-expiry-scheduler-no-gc-queue-no-scan-no-delete-no-tombstone-no-sweep-no-archive-no-compaction-no-authority-no-execution-no-production-write-no-kg-no-provider-no-channel-no-release-no-install",
+    );
+
+    let retention_bound = !source_report_sha256.is_empty()
+        && !source_audit_boundary_hash_sha256.is_empty()
+        && !source_audit_policy_hash_sha256.is_empty()
+        && !source_audit_result_hash_sha256.is_empty()
+        && !source_audit_handoff_hash_sha256.is_empty()
+        && !source_audit_trail_matrix_hash_sha256.is_empty()
+        && !source_immutable_evidence_matrix_hash_sha256.is_empty()
+        && approved_production_namespace == "hepta.memory.production.scoped"
+        && approved_production_store == "hepta-memory-durable-store-production-preflight-only"
+        && approved_production_scope == "operator-approved-session"
+        && production_durable_memory_target_id
+            == "hepta-scoped-production-durable-memory-write-target-v1"
+        && production_durable_memory_payload_class
+            == "redacted-minimal-operator-approved-memory-fact";
+    let surfaces_ready = source_ready && retention_bound;
+    let report_ready = route_count_source_command_accepted && surfaces_ready;
+    let accepted_fixture_count = if report_ready { 1 } else { 0 };
+    let blocked_fixture_count = 10 - accepted_fixture_count;
+
+    let mut fixtures = Vec::new();
+    fixtures.push(serde_json::json!({
+        "id": "scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial",
+        "fixture_id": "scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial",
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_accepted": report_ready,
+        "reason": if report_ready { "dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_bound_without_lifecycle_persistence_delete_authority_execution_or_production_write" } else { "source_audit_evidence_or_route_count_not_ready" },
+        "source_audit_trail_immutable_evidence_denial_boundary_bound": report_ready,
+        "dry_run_execution_result_receipt_retention_policy_denied": report_ready,
+        "dry_run_execution_result_receipt_expiry_request_denied": report_ready,
+        "dry_run_execution_result_receipt_garbage_collection_request_denied": report_ready,
+        "dry_run_execution_result_receipt_retention_policy_recorded": false,
+        "dry_run_execution_result_receipt_expiry_scheduler_registered": false,
+        "dry_run_execution_result_receipt_garbage_collection_scan_performed": false,
+        "dry_run_execution_result_receipt_delete_marker_garbage_collected": false,
+        "dry_run_execution_result_receipt_tombstone_garbage_collected": false,
+        "dry_run_execution_result_receipt_archive_written": false,
+        "dry_run_execution_result_receipt_compaction_performed": false,
+        "dry_run_execution_executed": false,
+        "production_durable_memory_store_write_performed": false,
+        "external_send_performed": false
+    }));
+    for id in [
+        "missing-audit-evidence-source",
+        "retention-policy-record-request-attempt",
+        "retention-index-request-attempt",
+        "ttl-lease-update-extension-attempt",
+        "expiry-scheduler-timer-ack-attempt",
+        "garbage-collection-queue-scan-attempt",
+        "delete-tombstone-sweep-attempt",
+        "archive-compaction-attempt",
+        "memory-kg-provider-channel-release-install-gc-evidence-attempt",
+    ] {
+        fixtures.push(serde_json::json!({
+            "id": id,
+            "fixture_id": id,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_accepted": false,
+            "reason": "blocked_noop",
+            "dry_run_execution_result_receipt_retention_policy_recorded": false,
+            "dry_run_execution_result_receipt_retention_policy_persisted": false,
+            "dry_run_execution_result_receipt_expiry_scheduler_registered": false,
+            "dry_run_execution_result_receipt_expiry_timer_started": false,
+            "dry_run_execution_result_receipt_garbage_collection_scan_performed": false,
+            "dry_run_execution_result_receipt_delete_marker_garbage_collected": false,
+            "dry_run_execution_result_receipt_tombstone_garbage_collected": false,
+            "dry_run_execution_result_receipt_sweep_performed": false,
+            "dry_run_execution_result_receipt_archive_written": false,
+            "dry_run_execution_result_receipt_compaction_performed": false,
+            "dry_run_execution_executed": false,
+            "production_durable_memory_store_write_performed": false,
+            "external_send_performed": false
+        }));
+    }
+
+    let mut side_effects = serde_json::Map::new();
+    for &key in FALSE_RETENTION_SIDE_EFFECT_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(false));
+        side_effects.insert(format!("{key}_count"), serde_json::json!(0));
+    }
+    for &key in TRUE_RETENTION_KEYS {
+        side_effects.insert(key.to_string(), serde_json::json!(report_ready));
+        side_effects.insert(
+            format!("{key}_count"),
+            serde_json::json!(if report_ready { 1 } else { 0 }),
+        );
+    }
+
+    let mut report = source.clone();
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "gate": "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_route",
+            "status": if report_ready { "ready" } else { "blocked" },
+            "endpoint": HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT,
+            "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary --json",
+            "native_route": true,
+            "compatibility_mode": "native_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_status",
+            "side_effect_free": false,
+            "external_side_effect_free": true,
+            "audit_date": "2026-07-05",
+            "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+            "route_count": route_matrix.route_count,
+            "implemented_route_count": route_matrix.implemented_route_count,
+            "missing_route_count": route_matrix.missing_route_count,
+            "route_count_source_command_accepted": route_count_source_command_accepted,
+            "memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_ready": report_ready,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_ready": report_ready,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_performed": report_ready,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_accepted": report_ready,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_mode": "dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_no_retention_no_expiry_no_gc_no_delete_no_archive_no_compaction_no_authority_no_execution_no_production_durable_memory_mutation",
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_ready": source_ready,
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_report_sha256": source_report_sha256,
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_accepted_count": json_u64(&source, "scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_result_accepted_count"),
+            "source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_fixture_count": json_u64(&source, "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_fixture_count"),
+            "source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_fixture_count": json_u64(&source, "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_fixture_count"),
+            "source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_count": json_u64(&source, "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_count"),
+            "approved_production_namespace": approved_production_namespace,
+            "approved_production_store": approved_production_store,
+            "approved_production_scope": approved_production_scope,
+            "production_durable_memory_target_id": production_durable_memory_target_id,
+            "production_durable_memory_payload_class": production_durable_memory_payload_class,
+            "operator_packet_scope": operator_packet_scope,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_hash_sha256": source_audit_boundary_hash_sha256,
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_policy_hash_sha256": source_audit_policy_hash_sha256,
+            "source_dry_run_execution_result_receipt_audit_evidence_result_hash_sha256": source_audit_result_hash_sha256,
+            "source_dry_run_execution_result_receipt_audit_evidence_handoff_hash_sha256": source_audit_handoff_hash_sha256,
+            "source_dry_run_execution_result_receipt_audit_trail_denial_matrix_hash_sha256": source_audit_trail_matrix_hash_sha256,
+            "source_dry_run_execution_result_receipt_immutable_evidence_denial_matrix_hash_sha256": source_immutable_evidence_matrix_hash_sha256,
+            "dry_run_execution_result_receipt_retention_policy_denial_hash_sha256": retention_policy_denial_hash_sha256,
+            "dry_run_execution_result_receipt_retention_index_denial_hash_sha256": retention_index_denial_hash_sha256,
+            "dry_run_execution_result_receipt_expiry_lifecycle_denial_hash_sha256": expiry_lifecycle_denial_hash_sha256,
+            "dry_run_execution_result_receipt_garbage_collection_denial_hash_sha256": garbage_collection_denial_hash_sha256,
+            "dry_run_execution_result_receipt_archive_compaction_denial_hash_sha256": archive_compaction_denial_hash_sha256,
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_handoff_hash_sha256": retention_evidence_handoff_hash_sha256,
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_result_hash_sha256": retention_result_hash_sha256,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_hash_sha256": retention_boundary_hash_sha256,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_policy_hash_sha256": retention_boundary_policy_hash_sha256,
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_surface_count": RETENTION_SURFACES.len(),
+            "ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_surface_count": if surfaces_ready { RETENTION_SURFACES.len() } else { 0 },
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_surfaces": RETENTION_SURFACES,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_fixture_count": fixtures.len(),
+            "accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_fixture_count": accepted_fixture_count,
+            "blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_fixture_count": blocked_fixture_count,
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_fixtures": fixtures,
+            "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary": RETENTION_DENIALS,
+            "denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_count": RETENTION_DENIALS.len(),
+        }),
+    );
+    extend_json_object(
+        &mut report,
+        serde_json::json!({
+            "allowed_next_actions": [
+                {
+                    "action": "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_require_live_gate",
+                    "status": "allowed_verification_only",
+                    "accepts_retention_expiry_garbage_collection_denial_matrix": true,
+                    "records_retention_policy": false,
+                    "persists_retention_policy": false,
+                    "registers_expiry_scheduler": false,
+                    "starts_expiry_timer": false,
+                    "records_garbage_collection_queue": false,
+                    "performs_garbage_collection_scan": false,
+                    "deletes_memory": false,
+                    "writes_tombstone": false,
+                    "performs_sweep": false,
+                    "writes_archive": false,
+                    "performs_compaction": false,
+                    "promotes_authority": false,
+                    "executes_dry_run": false,
+                    "persists_dry_run_result_receipt": false,
+                    "writes_production_durable_memory": false,
+                    "writes_memory_store": false,
+                    "writes_wal": false,
+                    "persists_receipt": false
+                },
+                {
+                    "action": "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary",
+                    "status": "requires_separate_result_receipt_export_query_observability_denial_gate",
+                    "requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary": true,
+                    "records_retention_policy": false,
+                    "persists_retention_policy": false,
+                    "performs_garbage_collection_scan": false,
+                    "deletes_memory": false,
+                    "executes_dry_run": false,
+                    "writes_production_durable_memory": false,
+                    "persists_dry_run_result_receipt": false
+                }
+            ]
+        }),
+    );
+    let report_object = report.as_object_mut().expect(
+        "scoped production durable Memory write dry-run execution result receipt retention/expiry/garbage-collection denial report object",
+    );
+    for &key in FALSE_RETENTION_SIDE_EFFECT_KEYS {
+        report_object.insert(key.to_string(), serde_json::json!(false));
+        report_object.insert(format!("{key}_count"), serde_json::json!(0));
+    }
+    for &key in TRUE_RETENTION_KEYS {
+        report_object.insert(key.to_string(), serde_json::json!(report_ready));
+        report_object.insert(
+            format!("{key}_count"),
+            serde_json::json!(if report_ready { 1 } else { 0 }),
+        );
+    }
+    for key in [
+        "source_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_bound",
+        "approved_production_namespace_bound",
+        "approved_production_store_bound",
+        "approved_production_scope_bound",
+        "production_durable_memory_target_bound",
+        "dry_run_execution_result_receipt_retention_policy_denial_bound",
+        "dry_run_execution_result_receipt_retention_index_denial_bound",
+        "dry_run_execution_result_receipt_expiry_lifecycle_denial_bound",
+        "dry_run_execution_result_receipt_garbage_collection_denial_bound",
+        "dry_run_execution_result_receipt_archive_compaction_denial_bound",
+        "dry_run_execution_result_receipt_retention_policy_request_denied",
+        "dry_run_execution_result_receipt_retention_index_denied",
+        "dry_run_execution_result_receipt_ttl_lease_update_extension_denied",
+        "dry_run_execution_result_receipt_expiry_request_denied",
+        "dry_run_execution_result_receipt_expiry_scheduler_timer_denied",
+        "dry_run_execution_result_receipt_garbage_collection_request_denied",
+        "dry_run_execution_result_receipt_garbage_collection_scan_denied",
+        "dry_run_execution_result_receipt_delete_tombstone_sweep_denied",
+        "dry_run_execution_result_receipt_archive_compaction_denied",
+        "dry_run_execution_result_receipt_retention_gc_authority_denied",
+        "dry_run_execution_result_receipt_retention_expiry_garbage_collection_handoff_bound",
+        "dry_run_execution_result_receipt_retention_expiry_garbage_collection_persistence_forbidden",
+        "dry_run_execution_execution_forbidden_on_retention_gc_route",
+        "dry_run_execution_result_receipt_persistence_forbidden_on_retention_gc_route",
+        "production_write_execution_forbidden_on_retention_gc_route",
+        "production_durable_memory_write_forbidden",
+        "memory_store_mutation_forbidden",
+        "wal_write_forbidden_on_retention_gc_route",
+        "receipt_persist_forbidden_on_retention_gc_route",
+        "rollback_execution_forbidden_on_retention_gc_route",
+        "tombstone_write_forbidden_on_retention_gc_route",
+        "kg_live_write_forbidden",
+        "provider_model_invocation_forbidden",
+        "credential_channel_public_release_forbidden",
+        "install_restart_active_binary_mutation_forbidden",
+    ] {
+        report_object.insert(key.to_string(), serde_json::json!(report_ready));
+    }
+    report_object.insert(
+        "side_effects".to_string(),
+        serde_json::Value::Object(side_effects),
+    );
+    report
+}
+
 fn hepta_upstream_codex_latest_multisurface_absorption_report() -> serde_json::Value {
     let route_matrix = control_ui_route_parity_report();
     let route_count_source_command_accepted = route_matrix.ready
@@ -159912,6 +160646,397 @@ mod tests {
         assert_eq!(
             side_effects["dry_run_execution_result_receipt_authority_promoted_from_audit_trail"]
                 .as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_executed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["production_durable_memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["memory_store_write_performed"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(side_effects["wal_write_performed"].as_bool(), Some(false));
+        assert_eq!(side_effects["receipt_persisted"].as_bool(), Some(false));
+        assert_eq!(
+            side_effects["external_send_performed"].as_bool(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_blocks_lifecycle_delete_authority_execution_or_production_side_effects()
+     {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+
+        let value: serde_json::Value = serde_json::from_str(&body).expect(
+            "scoped production durable Memory write dry-run execution result receipt retention/expiry/garbage-collection denial json",
+        );
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_BOUNDARY_ENDPOINT
+        );
+        assert_eq!(
+            value["source_command"],
+            "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary --json"
+        );
+        assert_eq!(
+            value["native_gateway_source_command_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["route_count"], NATIVE_GATEWAY_SOURCE_COMMAND_COUNT);
+        assert_eq!(
+            value["implemented_route_count"],
+            NATIVE_GATEWAY_SOURCE_COMMAND_COUNT
+        );
+        assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(value["route_count_source_command_accepted"], true);
+        assert_eq!(
+            value["memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_accepted"],
+            true
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_mode"],
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_no_retention_no_expiry_no_gc_no_delete_no_archive_no_compaction_no_authority_no_execution_no_production_durable_memory_mutation"
+        );
+        assert_eq!(
+            value["source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_ready"],
+            true
+        );
+        assert_eq!(
+            value["source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_accepted_count"],
+            1
+        );
+        assert_eq!(
+            value["source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_count"],
+            72
+        );
+        assert_eq!(
+            value["approved_production_namespace"],
+            "hepta.memory.production.scoped"
+        );
+        assert_eq!(
+            value["approved_production_store"],
+            "hepta-memory-durable-store-production-preflight-only"
+        );
+        assert_eq!(
+            value["approved_production_scope"],
+            "operator-approved-session"
+        );
+        assert_eq!(
+            value["production_durable_memory_target_id"],
+            "hepta-scoped-production-durable-memory-write-target-v1"
+        );
+        for key in [
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_report_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_hash_sha256",
+            "source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_policy_hash_sha256",
+            "source_dry_run_execution_result_receipt_audit_evidence_result_hash_sha256",
+            "source_dry_run_execution_result_receipt_audit_evidence_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_retention_policy_denial_hash_sha256",
+            "dry_run_execution_result_receipt_retention_index_denial_hash_sha256",
+            "dry_run_execution_result_receipt_expiry_lifecycle_denial_hash_sha256",
+            "dry_run_execution_result_receipt_garbage_collection_denial_hash_sha256",
+            "dry_run_execution_result_receipt_archive_compaction_denial_hash_sha256",
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_handoff_hash_sha256",
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_result_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_hash_sha256",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_policy_hash_sha256",
+        ] {
+            assert_ne!(
+                value[key], "",
+                "dry-run execution result receipt retention/expiry/garbage-collection denial hash should be present: {key}"
+            );
+        }
+        assert_eq!(
+            value["required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_surface_count"],
+            16
+        );
+        assert_eq!(
+            value["ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_surface_count"],
+            16
+        );
+        assert_eq!(
+            value["scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_fixture_count"],
+            10
+        );
+        assert_eq!(
+            value["accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_fixture_count"],
+            1
+        );
+        assert_eq!(
+            value["blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_fixture_count"],
+            9
+        );
+        assert_eq!(
+            value["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_count"],
+            62
+        );
+        for key in [
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_performed_count",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_result_recorded_count",
+            "scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_result_accepted_count",
+            "source_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_accepted_count",
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_matrix_bound_count",
+            "dry_run_execution_result_receipt_retention_policy_request_denied_count",
+            "dry_run_execution_result_receipt_retention_index_denied_count",
+            "dry_run_execution_result_receipt_ttl_lease_update_extension_denied_count",
+            "dry_run_execution_result_receipt_expiry_request_denied_count",
+            "dry_run_execution_result_receipt_expiry_scheduler_timer_denied_count",
+            "dry_run_execution_result_receipt_garbage_collection_request_denied_count",
+            "dry_run_execution_result_receipt_garbage_collection_scan_denied_count",
+            "dry_run_execution_result_receipt_delete_tombstone_sweep_denied_count",
+            "dry_run_execution_result_receipt_archive_compaction_denied_count",
+            "dry_run_execution_result_receipt_retention_gc_authority_denied_count",
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_handoff_bound_count",
+        ] {
+            assert_eq!(
+                value[key], 1,
+                "retention/expiry/garbage-collection denial count should be one: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_retention_policy_recorded_count",
+            "dry_run_execution_result_receipt_retention_policy_persisted_count",
+            "dry_run_execution_result_receipt_retention_index_recorded_count",
+            "dry_run_execution_result_receipt_expiry_scheduler_registered_count",
+            "dry_run_execution_result_receipt_expiry_timer_started_count",
+            "dry_run_execution_result_receipt_garbage_collection_queue_recorded_count",
+            "dry_run_execution_result_receipt_garbage_collection_scan_performed_count",
+            "dry_run_execution_result_receipt_delete_marker_garbage_collected_count",
+            "dry_run_execution_result_receipt_tombstone_garbage_collected_count",
+            "dry_run_execution_result_receipt_sweep_performed_count",
+            "dry_run_execution_result_receipt_archive_written_count",
+            "dry_run_execution_result_receipt_compaction_performed_count",
+            "dry_run_execution_result_receipt_authority_promoted_from_retention_policy_count",
+            "dry_run_execution_result_receipt_authority_promoted_from_garbage_collection_count",
+            "dry_run_execution_result_receipt_persisted_count",
+            "dry_run_execution_executed_count",
+            "production_durable_memory_write_executed_count",
+            "production_durable_memory_store_write_performed_count",
+            "actual_production_durable_memory_write_performed_count",
+            "durable_memory_store_write_performed_count",
+            "memory_store_write_performed_count",
+            "wal_write_performed_count",
+            "receipt_persisted_count",
+            "post_write_readback_performed_count",
+            "rollback_performed_count",
+            "tombstone_cleanup_executed_count",
+            "live_kg_write_performed_count",
+            "provider_invoked_count",
+            "model_invoked_count",
+            "credential_read_count",
+            "channel_send_performed_count",
+            "external_send_performed_count",
+            "release_artifact_written_count",
+            "install_executed_count",
+            "service_restarted_count",
+            "active_binary_mutated_count",
+        ] {
+            assert_eq!(
+                value[key], 0,
+                "retention/expiry/garbage-collection side-effect count should stay zero: {key}"
+            );
+        }
+        for key in [
+            "source_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary_bound",
+            "dry_run_execution_result_receipt_retention_policy_request_denied",
+            "dry_run_execution_result_receipt_retention_index_denied",
+            "dry_run_execution_result_receipt_ttl_lease_update_extension_denied",
+            "dry_run_execution_result_receipt_expiry_request_denied",
+            "dry_run_execution_result_receipt_expiry_scheduler_timer_denied",
+            "dry_run_execution_result_receipt_garbage_collection_request_denied",
+            "dry_run_execution_result_receipt_garbage_collection_scan_denied",
+            "dry_run_execution_result_receipt_delete_tombstone_sweep_denied",
+            "dry_run_execution_result_receipt_archive_compaction_denied",
+            "dry_run_execution_result_receipt_retention_gc_authority_denied",
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_handoff_bound",
+            "dry_run_execution_result_receipt_retention_expiry_garbage_collection_persistence_forbidden",
+            "dry_run_execution_execution_forbidden_on_retention_gc_route",
+            "production_write_execution_forbidden_on_retention_gc_route",
+            "production_durable_memory_write_forbidden",
+            "memory_store_mutation_forbidden",
+            "kg_live_write_forbidden",
+            "provider_model_invocation_forbidden",
+            "credential_channel_public_release_forbidden",
+            "install_restart_active_binary_mutation_forbidden",
+        ] {
+            assert_eq!(
+                value[key], true,
+                "retention/expiry/garbage-collection denial field should be true: {key}"
+            );
+        }
+        for key in [
+            "dry_run_execution_result_receipt_retention_policy_recorded",
+            "dry_run_execution_result_receipt_retention_policy_persisted",
+            "dry_run_execution_result_receipt_retention_index_recorded",
+            "dry_run_execution_result_receipt_ttl_lease_recorded",
+            "dry_run_execution_result_receipt_ttl_update_applied",
+            "dry_run_execution_result_receipt_ttl_extension_applied",
+            "dry_run_execution_result_receipt_expiry_timestamp_recorded",
+            "dry_run_execution_result_receipt_expiry_scheduler_registered",
+            "dry_run_execution_result_receipt_expiry_timer_started",
+            "dry_run_execution_result_receipt_expiry_ack_recorded",
+            "dry_run_execution_result_receipt_garbage_collection_queue_recorded",
+            "dry_run_execution_result_receipt_garbage_collection_scan_performed",
+            "dry_run_execution_result_receipt_garbage_collection_candidate_recorded",
+            "dry_run_execution_result_receipt_garbage_collection_decision_recorded",
+            "dry_run_execution_result_receipt_delete_marker_garbage_collected",
+            "dry_run_execution_result_receipt_tombstone_garbage_collected",
+            "dry_run_execution_result_receipt_sweep_performed",
+            "dry_run_execution_result_receipt_archive_written",
+            "dry_run_execution_result_receipt_compaction_performed",
+            "dry_run_execution_result_receipt_compaction_artifact_written",
+            "dry_run_execution_result_receipt_authority_promoted_from_retention_policy",
+            "dry_run_execution_result_receipt_authority_promoted_from_expiry",
+            "dry_run_execution_result_receipt_authority_promoted_from_garbage_collection",
+            "dry_run_execution_result_receipt_persisted",
+            "dry_run_execution_executed",
+            "production_durable_memory_write_executed",
+            "production_durable_memory_store_write_performed",
+            "actual_production_durable_memory_write_performed",
+            "durable_memory_store_write_performed",
+            "memory_store_write_performed",
+            "memory_store_mutated",
+            "wal_write_performed",
+            "receipt_persisted",
+            "post_write_readback_performed",
+            "rollback_executed",
+            "rollback_performed",
+            "tombstone_write_performed",
+            "tombstone_cleanup_executed",
+            "live_kg_write_performed",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "channel_send_performed",
+            "external_send_performed",
+            "release_artifact_written",
+            "install_executed",
+            "service_restarted",
+            "active_binary_mutated",
+        ] {
+            assert_eq!(
+                value[key], false,
+                "retention/expiry/garbage-collection lifecycle, authority, mutation, execution, or external field should stay false: {key}"
+            );
+        }
+        let fixtures = value
+            ["scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_fixtures"]
+            .as_array()
+            .expect(
+                "scoped production durable Memory write dry-run execution result receipt retention/expiry/garbage-collection denial fixtures",
+            );
+        assert_eq!(fixtures.len(), 10);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|fixture| {
+                    fixture["scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_accepted"]
+                        == true
+                })
+                .count(),
+            1
+        );
+        let denied = value
+            ["denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary"]
+            .as_array()
+            .expect("scoped production durable Memory write dry-run execution result receipt retention/expiry/garbage-collection denials");
+        assert_eq!(denied.len(), 62);
+        assert_eq!(
+            value["allowed_next_actions"][0]["action"],
+            "run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_require_live_gate"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["records_retention_policy"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][0]["performs_garbage_collection_scan"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["deletes_memory"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["performs_compaction"],
+            false
+        );
+        assert_eq!(value["allowed_next_actions"][0]["executes_dry_run"], false);
+        assert_eq!(
+            value["allowed_next_actions"][0]["writes_production_durable_memory"],
+            false
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["action"],
+            "prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_export_query_observability_denial_boundary"
+        );
+        assert_eq!(
+            value["allowed_next_actions"][1]["requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary"],
+            true
+        );
+        let side_effects = value["side_effects"].as_object().expect(
+            "scoped production durable Memory write dry-run execution result receipt retention/expiry/garbage-collection side effects",
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_boundary_performed"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["scoped_production_durable_memory_write_dry_run_execution_result_receipt_retention_expiry_garbage_collection_denial_result_accepted"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_retention_policy_recorded"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_expiry_scheduler_registered"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_garbage_collection_scan_performed"]
+                .as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_delete_marker_garbage_collected"]
+                .as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_archive_written"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            side_effects["dry_run_execution_result_receipt_authority_promoted_from_garbage_collection"].as_bool(),
             Some(false)
         );
         assert_eq!(

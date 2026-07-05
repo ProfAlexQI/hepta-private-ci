@@ -376,6 +376,8 @@ required_markers=(
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary route gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt audit trail immutable evidence denial boundary gate"
   "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt audit trail immutable evidence denial boundary route gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt retention expiry garbage collection denial boundary gate"
+  "memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt retention expiry garbage collection denial boundary route gate"
   "readiness denial review acceptance closure summary gate"
   "upstream Codex promotion closure gate"
   "terminal release-governance final audit index gate"
@@ -829,7 +831,7 @@ if [[ "$missing_phase_family_budget_rc" -eq 1 ]] \
     and (.phase_family_budget_failures[] | select(
       .id == "live-mutation-denial"
       and .current_count < .minimum_count
-      and .minimum_count == 92
+      and .minimum_count == 94
     ))
   ' >/dev/null <<<"$missing_phase_family_budget_report"; then
   missing_phase_family_budget_fixture_ok=true
