@@ -1,5 +1,6 @@
 use super::*;
 use crate::ThreadManager;
+use crate::config::AgentCardManifestConfig;
 use crate::config::AgentRoleConfig;
 use crate::config::DEFAULT_AGENT_MAX_DEPTH;
 use crate::function_tool::FunctionCallError;
@@ -148,6 +149,9 @@ model_reasoning_effort = "minimal"
         AgentRoleConfig {
             description: Some("Role with model overrides".to_string()),
             config_file: Some(role_config_path),
+            agent_card_manifest_source: None,
+            agent_card_manifest_version: None,
+            agent_card_manifest: None,
             nickname_candidates: None,
         },
     );
@@ -714,6 +718,9 @@ service_tier = "priority"
             AgentRoleConfig {
                 description: Some("Role with a child service tier".to_string()),
                 config_file: Some(role_config_path),
+                agent_card_manifest_source: None,
+                agent_card_manifest_version: None,
+                agent_card_manifest: None,
                 nickname_candidates: None,
             },
         );
@@ -971,6 +978,35 @@ async fn spawn_agent_returns_agent_id_without_task_name() {
     assert!(result["agent_id"].is_string());
     assert!(result.get("task_name").is_none());
     assert!(result.get("nickname").is_some());
+    assert_eq!(
+        result["admission_shadow_decision"]["decision"],
+        "deny_shadow_no_live_blocking"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["liveBlockingEnabled"],
+        false
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["manifestId"],
+        "agent-card:spawn_agent:default"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["decision"],
+        "deny_shadow_manifest_no_live_blocking"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["lane"],
+        "subagent"
+    );
+    assert!(
+        result["admission_shadow_decision"]["denialReasons"]
+            .as_array()
+            .expect("denial reasons should be an array")
+            .iter()
+            .any(|reason| reason
+                .as_str()
+                .is_some_and(|reason| reason.contains("result_contract")))
+    );
     assert_eq!(success, Some(true));
 }
 
@@ -1062,8 +1098,15 @@ async fn spawn_agent_errors_when_manager_dropped() {
     );
 }
 
-#[tokio::test]
-async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_path() {
+#[test]
+fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_path() {
+    run_large_stack_async_test(
+        "multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_path",
+        multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_path_impl(),
+    );
+}
+
+async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_path_impl() {
     #[derive(Debug, Deserialize)]
     struct SpawnAgentResult {
         task_name: String,
@@ -1138,7 +1181,7 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
             )
     }));
 
-    SendMessageHandlerV2
+    let send_output = SendMessageHandlerV2
         .handle(invocation(
             session.clone(),
             turn.clone(),
@@ -1150,6 +1193,34 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
         ))
         .await
         .expect("send_message should accept v2 path");
+    let (send_content, send_success) = expect_text_output(send_output);
+    let send_result: serde_json::Value =
+        serde_json::from_str(&send_content).expect("send_message result should be json");
+    assert_eq!(
+        send_result["workGraphHandoffShadowDecision"]["definitionSource"],
+        json!("explicit_agent_card_manifest")
+    );
+    assert_eq!(
+        send_result["workGraphHandoffShadowDecision"]["attemptedTool"],
+        json!("send_message")
+    );
+    assert_eq!(
+        send_result["workGraphHandoffShadowDecision"]["toolAllowed"],
+        json!(true)
+    );
+    assert_eq!(
+        send_result["workGraphHandoffShadowDecision"]["observedLane"],
+        json!("subagent_handoff")
+    );
+    assert_eq!(
+        send_result["workGraphHandoffShadowDecision"]["laneAllowed"],
+        json!(true)
+    );
+    assert_eq!(
+        send_result["workGraphHandoffShadowDecision"]["liveCutoverEnabled"],
+        json!(false)
+    );
+    assert_eq!(send_success, Some(true));
 
     assert!(manager.captured_ops().iter().any(|(id, op)| {
         *id == child_thread_id
@@ -2123,8 +2194,15 @@ async fn multi_agent_v2_interrupted_turn_does_not_notify_parent_impl() {
     assert_eq!(notifications, Vec::<String>::new());
 }
 
-#[tokio::test]
-async fn multi_agent_v2_spawn_omits_agent_id_when_named() {
+#[test]
+fn multi_agent_v2_spawn_omits_agent_id_when_named() {
+    run_large_stack_async_test(
+        "multi_agent_v2_spawn_omits_agent_id_when_named",
+        multi_agent_v2_spawn_omits_agent_id_when_named_impl(),
+    );
+}
+
+async fn multi_agent_v2_spawn_omits_agent_id_when_named_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -2159,7 +2237,189 @@ async fn multi_agent_v2_spawn_omits_agent_id_when_named() {
     assert!(result.get("agent_id").is_none());
     assert_eq!(result["task_name"], "/root/test_process");
     assert!(result.get("nickname").is_some());
+    assert_eq!(
+        result["admission_shadow_decision"]["decision"],
+        "deny_shadow_no_live_blocking"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["sourceSurfaceId"],
+        "spawn_agent_v2"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["liveCutoverEnabled"],
+        false
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["manifestId"],
+        "agent-card:spawn_agent_v2:default"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["decision"],
+        "deny_shadow_manifest_no_live_blocking"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["configuredManifestShadowDecision"]
+            ["decision"],
+        "configured_manifest_missing_shadow_no_live_blocking"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["configuredManifestShadowDecision"]
+            ["registrySource"],
+        "default_agent_card_manifest_registry"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["lane"],
+        "subagent"
+    );
+    let task_result_plan = &result["admission_shadow_decision"]["roleManifestShadowDecision"]["taskResultContractShadowPlan"];
+    assert_eq!(
+        task_result_plan["decision"],
+        "task_result_contract_plan_blocked_shadow_no_live_cutover"
+    );
+    assert_eq!(
+        task_result_plan["taskResultContractId"],
+        "subagent_task_result_contract_v1"
+    );
+    assert_eq!(
+        task_result_plan["terminalDeliverySurface"],
+        "wait_agent(result_required=true)"
+    );
+    assert_eq!(
+        task_result_plan["missingContractParts"],
+        json!(["task_result_contract", "verifier", "reducer"])
+    );
+    assert_eq!(task_result_plan["contractPlanReady"], false);
+    assert_eq!(task_result_plan["liveCutoverEnabled"], false);
     assert_eq!(success, Some(true));
+}
+
+#[test]
+fn multi_agent_v2_spawn_records_configured_role_manifest_shadow_source() {
+    run_large_stack_async_test(
+        "multi_agent_v2_spawn_records_configured_role_manifest_shadow_source",
+        multi_agent_v2_spawn_records_configured_role_manifest_shadow_source_impl(),
+    );
+}
+
+async fn multi_agent_v2_spawn_records_configured_role_manifest_shadow_source_impl() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.conversation_id = root.thread_id;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    config.agent_roles.insert(
+        "reviewer".to_string(),
+        AgentRoleConfig {
+            description: Some("Reviews configured manifest shadow output".to_string()),
+            config_file: None,
+            agent_card_manifest_source: Some("agent-card://reviewer".to_string()),
+            agent_card_manifest_version: Some("hepta.agent_card_manifest.v1".to_string()),
+            agent_card_manifest: Some(AgentCardManifestConfig {
+                schema_version: Some("hepta.agent_card_manifest.v1".to_string()),
+                source_surface_id: Some("spawn_agent_v2".to_string()),
+                capabilities: vec![
+                    "local_subagent_spawn".to_string(),
+                    "inter_agent_mailbox".to_string(),
+                    "named_task_path".to_string(),
+                ],
+                allowed_tools: vec![
+                    "send_message".to_string(),
+                    "followup_task".to_string(),
+                    "wait_agent".to_string(),
+                    "close_agent".to_string(),
+                ],
+                lane: Some("subagent".to_string()),
+                max_threads: Some(2),
+                max_depth: None,
+            }),
+            nickname_candidates: None,
+        },
+    );
+    turn.config = Arc::new(config);
+
+    let output = SpawnAgentHandlerV2::default()
+        .handle(invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({
+                "message": "inspect this repo",
+                "task_name": "review_task",
+                "agent_type": "reviewer",
+                "fork_turns": "none"
+            })),
+        ))
+        .await
+        .expect("spawn_agent should succeed");
+    let (content, success) = expect_text_output(output);
+    let result: serde_json::Value =
+        serde_json::from_str(&content).expect("spawn_agent result should be json");
+
+    assert_eq!(success, Some(true));
+    let configured_decision = &result["admission_shadow_decision"]["roleManifestShadowDecision"]["configuredManifestShadowDecision"];
+    assert_eq!(
+        configured_decision["decision"],
+        "configured_manifest_present_shadow_no_live_blocking"
+    );
+    assert_eq!(configured_decision["configuredManifestPresent"], true);
+    assert_eq!(
+        configured_decision["configuredManifestSource"],
+        "agent-card://reviewer"
+    );
+    assert_eq!(
+        configured_decision["expectedManifestVersion"],
+        "hepta.agent_card_manifest.v1"
+    );
+    assert_eq!(
+        configured_decision["configuredManifestVersion"],
+        "hepta.agent_card_manifest.v1"
+    );
+    assert_eq!(configured_decision["stale"], false);
+    assert_eq!(configured_decision["versionMatches"], true);
+    assert_eq!(
+        configured_decision["configuredManifestOverlayShadowDecision"]["decision"],
+        "configured_manifest_overlay_compatible_shadow_no_live_blocking"
+    );
+    assert_eq!(
+        configured_decision["configuredManifestOverlayShadowDecision"]["laneMatches"],
+        true
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["promotionReadinessShadowDecision"]
+            ["decision"],
+        "promotion_not_ready_shadow_no_live_cutover"
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["promotionReadinessShadowDecision"]
+            ["configuredManifestReady"],
+        true
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["promotionReadinessShadowDecision"]
+            ["configuredOverlayReady"],
+        true
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["promotionReadinessShadowDecision"]
+            ["liveBlockingEnabled"],
+        false
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["roleManifestShadowDecision"]["roleDeclared"],
+        true
+    );
+    assert_eq!(
+        result["admission_shadow_decision"]["liveCutoverEnabled"],
+        false
+    );
 }
 
 #[tokio::test]
@@ -2844,8 +3104,15 @@ async fn wait_agent_rejects_empty_targets() {
     );
 }
 
-#[tokio::test]
-async fn multi_agent_v2_wait_agent_accepts_timeout_only_argument() {
+#[test]
+fn multi_agent_v2_wait_agent_accepts_timeout_only_argument() {
+    run_large_stack_async_test(
+        "multi_agent_v2_wait_agent_accepts_timeout_only_argument",
+        multi_agent_v2_wait_agent_accepts_timeout_only_argument_impl(),
+    );
+}
+
+async fn multi_agent_v2_wait_agent_accepts_timeout_only_argument_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -3324,8 +3591,15 @@ async fn wait_agent_returns_final_status_without_timeout() {
     assert_eq!(success, None);
 }
 
-#[tokio::test]
-async fn multi_agent_v2_wait_agent_returns_summary_for_mailbox_activity() {
+#[test]
+fn multi_agent_v2_wait_agent_returns_summary_for_mailbox_activity() {
+    run_large_stack_async_test(
+        "multi_agent_v2_wait_agent_returns_summary_for_mailbox_activity",
+        multi_agent_v2_wait_agent_returns_summary_for_mailbox_activity_impl(),
+    );
+}
+
+async fn multi_agent_v2_wait_agent_returns_summary_for_mailbox_activity_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -3415,8 +3689,15 @@ async fn multi_agent_v2_wait_agent_returns_summary_for_mailbox_activity() {
     assert_eq!(success, None);
 }
 
-#[tokio::test]
-async fn multi_agent_v2_wait_agent_returns_for_already_queued_mail() {
+#[test]
+fn multi_agent_v2_wait_agent_returns_for_already_queued_mail() {
+    run_large_stack_async_test(
+        "multi_agent_v2_wait_agent_returns_for_already_queued_mail",
+        multi_agent_v2_wait_agent_returns_for_already_queued_mail_impl(),
+    );
+}
+
+async fn multi_agent_v2_wait_agent_returns_for_already_queued_mail_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -3474,7 +3755,13 @@ async fn multi_agent_v2_wait_agent_returns_for_already_queued_mail() {
             session,
             turn,
             "wait_agent",
-            function_payload(json!({"timeout_ms": 10_000})),
+            function_payload(json!({
+                "timeout_ms": 10_000,
+                "task_name": "worker",
+                "task_id": "task-1",
+                "barrier_id": "barrier-1",
+                "result_required": false
+            })),
         )),
     )
     .await
@@ -3483,6 +3770,8 @@ async fn multi_agent_v2_wait_agent_returns_for_already_queued_mail() {
     let (content, success) = expect_text_output(output);
     let result: crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult =
         serde_json::from_str(&content).expect("wait_agent result should be json");
+    let result_value: serde_json::Value =
+        serde_json::from_str(&content).expect("wait_agent result should be json");
     assert_eq!(
         result,
         crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult {
@@ -3490,11 +3779,2362 @@ async fn multi_agent_v2_wait_agent_returns_for_already_queued_mail() {
             timed_out: false,
         }
     );
+    assert_eq!(result_value["barrier_id"], json!("barrier-1"));
+    assert_eq!(result_value["task_name"], json!("worker"));
+    assert_eq!(result_value["task_id"], json!("task-1"));
+    assert_eq!(result_value["task_thread_id"], serde_json::Value::Null);
+    assert_eq!(result_value["task_status"], serde_json::Value::Null);
+    assert_eq!(result_value["task_result"], serde_json::Value::Null);
+    assert_eq!(result_value["result_required"], json!(false));
+    assert_eq!(result_value["wait_condition"], json!("mailbox_change"));
+    assert_eq!(
+        result_value["durable_mailbox"]["live_blocking_enabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["attemptedTool"],
+        json!("wait_agent")
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["toolAllowed"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["observedLane"],
+        json!("subagent_lifecycle")
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["laneAllowed"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["liveCutoverEnabled"],
+        json!(false)
+    );
     assert_eq!(success, None);
 }
 
-#[tokio::test]
-async fn multi_agent_v2_wait_agent_wakes_on_any_mailbox_notification() {
+#[test]
+fn multi_agent_v2_wait_agent_waits_for_task_terminal_status() {
+    run_large_stack_async_test(
+        "multi_agent_v2_wait_agent_waits_for_task_terminal_status",
+        multi_agent_v2_wait_agent_waits_for_task_terminal_status_impl(),
+    );
+}
+
+async fn multi_agent_v2_wait_agent_waits_for_task_terminal_status_impl() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.conversation_id = root.thread_id;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    turn.config = Arc::new(config);
+    let session = Arc::new(session);
+    let turn = Arc::new(turn);
+
+    SpawnAgentHandlerV2::default()
+        .handle(invocation(
+            session.clone(),
+            turn.clone(),
+            "spawn_agent",
+            function_payload(json!({
+                "message": "boot worker",
+                "task_name": "worker"
+            })),
+        ))
+        .await
+        .expect("spawn worker");
+    let agent_id = session
+        .services
+        .agent_control
+        .resolve_agent_reference(session.conversation_id, &turn.session_source, "worker")
+        .await
+        .expect("worker should resolve");
+    let child_thread = manager
+        .get_thread(agent_id)
+        .await
+        .expect("worker thread should exist");
+
+    let wait_task = tokio::spawn({
+        let session = session.clone();
+        let turn = turn.clone();
+        async move {
+            WaitAgentHandlerV2::default()
+                .handle(invocation(
+                    session,
+                    turn,
+                    "wait_agent",
+                    function_payload(json!({
+                        "timeout_ms": 10_000,
+                        "task_name": "worker",
+                        "task_id": "task-1",
+                        "barrier_id": "barrier-task-1",
+                        "result_required": true
+                    })),
+                ))
+                .await
+        }
+    });
+    tokio::task::yield_now().await;
+
+    child_thread
+        .submit(Op::Shutdown {})
+        .await
+        .expect("shutdown should submit");
+
+    let output = wait_task
+        .await
+        .expect("wait task should join")
+        .expect("wait_agent should succeed");
+    let (content, success) = expect_text_output(output);
+    let result: crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult =
+        serde_json::from_str(&content).expect("wait_agent result should be json");
+    let result_value: serde_json::Value =
+        serde_json::from_str(&content).expect("wait_agent result should be json");
+    assert_eq!(
+        result,
+        crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult {
+            message: "Wait completed.".to_string(),
+            timed_out: false,
+        }
+    );
+    assert_eq!(result_value["barrier_id"], json!("barrier-task-1"));
+    assert_eq!(result_value["task_name"], json!("worker"));
+    assert_eq!(result_value["task_id"], json!("task-1"));
+    assert_eq!(result_value["task_thread_id"], json!(agent_id.to_string()));
+    assert_eq!(result_value["task_status"], json!("shutdown"));
+    assert_eq!(result_value["task_result"], serde_json::Value::Null);
+    assert_eq!(result_value["result_required"], json!(true));
+    assert_eq!(
+        result_value["wait_condition"],
+        json!("task_terminal_status")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["decision"],
+        json!("task_result_delivery_blocked_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["taskResultEnvelopePresent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["taskResultContractId"],
+        json!("subagent_task_result_contract_v1")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["terminalDeliverySurface"],
+        json!("wait_agent(result_required=true)")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["liveCutoverEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["decision"],
+        json!("parent_reducer_shadow_receipt_blocked_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["reducerId"],
+        json!("subagent_parent_reducer_v1")
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["parentReducerReceiptReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["liveCutoverEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["task_result_delivery_shadow_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["parent_reducer_shadow_receipt_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["task_result_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_surface_audit_packet_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_surface_audit_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_receipt_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_closeout_receipt_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_closeout_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_audit_chain_closeout_receipt_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_audit_chain_closeout_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_operator_review_packet_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_operator_review_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_no_live_rehearsal_closeout_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_audit_chain_closeout_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_audit_chain_closeout_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_precondition_operator_packet_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_precondition_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_no_live_closeout_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_audit_chain_closeout_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_event_recorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_replay_consistency_decision"]["decision"],
+        json!("wait_task_result_replay_mismatch_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_replay_consistency_decision"]["readbackReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_replay_consistency_decision"]["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_replay_consistency_decision"]["decision"],
+        json!("wait_surface_audit_replay_mismatch_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_replay_consistency_decision"]["readbackReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_replay_consistency_decision"]["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["sourceSurfaceId"],
+        json!("wait_agent")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["readinessStatus"],
+        json!("blocked_wait_task_result_readback_not_ready")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["nextBlocker"],
+        json!("wait_task_result_readback_not_ready")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["taskResultContractId"],
+        json!("subagent_task_result_contract_v1")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["terminalDeliverySurface"],
+        json!("wait_agent(result_required=true)")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["decision"],
+        json!("wait_task_result_surface_audit_blocked_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["auditChainSegmentCount"],
+        json!(3)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["auditChainReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["auditChainMissingSegmentIds"],
+        json!([
+            "wait_task_result_delivery_shadow",
+            "wait_parent_reducer_shadow_receipt",
+            "wait_task_result_replay_consistency"
+        ])
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["decision"],
+        json!("work_graph_surface_audit_blocked_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["auditChainSegmentCount"],
+        json!(5)
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["auditChainReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["auditChainMissingSegmentIds"],
+        json!([
+            "wait_task_result_delivery_shadow",
+            "wait_parent_reducer_shadow_receipt",
+            "wait_task_result_replay_consistency",
+            "wait_surface_audit_packet",
+            "wait_surface_audit_replay_consistency"
+        ])
+    );
+    let global_wait_rows =
+        result_value["work_graph_global_surface_audit_packet"]["operatorMatrixRows"]
+            .as_array()
+            .expect("global surface audit should expose operator rows");
+    let global_wait_row = global_wait_rows
+        .iter()
+        .find(|row| row["sourceSurfaceId"] == json!("wait_agent"))
+        .expect("global surface audit should include wait_agent row");
+    assert_eq!(
+        global_wait_row["readinessStatus"],
+        json!("blocked_audit_chain_or_no_live_guardrail_not_ready")
+    );
+    assert_eq!(
+        global_wait_row["taskResultContractId"],
+        json!("subagent_task_result_contract_v1")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_receipt"]["decision"],
+        json!("work_graph_canonical_projection_blocked_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_receipt"]["readProjectionReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_receipt"]["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_replay_consistency_decision"]["decision"],
+        json!("work_graph_canonical_projection_replay_mismatch_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_receipt"]["decision"],
+        json!("work_graph_canonical_projection_closeout_blocked_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_receipt"]["closeoutReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_receipt"]["noCutoverTerminalReceipt"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_replay_consistency_decision"]["decision"],
+        json!("work_graph_canonical_projection_closeout_replay_mismatch_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_replay_consistency_decision"]["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_receipt"]["decision"],
+        json!(
+            "work_graph_canonical_projection_audit_chain_closeout_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_receipt"]["auditChainCloseoutReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_receipt"]["noCutoverTerminalReceipt"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_audit_chain_closeout_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_operator_review_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["enablementOperatorReviewReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_operator_review_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["noLiveEnablementRehearsalCloseoutReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision"]
+            ["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_audit_chain_closeout_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["enablementAuditChainCloseoutReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_audit_chain_closeout_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision"]
+            ["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_precondition_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["activationPreconditionReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["reviewedFlagEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_precondition_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_no_live_closeout_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["activationNoLiveCloseoutReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_audit_chain_closeout_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["activationAuditChainCloseoutReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["reviewedFlagEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["activationOperatorApprovalReadinessPreflightReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["operatorApprovalRequiredBeforeActivation"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["approvalRecordMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["reviewedFlagRequiredBeforeActivation"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["reviewedFlagMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["activationOperatorApprovalReadinessPreflightPacketMatchesReadback"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["approvalRecordMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["reviewedFlagMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["liveCutoverEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_blocked_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["approvalReviewSideEffectLockCloseoutReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["activationOperatorApprovalReadinessPreflightReplayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["approvalRecordMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["reviewedFlagMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_mismatch_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["activationApprovalReviewSideEffectLockCloseoutPacketMatchesReadback"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["approvalReviewSideEffectLockCloseoutReady"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["approvalRecordMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["reviewedFlagMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["liveCutoverEnabled"],
+        json!(false)
+    );
+    assert_eq!(success, None);
+}
+
+#[test]
+fn multi_agent_v2_wait_agent_satisfies_from_task_result_evidence() {
+    run_large_stack_async_test(
+        "multi_agent_v2_wait_agent_satisfies_from_task_result_evidence",
+        multi_agent_v2_wait_agent_satisfies_from_task_result_evidence_impl(),
+    );
+}
+
+async fn multi_agent_v2_wait_agent_satisfies_from_task_result_evidence_impl() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let state_db = init_state_db(&turn.config)
+        .await
+        .expect("state db should initialize");
+    session.services.state_db = Some(state_db.clone());
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    turn.config = Arc::new(config);
+
+    let job_id = "job-task-result-evidence";
+    let item_id = "row-1";
+    let task_id = format!("agent-job:{job_id}:{item_id}");
+    state_db
+        .create_agent_job(
+            &codex_state::AgentJobCreateParams {
+                id: job_id.to_string(),
+                name: "task result evidence".to_string(),
+                instruction: "report a result".to_string(),
+                auto_export: false,
+                max_runtime_seconds: None,
+                output_schema_json: None,
+                input_headers: vec!["id".to_string()],
+                input_csv_path: "input.csv".to_string(),
+                output_csv_path: "output.csv".to_string(),
+            },
+            &[codex_state::AgentJobItemCreateParams {
+                item_id: item_id.to_string(),
+                row_index: 0,
+                source_id: Some("source-1".to_string()),
+                row_json: json!({"id": "source-1"}),
+            }],
+        )
+        .await
+        .expect("agent job should create");
+    state_db
+        .mark_agent_job_running(job_id)
+        .await
+        .expect("agent job should run");
+    let reporting_thread_id = session.conversation_id.to_string();
+    state_db
+        .mark_agent_job_item_running_with_thread(job_id, item_id, reporting_thread_id.as_str())
+        .await
+        .expect("agent job item should run");
+    let task_result_envelope = json!({
+        "schemaVersion": "hepta.task_result.v1",
+        "taskId": task_id.clone(),
+        "status": "completed",
+        "summary": "done",
+        "liveBlockingEnabled": false,
+        "liveCutoverEnabled": false,
+    });
+    state_db
+        .report_agent_job_item_result(
+            job_id,
+            item_id,
+            reporting_thread_id.as_str(),
+            &json!({"ok": true}),
+            Some(&task_result_envelope),
+        )
+        .await
+        .expect("task result evidence should record");
+
+    let session = Arc::new(session);
+    let turn = Arc::new(turn);
+    let output = WaitAgentHandlerV2::default()
+        .handle(invocation(
+            session,
+            turn,
+            "wait_agent",
+            function_payload(json!({
+                "timeout_ms": 10_000,
+                "task_id": task_id.clone(),
+                "barrier_id": "barrier-task-result-evidence",
+                "result_required": true
+            })),
+        ))
+        .await
+        .expect("wait_agent should succeed");
+    let (content, success) = expect_text_output(output);
+    let result: crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult =
+        serde_json::from_str(&content).expect("wait_agent result should be json");
+    let result_value: serde_json::Value =
+        serde_json::from_str(&content).expect("wait_agent result should be json");
+    assert_eq!(
+        result,
+        crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult {
+            message: "Wait completed.".to_string(),
+            timed_out: false,
+        }
+    );
+    assert_eq!(
+        result_value["barrier_id"],
+        json!("barrier-task-result-evidence")
+    );
+    assert_eq!(result_value["task_id"], json!(task_id));
+    assert_eq!(result_value["task_thread_id"], serde_json::Value::Null);
+    assert_eq!(result_value["task_status"], serde_json::Value::Null);
+    assert_eq!(
+        result_value["task_result"]["schemaVersion"],
+        json!("hepta.task_result.v1")
+    );
+    assert_eq!(result_value["task_result"]["status"], json!("completed"));
+    assert_eq!(result_value["result_required"], json!(true));
+    assert_eq!(
+        result_value["wait_condition"],
+        json!("task_result_evidence")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["decision"],
+        json!("task_result_delivery_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["taskResultEnvelopePresent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["taskResultStatus"],
+        json!("completed")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["taskResultContractId"],
+        json!("subagent_task_result_contract_v1")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["terminalDeliverySurface"],
+        json!("wait_agent(result_required=true)")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["verifierId"],
+        json!("subagent_task_result_verifier_v1")
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["shadowDeliveryReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["task_result_delivery_shadow"]["liveBlockingEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["decision"],
+        json!("parent_reducer_shadow_receipt_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["taskResultEnvelopeObserved"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["parentReducerReceiptReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["reducedIntoParentWorkGraph"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["parent_reducer_shadow_receipt"]["liveCutoverEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["task_result_delivery_shadow_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["parent_reducer_shadow_receipt_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["task_result_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_surface_audit_packet_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_surface_audit_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_receipt_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_closeout_receipt_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_closeout_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_audit_chain_closeout_receipt_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_audit_chain_closeout_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_operator_review_packet_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_operator_review_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_no_live_rehearsal_closeout_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_audit_chain_closeout_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_audit_chain_closeout_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_precondition_operator_packet_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_precondition_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_no_live_closeout_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_audit_chain_closeout_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["durable_mailbox"]["wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_event_recorded"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_replay_consistency_decision"]["decision"],
+        json!("wait_task_result_replay_consistent_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_replay_consistency_decision"]["taskResultDeliveryMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_replay_consistency_decision"]["parentReducerReceiptMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_replay_consistency_decision"]["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_replay_consistency_decision"]["decision"],
+        json!("wait_surface_audit_replay_consistent_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_replay_consistency_decision"]["waitSurfaceAuditPacketMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_replay_consistency_decision"]["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["taskResultDeliveryShadowEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["parentReducerShadowReceiptEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["taskResultReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitSurfaceAuditPacketEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitSurfaceAuditReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionReceiptEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionCloseoutReceiptEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionCloseoutReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionAuditChainCloseoutReceiptEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionAuditChainCloseoutReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementOperatorReviewPacketEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementOperatorReviewReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementNoLiveRehearsalCloseoutEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementNoLiveRehearsalCloseoutReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementAuditChainCloseoutEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementAuditChainCloseoutReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationPreconditionOperatorPacketEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationPreconditionReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationNoLiveCloseoutEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationNoLiveCloseoutReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationAuditChainCloseoutEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationAuditChainCloseoutReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightPacketEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReplayConsistencyEvents"],
+        json!(1)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestTaskResultDeliveryDecision"],
+        json!("task_result_delivery_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestParentReducerDecision"],
+        json!("parent_reducer_shadow_receipt_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestTaskResultReplayConsistencyDecision"],
+        json!("wait_task_result_replay_consistent_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitSurfaceAuditDecision"],
+        json!("wait_task_result_surface_audit_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitSurfaceAuditReplayConsistencyDecision"],
+        json!("wait_surface_audit_replay_consistent_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionDecision"],
+        json!("work_graph_canonical_projection_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionReplayConsistencyDecision"],
+        json!("work_graph_canonical_projection_replay_consistent_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionCloseoutDecision"],
+        json!("work_graph_canonical_projection_closeout_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionCloseoutReplayConsistencyDecision"],
+        json!("work_graph_canonical_projection_closeout_replay_consistent_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionAuditChainCloseoutDecision"],
+        json!(
+            "work_graph_canonical_projection_audit_chain_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionAuditChainCloseoutReplayConsistencyDecision"],
+        json!(
+            "work_graph_canonical_projection_audit_chain_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementOperatorReviewDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_operator_review_ready_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementOperatorReviewReplayConsistencyDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_operator_review_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementNoLiveRehearsalCloseoutDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementNoLiveRehearsalCloseoutReplayConsistencyDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementAuditChainCloseoutDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_audit_chain_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementAuditChainCloseoutReplayConsistencyDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementActivationPreconditionOperatorDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_precondition_ready_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementActivationPreconditionReplayConsistencyDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_precondition_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementActivationNoLiveCloseoutDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_no_live_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementActivationNoLiveCloseoutReplayConsistencyDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementActivationAuditChainCloseoutDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_audit_chain_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementActivationAuditChainCloseoutReplayConsistencyDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_ready_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["latestWaitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReplayConsistencyDecision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["readbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["replayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitSurfaceAuditPacketReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitSurfaceAuditReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionReceiptReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionCloseoutReceiptReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionCloseoutReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionAuditChainCloseoutReceiptReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionAuditChainCloseoutReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementOperatorReviewPacketReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementOperatorReviewReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementNoLiveRehearsalCloseoutReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementNoLiveRehearsalCloseoutReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementAuditChainCloseoutReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementAuditChainCloseoutReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationPreconditionOperatorPacketReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationPreconditionReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationNoLiveCloseoutReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationNoLiveCloseoutReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationAuditChainCloseoutReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationAuditChainCloseoutReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightPacketReadbackReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReplayConsistencyReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitSurfaceAuditPacketReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitSurfaceAuditReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionReceiptReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionCloseoutReceiptReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionCloseoutReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionAuditChainCloseoutReceiptReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionAuditChainCloseoutReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementOperatorReviewReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementOperatorReviewReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementNoLiveRehearsalCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementNoLiveRehearsalCloseoutReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementAuditChainCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementAuditChainCloseoutReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationPreconditionReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationPreconditionReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationNoLiveCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationNoLiveCloseoutReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationAuditChainCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationAuditChainCloseoutReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["waitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionAuditChainCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionAuditChainCloseoutReplayReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementOperatorReviewReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementNoLiveRehearsalCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementNoLiveRehearsalCloseoutReplayReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementAuditChainCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementAuditChainCloseoutReplayReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementActivationPreconditionReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementActivationPreconditionReplayReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementActivationNoLiveCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementActivationNoLiveCloseoutReplayReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementActivationAuditChainCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementActivationAuditChainCloseoutReplayReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReplayReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitTaskResultReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["directWaitSurfaceAuditReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_task_result_readback"]["noLiveGuardrailsReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["sourceSurfaceId"],
+        json!("wait_agent")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["readinessStatus"],
+        json!("blocked_canonical_work_graph_write_disabled")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["nextBlocker"],
+        json!("canonical_work_graph_write_disabled")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["durableFactSourcePresent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["resultContractReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["verifierReducerReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["replayConsistent"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["taskResultContractPlanDecision"],
+        json!("task_result_delivery_readback_ready_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["taskResultContractId"],
+        json!("subagent_task_result_contract_v1")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_operator_matrix_row"]["terminalDeliverySurface"],
+        json!("wait_agent(result_required=true)")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["decision"],
+        json!("wait_task_result_surface_audit_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["auditChainSegmentCount"],
+        json!(3)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["auditChainReadySegmentCount"],
+        json!(3)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["auditChainReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["auditChainMissingSegmentIds"],
+        json!([])
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["auditChainInconsistentSegmentIds"],
+        json!([])
+    );
+    assert_eq!(
+        result_value["work_graph_wait_surface_audit_packet"]["operatorMatrixRows"][0]["sourceSurfaceId"],
+        json!("wait_agent")
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["decision"],
+        json!("work_graph_surface_audit_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["auditChainSegmentCount"],
+        json!(5)
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["auditChainReadySegmentCount"],
+        json!(5)
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["auditChainReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["auditChainMissingSegmentIds"],
+        json!([])
+    );
+    assert_eq!(
+        result_value["work_graph_global_surface_audit_packet"]["auditChainInconsistentSegmentIds"],
+        json!([])
+    );
+    let global_wait_rows =
+        result_value["work_graph_global_surface_audit_packet"]["operatorMatrixRows"]
+            .as_array()
+            .expect("global surface audit should expose operator rows");
+    let global_wait_row = global_wait_rows
+        .iter()
+        .find(|row| row["sourceSurfaceId"] == json!("wait_agent"))
+        .expect("global surface audit should include wait_agent row");
+    assert_eq!(
+        global_wait_row["readinessStatus"],
+        json!("blocked_canonical_work_graph_write_disabled")
+    );
+    assert_eq!(
+        global_wait_row["nextBlocker"],
+        json!("canonical_work_graph_write_disabled")
+    );
+    assert_eq!(
+        global_wait_row["taskResultContractId"],
+        json!("subagent_task_result_contract_v1")
+    );
+    assert_eq!(
+        global_wait_row["terminalDeliverySurface"],
+        json!("wait_agent(result_required=true)")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_receipt"]["decision"],
+        json!("work_graph_canonical_projection_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_receipt"]["projectedWorkNodeCount"],
+        json!(5)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_receipt"]["readProjectionReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_receipt"]["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_replay_consistency_decision"]["decision"],
+        json!("work_graph_canonical_projection_replay_consistent_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_receipt"]["decision"],
+        json!("work_graph_canonical_projection_closeout_recorded_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_receipt"]["closeoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_receipt"]["noCutoverTerminalReceipt"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_receipt"]["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_replay_consistency_decision"]["decision"],
+        json!("work_graph_canonical_projection_closeout_replay_consistent_shadow_no_live_cutover")
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_replay_consistency_decision"]["closeoutReceiptMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_closeout_replay_consistency_decision"]["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_receipt"]["decision"],
+        json!(
+            "work_graph_canonical_projection_audit_chain_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_receipt"]["auditChainCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_receipt"]["noCutoverTerminalReceipt"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_receipt"]["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_audit_chain_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_replay_consistency_decision"]
+            ["auditChainCloseoutReceiptMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_audit_chain_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_operator_review_ready_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["enablementOperatorReviewReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["noLiveEnablementRehearsalReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_packet"]["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_operator_review_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["enablementOperatorReviewPacketMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["noLiveEnablementRehearsalCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision"]
+            ["noLiveRehearsalCloseoutMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision"]
+            ["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_audit_chain_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["enablementAuditChainCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_receipt"]["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision"]
+            ["enablementAuditChainCloseoutMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision"]
+            ["enablementAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_precondition_ready_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["activationPreconditionReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["reviewedFlagEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_precondition_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision"]
+            ["activationPreconditionOperatorPacketMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_no_live_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["activationNoLiveCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["reviewedFlagEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision"]
+            ["activationNoLiveCloseoutMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_audit_chain_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["activationAuditChainCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["reviewedFlagEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_ready_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["activationOperatorApprovalReadinessPreflightReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["operatorApprovalRequiredBeforeActivation"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["approvalRecordMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["reviewedFlagRequiredBeforeActivation"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["reviewedFlagEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["reviewedFlagMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["liveCutoverEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["activationOperatorApprovalReadinessPreflightPacketMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["activationOperatorApprovalReadinessPreflightReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["operatorApprovalRequiredBeforeActivation"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["approvalRecordMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["reviewedFlagRequiredBeforeActivation"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["reviewedFlagMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["liveCutoverEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_recorded_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["approvalReviewSideEffectLockCloseoutReady"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["approvalReviewSideEffectsLocked"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["activationOperatorApprovalReadinessPreflightReplayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["approvalRecordMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["reviewedFlagMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["decision"],
+        json!(
+            "work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistent_shadow_no_live_cutover"
+        )
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["replayConsistent"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["activationApprovalReviewSideEffectLockCloseoutPacketMatchesReadback"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["approvalReviewSideEffectsLocked"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["activationAllowed"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["operatorApprovalRecorded"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["approvalRecordMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["reviewedFlagMutationEnabled"],
+        json!(false)
+    );
+    assert_eq!(
+        result_value["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["canonicalWriteEnabled"],
+        json!(false)
+    );
+    assert_eq!(success, None);
+}
+
+#[test]
+fn multi_agent_v2_wait_agent_wakes_on_any_mailbox_notification() {
+    run_large_stack_async_test(
+        "multi_agent_v2_wait_agent_wakes_on_any_mailbox_notification",
+        multi_agent_v2_wait_agent_wakes_on_any_mailbox_notification_impl(),
+    );
+}
+
+async fn multi_agent_v2_wait_agent_wakes_on_any_mailbox_notification_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -3581,8 +6221,15 @@ async fn multi_agent_v2_wait_agent_wakes_on_any_mailbox_notification() {
     assert_eq!(success, None);
 }
 
-#[tokio::test]
-async fn multi_agent_v2_wait_agent_does_not_return_completed_content() {
+#[test]
+fn multi_agent_v2_wait_agent_does_not_return_completed_content() {
+    run_large_stack_async_test(
+        "multi_agent_v2_wait_agent_does_not_return_completed_content",
+        multi_agent_v2_wait_agent_does_not_return_completed_content_impl(),
+    );
+}
+
+async fn multi_agent_v2_wait_agent_does_not_return_completed_content_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -3667,8 +6314,15 @@ async fn multi_agent_v2_wait_agent_does_not_return_completed_content() {
     assert_eq!(success, None);
 }
 
-#[tokio::test]
-async fn multi_agent_v2_close_agent_accepts_task_name_target() {
+#[test]
+fn multi_agent_v2_close_agent_accepts_task_name_target() {
+    run_large_stack_async_test(
+        "multi_agent_v2_close_agent_accepts_task_name_target",
+        multi_agent_v2_close_agent_accepts_task_name_target_impl(),
+    );
+}
+
+async fn multi_agent_v2_close_agent_accepts_task_name_target_impl() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -3718,7 +6372,29 @@ async fn multi_agent_v2_close_agent_accepts_task_name_target() {
     let (content, success) = expect_text_output(output);
     let result: close_agent::CloseAgentResult =
         serde_json::from_str(&content).expect("close_agent result should be json");
+    let result_value: serde_json::Value =
+        serde_json::from_str(&content).expect("close_agent result should be json");
     assert_ne!(result.previous_status, AgentStatus::NotFound);
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["attemptedTool"],
+        json!("close_agent")
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["toolAllowed"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["observedLane"],
+        json!("subagent_lifecycle")
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["laneAllowed"],
+        json!(true)
+    );
+    assert_eq!(
+        result_value["work_graph_lifecycle_shadow_decision"]["liveCutoverEnabled"],
+        json!(false)
+    );
     assert_eq!(success, Some(true));
     assert_eq!(
         manager.agent_control().get_status(agent_id).await,

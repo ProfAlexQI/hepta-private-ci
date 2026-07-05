@@ -1,5 +1,8 @@
-use crate::runtime_types::{AgentId, CorrelationId, SessionId};
-use serde::{Deserialize, Serialize};
+use crate::runtime_types::AgentId;
+use crate::runtime_types::CorrelationId;
+use crate::runtime_types::SessionId;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttachmentRef {
@@ -518,10 +521,10 @@ impl AdapterRouteParserReport {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        AdapterRouteKind, AdapterRouteParserReport, GatewayAbstractionReport,
-        parse_adapter_owned_route,
-    };
+    use super::AdapterRouteKind;
+    use super::AdapterRouteParserReport;
+    use super::GatewayAbstractionReport;
+    use super::parse_adapter_owned_route;
 
     #[test]
     fn gateway_abstraction_report_covers_p1_contracts() {

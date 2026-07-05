@@ -309,11 +309,12 @@ fn preview(value: &str, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        EchoGatewayPluginAdapter, FailingGatewayPluginAdapter, GatewayPluginExecutionPlan,
-        GatewayPluginExecutionPolicy,
-    };
-    use crate::{GatewayPluginBinding, GatewayPluginBindingCatalog};
+    use super::EchoGatewayPluginAdapter;
+    use super::FailingGatewayPluginAdapter;
+    use super::GatewayPluginExecutionPlan;
+    use super::GatewayPluginExecutionPolicy;
+    use crate::GatewayPluginBinding;
+    use crate::GatewayPluginBindingCatalog;
 
     #[test]
     fn execution_plan_selects_preferred_handoff_and_echo_adapter() {

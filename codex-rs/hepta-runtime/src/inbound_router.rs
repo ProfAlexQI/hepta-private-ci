@@ -1,21 +1,18 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    fs,
-    hash::{Hash, Hasher},
-    path::PathBuf,
-};
+use std::collections::hash_map::DefaultHasher;
+use std::fs;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::path::PathBuf;
 
 use hepta_core::HeptaError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-    current_unix_ms,
-    delivery_queue::ReadbackEvidenceLedger,
-    session_transcript::{
-        SessionTranscriptAppendHandoffInput, SessionTranscriptAppendHandoffReport,
-        SessionTranscriptStore,
-    },
-};
+use crate::current_unix_ms;
+use crate::delivery_queue::ReadbackEvidenceLedger;
+use crate::session_transcript::SessionTranscriptAppendHandoffInput;
+use crate::session_transcript::SessionTranscriptAppendHandoffReport;
+use crate::session_transcript::SessionTranscriptStore;
 
 pub const DEFAULT_INBOUND_ROUTER_PATH: &str = ".hepta/inbound-router-v0.json";
 pub const DEFAULT_INBOUND_ROUTER_ID: &str = "hepta-native-inbound-router";
@@ -956,7 +953,8 @@ mod tests {
 
     #[test]
     fn inbound_router_gated_handoff_appends_session_transcript_without_replying() {
-        use crate::{ReadbackEvidenceLedger, SessionTranscriptStore};
+        use crate::ReadbackEvidenceLedger;
+        use crate::SessionTranscriptStore;
 
         let path = temp_file("handoff-router");
         let transcript_path = temp_file("handoff-transcript");
@@ -1010,7 +1008,8 @@ mod tests {
 
     #[test]
     fn inbound_router_enforces_active_session_topic_and_reset_boundaries() {
-        use crate::{ReadbackEvidenceLedger, SessionTranscriptStore};
+        use crate::ReadbackEvidenceLedger;
+        use crate::SessionTranscriptStore;
 
         let path = temp_file("boundary-router");
         let transcript_path = temp_file("boundary-transcript");

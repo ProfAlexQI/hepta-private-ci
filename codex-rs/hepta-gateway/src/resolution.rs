@@ -142,10 +142,11 @@ impl GatewayPluginResolutionSnapshot {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        GatewayPluginResolutionSnapshot, GatewayResolvedPluginCandidate, GatewayResolvedPluginTier,
-    };
-    use crate::{GatewayRoutePlan, GatewayTransport};
+    use super::GatewayPluginResolutionSnapshot;
+    use super::GatewayResolvedPluginCandidate;
+    use super::GatewayResolvedPluginTier;
+    use crate::GatewayRoutePlan;
+    use crate::GatewayTransport;
 
     #[test]
     fn resolution_snapshot_starts_from_handoff_contract() {

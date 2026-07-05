@@ -79,6 +79,7 @@ async fn record_initial_history_resumed_bare_turn_context_does_not_hydrate_previ
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(turn_context.truncation_policy),
+        context_manifest: None,
     };
     let rollout_items = vec![RolloutItem::TurnContext(previous_context_item)];
 
@@ -121,6 +122,7 @@ async fn record_initial_history_resumed_hydrates_previous_turn_settings_from_lif
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(turn_context.truncation_policy),
+        context_manifest: None,
     };
     let turn_id = previous_context_item
         .turn_id
@@ -923,6 +925,16 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
  {
     let (session, turn_context) = make_session_and_context().await;
     let previous_model = "previous-rollout-model";
+    let context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "shadow-only replay context".to_string(),
+            }],
+            phase: None,
+        }])
+        .expect("context manifest should build");
     let previous_context_item = TurnContextItem {
         turn_id: Some(turn_context.sub_id.clone()),
         trace_id: turn_context.trace_id.clone(),
@@ -945,6 +957,7 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(turn_context.truncation_policy),
+        context_manifest: Some(context_manifest.clone()),
     };
     let previous_turn_id = previous_context_item
         .turn_id
@@ -1025,6 +1038,7 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
             developer_instructions: None,
             final_output_json_schema: None,
             truncation_policy: Some(turn_context.truncation_policy),
+            context_manifest: Some(context_manifest),
         }))
         .expect("serialize expected reference context item")
     );
@@ -1057,6 +1071,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(turn_context.truncation_policy),
+        context_manifest: None,
     };
     let previous_turn_id = previous_context_item
         .turn_id
@@ -1175,6 +1190,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(turn_context.truncation_policy),
+        context_manifest: None,
     };
 
     let rollout_items = vec![
@@ -1292,6 +1308,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(turn_context.truncation_policy),
+        context_manifest: None,
     };
     let previous_turn_id = previous_context_item
         .turn_id
@@ -1448,6 +1465,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(turn_context.truncation_policy),
+        context_manifest: None,
     };
     let previous_turn_id = previous_context_item
         .turn_id

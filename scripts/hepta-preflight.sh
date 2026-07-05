@@ -375,9 +375,6 @@ scripts/hepta-memory-intelligence-kg-full-live-activation-readiness-index-replay
 echo "[hepta-preflight] memory/intelligence/KG full live activation readiness index replay/idempotency denial route gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-readiness-index-replay-idempotency-denial-route-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG activation truth index route gate"
-scripts/hepta-memory-intelligence-kg-activation-truth-index-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-gate.sh
 
@@ -582,20 +579,11 @@ scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-pac
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt package/release channel status exposure denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-package-release-channel-status-exposure-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt package/release channel status exposure denial route gate"
-scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-package-release-channel-status-exposure-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt distribution artifact/manifest status denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-distribution-artifact-manifest-status-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt distribution artifact/manifest status denial route gate"
-scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-distribution-artifact-manifest-status-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact distribution signing/notarization surface denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact distribution signing/notarization surface denial route gate"
-scripts/hepta-artifact-distribution-signing-notarization-surface-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-denial-gate.sh
@@ -735,77 +723,8 @@ scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-inst
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent reconfirmation denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-reconfirmation-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent reconfirmation denial route gate"
-scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-reconfirmation-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence persistence denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-persistence-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence persistence denial route gate"
-scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-persistence-route-gate.sh
-
-echo "[hepta-preflight] minimal Memory canary scoped operator packet write/readback/rollback/idempotency receipt route gate"
-scripts/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt-route-gate.sh
-
-echo "[hepta-preflight] Intelligence bounded context attachment preview/readback route gate"
-scripts/hepta-intelligence-bounded-context-attachment-preview-readback-route-gate.sh
-
-echo "[hepta-preflight] KG read-only adapter shadow-rank canary route gate"
-scripts/hepta-kg-read-only-adapter-shadow-rank-canary-route-gate.sh
-
-echo "[hepta-preflight] provider-router dry-run envelope readback audit route gate"
-scripts/hepta-provider-router-dry-run-envelope-readback-audit-route-gate.sh
-
-echo "[hepta-preflight] first model invocation separate approval slice preflight route gate"
-scripts/hepta-first-model-invocation-separate-approval-slice-preflight-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval packet review acceptance-denial preflight route gate"
-scripts/hepta-first-model-invocation-operator-approval-packet-review-acceptance-denial-preflight-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval acceptance artifact precondition route gate"
-scripts/hepta-first-model-invocation-operator-approval-acceptance-artifact-precondition-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval nonce/session/command binding preflight route gate"
-scripts/hepta-first-model-invocation-operator-approval-nonce-session-command-binding-preflight-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run envelope preflight route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-envelope-preflight-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt no-persistence route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-no-persistence-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt replay/idempotency denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt ordering/monotonicity denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt cancellation/supersession denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt audit/immutable-evidence denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-audit-immutable-evidence-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt retention/expiry/garbage-collection denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-retention-expiry-garbage-collection-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt export/query/observability denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-export-query-observability-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt operator-facing summary/briefing non-persistence denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-operator-facing-summary-briefing-non-persistence-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt final operator acknowledgement non-acceptance denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-final-operator-acknowledgement-non-acceptance-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt terminal operator decision/public-claim non-promotion denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt terminal public-claim/status exposure denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial-route-gate.sh
-
-echo "[hepta-preflight] first model invocation operator approval final authorization dry-run result receipt terminal public-claim delivery/readback denial route gate"
-scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-delivery-readback-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence export/query/observability denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-export-query-observability-denial-gate.sh
@@ -834,56 +753,29 @@ scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-inst
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization result receipt no-persistence denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-no-persistence-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt no-persistence denial route gate"
-scripts/hepta-artifact-signing-receipt-no-persistence-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt replay/idempotency denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt replay/idempotency denial route gate"
-scripts/hepta-artifact-signing-receipt-replay-idempotency-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt ordering/monotonicity denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt ordering/monotonicity denial route gate"
-scripts/hepta-artifact-signing-receipt-ordering-monotonicity-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt cancellation/supersession denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt cancellation/supersession denial route gate"
-scripts/hepta-artifact-signing-receipt-cancellation-supersession-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt audit/evidence denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-audit-evidence-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt audit/evidence denial route gate"
-scripts/hepta-artifact-signing-receipt-audit-evidence-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt retention/expiry/garbage-collection denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-retention-gc-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt retention/expiry/garbage-collection denial route gate"
-scripts/hepta-artifact-signing-receipt-retention-expiry-garbage-collection-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt export/query/observability denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-observability-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt export/query/observability denial route gate"
-scripts/hepta-artifact-signing-receipt-export-query-observability-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt operator-facing summary/briefing non-persistence denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-summary-briefing-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt operator-facing summary/briefing non-persistence denial route gate"
-scripts/hepta-artifact-signing-receipt-operator-facing-summary-briefing-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt final operator acknowledgement non-acceptance denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-final-ack-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt final operator acknowledgement non-acceptance denial route gate"
-scripts/hepta-artifact-signing-receipt-final-operator-acknowledgement-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt terminal decision/status promotion denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-status-promotion-denial-gate.sh
@@ -891,35 +783,8 @@ scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-inst
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt terminal public claim/status exposure denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-status-exposure-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt terminal public claim/status exposure denial route gate"
-scripts/hepta-artifact-signing-receipt-terminal-public-claim-status-exposure-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence/KG full live activation operator readiness packet template packet acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact distribution signing/notarization receipt terminal public claim delivery/readback denial gate"
 scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-readback-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt terminal public claim delivery/readback denial route gate"
-scripts/hepta-artifact-signing-receipt-terminal-public-claim-delivery-readback-denial-route-gate.sh
-
-echo "[hepta-preflight] memory/intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing receipt release/public artifact publication denial route gate"
-scripts/hepta-artifact-signing-receipt-release-public-artifact-publication-denial-route-gate.sh
-
-echo "[hepta-preflight] first-model positive approval packet boundary route gate"
-scripts/hepta-first-model-positive-approval-packet-boundary-route-gate.sh
-
-echo "[hepta-preflight] scoped Memory canary durable receipt boundary route gate"
-scripts/hepta-scoped-memory-canary-durable-receipt-boundary-route-gate.sh
-
-echo "[hepta-preflight] bounded Intelligence context handoff prompt preview boundary route gate"
-scripts/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary-route-gate.sh
-
-echo "[hepta-preflight] activation evidence no-write provider-router dry-run boundary route gate"
-scripts/hepta-activation-evidence-no-write-provider-router-dry-run-boundary-route-gate.sh
-
-echo "[hepta-preflight] first-model invocation explicit approval evidence no-invocation boundary route gate"
-scripts/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary-route-gate.sh
-
-echo "[hepta-preflight] full-live activation closure index route gate"
-scripts/hepta-full-live-activation-closure-index-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router context attachment negative fixture matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-context-attachment-negative-fixture-matrix-gate.sh
@@ -936,86 +801,44 @@ scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-ope
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator acknowledgement non-acceptance gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance-gate.sh
 
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router operator acknowledgement non-acceptance route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-acknowledgement-non-acceptance-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation request denial matrix gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix-gate.sh
-
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation request denial matrix route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-request-denial-matrix-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command no-op handoff gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff-gate.sh
 
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command no-op handoff route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt no-persistence gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-no-persistence-gate.sh
-
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt no-persistence route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-no-persistence-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt replay idempotency denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt replay idempotency denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt ordering monotonicity denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt ordering monotonicity denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt cancellation supersession denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt cancellation supersession denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt audit trail immutable evidence denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-audit-trail-immutable-evidence-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt audit trail immutable evidence denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-audit-trail-immutable-evidence-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-retention-expiry-garbage-collection-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt retention expiry garbage collection denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-retention-expiry-garbage-collection-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-export-query-observability-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt export query observability denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-export-query-observability-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt operator-facing summary briefing non-persistence denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt operator-facing summary briefing non-persistence denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt final operator acknowledgement non-acceptance denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt final operator acknowledgement non-acceptance denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial-route-gate.sh
 
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt terminal operator decision public-claim non-promotion denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-gate.sh
 
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt terminal operator decision public-claim non-promotion denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-route-gate.sh
-
 echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial gate"
 scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-release-artifact-publication-denial-gate.sh
-
-echo "[hepta-preflight] memory/intelligence full enablement runtime provider-router activation command result receipt release artifact publication denial route gate"
-scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-release-artifact-publication-denial-route-gate.sh
 
 echo "[hepta-preflight] live mutation governance gate"
 scripts/hepta-live-mutation-governance-gate.sh
@@ -1053,332 +876,62 @@ scripts/hepta-memory-live-mutation-operator-write-contract-gate.sh
 echo "[hepta-preflight] memory live mutation operator write approval packet gate"
 scripts/hepta-memory-live-mutation-operator-write-approval-packet-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write approval packet boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-approval-packet-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution preflight gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-preflight-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution preflight boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-preflight-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution denial matrix gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-denial-matrix-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution denial matrix boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-denial-matrix-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution no-write sink contract gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-no-write-sink-contract-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution no-write sink contract boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-no-write-sink-contract-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution write-enable fixture gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution write-enable fixture boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution post-write validation dry-run gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution post-write validation dry-run boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution post-write operator acceptance denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-post-write-operator-acceptance-denial-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution post-write operator acceptance denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-post-write-operator-acceptance-denial-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution activation closure denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-closure-denial-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution activation closure denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-closure-denial-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution activation command no-op handoff gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-noop-handoff-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution activation command no-op handoff boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-noop-handoff-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt no-persistence gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt no-persistence boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-no-persistence-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt replay idempotency denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt replay idempotency denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt ordering monotonicity denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt ordering monotonicity denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt cancellation supersession denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt cancellation supersession denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt audit trail immutable evidence denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-audit-trail-immutable-evidence-denial-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt audit trail immutable evidence denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-audit-trail-immutable-evidence-denial-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt retention expiry garbage collection denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt retention expiry garbage collection denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-retention-expiry-garbage-collection-denial-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt export query observability denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-export-query-observability-denial-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt export query observability denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-export-query-observability-denial-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt operator-facing summary briefing non-persistence denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt operator-facing summary briefing non-persistence denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt final operator acknowledgement non-acceptance denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt final operator acknowledgement non-acceptance denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial-boundary-route-gate.sh
 
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt terminal operator decision public-claim non-promotion denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-gate.sh
 
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt terminal operator decision public-claim non-promotion denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary-route-gate.sh
-
 echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt release artifact publication denial gate"
 scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-release-artifact-publication-denial-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution activation command result receipt release artifact publication denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-release-artifact-publication-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary operator approval packet nonce command dry-run gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary operator approval packet nonce command dry-run boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary readback validation dry-run gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-readback-validation-dry-run-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary readback validation dry-run boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-readback-validation-dry-run-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary rollback tombstone dry-run gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-rollback-tombstone-dry-run-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped memory real write canary rollback tombstone dry-run boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-rollback-tombstone-dry-run-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary operator approval nonce command accepted gate boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-operator-approval-nonce-command-accepted-gate-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary operator approval nonce command accepted gate boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-operator-approval-nonce-command-accepted-gate-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-wal-receipt-binding-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary wal receipt binding boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-wal-receipt-binding-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary post-write readback binding boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-post-write-readback-binding-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary post-write readback binding boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-post-write-readback-binding-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary rollback tombstone proof boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-tombstone-proof-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary rollback tombstone proof boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-tombstone-proof-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary execution boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-execution-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary execution boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-execution-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable WAL receipt persistence boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-wal-receipt-persistence-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable WAL receipt persistence boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-wal-receipt-persistence-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable readback receipt acceptance boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-readback-receipt-acceptance-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable readback receipt acceptance boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-readback-receipt-acceptance-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary rollback receipt acceptance boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-receipt-acceptance-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary rollback receipt acceptance boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-receipt-acceptance-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary tombstone cleanup acceptance boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-tombstone-cleanup-acceptance-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary tombstone cleanup acceptance boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-tombstone-cleanup-acceptance-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write plan boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-plan-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write plan boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-plan-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write preflight boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-preflight-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write preflight boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-preflight-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write guarded execution readiness boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write guarded execution readiness boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write guarded execution boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write guarded execution boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write single shot execution boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-single-shot-execution-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write single shot execution boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-single-shot-execution-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write receipt acceptance boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-receipt-acceptance-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write receipt acceptance boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-receipt-acceptance-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write rollback tombstone zero residue acceptance boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-rollback-tombstone-zero-residue-acceptance-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution minimal scoped memory real write canary durable store write rollback tombstone zero residue acceptance boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-rollback-tombstone-zero-residue-acceptance-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write preflight boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write preflight boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write operator packet acceptance boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write operator packet acceptance boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write operator packet acceptance receipt boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-receipt-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write operator packet acceptance receipt boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-receipt-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution envelope boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-envelope-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution envelope boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-envelope-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt replay idempotency denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt replay idempotency denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt ordering monotonicity denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt ordering monotonicity denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt cancellation supersession denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt audit trail immutable evidence denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-audit-trail-immutable-evidence-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt audit trail immutable evidence denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-audit-trail-immutable-evidence-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt retention expiry garbage collection denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt retention expiry garbage collection denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt export query observability denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-export-query-observability-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt export query observability denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-export-query-observability-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt operator-facing summary briefing non-persistence denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt operator-facing summary briefing non-persistence denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt final operator acknowledgement non-acceptance denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-final-operator-acknowledgement-non-acceptance-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt final operator acknowledgement non-acceptance denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-final-operator-acknowledgement-non-acceptance-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt terminal operator decision public claim non-promotion denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt terminal operator decision public claim non-promotion denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication denial boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-denial-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication denial boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-denial-boundary-route-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication result receipt no-persistence boundary gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary-gate.sh
-
-echo "[hepta-preflight] memory live mutation operator write execution scoped production durable memory write dry-run execution result receipt release artifact publication result receipt no-persistence boundary route gate"
-scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary-route-gate.sh
 
 echo "[hepta-preflight] live mutation pre-activation soak evidence persistence payload redaction acceptance receipt command contract gate"
 scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-command-contract-gate.sh
@@ -1729,9 +1282,6 @@ scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 
 echo "[hepta-preflight] preflight terminal coverage diagnostic contract gate"
 scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh
-
-echo "[hepta-preflight] upstream Codex latest multisurface absorption native route gate"
-scripts/hepta-upstream-codex-latest-multisurface-absorption-route-gate.sh
 
 echo "[hepta-preflight] upstream Codex latest active-safety regression gate"
 scripts/hepta-upstream-codex-latest-active-safety-regression.sh

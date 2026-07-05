@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -495,10 +496,10 @@ impl ExecutionSafetyRegressionReport {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CorePolicySafetyReport, ExecutionSafetyRegressionReport, command_is_hardline_blocked,
-        lexical_workspace_contains,
-    };
+    use super::CorePolicySafetyReport;
+    use super::ExecutionSafetyRegressionReport;
+    use super::command_is_hardline_blocked;
+    use super::lexical_workspace_contains;
 
     #[test]
     fn execution_safety_regression_pack_covers_blocklist_timeout_and_remote_permission_guards() {

@@ -1,9 +1,11 @@
 use hepta_core::DoctorCheckOutcome;
 
-use super::{
-    DoctorCheck, DoctorProviderProbe, DoctorStatus, integrity_catalog, provider_probe,
-    status_rollup,
-};
+use super::DoctorCheck;
+use super::DoctorProviderProbe;
+use super::DoctorStatus;
+use super::integrity_catalog;
+use super::provider_probe;
+use super::status_rollup;
 
 pub(super) struct DoctorOutcomeBundle {
     pub overall_status: DoctorStatus,
@@ -40,7 +42,9 @@ fn adapt_v2_checks(
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{DoctorArea, DoctorStatus as CoreDoctorStatus, ModelRef};
+    use hepta_core::DoctorArea;
+    use hepta_core::DoctorStatus as CoreDoctorStatus;
+    use hepta_core::ModelRef;
 
     use super::*;
 

@@ -1383,32 +1383,36 @@ fn classify_first_cli_arg(arg: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
-        HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND, HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
-        HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND,
-        HEPTA_ENGINE_DEPENDENCY_CLOSURE_SOURCE_COMMAND, HeptaCodexEngineAdapterEnvelopeInput,
-        HeptaProductRuntimeEntrypointInput, hepta_codex_engine_adapter_boundary_report,
-        hepta_codex_legacy_tui_cli_adapter_envelope,
-        hepta_codex_legacy_tui_cli_adapter_shadow_replay,
-        hepta_codex_legacy_tui_cli_adapter_threading_plan,
-        hepta_codex_mcp_app_server_adapter_envelope,
-        hepta_codex_mcp_app_server_adapter_shadow_replay,
-        hepta_codex_mcp_app_server_adapter_threading_plan,
-        hepta_codex_model_provider_adapter_envelope,
-        hepta_codex_model_provider_adapter_shadow_replay,
-        hepta_codex_model_provider_adapter_threading_plan,
-        hepta_codex_sandbox_exec_adapter_envelope, hepta_codex_sandbox_exec_adapter_shadow_replay,
-        hepta_codex_sandbox_exec_adapter_threading_plan,
-        hepta_codex_session_thread_store_adapter_envelope,
-        hepta_codex_session_thread_store_adapter_shadow_replay,
-        hepta_codex_session_thread_store_adapter_threading_plan,
-        hepta_codex_tool_invocation_adapter_envelope,
-        hepta_codex_tool_invocation_adapter_shadow_replay,
-        hepta_codex_tool_invocation_adapter_threading_plan, hepta_core_fusion_readiness_report,
-        hepta_engine_dependency_closure_report, hepta_name_repository_closure_report,
-        hepta_product_runtime_entrypoint_plan,
-    };
+    use super::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
+    use super::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
+    use super::HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
+    use super::HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
+    use super::HEPTA_ENGINE_DEPENDENCY_CLOSURE_SOURCE_COMMAND;
+    use super::HeptaCodexEngineAdapterEnvelopeInput;
+    use super::HeptaProductRuntimeEntrypointInput;
+    use super::hepta_codex_engine_adapter_boundary_report;
+    use super::hepta_codex_legacy_tui_cli_adapter_envelope;
+    use super::hepta_codex_legacy_tui_cli_adapter_shadow_replay;
+    use super::hepta_codex_legacy_tui_cli_adapter_threading_plan;
+    use super::hepta_codex_mcp_app_server_adapter_envelope;
+    use super::hepta_codex_mcp_app_server_adapter_shadow_replay;
+    use super::hepta_codex_mcp_app_server_adapter_threading_plan;
+    use super::hepta_codex_model_provider_adapter_envelope;
+    use super::hepta_codex_model_provider_adapter_shadow_replay;
+    use super::hepta_codex_model_provider_adapter_threading_plan;
+    use super::hepta_codex_sandbox_exec_adapter_envelope;
+    use super::hepta_codex_sandbox_exec_adapter_shadow_replay;
+    use super::hepta_codex_sandbox_exec_adapter_threading_plan;
+    use super::hepta_codex_session_thread_store_adapter_envelope;
+    use super::hepta_codex_session_thread_store_adapter_shadow_replay;
+    use super::hepta_codex_session_thread_store_adapter_threading_plan;
+    use super::hepta_codex_tool_invocation_adapter_envelope;
+    use super::hepta_codex_tool_invocation_adapter_shadow_replay;
+    use super::hepta_codex_tool_invocation_adapter_threading_plan;
+    use super::hepta_core_fusion_readiness_report;
+    use super::hepta_engine_dependency_closure_report;
+    use super::hepta_name_repository_closure_report;
+    use super::hepta_product_runtime_entrypoint_plan;
 
     #[test]
     fn report_marks_hepta_as_root_owner_and_codex_as_internal_engine() {

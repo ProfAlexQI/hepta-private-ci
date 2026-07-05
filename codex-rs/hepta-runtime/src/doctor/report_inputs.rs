@@ -1,15 +1,24 @@
-use hepta_core::{
-    ExternalProductionStatus, HeptaError, LocalConfigImportStatus, MemoryRecord, SessionRecord,
-};
+use hepta_core::ExternalProductionStatus;
+use hepta_core::HeptaError;
+use hepta_core::LocalConfigImportStatus;
+use hepta_core::MemoryRecord;
+use hepta_core::SessionRecord;
 
-use super::{
-    DoctorCheck, DoctorProviderProbe, DoctorStatus, integrity, intelligence_eval_gate,
-    report_bundle, report_input_collectors,
-    runtime_metrics::{self, DoctorRuntimeStatInputs},
-};
-use crate::{
-    EventRecord, ModelSelection, RuntimeKernel, RuntimeSnapshot, SessionApprovalState, TurnRecord,
-};
+use super::DoctorCheck;
+use super::DoctorProviderProbe;
+use super::DoctorStatus;
+use super::integrity;
+use super::intelligence_eval_gate;
+use super::report_bundle;
+use super::report_input_collectors;
+use super::runtime_metrics::DoctorRuntimeStatInputs;
+use super::runtime_metrics::{self};
+use crate::EventRecord;
+use crate::ModelSelection;
+use crate::RuntimeKernel;
+use crate::RuntimeSnapshot;
+use crate::SessionApprovalState;
+use crate::TurnRecord;
 
 pub(super) struct DoctorReportInputs {
     active_session_id: String,

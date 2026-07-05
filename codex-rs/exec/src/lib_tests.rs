@@ -28,6 +28,65 @@ fn exec_defaults_analytics_to_enabled() {
     assert_eq!(DEFAULT_ANALYTICS_ENABLED, true);
 }
 
+#[test]
+fn context_recall_selected_snippets_for_turn_start_maps_valid_opted_in_envelope() {
+    let envelope = test_core_selected_snippet_envelope();
+    let selected_snippets =
+        context_recall_selected_snippets_for_turn_start_with_opt_in(Some(envelope), true)
+            .expect("valid opted-in envelope should be mapped");
+
+    assert!(selected_snippets.clone().into_core().has_shadow_integrity());
+    assert_eq!(selected_snippets.selected_snippet_count, 1);
+    assert_eq!(
+        selected_snippets.snippets[0].text,
+        "[redacted-query] bounded memory"
+    );
+}
+
+#[test]
+fn context_recall_selected_snippets_for_turn_start_requires_opt_in_and_integrity() {
+    let valid = test_core_selected_snippet_envelope();
+    assert!(
+        context_recall_selected_snippets_for_turn_start_with_opt_in(Some(valid.clone()), false)
+            .is_none()
+    );
+
+    let mut invalid = valid;
+    invalid.selected_snippet_count = 2;
+    assert!(
+        context_recall_selected_snippets_for_turn_start_with_opt_in(Some(invalid), true).is_none()
+    );
+}
+
+fn test_core_selected_snippet_envelope() -> CoreTurnContextRecallSelectedSnippetEnvelope {
+    CoreTurnContextRecallSelectedSnippetEnvelope {
+        version: codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+        max_snippets: 4,
+        max_snippet_chars: 120,
+        selected_snippet_count: 1,
+        omitted_snippet_count: 2,
+        redacted_snippet_count: 1,
+        truncated_snippet_count: 0,
+        snippets: vec![codex_protocol::protocol::TurnContextRecallSelectedSnippet {
+            snippet_hash: "fedcba9876543210".to_string(),
+            text: "[redacted-query] bounded memory".to_string(),
+            estimated_tokens: 8,
+            redacted: true,
+            truncated: false,
+        }],
+        safety: codex_protocol::protocol::TurnContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff: true,
+            bounded: true,
+            origin_identifiers_exposed: false,
+            raw_ranked_payload_exposed: false,
+            rank_explanation_exposed: false,
+            control_marker_exposed: false,
+            query_payload_exposed: false,
+            per_origin_list_exposed: false,
+        },
+    }
+}
+
 #[derive(Clone)]
 struct TestLogWriter {
     buffer: Arc<Mutex<Vec<u8>>>,

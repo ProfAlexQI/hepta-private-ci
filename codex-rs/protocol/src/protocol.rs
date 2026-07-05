@@ -473,6 +473,12 @@ pub enum Op {
         /// Optional turn-scoped Responses API `client_metadata`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         responsesapi_client_metadata: Option<HashMap<String, String>>,
+        /// Optional selected recall snippets for the current turn.
+        ///
+        /// This is a request-path handoff surface only. Core/session validates
+        /// the envelope again before manifest persistence or live prompt use.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_recall_selected_snippets: Option<TurnContextRecallSelectedSnippetEnvelope>,
 
         /// Updated `cwd` for sandbox/tool calls.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -2825,6 +2831,1563 @@ impl From<CompactedItem> for ResponseItem {
     }
 }
 
+pub const TURN_CONTEXT_MANIFEST_VERSION: u32 = 1;
+pub const TURN_CONTEXT_DECISION_SCHEMA_VERSION: u32 = 1;
+pub const TURN_CONTEXT_COMPRESSION_CANDIDATE_SCHEMA_VERSION: u32 = 1;
+pub const TURN_CONTEXT_COMPRESSION_STAGE_SCHEMA_VERSION: u32 = 2;
+pub const TURN_CONTEXT_ADAPTIVE_BUDGET_ALLOCATION_SCHEMA_VERSION: u32 = 1;
+pub const TURN_CONTEXT_MEMORY_TAXONOMY_SCHEMA_VERSION: u32 = 1;
+pub const TURN_CONTEXT_MEMORY_FORMATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
+pub const TURN_CONTEXT_MEMORY_TEMPORAL_FACT_SCHEMA_VERSION: u32 = 1;
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextTier {
+    System,
+    Developer,
+    User,
+    Tool,
+    Runtime,
+    SessionState,
+    CrossSessionMemory,
+    RetrievedSnippets,
+    Summary,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Developer => "developer",
+            Self::User => "user",
+            Self::Tool => "tool",
+            Self::Runtime => "runtime",
+            Self::SessionState => "session_state",
+            Self::CrossSessionMemory => "cross_session_memory",
+            Self::RetrievedSnippets => "retrieved_snippets",
+            Self::Summary => "summary",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextManifestEntry {
+    pub role: String,
+    #[serde(default, skip_serializing_if = "TurnContextTier::is_unknown")]
+    pub tier: TurnContextTier,
+    pub source: String,
+    pub replay_key: String,
+    /// Stable 16-hex replay identity for the entry text. This is not a
+    /// cryptographic trust digest and must not be used for approval integrity.
+    pub text_hash: String,
+    pub estimated_tokens: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextDecisionEntry {
+    pub source: String,
+    pub decision: String,
+    /// Stable 16-hex replay identity for the local decision reason. This is not
+    /// a cryptographic trust digest and must not be used for approval integrity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reason_hash: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TurnContextDecisionKind {
+    Included {
+        policy_class: String,
+    },
+    Policy {
+        strategy: String,
+        budget_state: String,
+    },
+    CandidateOmit {
+        source_id: String,
+        priority: u32,
+        tokens: u32,
+    },
+    CandidateTruncate {
+        source_id: String,
+        remaining_over_budget: u32,
+        tokens: u32,
+    },
+    Omitted {
+        source_id: String,
+        priority: u32,
+        tokens: u32,
+    },
+    Truncated {
+        source_id: String,
+        original_tokens: u32,
+        tokens: u32,
+    },
+    Unknown {
+        raw: String,
+    },
+}
+
+impl TurnContextDecisionKind {
+    pub fn schema_version(&self) -> Option<u32> {
+        self.is_known()
+            .then_some(TURN_CONTEXT_DECISION_SCHEMA_VERSION)
+    }
+
+    pub fn to_legacy_decision_string(&self) -> String {
+        match self {
+            Self::Included { policy_class } => format!("included:{policy_class}"),
+            Self::Policy {
+                strategy,
+                budget_state,
+            } => format!("policy:{strategy}:{budget_state}"),
+            Self::CandidateOmit {
+                source_id,
+                priority,
+                tokens,
+            } => format!("candidate_omit:{source_id}:priority:{priority}:tokens:{tokens}"),
+            Self::CandidateTruncate {
+                source_id,
+                remaining_over_budget,
+                tokens,
+            } => format!(
+                "candidate_truncate:{source_id}:remaining_over_budget:{remaining_over_budget}:tokens:{tokens}"
+            ),
+            Self::Omitted {
+                source_id,
+                priority,
+                tokens,
+            } => format!("omitted:{source_id}:priority:{priority}:tokens:{tokens}"),
+            Self::Truncated {
+                source_id,
+                original_tokens,
+                tokens,
+            } => format!("truncated:{source_id}:original_tokens:{original_tokens}:tokens:{tokens}"),
+            Self::Unknown { raw } => raw.clone(),
+        }
+    }
+
+    pub fn is_truncation(&self) -> bool {
+        matches!(self, Self::Truncated { .. })
+    }
+
+    pub fn is_candidate_truncation(&self) -> bool {
+        matches!(self, Self::CandidateTruncate { .. })
+    }
+
+    pub fn is_known(&self) -> bool {
+        !matches!(self, Self::Unknown { .. })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TurnContextDecisionLedgerSummary {
+    pub schema_version: u32,
+    pub included_count: u32,
+    pub policy_count: u32,
+    pub candidate_omit_count: u32,
+    pub candidate_truncate_count: u32,
+    pub omitted_count: u32,
+    pub truncated_count: u32,
+    pub unknown_count: u32,
+}
+
+impl TurnContextDecisionLedgerSummary {
+    pub fn known_count(&self) -> u32 {
+        self.included_count
+            .saturating_add(self.policy_count)
+            .saturating_add(self.candidate_omit_count)
+            .saturating_add(self.candidate_truncate_count)
+            .saturating_add(self.omitted_count)
+            .saturating_add(self.truncated_count)
+    }
+}
+
+impl TurnContextDecisionEntry {
+    pub fn from_kind(
+        source: impl Into<String>,
+        kind: TurnContextDecisionKind,
+        reason_hash: Option<String>,
+    ) -> Self {
+        Self {
+            source: source.into(),
+            decision: kind.to_legacy_decision_string(),
+            reason_hash,
+        }
+    }
+
+    pub fn included(
+        source: impl Into<String>,
+        policy_class: impl Into<String>,
+        reason_hash: Option<String>,
+    ) -> Self {
+        Self::from_kind(
+            source,
+            TurnContextDecisionKind::Included {
+                policy_class: policy_class.into(),
+            },
+            reason_hash,
+        )
+    }
+
+    pub fn policy(
+        source: impl Into<String>,
+        strategy: impl Into<String>,
+        budget_state: impl Into<String>,
+        reason_hash: Option<String>,
+    ) -> Self {
+        Self::from_kind(
+            source,
+            TurnContextDecisionKind::Policy {
+                strategy: strategy.into(),
+                budget_state: budget_state.into(),
+            },
+            reason_hash,
+        )
+    }
+
+    pub fn candidate_omit(
+        source: impl Into<String>,
+        source_id: impl Into<String>,
+        priority: u32,
+        tokens: u32,
+        reason_hash: Option<String>,
+    ) -> Self {
+        Self::from_kind(
+            source,
+            TurnContextDecisionKind::CandidateOmit {
+                source_id: source_id.into(),
+                priority,
+                tokens,
+            },
+            reason_hash,
+        )
+    }
+
+    pub fn candidate_truncate(
+        source: impl Into<String>,
+        source_id: impl Into<String>,
+        remaining_over_budget: u32,
+        tokens: u32,
+        reason_hash: Option<String>,
+    ) -> Self {
+        Self::from_kind(
+            source,
+            TurnContextDecisionKind::CandidateTruncate {
+                source_id: source_id.into(),
+                remaining_over_budget,
+                tokens,
+            },
+            reason_hash,
+        )
+    }
+
+    pub fn omitted(
+        source: impl Into<String>,
+        source_id: impl Into<String>,
+        priority: u32,
+        tokens: u32,
+        reason_hash: Option<String>,
+    ) -> Self {
+        Self::from_kind(
+            source,
+            TurnContextDecisionKind::Omitted {
+                source_id: source_id.into(),
+                priority,
+                tokens,
+            },
+            reason_hash,
+        )
+    }
+
+    pub fn truncated(
+        source: impl Into<String>,
+        source_id: impl Into<String>,
+        original_tokens: u32,
+        tokens: u32,
+        reason_hash: Option<String>,
+    ) -> Self {
+        Self::from_kind(
+            source,
+            TurnContextDecisionKind::Truncated {
+                source_id: source_id.into(),
+                original_tokens,
+                tokens,
+            },
+            reason_hash,
+        )
+    }
+
+    pub fn kind(&self) -> TurnContextDecisionKind {
+        parse_turn_context_decision_kind(&self.decision).unwrap_or_else(|| {
+            TurnContextDecisionKind::Unknown {
+                raw: self.decision.clone(),
+            }
+        })
+    }
+}
+
+pub fn summarize_turn_context_decision_ledger(
+    entries: &[TurnContextDecisionEntry],
+) -> TurnContextDecisionLedgerSummary {
+    let mut summary = TurnContextDecisionLedgerSummary::default();
+    for entry in entries {
+        match entry.kind() {
+            TurnContextDecisionKind::Included { .. } => {
+                summary.included_count = summary.included_count.saturating_add(1);
+            }
+            TurnContextDecisionKind::Policy { .. } => {
+                summary.policy_count = summary.policy_count.saturating_add(1);
+            }
+            TurnContextDecisionKind::CandidateOmit { .. } => {
+                summary.candidate_omit_count = summary.candidate_omit_count.saturating_add(1);
+            }
+            TurnContextDecisionKind::CandidateTruncate { .. } => {
+                summary.candidate_truncate_count =
+                    summary.candidate_truncate_count.saturating_add(1);
+            }
+            TurnContextDecisionKind::Omitted { .. } => {
+                summary.omitted_count = summary.omitted_count.saturating_add(1);
+            }
+            TurnContextDecisionKind::Truncated { .. } => {
+                summary.truncated_count = summary.truncated_count.saturating_add(1);
+            }
+            TurnContextDecisionKind::Unknown { .. } => {
+                summary.unknown_count = summary.unknown_count.saturating_add(1);
+            }
+        }
+    }
+    if summary.known_count() > 0 {
+        summary.schema_version = TURN_CONTEXT_DECISION_SCHEMA_VERSION;
+    }
+    summary
+}
+
+fn parse_turn_context_decision_kind(decision: &str) -> Option<TurnContextDecisionKind> {
+    let parts = decision.split(':').collect::<Vec<_>>();
+    match parts.as_slice() {
+        ["included", policy_class] if !policy_class.is_empty() => {
+            Some(TurnContextDecisionKind::Included {
+                policy_class: (*policy_class).to_string(),
+            })
+        }
+        ["policy", strategy, budget_state] if !strategy.is_empty() && !budget_state.is_empty() => {
+            Some(TurnContextDecisionKind::Policy {
+                strategy: (*strategy).to_string(),
+                budget_state: (*budget_state).to_string(),
+            })
+        }
+        [
+            "candidate_omit",
+            source_id,
+            "priority",
+            priority,
+            "tokens",
+            tokens,
+        ] if !source_id.is_empty() => Some(TurnContextDecisionKind::CandidateOmit {
+            source_id: (*source_id).to_string(),
+            priority: priority.parse().ok()?,
+            tokens: tokens.parse().ok()?,
+        }),
+        [
+            "candidate_truncate",
+            source_id,
+            "remaining_over_budget",
+            remaining_over_budget,
+            "tokens",
+            tokens,
+        ] if !source_id.is_empty() => Some(TurnContextDecisionKind::CandidateTruncate {
+            source_id: (*source_id).to_string(),
+            remaining_over_budget: remaining_over_budget.parse().ok()?,
+            tokens: tokens.parse().ok()?,
+        }),
+        ["omitted", source_id, "priority", priority, "tokens", tokens] if !source_id.is_empty() => {
+            Some(TurnContextDecisionKind::Omitted {
+                source_id: (*source_id).to_string(),
+                priority: priority.parse().ok()?,
+                tokens: tokens.parse().ok()?,
+            })
+        }
+        [
+            "truncated",
+            source_id,
+            "original_tokens",
+            original_tokens,
+            "tokens",
+            tokens,
+        ] if !source_id.is_empty() => Some(TurnContextDecisionKind::Truncated {
+            source_id: (*source_id).to_string(),
+            original_tokens: original_tokens.parse().ok()?,
+            tokens: tokens.parse().ok()?,
+        }),
+        _ => None,
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextRecallSelectionSummary {
+    pub returned_source_count: u32,
+    pub selected_source_count: u32,
+    pub ranked_source_count: u32,
+    pub returned_unselected_source_count: u32,
+    pub source_diversity_met: bool,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub source_diversity_target: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub max_per_source: u32,
+    pub ranked_item_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub omitted_by_budget_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub memory_control_omitted_count: u32,
+    pub low_trust_ranked_item_count: u32,
+    pub low_recency_ranked_item_count: u32,
+}
+
+impl TurnContextRecallSelectionSummary {
+    pub fn returned_unselected_source_count_matches(&self) -> bool {
+        self.returned_unselected_source_count
+            == self
+                .returned_source_count
+                .saturating_sub(self.selected_source_count)
+    }
+
+    pub fn source_diversity_target_matches(&self) -> bool {
+        self.source_diversity_target == 0
+            || self.source_diversity_met
+                == (self.selected_source_count >= self.source_diversity_target)
+    }
+
+    pub fn has_count_integrity(&self) -> bool {
+        self.selected_source_count <= self.returned_source_count
+            && self.ranked_source_count <= self.selected_source_count
+            && self.ranked_source_count <= self.ranked_item_count
+            && (self.ranked_item_count == 0 || self.ranked_source_count > 0)
+            && self.returned_unselected_source_count_matches()
+            && self.source_diversity_target_matches()
+            && self.low_trust_ranked_item_count <= self.ranked_item_count
+            && self.low_recency_ranked_item_count <= self.ranked_item_count
+    }
+}
+
+pub const TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextRecallSelectedSnippetEnvelope {
+    pub version: u32,
+    pub max_snippets: u32,
+    pub max_snippet_chars: u32,
+    pub selected_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub omitted_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub redacted_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub truncated_snippet_count: u32,
+    pub snippets: Vec<TurnContextRecallSelectedSnippet>,
+    pub safety: TurnContextRecallSelectedSnippetSafety,
+}
+
+impl TurnContextRecallSelectedSnippetEnvelope {
+    pub fn counts_match(&self) -> bool {
+        self.selected_snippet_count == u32::try_from(self.snippets.len()).unwrap_or(u32::MAX)
+            && self.redacted_snippet_count
+                == u32::try_from(
+                    self.snippets
+                        .iter()
+                        .filter(|snippet| snippet.redacted)
+                        .count(),
+                )
+                .unwrap_or(u32::MAX)
+            && self.truncated_snippet_count
+                == u32::try_from(
+                    self.snippets
+                        .iter()
+                        .filter(|snippet| snippet.truncated)
+                        .count(),
+                )
+                .unwrap_or(u32::MAX)
+    }
+
+    pub fn bounds_match(&self) -> bool {
+        self.selected_snippet_count <= self.max_snippets
+            && self.snippets.len() <= usize::try_from(self.max_snippets).unwrap_or(usize::MAX)
+            && self.snippets.iter().all(|snippet| {
+                !snippet.text.is_empty()
+                    && snippet.text.chars().count()
+                        <= usize::try_from(self.max_snippet_chars).unwrap_or(usize::MAX)
+                    && is_stable_manifest_replay_hash(&snippet.snippet_hash)
+            })
+    }
+
+    pub fn safety_matches(&self) -> bool {
+        let forbidden_exposure = self.safety.origin_identifiers_exposed
+            || self.safety.raw_ranked_payload_exposed
+            || self.safety.rank_explanation_exposed
+            || self.safety.control_marker_exposed
+            || self.safety.query_payload_exposed
+            || self.safety.per_origin_list_exposed
+            || self
+                .snippets
+                .iter()
+                .any(|snippet| snippet.text.contains("[hepta-memory:"));
+        self.safety.bounded == self.bounds_match()
+            && self.safety.ready_for_shadow_handoff == (self.safety.bounded && !forbidden_exposure)
+            && self.safety.ready_for_shadow_handoff
+    }
+
+    pub fn has_shadow_integrity(&self) -> bool {
+        self.version == TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION
+            && self.counts_match()
+            && self.bounds_match()
+            && self.safety_matches()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextRecallSelectedSnippet {
+    pub snippet_hash: String,
+    pub text: String,
+    pub estimated_tokens: u32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub redacted: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub truncated: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextRecallSelectedSnippetSafety {
+    pub ready_for_shadow_handoff: bool,
+    pub bounded: bool,
+    pub origin_identifiers_exposed: bool,
+    pub raw_ranked_payload_exposed: bool,
+    pub rank_explanation_exposed: bool,
+    pub control_marker_exposed: bool,
+    pub query_payload_exposed: bool,
+    pub per_origin_list_exposed: bool,
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextMemoryTaxonomyClass {
+    Semantic,
+    Episodic,
+    Procedural,
+    Control,
+    Transcript,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextMemoryTaxonomyClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Semantic => "semantic",
+            Self::Episodic => "episodic",
+            Self::Procedural => "procedural",
+            Self::Control => "control",
+            Self::Transcript => "transcript",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextMemoryTaxonomyBucket {
+    pub class: TurnContextMemoryTaxonomyClass,
+    pub source_count: u32,
+    pub returned_count: u32,
+    pub available_count: u32,
+    pub omitted_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub provenance_span_count: u32,
+}
+
+impl TurnContextMemoryTaxonomyBucket {
+    pub fn schema_version(&self) -> Option<u32> {
+        self.has_payload_light_integrity()
+            .then_some(TURN_CONTEXT_MEMORY_TAXONOMY_SCHEMA_VERSION)
+    }
+
+    pub fn has_payload_light_integrity(&self) -> bool {
+        !self.class.is_unknown()
+            && self.returned_count <= self.available_count
+            && self.omitted_count == self.available_count.saturating_sub(self.returned_count)
+            && (self.source_count > 0
+                || (self.returned_count == 0
+                    && self.available_count == 0
+                    && self.omitted_count == 0
+                    && self.provenance_span_count == 0))
+    }
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextMemoryFormationCandidateType {
+    Fact,
+    Task,
+    Preference,
+    Decision,
+    Summary,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextMemoryFormationCandidateType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fact => "fact",
+            Self::Task => "task",
+            Self::Preference => "preference",
+            Self::Decision => "decision",
+            Self::Summary => "summary",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextMemoryFormationReceipt {
+    pub candidate_type: TurnContextMemoryFormationCandidateType,
+    pub transcript_span_count: u32,
+    pub provenance_span_count: u32,
+    pub confidence_basis_points: u32,
+    pub idempotency_key_hash: String,
+    pub privacy_class: String,
+    pub queued_for_background: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub production_write: bool,
+}
+
+impl TurnContextMemoryFormationReceipt {
+    pub fn schema_version(&self) -> Option<u32> {
+        self.has_payload_light_integrity()
+            .then_some(TURN_CONTEXT_MEMORY_FORMATION_RECEIPT_SCHEMA_VERSION)
+    }
+
+    pub fn has_payload_light_integrity(&self) -> bool {
+        !self.candidate_type.is_unknown()
+            && self.transcript_span_count > 0
+            && self.provenance_span_count > 0
+            && self.provenance_span_count <= self.transcript_span_count
+            && self.confidence_basis_points <= 10_000
+            && is_stable_manifest_replay_hash(&self.idempotency_key_hash)
+            && compression_candidate_source_id_is_payload_light(&self.privacy_class)
+            && self.queued_for_background
+            && !self.production_write
+    }
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextMemoryTemporalFactType {
+    Attribute,
+    Preference,
+    TaskState,
+    Decision,
+    Summary,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextMemoryTemporalFactType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Attribute => "attribute",
+            Self::Preference => "preference",
+            Self::TaskState => "task_state",
+            Self::Decision => "decision",
+            Self::Summary => "summary",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextMemoryTemporalFact {
+    pub fact_type: TurnContextMemoryTemporalFactType,
+    pub entity_hash: String,
+    pub provenance_span_count: u32,
+    pub valid_from_sequence: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub invalid_at_sequence: Option<u32>,
+    pub confidence_basis_points: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub supersedes_fact_hash: Option<String>,
+    pub privacy_class: String,
+    pub dry_run_only: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub production_write: bool,
+}
+
+impl TurnContextMemoryTemporalFact {
+    pub fn schema_version(&self) -> Option<u32> {
+        self.has_payload_light_integrity()
+            .then_some(TURN_CONTEXT_MEMORY_TEMPORAL_FACT_SCHEMA_VERSION)
+    }
+
+    pub fn has_payload_light_integrity(&self) -> bool {
+        !self.fact_type.is_unknown()
+            && is_stable_manifest_replay_hash(&self.entity_hash)
+            && self.provenance_span_count > 0
+            && self.valid_from_sequence > 0
+            && self
+                .invalid_at_sequence
+                .is_none_or(|sequence| sequence > self.valid_from_sequence)
+            && self.confidence_basis_points <= 10_000
+            && self
+                .supersedes_fact_hash
+                .as_deref()
+                .is_none_or(is_stable_manifest_replay_hash)
+            && compression_candidate_source_id_is_payload_light(&self.privacy_class)
+            && self.dry_run_only
+            && !self.production_write
+    }
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextCompressionStageKind {
+    Summary,
+    Rewrite,
+    Defragment,
+    Prune,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextCompressionStageKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::Rewrite => "rewrite",
+            Self::Defragment => "defragment",
+            Self::Prune => "prune",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn schema_version(self) -> Option<u32> {
+        (!self.is_unknown()).then_some(TURN_CONTEXT_COMPRESSION_STAGE_SCHEMA_VERSION)
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextCompressionLossCheckStatus {
+    MarkerBoundaryOnly,
+    SemanticLossCheckPassed,
+    SemanticLossCheckFailed,
+    NotEvaluated,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextCompressionLossCheckStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MarkerBoundaryOnly => "marker_boundary_only",
+            Self::SemanticLossCheckPassed => "semantic_loss_check_passed",
+            Self::SemanticLossCheckFailed => "semantic_loss_check_failed",
+            Self::NotEvaluated => "not_evaluated",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextCompressionProtectedTierInvariant {
+    Preserved,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextCompressionProtectedTierInvariant {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Preserved => "preserved",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextCompressionStage {
+    pub kind: TurnContextCompressionStageKind,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub affected_entries: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub loss_check_status: Option<TurnContextCompressionLossCheckStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub rollback_source_text_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub protected_tier_invariant: Option<TurnContextCompressionProtectedTierInvariant>,
+}
+
+impl TurnContextCompressionStage {
+    pub fn tokens_saved(&self) -> u32 {
+        self.input_tokens.saturating_sub(self.output_tokens)
+    }
+
+    pub fn has_payload_light_integrity(&self) -> bool {
+        !self.kind.is_unknown()
+            && self.output_tokens <= self.input_tokens
+            && (self.input_tokens == 0 || self.affected_entries > 0)
+            && self
+                .loss_check_status
+                .is_none_or(|status| !status.is_unknown())
+            && self
+                .rollback_source_text_hash
+                .as_deref()
+                .is_none_or(is_stable_manifest_replay_hash)
+            && self
+                .protected_tier_invariant
+                .is_none_or(|invariant| !invariant.is_unknown())
+    }
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextCompressionCandidateReason {
+    BudgetPressureDryRun,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextCompressionCandidateReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BudgetPressureDryRun => "budget_pressure_dry_run",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum TurnContextBudgetAllocationAction {
+    Keep,
+    Drop,
+    Compress,
+    #[default]
+    Unknown,
+}
+
+impl TurnContextBudgetAllocationAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Keep => "keep",
+            Self::Drop => "drop",
+            Self::Compress => "compress",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextAdaptiveBudgetAllocation {
+    pub tier: TurnContextTier,
+    pub source_id: String,
+    pub budget_class: String,
+    pub input_tokens: u32,
+    pub reserve_tokens: u32,
+    pub proposed_budget_tokens: u32,
+    pub overflow_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub omit_priority: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub compression_kind: Option<TurnContextCompressionStageKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub estimated_compressed_tokens: Option<u32>,
+    pub current_heuristic_action: TurnContextBudgetAllocationAction,
+    pub proposed_action: TurnContextBudgetAllocationAction,
+    pub would_drop: bool,
+    pub would_compress: bool,
+}
+
+impl TurnContextAdaptiveBudgetAllocation {
+    pub fn schema_version(&self) -> Option<u32> {
+        self.has_payload_light_integrity()
+            .then_some(TURN_CONTEXT_ADAPTIVE_BUDGET_ALLOCATION_SCHEMA_VERSION)
+    }
+
+    pub fn has_payload_light_integrity(&self) -> bool {
+        !self.tier.is_unknown()
+            && compression_candidate_source_id_is_payload_light(&self.source_id)
+            && !self.budget_class.is_empty()
+            && self.proposed_budget_tokens <= self.input_tokens
+            && self.reserve_tokens <= self.input_tokens
+            && self.overflow_tokens
+                == self
+                    .input_tokens
+                    .saturating_sub(self.proposed_budget_tokens)
+            && self
+                .estimated_compressed_tokens
+                .is_none_or(|tokens| tokens <= self.input_tokens)
+            && self.compression_kind.is_none_or(|kind| !kind.is_unknown())
+            && !self.current_heuristic_action.is_unknown()
+            && !self.proposed_action.is_unknown()
+            && self.would_drop == (self.proposed_action == TurnContextBudgetAllocationAction::Drop)
+            && self.would_compress
+                == (self.proposed_action == TurnContextBudgetAllocationAction::Compress)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextCompressionCandidate {
+    pub kind: TurnContextCompressionStageKind,
+    pub tier: TurnContextTier,
+    pub source_id: String,
+    pub input_tokens: u32,
+    pub estimated_output_tokens: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub affected_entries: u32,
+    pub not_executed_reason: TurnContextCompressionCandidateReason,
+}
+
+impl TurnContextCompressionCandidate {
+    pub fn schema_version(&self) -> Option<u32> {
+        self.has_payload_light_integrity()
+            .then_some(TURN_CONTEXT_COMPRESSION_CANDIDATE_SCHEMA_VERSION)
+    }
+
+    pub fn estimated_tokens_saved(&self) -> u32 {
+        self.input_tokens
+            .saturating_sub(self.estimated_output_tokens)
+    }
+
+    pub fn has_payload_light_integrity(&self) -> bool {
+        !self.kind.is_unknown()
+            && !self.tier.is_unknown()
+            && compression_candidate_source_id_is_payload_light(&self.source_id)
+            && self.estimated_output_tokens <= self.input_tokens
+            && (self.input_tokens == 0 || self.affected_entries > 0)
+            && !self.not_executed_reason.is_unknown()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
+pub struct TurnContextManifestItem {
+    pub version: u32,
+    pub estimated_tokens: u32,
+    /// Stable 16-hex replay identity over the payload-light manifest fields.
+    /// This is not a cryptographic trust digest and must not be used for
+    /// operator approval, release, or activation integrity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ledger_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub budget_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub omitted_entries: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub omitted_sources: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub truncated: bool,
+    /// Stable 16-hex replay identity over the payload-light decision ledger.
+    /// This is not a cryptographic trust digest and must not be used for
+    /// operator approval, release, or activation integrity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub decision_ledger_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decision_ledger: Vec<TurnContextDecisionEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recall_selection: Option<TurnContextRecallSelectionSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recall_selected_snippets: Option<TurnContextRecallSelectedSnippetEnvelope>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memory_taxonomy: Vec<TurnContextMemoryTaxonomyBucket>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memory_formation_receipts: Vec<TurnContextMemoryFormationReceipt>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memory_temporal_facts: Vec<TurnContextMemoryTemporalFact>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub compression_candidates: Vec<TurnContextCompressionCandidate>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adaptive_budget_allocations: Vec<TurnContextAdaptiveBudgetAllocation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub compression_stages: Vec<TurnContextCompressionStage>,
+    pub entries: Vec<TurnContextManifestEntry>,
+}
+
+impl TurnContextManifestItem {
+    pub fn with_refreshed_ledger_hash(mut self) -> Self {
+        self.refresh_ledger_hash();
+        self
+    }
+
+    pub fn refresh_ledger_hash(&mut self) {
+        self.ledger_hash = Some(self.compute_ledger_hash());
+        self.decision_ledger_hash = (!self.decision_ledger.is_empty())
+            .then(|| compute_decision_ledger_hash(&self.decision_ledger));
+    }
+
+    pub fn has_supported_version(&self) -> bool {
+        self.version == TURN_CONTEXT_MANIFEST_VERSION
+    }
+
+    pub fn ledger_hash_matches_manifest(&self) -> bool {
+        self.ledger_hash
+            .as_deref()
+            .is_none_or(|hash| hash == self.compute_ledger_hash())
+    }
+
+    pub fn ledger_hash_is_compatible(&self) -> bool {
+        self.ledger_hash
+            .as_deref()
+            .is_none_or(is_stable_manifest_replay_hash)
+            && self.ledger_hash_matches_manifest()
+    }
+
+    pub fn entries_have_replay_integrity(&self) -> bool {
+        !self.entries.is_empty()
+            && self.entries.iter().all(|entry| {
+                !entry.role.is_empty()
+                    && !entry.source.is_empty()
+                    && !entry.replay_key.is_empty()
+                    && is_stable_manifest_replay_hash(&entry.text_hash)
+                    && entry.replay_key.ends_with(&format!(":{}", entry.text_hash))
+            })
+    }
+
+    pub fn decision_ledger_has_integrity(&self) -> bool {
+        self.decision_ledger.iter().all(|entry| {
+            !entry.source.is_empty()
+                && !entry.decision.is_empty()
+                && entry
+                    .reason_hash
+                    .as_deref()
+                    .is_none_or(is_stable_manifest_replay_hash)
+                && entry.kind().is_known()
+        })
+    }
+
+    pub fn decision_ledger_summary(&self) -> TurnContextDecisionLedgerSummary {
+        summarize_turn_context_decision_ledger(&self.decision_ledger)
+    }
+
+    pub fn decision_ledger_hash_is_compatible(&self) -> bool {
+        match (
+            self.decision_ledger.is_empty(),
+            self.decision_ledger_hash.as_deref(),
+        ) {
+            (true, None) => true,
+            (true, Some(hash)) => is_stable_manifest_replay_hash(hash),
+            (false, Some(hash)) => {
+                is_stable_manifest_replay_hash(hash)
+                    && hash == compute_decision_ledger_hash(&self.decision_ledger)
+            }
+            (false, None) => true,
+        }
+    }
+
+    pub fn recall_selection_has_integrity(&self) -> bool {
+        self.recall_selection
+            .as_ref()
+            .is_none_or(TurnContextRecallSelectionSummary::has_count_integrity)
+    }
+
+    pub fn recall_selected_snippets_have_integrity(&self) -> bool {
+        self.recall_selected_snippets
+            .as_ref()
+            .is_none_or(TurnContextRecallSelectedSnippetEnvelope::has_shadow_integrity)
+    }
+
+    pub fn memory_taxonomy_has_integrity(&self) -> bool {
+        self.memory_taxonomy
+            .iter()
+            .all(TurnContextMemoryTaxonomyBucket::has_payload_light_integrity)
+    }
+
+    pub fn memory_formation_receipts_have_integrity(&self) -> bool {
+        self.memory_formation_receipts
+            .iter()
+            .all(TurnContextMemoryFormationReceipt::has_payload_light_integrity)
+    }
+
+    pub fn memory_temporal_facts_have_integrity(&self) -> bool {
+        self.memory_temporal_facts
+            .iter()
+            .all(TurnContextMemoryTemporalFact::has_payload_light_integrity)
+    }
+
+    pub fn compression_stages_have_integrity(&self) -> bool {
+        self.compression_stages
+            .iter()
+            .all(TurnContextCompressionStage::has_payload_light_integrity)
+    }
+
+    pub fn compression_candidates_have_integrity(&self) -> bool {
+        self.compression_candidates
+            .iter()
+            .all(TurnContextCompressionCandidate::has_payload_light_integrity)
+    }
+
+    pub fn adaptive_budget_allocations_have_integrity(&self) -> bool {
+        self.adaptive_budget_allocations
+            .iter()
+            .all(TurnContextAdaptiveBudgetAllocation::has_payload_light_integrity)
+    }
+
+    pub fn has_replay_integrity(&self) -> bool {
+        self.has_supported_version()
+            && self.entries_have_replay_integrity()
+            && self.ledger_hash_is_compatible()
+            && self.decision_ledger_has_integrity()
+            && self.decision_ledger_hash_is_compatible()
+            && self.recall_selection_has_integrity()
+            && self.recall_selected_snippets_have_integrity()
+            && self.memory_taxonomy_has_integrity()
+            && self.memory_formation_receipts_have_integrity()
+            && self.memory_temporal_facts_have_integrity()
+            && self.compression_candidates_have_integrity()
+            && self.adaptive_budget_allocations_have_integrity()
+            && self.compression_stages_have_integrity()
+    }
+
+    fn compute_ledger_hash(&self) -> String {
+        let mut hash = StableManifestReplayHash::new();
+        hash.update_u32(self.version);
+        hash.update_u32(self.estimated_tokens);
+        hash.update_option_u32(self.budget_tokens);
+        hash.update_u32(self.omitted_entries);
+        hash.update_vec_str(&self.omitted_sources);
+        hash.update_bool(self.truncated);
+        hash.update_vec_decisions(&self.decision_ledger);
+        hash.update_recall_selection(self.recall_selection.as_ref());
+        hash.update_recall_selected_snippets(self.recall_selected_snippets.as_ref());
+        hash.update_memory_taxonomy(&self.memory_taxonomy);
+        hash.update_memory_formation_receipts(&self.memory_formation_receipts);
+        hash.update_memory_temporal_facts(&self.memory_temporal_facts);
+        hash.update_compression_candidates(&self.compression_candidates);
+        hash.update_adaptive_budget_allocations(&self.adaptive_budget_allocations);
+        hash.update_compression_stages(&self.compression_stages);
+        hash.update_vec_entries(&self.entries);
+        hash.finish()
+    }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+fn is_stable_manifest_replay_hash(value: &str) -> bool {
+    value.len() == 16 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn compression_candidate_source_id_is_payload_light(value: &str) -> bool {
+    const FORBIDDEN_SUBSTRINGS: &[&str] = &[
+        "memory_id",
+        "neuron_id",
+        "prompt_text",
+        "query",
+        "replay_key",
+        "snippet_text",
+        "text_hash",
+        "topic_id",
+    ];
+
+    !value.is_empty()
+        && value.len() <= 96
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        && !FORBIDDEN_SUBSTRINGS
+            .iter()
+            .any(|forbidden| value.contains(forbidden))
+}
+
+/// Returns the stable 16-hex replay hash used by turn-context manifest
+/// payload-light fields. This hash is deterministic for replay/debug
+/// comparison only; it is intentionally not a cryptographic trust digest.
+pub fn stable_turn_context_manifest_replay_hash(value: &str) -> String {
+    let mut hash = StableManifestReplayHash::new();
+    hash.update_str(value);
+    hash.finish()
+}
+
+/// Backwards-compatible name for entry text hashes. New code that needs to
+/// emphasize the trust boundary should call
+/// [`stable_turn_context_manifest_replay_hash`] instead.
+pub fn stable_turn_context_manifest_text_hash(value: &str) -> String {
+    stable_turn_context_manifest_replay_hash(value)
+}
+
+fn compute_decision_ledger_hash(entries: &[TurnContextDecisionEntry]) -> String {
+    let mut hash = StableManifestReplayHash::new();
+    hash.update_vec_decisions(entries);
+    hash.finish()
+}
+
+struct StableManifestReplayHash(u64);
+
+impl StableManifestReplayHash {
+    const OFFSET: u64 = 0xcbf29ce484222325;
+    const PRIME: u64 = 0x100000001b3;
+
+    fn new() -> Self {
+        Self(Self::OFFSET)
+    }
+
+    fn update_bytes(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 ^= u64::from(*byte);
+            self.0 = self.0.wrapping_mul(Self::PRIME);
+        }
+        self.0 ^= 0xff;
+        self.0 = self.0.wrapping_mul(Self::PRIME);
+    }
+
+    fn update_str(&mut self, value: &str) {
+        self.update_bytes(value.as_bytes());
+    }
+
+    fn update_bool(&mut self, value: bool) {
+        self.update_str(if value { "true" } else { "false" });
+    }
+
+    fn update_u32(&mut self, value: u32) {
+        self.update_str(&value.to_string());
+    }
+
+    fn update_option_u32(&mut self, value: Option<u32>) {
+        match value {
+            Some(value) => {
+                self.update_str("some");
+                self.update_u32(value);
+            }
+            None => self.update_str("none"),
+        }
+    }
+
+    fn update_option_str(&mut self, value: Option<&str>) {
+        match value {
+            Some(value) => {
+                self.update_str("some");
+                self.update_str(value);
+            }
+            None => self.update_str("none"),
+        }
+    }
+
+    fn update_vec_str(&mut self, values: &[String]) {
+        self.update_u32(u32::try_from(values.len()).unwrap_or(u32::MAX));
+        for value in values {
+            self.update_str(value);
+        }
+    }
+
+    fn update_vec_entries(&mut self, entries: &[TurnContextManifestEntry]) {
+        self.update_u32(u32::try_from(entries.len()).unwrap_or(u32::MAX));
+        let include_tiers = entries.iter().any(|entry| !entry.tier.is_unknown());
+        for entry in entries {
+            self.update_str(&entry.role);
+            if include_tiers {
+                self.update_str(entry.tier.as_str());
+            }
+            self.update_str(&entry.source);
+            self.update_str(&entry.replay_key);
+            self.update_str(&entry.text_hash);
+            self.update_u32(entry.estimated_tokens);
+        }
+    }
+
+    fn update_vec_decisions(&mut self, entries: &[TurnContextDecisionEntry]) {
+        self.update_u32(u32::try_from(entries.len()).unwrap_or(u32::MAX));
+        for entry in entries {
+            self.update_str(&entry.source);
+            self.update_str(&entry.decision);
+            if let Some(reason_hash) = &entry.reason_hash {
+                self.update_str("some");
+                self.update_str(reason_hash);
+            } else {
+                self.update_str("none");
+            }
+        }
+    }
+
+    fn update_recall_selection(
+        &mut self,
+        recall_selection: Option<&TurnContextRecallSelectionSummary>,
+    ) {
+        let Some(recall_selection) = recall_selection else {
+            self.update_str("none");
+            return;
+        };
+        self.update_str("some");
+        self.update_u32(recall_selection.returned_source_count);
+        self.update_u32(recall_selection.selected_source_count);
+        self.update_u32(recall_selection.ranked_source_count);
+        self.update_u32(recall_selection.returned_unselected_source_count);
+        self.update_bool(recall_selection.source_diversity_met);
+        self.update_u32(recall_selection.source_diversity_target);
+        self.update_u32(recall_selection.max_per_source);
+        self.update_u32(recall_selection.ranked_item_count);
+        self.update_u32(recall_selection.omitted_by_budget_count);
+        self.update_u32(recall_selection.memory_control_omitted_count);
+        self.update_u32(recall_selection.low_trust_ranked_item_count);
+        self.update_u32(recall_selection.low_recency_ranked_item_count);
+    }
+
+    fn update_recall_selected_snippets(
+        &mut self,
+        envelope: Option<&TurnContextRecallSelectedSnippetEnvelope>,
+    ) {
+        let Some(envelope) = envelope else {
+            self.update_str("none");
+            return;
+        };
+        self.update_str("some");
+        self.update_u32(envelope.version);
+        self.update_u32(envelope.max_snippets);
+        self.update_u32(envelope.max_snippet_chars);
+        self.update_u32(envelope.selected_snippet_count);
+        self.update_u32(envelope.omitted_snippet_count);
+        self.update_u32(envelope.redacted_snippet_count);
+        self.update_u32(envelope.truncated_snippet_count);
+        self.update_u32(u32::try_from(envelope.snippets.len()).unwrap_or(u32::MAX));
+        for snippet in &envelope.snippets {
+            self.update_str(&snippet.snippet_hash);
+            self.update_str(&snippet.text);
+            self.update_u32(snippet.estimated_tokens);
+            self.update_bool(snippet.redacted);
+            self.update_bool(snippet.truncated);
+        }
+        self.update_bool(envelope.safety.ready_for_shadow_handoff);
+        self.update_bool(envelope.safety.bounded);
+        self.update_bool(envelope.safety.origin_identifiers_exposed);
+        self.update_bool(envelope.safety.raw_ranked_payload_exposed);
+        self.update_bool(envelope.safety.rank_explanation_exposed);
+        self.update_bool(envelope.safety.control_marker_exposed);
+        self.update_bool(envelope.safety.query_payload_exposed);
+        self.update_bool(envelope.safety.per_origin_list_exposed);
+    }
+
+    fn update_memory_taxonomy(&mut self, buckets: &[TurnContextMemoryTaxonomyBucket]) {
+        if buckets.is_empty() {
+            return;
+        }
+        self.update_u32(u32::try_from(buckets.len()).unwrap_or(u32::MAX));
+        for bucket in buckets {
+            self.update_str(bucket.class.as_str());
+            self.update_u32(bucket.source_count);
+            self.update_u32(bucket.returned_count);
+            self.update_u32(bucket.available_count);
+            self.update_u32(bucket.omitted_count);
+            self.update_u32(bucket.provenance_span_count);
+        }
+    }
+
+    fn update_memory_formation_receipts(&mut self, receipts: &[TurnContextMemoryFormationReceipt]) {
+        if receipts.is_empty() {
+            return;
+        }
+        self.update_u32(u32::try_from(receipts.len()).unwrap_or(u32::MAX));
+        for receipt in receipts {
+            self.update_str(receipt.candidate_type.as_str());
+            self.update_u32(receipt.transcript_span_count);
+            self.update_u32(receipt.provenance_span_count);
+            self.update_u32(receipt.confidence_basis_points);
+            self.update_str(&receipt.idempotency_key_hash);
+            self.update_str(&receipt.privacy_class);
+            self.update_bool(receipt.queued_for_background);
+            self.update_bool(receipt.production_write);
+        }
+    }
+
+    fn update_memory_temporal_facts(&mut self, facts: &[TurnContextMemoryTemporalFact]) {
+        if facts.is_empty() {
+            return;
+        }
+        self.update_u32(u32::try_from(facts.len()).unwrap_or(u32::MAX));
+        for fact in facts {
+            self.update_str(fact.fact_type.as_str());
+            self.update_str(&fact.entity_hash);
+            self.update_u32(fact.provenance_span_count);
+            self.update_u32(fact.valid_from_sequence);
+            if let Some(sequence) = fact.invalid_at_sequence {
+                self.update_str("some");
+                self.update_u32(sequence);
+            } else {
+                self.update_str("none");
+            }
+            self.update_u32(fact.confidence_basis_points);
+            if let Some(supersedes_fact_hash) = &fact.supersedes_fact_hash {
+                self.update_str("some");
+                self.update_str(supersedes_fact_hash);
+            } else {
+                self.update_str("none");
+            }
+            self.update_str(&fact.privacy_class);
+            self.update_bool(fact.dry_run_only);
+            self.update_bool(fact.production_write);
+        }
+    }
+
+    fn update_compression_candidates(&mut self, candidates: &[TurnContextCompressionCandidate]) {
+        if candidates.is_empty() {
+            return;
+        }
+        self.update_u32(u32::try_from(candidates.len()).unwrap_or(u32::MAX));
+        for candidate in candidates {
+            self.update_str(candidate.kind.as_str());
+            self.update_str(candidate.tier.as_str());
+            self.update_str(&candidate.source_id);
+            self.update_u32(candidate.input_tokens);
+            self.update_u32(candidate.estimated_output_tokens);
+            self.update_u32(candidate.affected_entries);
+            self.update_str(candidate.not_executed_reason.as_str());
+        }
+    }
+
+    fn update_adaptive_budget_allocations(
+        &mut self,
+        allocations: &[TurnContextAdaptiveBudgetAllocation],
+    ) {
+        if allocations.is_empty() {
+            return;
+        }
+        self.update_u32(u32::try_from(allocations.len()).unwrap_or(u32::MAX));
+        for allocation in allocations {
+            self.update_str(allocation.tier.as_str());
+            self.update_str(&allocation.source_id);
+            self.update_str(&allocation.budget_class);
+            self.update_u32(allocation.input_tokens);
+            self.update_u32(allocation.reserve_tokens);
+            self.update_u32(allocation.proposed_budget_tokens);
+            self.update_u32(allocation.overflow_tokens);
+            self.update_option_u32(allocation.omit_priority);
+            match allocation.compression_kind {
+                Some(kind) => {
+                    self.update_str("some");
+                    self.update_str(kind.as_str());
+                }
+                None => self.update_str("none"),
+            }
+            self.update_option_u32(allocation.estimated_compressed_tokens);
+            self.update_str(allocation.current_heuristic_action.as_str());
+            self.update_str(allocation.proposed_action.as_str());
+            self.update_bool(allocation.would_drop);
+            self.update_bool(allocation.would_compress);
+        }
+    }
+
+    fn update_compression_stages(&mut self, stages: &[TurnContextCompressionStage]) {
+        if stages.is_empty() {
+            return;
+        }
+        self.update_u32(u32::try_from(stages.len()).unwrap_or(u32::MAX));
+        for stage in stages {
+            self.update_str(stage.kind.as_str());
+            self.update_u32(stage.input_tokens);
+            self.update_u32(stage.output_tokens);
+            self.update_u32(stage.affected_entries);
+            self.update_option_str(
+                stage
+                    .loss_check_status
+                    .map(TurnContextCompressionLossCheckStatus::as_str),
+            );
+            self.update_option_str(stage.rollback_source_text_hash.as_deref());
+            self.update_option_str(
+                stage
+                    .protected_tier_invariant
+                    .map(TurnContextCompressionProtectedTierInvariant::as_str),
+            );
+        }
+    }
+
+    fn finish(self) -> String {
+        format!("{:016x}", self.0)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
 pub struct TurnContextNetworkItem {
     pub allowed_domains: Vec<String>,
@@ -2872,6 +4435,9 @@ pub struct TurnContextItem {
     pub final_output_json_schema: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub truncation_policy: Option<TruncationPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context_manifest: Option<TurnContextManifestItem>,
 }
 
 impl TurnContextItem {
@@ -5170,6 +6736,71 @@ mod tests {
     }
 
     #[test]
+    fn user_input_with_turn_context_deserializes_without_selected_snippet_handoff() -> Result<()> {
+        let op: Op = serde_json::from_value(json!({
+            "type": "user_input_with_turn_context",
+            "items": []
+        }))?;
+
+        let Op::UserInputWithTurnContext {
+            context_recall_selected_snippets,
+            ..
+        } = op
+        else {
+            panic!("expected user_input_with_turn_context");
+        };
+        assert_eq!(context_recall_selected_snippets, None);
+
+        Ok(())
+    }
+
+    #[test]
+    fn user_input_with_turn_context_serializes_selected_snippet_handoff() -> Result<()> {
+        let selected_snippets = test_selected_snippet_envelope();
+        let op = Op::UserInputWithTurnContext {
+            environments: None,
+            items: Vec::new(),
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            context_recall_selected_snippets: Some(selected_snippets.clone()),
+            cwd: None,
+            workspace_roots: None,
+            profile_workspace_roots: None,
+            approval_policy: None,
+            approvals_reviewer: None,
+            sandbox_policy: None,
+            permission_profile: None,
+            active_permission_profile: None,
+            windows_sandbox_level: None,
+            model: None,
+            effort: None,
+            summary: None,
+            service_tier: None,
+            collaboration_mode: None,
+            personality: None,
+        };
+
+        let json_op = serde_json::to_value(&op)?;
+        assert_eq!(
+            json_op["context_recall_selected_snippets"]["selected_snippet_count"],
+            1
+        );
+        assert_eq!(
+            json_op["context_recall_selected_snippets"]["snippets"][0]["text"],
+            "[redacted-query] bounded memory"
+        );
+        assert!(
+            json_op["context_recall_selected_snippets"]["snippets"][0]
+                .get("source_id")
+                .is_none()
+        );
+        assert_eq!(serde_json::from_value::<Op>(json_op)?, op);
+        assert!(selected_snippets.has_shadow_integrity());
+
+        Ok(())
+    }
+
+    #[test]
     fn user_input_text_serializes_empty_text_elements() -> Result<()> {
         let input = UserInput::Text {
             text: "hello".to_string(),
@@ -5301,6 +6932,7 @@ mod tests {
         assert_eq!(item.trace_id, None);
         assert_eq!(item.network, None);
         assert_eq!(item.file_system_sandbox_policy, None);
+        assert_eq!(item.context_manifest, None);
         Ok(())
     }
 
@@ -5337,6 +6969,7 @@ mod tests {
             developer_instructions: None,
             final_output_json_schema: None,
             truncation_policy: None,
+            context_manifest: None,
         };
 
         let value = serde_json::to_value(item)?;
@@ -5360,6 +6993,1301 @@ mod tests {
                 }]
             })
         );
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_entry_tier_is_backward_compatible() -> Result<()> {
+        let legacy_entry: TurnContextManifestEntry = serde_json::from_value(json!({
+            "role": "developer",
+            "source": "initial_context:permissions:0",
+            "replay_key": "initial_context:permissions:0:0123456789abcdef",
+            "text_hash": "0123456789abcdef",
+            "estimated_tokens": 3,
+        }))?;
+        assert_eq!(legacy_entry.tier, TurnContextTier::Unknown);
+        assert!(serde_json::to_value(&legacy_entry)?.get("tier").is_none());
+
+        let mut legacy_manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 3,
+            ledger_hash: None,
+            budget_tokens: None,
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: None,
+            recall_selected_snippets: None,
+            memory_taxonomy: Vec::new(),
+            memory_formation_receipts: Vec::new(),
+            memory_temporal_facts: Vec::new(),
+            compression_candidates: Vec::new(),
+            adaptive_budget_allocations: Vec::new(),
+            compression_stages: Vec::new(),
+            entries: vec![legacy_entry],
+        }
+        .with_refreshed_ledger_hash();
+        assert!(legacy_manifest.has_replay_integrity());
+        let legacy_hash = legacy_manifest
+            .ledger_hash
+            .clone()
+            .expect("legacy hash should be materialized");
+
+        legacy_manifest.entries[0].tier = TurnContextTier::System;
+        legacy_manifest.refresh_ledger_hash();
+        assert!(legacy_manifest.has_replay_integrity());
+        assert_ne!(
+            legacy_manifest.ledger_hash.as_deref(),
+            Some(legacy_hash.as_str())
+        );
+        assert_eq!(
+            serde_json::to_value(&legacy_manifest.entries[0])?["tier"],
+            "system"
+        );
+        assert!(
+            serde_json::to_value(&legacy_manifest)?
+                .get("compression_candidates")
+                .is_none()
+        );
+        assert!(
+            serde_json::to_value(&legacy_manifest)?
+                .get("compression_stages")
+                .is_none()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_hashes_are_replay_hashes_not_trust_digests() {
+        let replay_hash = stable_turn_context_manifest_replay_hash("text:payload-light\n");
+        assert_eq!(replay_hash.len(), 16);
+        assert!(is_stable_manifest_replay_hash(&replay_hash));
+        assert_eq!(
+            stable_turn_context_manifest_text_hash("text:payload-light\n"),
+            replay_hash
+        );
+
+        let sha256_shaped_digest =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert_eq!(sha256_shaped_digest.len(), 64);
+        assert!(!is_stable_manifest_replay_hash(sha256_shaped_digest));
+    }
+
+    #[test]
+    fn turn_context_decision_entry_constructors_preserve_legacy_wire_strings() {
+        let entries = vec![
+            TurnContextDecisionEntry::included(
+                "turn_context:developer:permissions:0",
+                "always_include_safety_policy",
+                Some("aaaaaaaaaaaaaaaa".to_string()),
+            ),
+            TurnContextDecisionEntry::policy(
+                "turn_context:assembly_policy",
+                "source_aware_omission",
+                "budget_exceeded",
+                None,
+            ),
+            TurnContextDecisionEntry::candidate_omit(
+                "turn_context:developer:available_plugins:0:2",
+                "available_plugins",
+                20,
+                11,
+                None,
+            ),
+            TurnContextDecisionEntry::candidate_truncate(
+                "turn_context:developer:selected_context_recall:0",
+                "selected_context_recall",
+                4,
+                13,
+                None,
+            ),
+            TurnContextDecisionEntry::omitted(
+                "turn_context:developer:apps:0:3",
+                "apps",
+                30,
+                9,
+                None,
+            ),
+            TurnContextDecisionEntry::truncated(
+                "turn_context:developer:selected_context_recall:0",
+                "selected_context_recall",
+                24,
+                3,
+                None,
+            ),
+        ];
+        let expected = [
+            "included:always_include_safety_policy",
+            "policy:source_aware_omission:budget_exceeded",
+            "candidate_omit:available_plugins:priority:20:tokens:11",
+            "candidate_truncate:selected_context_recall:remaining_over_budget:4:tokens:13",
+            "omitted:apps:priority:30:tokens:9",
+            "truncated:selected_context_recall:original_tokens:24:tokens:3",
+        ];
+
+        for (entry, expected_decision) in entries.iter().zip(expected) {
+            assert_eq!(entry.decision, expected_decision);
+            let kind = entry.kind();
+            assert_eq!(
+                kind.schema_version(),
+                Some(TURN_CONTEXT_DECISION_SCHEMA_VERSION)
+            );
+            assert_eq!(kind.to_legacy_decision_string(), expected_decision);
+        }
+        assert_eq!(entries[0].reason_hash.as_deref(), Some("aaaaaaaaaaaaaaaa"));
+        assert!(entries[3].kind().is_candidate_truncation());
+
+        let summary = summarize_turn_context_decision_ledger(&entries);
+        assert_eq!(summary.schema_version, TURN_CONTEXT_DECISION_SCHEMA_VERSION);
+        assert_eq!(summary.known_count(), 6);
+        assert_eq!(summary.included_count, 1);
+        assert_eq!(summary.policy_count, 1);
+        assert_eq!(summary.candidate_omit_count, 1);
+        assert_eq!(summary.candidate_truncate_count, 1);
+        assert_eq!(summary.omitted_count, 1);
+        assert_eq!(summary.truncated_count, 1);
+        assert_eq!(summary.unknown_count, 0);
+
+        let unknown = TurnContextDecisionKind::Unknown {
+            raw: "legacy:custom".to_string(),
+        };
+        assert_eq!(unknown.schema_version(), None);
+        assert_eq!(unknown.to_legacy_decision_string(), "legacy:custom");
+
+        let unknown_entry =
+            TurnContextDecisionEntry::from_kind("turn_context:legacy", unknown, None);
+        let mixed_summary =
+            summarize_turn_context_decision_ledger(&[entries[0].clone(), unknown_entry.clone()]);
+        assert_eq!(
+            mixed_summary.schema_version,
+            TURN_CONTEXT_DECISION_SCHEMA_VERSION
+        );
+        assert_eq!(mixed_summary.known_count(), 1);
+        assert_eq!(mixed_summary.unknown_count, 1);
+
+        let unknown_only_summary = summarize_turn_context_decision_ledger(&[unknown_entry]);
+        assert_eq!(unknown_only_summary.schema_version, 0);
+        assert_eq!(unknown_only_summary.known_count(), 0);
+        assert_eq!(unknown_only_summary.unknown_count, 1);
+    }
+
+    #[test]
+    fn turn_context_manifest_compression_candidates_are_payload_light_and_hashed() -> Result<()> {
+        let mut manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 12,
+            ledger_hash: None,
+            budget_tokens: Some(8),
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: None,
+            recall_selected_snippets: None,
+            memory_taxonomy: Vec::new(),
+            memory_formation_receipts: Vec::new(),
+            memory_temporal_facts: Vec::new(),
+            compression_candidates: vec![
+                TurnContextCompressionCandidate {
+                    kind: TurnContextCompressionStageKind::Summary,
+                    tier: TurnContextTier::RetrievedSnippets,
+                    source_id: "selected_context_recall".into(),
+                    input_tokens: 40,
+                    estimated_output_tokens: 12,
+                    affected_entries: 1,
+                    not_executed_reason:
+                        TurnContextCompressionCandidateReason::BudgetPressureDryRun,
+                },
+                TurnContextCompressionCandidate {
+                    kind: TurnContextCompressionStageKind::Prune,
+                    tier: TurnContextTier::Tool,
+                    source_id: "extension_developer_capabilities".into(),
+                    input_tokens: 12,
+                    estimated_output_tokens: 6,
+                    affected_entries: 1,
+                    not_executed_reason:
+                        TurnContextCompressionCandidateReason::BudgetPressureDryRun,
+                },
+            ],
+            adaptive_budget_allocations: Vec::new(),
+            compression_stages: Vec::new(),
+            entries: vec![TurnContextManifestEntry {
+                role: "developer".into(),
+                tier: TurnContextTier::RetrievedSnippets,
+                source: "turn_context:developer:selected_context_recall:0".into(),
+                replay_key: "turn_context:developer:selected_context_recall:0:0123456789abcdef"
+                    .into(),
+                text_hash: "0123456789abcdef".into(),
+                estimated_tokens: 12,
+            }],
+        }
+        .with_refreshed_ledger_hash();
+
+        let value = serde_json::to_value(&manifest)?;
+
+        assert_eq!(
+            manifest.compression_candidates[0].schema_version(),
+            Some(TURN_CONTEXT_COMPRESSION_CANDIDATE_SCHEMA_VERSION)
+        );
+        assert_eq!(value["compression_candidates"][0]["kind"], "summary");
+        assert_eq!(
+            value["compression_candidates"][0]["tier"],
+            "retrieved_snippets"
+        );
+        assert_eq!(
+            value["compression_candidates"][0]["source_id"],
+            "selected_context_recall"
+        );
+        assert_eq!(value["compression_candidates"][0]["input_tokens"], 40);
+        assert_eq!(
+            value["compression_candidates"][0]["estimated_output_tokens"],
+            12
+        );
+        assert_eq!(
+            value["compression_candidates"][0]["not_executed_reason"],
+            "budget_pressure_dry_run"
+        );
+        assert!(value["compression_candidates"][0].get("source").is_none());
+        assert!(value["compression_candidates"][0].get("text").is_none());
+        assert!(value["compression_candidates"][0].get("query").is_none());
+        assert!(manifest.compression_candidates_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        let original_ledger_hash = manifest
+            .ledger_hash
+            .clone()
+            .expect("ledger hash should be materialized");
+        manifest.compression_candidates[0].estimated_output_tokens = 11;
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.refresh_ledger_hash();
+        assert_ne!(
+            manifest.ledger_hash.as_deref(),
+            Some(original_ledger_hash.as_str())
+        );
+        assert!(manifest.has_replay_integrity());
+
+        manifest.compression_candidates[0].estimated_output_tokens = 41;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.compression_candidates_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.compression_candidates[0].estimated_output_tokens = 11;
+        manifest.compression_candidates[1].source_id = "turn_context:developer:raw:0".into();
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.compression_candidates_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.compression_candidates[1].source_id = "extension_developer_capabilities".into();
+        manifest.compression_candidates[1].not_executed_reason =
+            TurnContextCompressionCandidateReason::Unknown;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.compression_candidates_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_adaptive_budget_allocations_are_payload_light_and_hashed() -> Result<()>
+    {
+        let mut manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 52,
+            ledger_hash: None,
+            budget_tokens: Some(24),
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: None,
+            recall_selected_snippets: None,
+            memory_taxonomy: Vec::new(),
+            memory_formation_receipts: Vec::new(),
+            memory_temporal_facts: Vec::new(),
+            compression_candidates: Vec::new(),
+            adaptive_budget_allocations: vec![
+                TurnContextAdaptiveBudgetAllocation {
+                    tier: TurnContextTier::RetrievedSnippets,
+                    source_id: "selected_context_recall".into(),
+                    budget_class: "bounded_recall".into(),
+                    input_tokens: 40,
+                    reserve_tokens: 16,
+                    proposed_budget_tokens: 16,
+                    overflow_tokens: 24,
+                    omit_priority: Some(50),
+                    compression_kind: Some(TurnContextCompressionStageKind::Summary),
+                    estimated_compressed_tokens: Some(16),
+                    current_heuristic_action: TurnContextBudgetAllocationAction::Drop,
+                    proposed_action: TurnContextBudgetAllocationAction::Compress,
+                    would_drop: false,
+                    would_compress: true,
+                },
+                TurnContextAdaptiveBudgetAllocation {
+                    tier: TurnContextTier::Tool,
+                    source_id: "available_plugins".into(),
+                    budget_class: "tool_inventory".into(),
+                    input_tokens: 12,
+                    reserve_tokens: 9,
+                    proposed_budget_tokens: 8,
+                    overflow_tokens: 4,
+                    omit_priority: Some(20),
+                    compression_kind: Some(TurnContextCompressionStageKind::Defragment),
+                    estimated_compressed_tokens: Some(9),
+                    current_heuristic_action: TurnContextBudgetAllocationAction::Drop,
+                    proposed_action: TurnContextBudgetAllocationAction::Compress,
+                    would_drop: false,
+                    would_compress: true,
+                },
+            ],
+            compression_stages: Vec::new(),
+            entries: vec![TurnContextManifestEntry {
+                role: "developer".into(),
+                tier: TurnContextTier::RetrievedSnippets,
+                source: "turn_context:developer:selected_context_recall:0".into(),
+                replay_key: "turn_context:developer:selected_context_recall:0:0123456789abcdef"
+                    .into(),
+                text_hash: "0123456789abcdef".into(),
+                estimated_tokens: 40,
+            }],
+        }
+        .with_refreshed_ledger_hash();
+
+        let value = serde_json::to_value(&manifest)?;
+
+        assert_eq!(
+            manifest.adaptive_budget_allocations[0].schema_version(),
+            Some(TURN_CONTEXT_ADAPTIVE_BUDGET_ALLOCATION_SCHEMA_VERSION)
+        );
+        assert_eq!(
+            value["adaptive_budget_allocations"][0]["source_id"],
+            "selected_context_recall"
+        );
+        assert_eq!(
+            value["adaptive_budget_allocations"][0]["budget_class"],
+            "bounded_recall"
+        );
+        assert_eq!(
+            value["adaptive_budget_allocations"][0]["compression_kind"],
+            "summary"
+        );
+        assert_eq!(
+            value["adaptive_budget_allocations"][0]["proposed_action"],
+            "compress"
+        );
+        assert_eq!(
+            value["adaptive_budget_allocations"][0]["would_compress"],
+            true
+        );
+        assert!(
+            value["adaptive_budget_allocations"][0]
+                .get("source")
+                .is_none()
+        );
+        assert!(
+            value["adaptive_budget_allocations"][0]
+                .get("text")
+                .is_none()
+        );
+        assert!(
+            value["adaptive_budget_allocations"][0]
+                .get("query")
+                .is_none()
+        );
+        assert!(manifest.adaptive_budget_allocations_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        let original_ledger_hash = manifest
+            .ledger_hash
+            .clone()
+            .expect("ledger hash should be materialized");
+        manifest.adaptive_budget_allocations[0].proposed_budget_tokens = 15;
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.adaptive_budget_allocations[0].overflow_tokens = 25;
+        manifest.refresh_ledger_hash();
+        assert_ne!(
+            manifest.ledger_hash.as_deref(),
+            Some(original_ledger_hash.as_str())
+        );
+        assert!(manifest.has_replay_integrity());
+
+        manifest.adaptive_budget_allocations[0].overflow_tokens = 24;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.adaptive_budget_allocations_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.adaptive_budget_allocations[0].overflow_tokens = 25;
+        manifest.adaptive_budget_allocations[1].source_id = "turn_context:developer:raw:0".into();
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.adaptive_budget_allocations_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_memory_taxonomy_is_payload_light_and_hashed() -> Result<()> {
+        let mut manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 34,
+            ledger_hash: None,
+            budget_tokens: Some(24),
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: None,
+            recall_selected_snippets: None,
+            memory_taxonomy: vec![
+                TurnContextMemoryTaxonomyBucket {
+                    class: TurnContextMemoryTaxonomyClass::Semantic,
+                    source_count: 1,
+                    returned_count: 2,
+                    available_count: 3,
+                    omitted_count: 1,
+                    provenance_span_count: 0,
+                },
+                TurnContextMemoryTaxonomyBucket {
+                    class: TurnContextMemoryTaxonomyClass::Episodic,
+                    source_count: 1,
+                    returned_count: 1,
+                    available_count: 1,
+                    omitted_count: 0,
+                    provenance_span_count: 0,
+                },
+                TurnContextMemoryTaxonomyBucket {
+                    class: TurnContextMemoryTaxonomyClass::Control,
+                    source_count: 1,
+                    returned_count: 0,
+                    available_count: 2,
+                    omitted_count: 2,
+                    provenance_span_count: 0,
+                },
+                TurnContextMemoryTaxonomyBucket {
+                    class: TurnContextMemoryTaxonomyClass::Transcript,
+                    source_count: 2,
+                    returned_count: 3,
+                    available_count: 5,
+                    omitted_count: 2,
+                    provenance_span_count: 2,
+                },
+            ],
+            memory_formation_receipts: Vec::new(),
+            memory_temporal_facts: Vec::new(),
+            compression_candidates: Vec::new(),
+            adaptive_budget_allocations: Vec::new(),
+            compression_stages: Vec::new(),
+            entries: vec![TurnContextManifestEntry {
+                role: "developer".into(),
+                tier: TurnContextTier::RetrievedSnippets,
+                source: "turn_context:developer:selected_context_recall:0".into(),
+                replay_key: "turn_context:developer:selected_context_recall:0:0123456789abcdef"
+                    .into(),
+                text_hash: "0123456789abcdef".into(),
+                estimated_tokens: 34,
+            }],
+        }
+        .with_refreshed_ledger_hash();
+
+        let value = serde_json::to_value(&manifest)?;
+
+        assert_eq!(
+            manifest.memory_taxonomy[0].schema_version(),
+            Some(TURN_CONTEXT_MEMORY_TAXONOMY_SCHEMA_VERSION)
+        );
+        assert_eq!(value["memory_taxonomy"][0]["class"], "semantic");
+        assert_eq!(value["memory_taxonomy"][0]["source_count"], 1);
+        assert_eq!(value["memory_taxonomy"][0]["returned_count"], 2);
+        assert_eq!(value["memory_taxonomy"][0]["available_count"], 3);
+        assert_eq!(value["memory_taxonomy"][0]["omitted_count"], 1);
+        assert_eq!(value["memory_taxonomy"][3]["class"], "transcript");
+        assert_eq!(value["memory_taxonomy"][3]["provenance_span_count"], 2);
+        assert!(value["memory_taxonomy"][0].get("source_id").is_none());
+        assert!(value["memory_taxonomy"][0].get("memory_id").is_none());
+        assert!(value["memory_taxonomy"][0].get("text").is_none());
+        assert!(value["memory_taxonomy"][0].get("query").is_none());
+        assert!(manifest.memory_taxonomy_has_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        let original_ledger_hash = manifest
+            .ledger_hash
+            .clone()
+            .expect("ledger hash should be materialized");
+        manifest.memory_taxonomy[0].returned_count = 1;
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.memory_taxonomy[0].omitted_count = 2;
+        manifest.refresh_ledger_hash();
+        assert_ne!(
+            manifest.ledger_hash.as_deref(),
+            Some(original_ledger_hash.as_str())
+        );
+        assert!(manifest.has_replay_integrity());
+
+        manifest.memory_taxonomy[0].omitted_count = 1;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.memory_taxonomy_has_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.memory_taxonomy[0].omitted_count = 2;
+        manifest.memory_taxonomy[1].class = TurnContextMemoryTaxonomyClass::Unknown;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.memory_taxonomy_has_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_memory_formation_receipts_are_payload_light_and_hashed() -> Result<()>
+    {
+        let mut manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 21,
+            ledger_hash: None,
+            budget_tokens: Some(30),
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: None,
+            recall_selected_snippets: None,
+            memory_taxonomy: Vec::new(),
+            memory_formation_receipts: vec![
+                TurnContextMemoryFormationReceipt {
+                    candidate_type: TurnContextMemoryFormationCandidateType::Fact,
+                    transcript_span_count: 2,
+                    provenance_span_count: 2,
+                    confidence_basis_points: 6400,
+                    idempotency_key_hash: "0123456789abcdef".into(),
+                    privacy_class: "user_private".into(),
+                    queued_for_background: true,
+                    production_write: false,
+                },
+                TurnContextMemoryFormationReceipt {
+                    candidate_type: TurnContextMemoryFormationCandidateType::Summary,
+                    transcript_span_count: 2,
+                    provenance_span_count: 1,
+                    confidence_basis_points: 7000,
+                    idempotency_key_hash: "fedcba9876543210".into(),
+                    privacy_class: "user_private".into(),
+                    queued_for_background: true,
+                    production_write: false,
+                },
+            ],
+            memory_temporal_facts: Vec::new(),
+            compression_candidates: Vec::new(),
+            adaptive_budget_allocations: Vec::new(),
+            compression_stages: Vec::new(),
+            entries: vec![TurnContextManifestEntry {
+                role: "developer".into(),
+                tier: TurnContextTier::RetrievedSnippets,
+                source: "turn_context:developer:selected_context_recall:0".into(),
+                replay_key: "turn_context:developer:selected_context_recall:0:0123456789abcdef"
+                    .into(),
+                text_hash: "0123456789abcdef".into(),
+                estimated_tokens: 21,
+            }],
+        }
+        .with_refreshed_ledger_hash();
+
+        let value = serde_json::to_value(&manifest)?;
+
+        assert_eq!(
+            manifest.memory_formation_receipts[0].schema_version(),
+            Some(TURN_CONTEXT_MEMORY_FORMATION_RECEIPT_SCHEMA_VERSION)
+        );
+        assert_eq!(
+            value["memory_formation_receipts"][0]["candidate_type"],
+            "fact"
+        );
+        assert_eq!(
+            value["memory_formation_receipts"][0]["transcript_span_count"],
+            2
+        );
+        assert_eq!(
+            value["memory_formation_receipts"][0]["provenance_span_count"],
+            2
+        );
+        assert_eq!(
+            value["memory_formation_receipts"][0]["confidence_basis_points"],
+            6400
+        );
+        assert_eq!(
+            value["memory_formation_receipts"][0]["idempotency_key_hash"],
+            "0123456789abcdef"
+        );
+        assert_eq!(
+            value["memory_formation_receipts"][0]["privacy_class"],
+            "user_private"
+        );
+        assert_eq!(
+            value["memory_formation_receipts"][0]["queued_for_background"],
+            true
+        );
+        assert!(
+            value["memory_formation_receipts"][0]
+                .get("production_write")
+                .is_none()
+        );
+        assert!(
+            value["memory_formation_receipts"][0]
+                .get("transcript_text")
+                .is_none()
+        );
+        assert!(
+            value["memory_formation_receipts"][0]
+                .get("memory_id")
+                .is_none()
+        );
+        assert!(
+            value["memory_formation_receipts"][0]
+                .get("source_id")
+                .is_none()
+        );
+        assert!(value["memory_formation_receipts"][0].get("query").is_none());
+        assert!(manifest.memory_formation_receipts_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        let original_ledger_hash = manifest
+            .ledger_hash
+            .clone()
+            .expect("ledger hash should be materialized");
+        manifest.memory_formation_receipts[0].confidence_basis_points = 6100;
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.refresh_ledger_hash();
+        assert_ne!(
+            manifest.ledger_hash.as_deref(),
+            Some(original_ledger_hash.as_str())
+        );
+        assert!(manifest.has_replay_integrity());
+
+        manifest.memory_formation_receipts[0].production_write = true;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.memory_formation_receipts_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.memory_formation_receipts[0].production_write = false;
+        manifest.memory_formation_receipts[1].candidate_type =
+            TurnContextMemoryFormationCandidateType::Unknown;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.memory_formation_receipts_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.memory_formation_receipts[1].candidate_type =
+            TurnContextMemoryFormationCandidateType::Summary;
+        manifest.memory_formation_receipts[1].idempotency_key_hash = "raw-key".into();
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.memory_formation_receipts_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_memory_temporal_facts_are_payload_light_and_hashed() -> Result<()> {
+        let mut manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 21,
+            ledger_hash: None,
+            budget_tokens: Some(24),
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: None,
+            recall_selected_snippets: None,
+            memory_taxonomy: Vec::new(),
+            memory_formation_receipts: Vec::new(),
+            memory_temporal_facts: vec![
+                TurnContextMemoryTemporalFact {
+                    fact_type: TurnContextMemoryTemporalFactType::Attribute,
+                    entity_hash: "0123456789abcdef".into(),
+                    provenance_span_count: 2,
+                    valid_from_sequence: 8,
+                    invalid_at_sequence: None,
+                    confidence_basis_points: 6200,
+                    supersedes_fact_hash: None,
+                    privacy_class: "user_private".into(),
+                    dry_run_only: true,
+                    production_write: false,
+                },
+                TurnContextMemoryTemporalFact {
+                    fact_type: TurnContextMemoryTemporalFactType::Summary,
+                    entity_hash: "fedcba9876543210".into(),
+                    provenance_span_count: 1,
+                    valid_from_sequence: 9,
+                    invalid_at_sequence: Some(12),
+                    confidence_basis_points: 7000,
+                    supersedes_fact_hash: Some("aaaaaaaaaaaaaaaa".into()),
+                    privacy_class: "user_private".into(),
+                    dry_run_only: true,
+                    production_write: false,
+                },
+            ],
+            compression_candidates: Vec::new(),
+            adaptive_budget_allocations: Vec::new(),
+            compression_stages: Vec::new(),
+            entries: vec![TurnContextManifestEntry {
+                role: "developer".into(),
+                tier: TurnContextTier::RetrievedSnippets,
+                source: "turn_context:developer:selected_context_recall:0".into(),
+                replay_key: "turn_context:developer:selected_context_recall:0:0123456789abcdef"
+                    .into(),
+                text_hash: "0123456789abcdef".into(),
+                estimated_tokens: 21,
+            }],
+        }
+        .with_refreshed_ledger_hash();
+
+        let value = serde_json::to_value(&manifest)?;
+
+        assert_eq!(
+            manifest.memory_temporal_facts[0].schema_version(),
+            Some(TURN_CONTEXT_MEMORY_TEMPORAL_FACT_SCHEMA_VERSION)
+        );
+        assert_eq!(value["memory_temporal_facts"][0]["fact_type"], "attribute");
+        assert_eq!(
+            value["memory_temporal_facts"][0]["entity_hash"],
+            "0123456789abcdef"
+        );
+        assert_eq!(
+            value["memory_temporal_facts"][0]["provenance_span_count"],
+            2
+        );
+        assert_eq!(value["memory_temporal_facts"][0]["valid_from_sequence"], 8);
+        assert_eq!(
+            value["memory_temporal_facts"][0]["confidence_basis_points"],
+            6200
+        );
+        assert_eq!(
+            value["memory_temporal_facts"][1]["supersedes_fact_hash"],
+            "aaaaaaaaaaaaaaaa"
+        );
+        assert!(value["memory_temporal_facts"][0].get("fact_text").is_none());
+        assert!(
+            value["memory_temporal_facts"][0]
+                .get("transcript_text")
+                .is_none()
+        );
+        assert!(
+            value["memory_temporal_facts"][0]
+                .get("memory_text")
+                .is_none()
+        );
+        assert!(value["memory_temporal_facts"][0].get("source_id").is_none());
+        assert!(value["memory_temporal_facts"][0].get("memory_id").is_none());
+        assert!(value["memory_temporal_facts"][0].get("query").is_none());
+        assert!(manifest.memory_temporal_facts_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        let original_ledger_hash = manifest
+            .ledger_hash
+            .clone()
+            .expect("ledger hash should be materialized");
+        manifest.memory_temporal_facts[0].confidence_basis_points = 6100;
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.refresh_ledger_hash();
+        assert_ne!(
+            manifest.ledger_hash.as_deref(),
+            Some(original_ledger_hash.as_str())
+        );
+        assert!(manifest.has_replay_integrity());
+
+        manifest.memory_temporal_facts[0].production_write = true;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.memory_temporal_facts_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.memory_temporal_facts[0].production_write = false;
+        manifest.memory_temporal_facts[1].fact_type = TurnContextMemoryTemporalFactType::Unknown;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.memory_temporal_facts_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.memory_temporal_facts[1].fact_type = TurnContextMemoryTemporalFactType::Summary;
+        manifest.memory_temporal_facts[1].supersedes_fact_hash = Some("raw-fact-id".into());
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.memory_temporal_facts_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_compression_stages_are_payload_light_and_hashed() -> Result<()> {
+        assert_eq!(
+            TurnContextCompressionStageKind::Summary.schema_version(),
+            Some(TURN_CONTEXT_COMPRESSION_STAGE_SCHEMA_VERSION)
+        );
+        assert_eq!(
+            TurnContextCompressionStageKind::Unknown.schema_version(),
+            None
+        );
+
+        let mut manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 12,
+            ledger_hash: None,
+            budget_tokens: Some(16),
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: None,
+            recall_selected_snippets: None,
+            memory_taxonomy: Vec::new(),
+            memory_formation_receipts: Vec::new(),
+            memory_temporal_facts: Vec::new(),
+            compression_candidates: Vec::new(),
+            adaptive_budget_allocations: Vec::new(),
+            compression_stages: vec![
+                TurnContextCompressionStage {
+                    kind: TurnContextCompressionStageKind::Summary,
+                    input_tokens: 40,
+                    output_tokens: 12,
+                    affected_entries: 2,
+                    loss_check_status: Some(
+                        TurnContextCompressionLossCheckStatus::MarkerBoundaryOnly,
+                    ),
+                    rollback_source_text_hash: Some("aaaaaaaaaaaaaaaa".into()),
+                    protected_tier_invariant: Some(
+                        TurnContextCompressionProtectedTierInvariant::Preserved,
+                    ),
+                },
+                TurnContextCompressionStage {
+                    kind: TurnContextCompressionStageKind::Defragment,
+                    input_tokens: 12,
+                    output_tokens: 10,
+                    affected_entries: 1,
+                    loss_check_status: Some(
+                        TurnContextCompressionLossCheckStatus::MarkerBoundaryOnly,
+                    ),
+                    rollback_source_text_hash: Some("bbbbbbbbbbbbbbbb".into()),
+                    protected_tier_invariant: Some(
+                        TurnContextCompressionProtectedTierInvariant::Preserved,
+                    ),
+                },
+            ],
+            entries: vec![TurnContextManifestEntry {
+                role: "developer".into(),
+                tier: TurnContextTier::Summary,
+                source: "turn_context:developer:summary:0".into(),
+                replay_key: "turn_context:developer:summary:0:0123456789abcdef".into(),
+                text_hash: "0123456789abcdef".into(),
+                estimated_tokens: 12,
+            }],
+        }
+        .with_refreshed_ledger_hash();
+
+        let value = serde_json::to_value(&manifest)?;
+
+        assert_eq!(value["compression_stages"][0]["kind"], "summary");
+        assert_eq!(value["compression_stages"][0]["input_tokens"], 40);
+        assert_eq!(value["compression_stages"][0]["output_tokens"], 12);
+        assert_eq!(value["compression_stages"][0]["affected_entries"], 2);
+        assert_eq!(
+            value["compression_stages"][0]["loss_check_status"],
+            "marker_boundary_only"
+        );
+        assert_eq!(
+            value["compression_stages"][0]["rollback_source_text_hash"],
+            "aaaaaaaaaaaaaaaa"
+        );
+        assert_eq!(
+            value["compression_stages"][0]["protected_tier_invariant"],
+            "preserved"
+        );
+        assert_eq!(value["compression_stages"][1]["kind"], "defragment");
+        assert!(value["compression_stages"][0].get("source").is_none());
+        assert!(value["compression_stages"][0].get("text").is_none());
+        assert!(value["compression_stages"][0].get("query").is_none());
+        assert!(manifest.compression_stages_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        let original_ledger_hash = manifest
+            .ledger_hash
+            .clone()
+            .expect("ledger hash should be materialized");
+        manifest.compression_stages[0].loss_check_status =
+            Some(TurnContextCompressionLossCheckStatus::SemanticLossCheckPassed);
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.refresh_ledger_hash();
+        assert_ne!(
+            manifest.ledger_hash.as_deref(),
+            Some(original_ledger_hash.as_str())
+        );
+        assert!(manifest.has_replay_integrity());
+
+        manifest.compression_stages[0].output_tokens = 11;
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.refresh_ledger_hash();
+        assert!(manifest.has_replay_integrity());
+
+        manifest.compression_stages[0].output_tokens = 41;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.compression_stages_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.compression_stages[0].output_tokens = 11;
+        manifest.compression_stages[1].rollback_source_text_hash = Some("not-a-hash".into());
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.compression_stages_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        manifest.compression_stages[1].rollback_source_text_hash = Some("bbbbbbbbbbbbbbbb".into());
+        manifest.compression_stages[1].kind = TurnContextCompressionStageKind::Unknown;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.compression_stages_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_recall_selection_serializes_payload_light_rollup() -> Result<()> {
+        let mut manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 3,
+            ledger_hash: None,
+            budget_tokens: Some(4),
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: Some(TurnContextRecallSelectionSummary {
+                returned_source_count: 4,
+                selected_source_count: 3,
+                ranked_source_count: 3,
+                returned_unselected_source_count: 1,
+                source_diversity_met: true,
+                source_diversity_target: 3,
+                max_per_source: 2,
+                ranked_item_count: 3,
+                omitted_by_budget_count: 1,
+                memory_control_omitted_count: 2,
+                low_trust_ranked_item_count: 1,
+                low_recency_ranked_item_count: 2,
+            }),
+            recall_selected_snippets: Some(TurnContextRecallSelectedSnippetEnvelope {
+                version: TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+                max_snippets: 4,
+                max_snippet_chars: 120,
+                selected_snippet_count: 1,
+                omitted_snippet_count: 2,
+                redacted_snippet_count: 1,
+                truncated_snippet_count: 0,
+                snippets: vec![TurnContextRecallSelectedSnippet {
+                    snippet_hash: "fedcba9876543210".into(),
+                    text: "[redacted-query] bounded memory".into(),
+                    estimated_tokens: 8,
+                    redacted: true,
+                    truncated: false,
+                }],
+                safety: TurnContextRecallSelectedSnippetSafety {
+                    ready_for_shadow_handoff: true,
+                    bounded: true,
+                    origin_identifiers_exposed: false,
+                    raw_ranked_payload_exposed: false,
+                    rank_explanation_exposed: false,
+                    control_marker_exposed: false,
+                    query_payload_exposed: false,
+                    per_origin_list_exposed: false,
+                },
+            }),
+            memory_taxonomy: Vec::new(),
+            memory_formation_receipts: Vec::new(),
+            memory_temporal_facts: Vec::new(),
+            compression_candidates: Vec::new(),
+            adaptive_budget_allocations: Vec::new(),
+            compression_stages: Vec::new(),
+            entries: vec![TurnContextManifestEntry {
+                role: "developer".into(),
+                tier: TurnContextTier::System,
+                source: "initial_context:permissions:0".into(),
+                replay_key: "initial_context:permissions:0:0123456789abcdef".into(),
+                text_hash: "0123456789abcdef".into(),
+                estimated_tokens: 3,
+            }],
+        }
+        .with_refreshed_ledger_hash();
+
+        let value = serde_json::to_value(&manifest)?;
+
+        assert_eq!(value["recall_selection"]["returned_source_count"], 4);
+        assert_eq!(value["recall_selection"]["selected_source_count"], 3);
+        assert_eq!(value["recall_selection"]["ranked_source_count"], 3);
+        assert_eq!(
+            value["recall_selection"]["returned_unselected_source_count"],
+            1
+        );
+        assert_eq!(value["recall_selection"]["source_diversity_met"], true);
+        assert_eq!(value["recall_selection"]["source_diversity_target"], 3);
+        assert_eq!(value["recall_selection"]["max_per_source"], 2);
+        assert_eq!(value["recall_selection"]["ranked_item_count"], 3);
+        assert_eq!(value["recall_selection"]["omitted_by_budget_count"], 1);
+        assert_eq!(value["recall_selection"]["memory_control_omitted_count"], 2);
+        assert_eq!(value["recall_selection"]["low_trust_ranked_item_count"], 1);
+        assert_eq!(
+            value["recall_selection"]["low_recency_ranked_item_count"],
+            2
+        );
+        assert!(value["recall_selection"].get("source_id").is_none());
+        assert!(value["recall_selection"].get("summary").is_none());
+        assert_eq!(
+            value["recall_selected_snippets"]["selected_snippet_count"],
+            1
+        );
+        assert_eq!(
+            value["recall_selected_snippets"]["snippets"][0]["text"],
+            "[redacted-query] bounded memory"
+        );
+        assert!(value["recall_selected_snippets"].get("source_id").is_none());
+        assert!(
+            value["recall_selected_snippets"]["snippets"][0]
+                .get("source_memory_ids")
+                .is_none()
+        );
+        assert!(
+            manifest
+                .recall_selection
+                .as_ref()
+                .expect("recall selection")
+                .returned_unselected_source_count_matches()
+        );
+        assert!(manifest.recall_selection_has_integrity());
+        assert!(manifest.recall_selected_snippets_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        let original_ledger_hash = manifest
+            .ledger_hash
+            .clone()
+            .expect("ledger hash should be materialized");
+        manifest
+            .recall_selection
+            .as_mut()
+            .expect("recall selection")
+            .omitted_by_budget_count = 0;
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.refresh_ledger_hash();
+        assert_ne!(
+            manifest.ledger_hash.as_deref(),
+            Some(original_ledger_hash.as_str())
+        );
+        assert!(manifest.has_replay_integrity());
+
+        manifest
+            .recall_selection
+            .as_mut()
+            .expect("recall selection")
+            .ranked_item_count = 2;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.recall_selection_has_integrity());
+        assert!(!manifest.has_replay_integrity());
+        manifest
+            .recall_selection
+            .as_mut()
+            .expect("recall selection")
+            .ranked_item_count = 3;
+        manifest.refresh_ledger_hash();
+        assert!(manifest.recall_selection_has_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        {
+            let recall_selection = manifest
+                .recall_selection
+                .as_mut()
+                .expect("recall selection");
+            recall_selection.ranked_source_count = 0;
+            recall_selection.low_trust_ranked_item_count = 0;
+            recall_selection.low_recency_ranked_item_count = 0;
+        }
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.recall_selection_has_integrity());
+        assert!(!manifest.has_replay_integrity());
+        manifest
+            .recall_selection
+            .as_mut()
+            .expect("recall selection")
+            .ranked_item_count = 0;
+        manifest.refresh_ledger_hash();
+        assert!(manifest.recall_selection_has_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        {
+            let recall_selection = manifest
+                .recall_selection
+                .as_mut()
+                .expect("recall selection");
+            recall_selection.ranked_source_count = 3;
+            recall_selection.ranked_item_count = 3;
+            recall_selection.low_trust_ranked_item_count = 1;
+            recall_selection.low_recency_ranked_item_count = 2;
+            recall_selection.source_diversity_met = false;
+        }
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.recall_selection_has_integrity());
+        assert!(!manifest.has_replay_integrity());
+        {
+            let recall_selection = manifest
+                .recall_selection
+                .as_mut()
+                .expect("recall selection");
+            recall_selection.source_diversity_target = 0;
+        }
+        manifest.refresh_ledger_hash();
+        assert!(manifest.recall_selection_has_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        manifest
+            .recall_selected_snippets
+            .as_mut()
+            .expect("recall selected snippets")
+            .selected_snippet_count = 2;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.recall_selected_snippets_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+        manifest
+            .recall_selected_snippets
+            .as_mut()
+            .expect("recall selected snippets")
+            .selected_snippet_count = 1;
+        manifest.refresh_ledger_hash();
+        assert!(manifest.recall_selected_snippets_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        manifest
+            .recall_selected_snippets
+            .as_mut()
+            .expect("recall selected snippets")
+            .safety
+            .query_payload_exposed = true;
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.recall_selected_snippets_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+        manifest
+            .recall_selected_snippets
+            .as_mut()
+            .expect("recall selected snippets")
+            .safety
+            .query_payload_exposed = false;
+        manifest.refresh_ledger_hash();
+        assert!(manifest.recall_selected_snippets_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        Ok(())
+    }
+
+    #[test]
+    fn turn_context_manifest_selected_snippets_serializes_shadow_envelope() -> Result<()> {
+        let mut manifest = TurnContextManifestItem {
+            version: TURN_CONTEXT_MANIFEST_VERSION,
+            estimated_tokens: 3,
+            ledger_hash: None,
+            budget_tokens: Some(4),
+            omitted_entries: 0,
+            omitted_sources: Vec::new(),
+            truncated: false,
+            decision_ledger_hash: None,
+            decision_ledger: Vec::new(),
+            recall_selection: None,
+            recall_selected_snippets: Some(TurnContextRecallSelectedSnippetEnvelope {
+                version: TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+                max_snippets: 4,
+                max_snippet_chars: 120,
+                selected_snippet_count: 1,
+                omitted_snippet_count: 2,
+                redacted_snippet_count: 1,
+                truncated_snippet_count: 0,
+                snippets: vec![TurnContextRecallSelectedSnippet {
+                    snippet_hash: "fedcba9876543210".into(),
+                    text: "[redacted-query] bounded memory".into(),
+                    estimated_tokens: 8,
+                    redacted: true,
+                    truncated: false,
+                }],
+                safety: TurnContextRecallSelectedSnippetSafety {
+                    ready_for_shadow_handoff: true,
+                    bounded: true,
+                    origin_identifiers_exposed: false,
+                    raw_ranked_payload_exposed: false,
+                    rank_explanation_exposed: false,
+                    control_marker_exposed: false,
+                    query_payload_exposed: false,
+                    per_origin_list_exposed: false,
+                },
+            }),
+            memory_taxonomy: Vec::new(),
+            memory_formation_receipts: Vec::new(),
+            memory_temporal_facts: Vec::new(),
+            compression_candidates: Vec::new(),
+            adaptive_budget_allocations: Vec::new(),
+            compression_stages: Vec::new(),
+            entries: vec![TurnContextManifestEntry {
+                role: "developer".into(),
+                tier: TurnContextTier::System,
+                source: "initial_context:permissions:0".into(),
+                replay_key: "initial_context:permissions:0:0123456789abcdef".into(),
+                text_hash: "0123456789abcdef".into(),
+                estimated_tokens: 3,
+            }],
+        }
+        .with_refreshed_ledger_hash();
+
+        let value = serde_json::to_value(&manifest)?;
+
+        assert_eq!(
+            value["recall_selected_snippets"]["selected_snippet_count"],
+            1
+        );
+        assert_eq!(
+            value["recall_selected_snippets"]["snippets"][0]["text"],
+            "[redacted-query] bounded memory"
+        );
+        assert!(
+            value["recall_selected_snippets"]["snippets"][0]
+                .get("source_id")
+                .is_none()
+        );
+        assert!(manifest.recall_selected_snippets_have_integrity());
+        assert!(manifest.has_replay_integrity());
+
+        let original_ledger_hash = manifest
+            .ledger_hash
+            .clone()
+            .expect("ledger hash should be materialized");
+        manifest
+            .recall_selected_snippets
+            .as_mut()
+            .expect("recall selected snippets")
+            .snippets[0]
+            .text = "[redacted-query] changed bounded memory".into();
+        assert!(!manifest.ledger_hash_matches_manifest());
+        manifest.refresh_ledger_hash();
+        assert_ne!(
+            manifest.ledger_hash.as_deref(),
+            Some(original_ledger_hash.as_str())
+        );
+        assert!(manifest.has_replay_integrity());
+
+        manifest
+            .recall_selected_snippets
+            .as_mut()
+            .expect("recall selected snippets")
+            .snippets[0]
+            .text = "[hepta-memory:tombstone] leaked control marker".into();
+        manifest.refresh_ledger_hash();
+        assert!(!manifest.recall_selected_snippets_have_integrity());
+        assert!(!manifest.has_replay_integrity());
+
         Ok(())
     }
 
@@ -5536,5 +8464,34 @@ mod tests {
                 .expect("new_or_append should return info");
 
         assert_eq!(info.model_context_window, Some(258_400));
+    }
+
+    fn test_selected_snippet_envelope() -> TurnContextRecallSelectedSnippetEnvelope {
+        TurnContextRecallSelectedSnippetEnvelope {
+            version: TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+            max_snippets: 4,
+            max_snippet_chars: 120,
+            selected_snippet_count: 1,
+            omitted_snippet_count: 2,
+            redacted_snippet_count: 1,
+            truncated_snippet_count: 0,
+            snippets: vec![TurnContextRecallSelectedSnippet {
+                snippet_hash: "fedcba9876543210".into(),
+                text: "[redacted-query] bounded memory".into(),
+                estimated_tokens: 8,
+                redacted: true,
+                truncated: false,
+            }],
+            safety: TurnContextRecallSelectedSnippetSafety {
+                ready_for_shadow_handoff: true,
+                bounded: true,
+                origin_identifiers_exposed: false,
+                raw_ranked_payload_exposed: false,
+                rank_explanation_exposed: false,
+                control_marker_exposed: false,
+                query_payload_exposed: false,
+                per_origin_list_exposed: false,
+            },
+        }
     }
 }

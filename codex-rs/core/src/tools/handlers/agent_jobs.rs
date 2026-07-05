@@ -8,6 +8,127 @@ use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::tools::handlers::multi_agents::build_agent_spawn_config;
 use crate::tools::handlers::parse_arguments;
+use crate::tools::handlers::work_graph_admission::WorkGraphAdmissionShadowDecision;
+use crate::tools::handlers::work_graph_admission::WorkGraphAdmissionShadowInput;
+use crate::tools::handlers::work_graph_admission::WorkGraphAgentCardManifestObservation;
+use crate::tools::handlers::work_graph_admission::WorkGraphRoleManifestShadowDecision;
+use crate::tools::handlers::work_graph_admission::agent_jobs_worker_agent_card_manifest;
+use crate::tools::handlers::work_graph_admission::build_agent_card_manifest_shadow_decision;
+use crate::tools::handlers::work_graph_admission::build_work_graph_admission_shadow_decision;
+use crate::tools::handlers::work_graph_admission::configured_agent_role_manifest_source;
+use crate::tools::handlers::work_graph_promotion_readiness::WorkGraphPromotionReadinessShadowMatrix;
+use crate::tools::handlers::work_graph_promotion_readiness::build_default_governed_promotion_readiness_shadow_matrix;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphOperatorReviewPromotionPacket;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphPromotionCloseoutReceipt;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphPromotionCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphPromotionReviewAuditChainReceipt;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphPromotionReviewReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphReviewedFlagAuditChainCloseoutReceipt;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphReviewedFlagPreconditionPlanPacket;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphReviewedFlagPreconditionPlanReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphReviewedFlagReadinessCloseoutReceipt;
+use crate::tools::handlers::work_graph_promotion_review::WorkGraphReviewedFlagReadinessCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_promotion_review::build_operator_review_promotion_packet;
+use crate::tools::handlers::work_graph_promotion_review::build_promotion_closeout_receipt;
+use crate::tools::handlers::work_graph_promotion_review::build_promotion_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_promotion_review::build_promotion_review_audit_chain_receipt;
+use crate::tools::handlers::work_graph_promotion_review::build_promotion_review_replay_consistency_decision;
+use crate::tools::handlers::work_graph_promotion_review::build_reviewed_flag_audit_chain_closeout_receipt;
+use crate::tools::handlers::work_graph_promotion_review::build_reviewed_flag_precondition_plan_packet;
+use crate::tools::handlers::work_graph_promotion_review::build_reviewed_flag_precondition_plan_replay_consistency_decision;
+use crate::tools::handlers::work_graph_promotion_review::build_reviewed_flag_readiness_closeout_receipt;
+use crate::tools::handlers::work_graph_promotion_review::build_reviewed_flag_readiness_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionAuditChainCloseoutReceipt;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionAuditChainCloseoutReceiptInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionAuditChainCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionAuditChainCloseoutReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionCloseoutReceipt;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionCloseoutReceiptInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionCloseoutReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationApprovalReviewSideEffectLockCloseoutPacket;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationApprovalReviewSideEffectLockCloseoutPacketInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationApprovalReviewSideEffectLockCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationApprovalReviewSideEffectLockCloseoutReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationAuditChainCloseoutInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationAuditChainCloseoutReceipt;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationAuditChainCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationAuditChainCloseoutReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationNoLiveCloseoutInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationNoLiveCloseoutReceipt;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationNoLiveCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationNoLiveCloseoutReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightPacket;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightPacketInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationPreconditionOperatorPacket;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationPreconditionOperatorPacketInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationPreconditionReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementActivationPreconditionReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementAuditChainCloseoutInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementAuditChainCloseoutReceipt;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementAuditChainCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementAuditChainCloseoutReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementNoLiveRehearsalCloseoutInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementNoLiveRehearsalCloseoutReceipt;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementNoLiveRehearsalCloseoutReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementNoLiveRehearsalCloseoutReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementOperatorReviewPacket;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementOperatorReviewPacketInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementOperatorReviewReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionEnablementOperatorReviewReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionReplayConsistencyDecision;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionReplayConsistencyInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphCanonicalProjectionShadowReceipt;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphSurfaceAuditPacketInput;
+use crate::tools::handlers::work_graph_surface_audit::WorkGraphSurfaceAuditPacketSummary;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_audit_chain_closeout_receipt;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_audit_chain_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_closeout_receipt;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_precondition_operator_packet;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_audit_chain_closeout_receipt;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_operator_review_packet;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_replay_consistency_decision;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_canonical_projection_shadow_receipt;
+use crate::tools::handlers::work_graph_surface_audit::build_work_graph_surface_audit_packet;
+use crate::tools::handlers::work_graph_surface_audit::summarize_work_graph_surface_audit_packet;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_audit_chain_closeout_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_audit_chain_closeout_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_closeout_chain_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_closeout_replay_chain_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_audit_chain_closeout_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_no_live_closeout_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_precondition_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_activation_precondition_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_audit_chain_closeout_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_audit_chain_closeout_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_operator_review_replay_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_enablement_operator_review_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_canonical_projection_replay_chain_segment_specs;
+use crate::tools::handlers::work_graph_surface_audit::work_graph_surface_audit_chain_segment_specs;
 use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErr;
 use codex_protocol::protocol::AgentStatus;
@@ -63,6 +184,7 @@ struct ReportAgentJobResultArgs {
 
 #[derive(Debug, Serialize)]
 struct SpawnAgentsOnCsvResult {
+    governance_output_index: Vec<&'static str>,
     job_id: String,
     status: String,
     output_csv_path: String,
@@ -71,6 +193,64 @@ struct SpawnAgentsOnCsvResult {
     failed_items: usize,
     job_error: Option<String>,
     failed_item_errors: Option<Vec<AgentJobFailureSummary>>,
+    admission_shadow_decision: WorkGraphAdmissionShadowDecision,
+    promotion_readiness_shadow_matrix: WorkGraphPromotionReadinessShadowMatrix,
+    operator_review_promotion_packet: WorkGraphOperatorReviewPromotionPacket,
+    promotion_review_replay_consistency_decision: WorkGraphPromotionReviewReplayConsistencyDecision,
+    promotion_closeout_receipt: WorkGraphPromotionCloseoutReceipt,
+    promotion_closeout_replay_consistency_decision:
+        WorkGraphPromotionCloseoutReplayConsistencyDecision,
+    promotion_review_audit_chain_receipt: WorkGraphPromotionReviewAuditChainReceipt,
+    reviewed_flag_precondition_plan_packet: WorkGraphReviewedFlagPreconditionPlanPacket,
+    reviewed_flag_precondition_plan_replay_consistency_decision:
+        WorkGraphReviewedFlagPreconditionPlanReplayConsistencyDecision,
+    reviewed_flag_readiness_closeout_receipt: WorkGraphReviewedFlagReadinessCloseoutReceipt,
+    reviewed_flag_readiness_closeout_replay_consistency_decision:
+        WorkGraphReviewedFlagReadinessCloseoutReplayConsistencyDecision,
+    reviewed_flag_audit_chain_closeout_receipt: WorkGraphReviewedFlagAuditChainCloseoutReceipt,
+    work_graph_surface_audit_packet: WorkGraphSurfaceAuditPacketSummary,
+    work_graph_canonical_projection_receipt: WorkGraphCanonicalProjectionShadowReceipt,
+    work_graph_canonical_projection_replay_consistency_decision:
+        WorkGraphCanonicalProjectionReplayConsistencyDecision,
+    work_graph_canonical_projection_closeout_receipt: WorkGraphCanonicalProjectionCloseoutReceipt,
+    work_graph_canonical_projection_closeout_replay_consistency_decision:
+        WorkGraphCanonicalProjectionCloseoutReplayConsistencyDecision,
+    work_graph_canonical_projection_audit_chain_closeout_receipt:
+        WorkGraphCanonicalProjectionAuditChainCloseoutReceipt,
+    work_graph_canonical_projection_audit_chain_closeout_replay_consistency_decision:
+        WorkGraphCanonicalProjectionAuditChainCloseoutReplayConsistencyDecision,
+    work_graph_canonical_projection_enablement_operator_review_packet:
+        WorkGraphCanonicalProjectionEnablementOperatorReviewPacket,
+    work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision:
+        WorkGraphCanonicalProjectionEnablementOperatorReviewReplayConsistencyDecision,
+    work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt:
+        WorkGraphCanonicalProjectionEnablementNoLiveRehearsalCloseoutReceipt,
+    work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision:
+        WorkGraphCanonicalProjectionEnablementNoLiveRehearsalCloseoutReplayConsistencyDecision,
+    work_graph_canonical_projection_enablement_audit_chain_closeout_receipt:
+        WorkGraphCanonicalProjectionEnablementAuditChainCloseoutReceipt,
+    work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision:
+        WorkGraphCanonicalProjectionEnablementAuditChainCloseoutReplayConsistencyDecision,
+    work_graph_canonical_projection_enablement_activation_precondition_operator_packet:
+        WorkGraphCanonicalProjectionEnablementActivationPreconditionOperatorPacket,
+    work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision:
+        WorkGraphCanonicalProjectionEnablementActivationPreconditionReplayConsistencyDecision,
+    work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt:
+        WorkGraphCanonicalProjectionEnablementActivationNoLiveCloseoutReceipt,
+    work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision:
+        WorkGraphCanonicalProjectionEnablementActivationNoLiveCloseoutReplayConsistencyDecision,
+    work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt:
+        WorkGraphCanonicalProjectionEnablementActivationAuditChainCloseoutReceipt,
+    work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision:
+        WorkGraphCanonicalProjectionEnablementActivationAuditChainCloseoutReplayConsistencyDecision,
+    work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet:
+        WorkGraphCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightPacket,
+    work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision:
+        WorkGraphCanonicalProjectionEnablementActivationOperatorApprovalReadinessPreflightReplayConsistencyDecision,
+    work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet:
+        WorkGraphCanonicalProjectionEnablementActivationApprovalReviewSideEffectLockCloseoutPacket,
+    work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision:
+        WorkGraphCanonicalProjectionEnablementActivationApprovalReviewSideEffectLockCloseoutReplayConsistencyDecision,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,8 +261,81 @@ struct AgentJobFailureSummary {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ReportAgentJobResultToolResult {
     accepted: bool,
+    task_result: AgentJobTaskResultEnvelope,
+    work_graph_report_only: AgentJobWorkGraphReportOnlyEmission,
+    work_graph_lifecycle_shadow_decision: WorkGraphRoleManifestShadowDecision,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentJobTaskResultEnvelope {
+    schema_version: &'static str,
+    task_id: String,
+    status: String,
+    summary: String,
+    artifacts: Vec<String>,
+    evidence: Vec<String>,
+    risks: Vec<String>,
+    next_actions: Vec<String>,
+    verifier: String,
+    reducer: String,
+    usage: AgentJobTaskResultUsage,
+    trace_id: String,
+    span_id: String,
+    source_surface_id: &'static str,
+    result_contract: &'static str,
+    output_schema_validated: bool,
+    live_blocking_enabled: bool,
+    live_cutover_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentJobTaskResultUsage {
+    model_tokens: u64,
+    tool_calls: u64,
+    command_count: u64,
+    budget_state: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentJobWorkGraphReportOnlyEmission {
+    task_id: String,
+    status: String,
+    summary: String,
+    artifacts: Vec<String>,
+    evidence: Vec<String>,
+    risks: Vec<String>,
+    next_actions: Vec<String>,
+    verifier: String,
+    reducer: String,
+    usage: AgentJobWorkGraphReportOnlyUsage,
+    trace_id: String,
+    span_id: String,
+    source_surface_id: &'static str,
+    admission_decision: &'static str,
+    feature_flag_id: &'static str,
+    feature_flag_enabled: bool,
+    canary_stage: &'static str,
+    canary_traffic_ppm: u32,
+    readback_required: bool,
+    rollback_replay_required: bool,
+    blocking_guardrail_preview: bool,
+    live_blocking_enabled: bool,
+    live_cutover_enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentJobWorkGraphReportOnlyUsage {
+    model_tokens: u64,
+    tool_calls: u64,
+    command_count: u64,
+    budget_state: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -627,6 +880,78 @@ fn is_item_stale(item: &codex_state::AgentJobItem, runtime_timeout: Duration) ->
     } else {
         false
     }
+}
+
+fn build_spawn_agents_on_csv_admission_shadow_decision(
+    job_id: &str,
+    item_count: usize,
+    requested_concurrency: usize,
+    session: &Arc<Session>,
+    turn: &Arc<TurnContext>,
+    output_schema_present: bool,
+) -> WorkGraphAdmissionShadowDecision {
+    let role_manifest_shadow_decision = build_spawn_agents_on_csv_role_manifest_shadow_decision(
+        requested_concurrency,
+        turn,
+        output_schema_present,
+    );
+    build_work_graph_admission_shadow_decision(WorkGraphAdmissionShadowInput {
+        source_surface_id: "spawn_agents_on_csv",
+        task_id: Some(format!("agent-job:{job_id}")),
+        job_id: Some(job_id.to_string()),
+        role_manifest_shadow_decision,
+        requested_concurrency,
+        item_count: Some(item_count),
+        child_depth: next_thread_spawn_depth(&turn.session_source),
+        max_depth: turn.config.agent_max_depth,
+        max_threads: turn.config.agent_max_threads,
+        enforce_depth_limit: true,
+        state_db_required: true,
+        state_db_available: session.state_db().is_some(),
+        output_contract_required: false,
+        output_contract_present: output_schema_present,
+        result_contract_required: true,
+        result_contract_present: true,
+        reducer_required: true,
+        reducer_present: true,
+        side_effect_class: "local_agent_job_fanout",
+    })
+}
+
+fn build_spawn_agents_on_csv_role_manifest_shadow_decision(
+    requested_concurrency: usize,
+    turn: &TurnContext,
+    output_schema_present: bool,
+) -> WorkGraphRoleManifestShadowDecision {
+    let configured_role = turn.config.agent_roles.get("agent_job_worker");
+    build_agent_card_manifest_shadow_decision(
+        agent_jobs_worker_agent_card_manifest(),
+        WorkGraphAgentCardManifestObservation {
+            role_name: None,
+            role_declared: true,
+            role_description_present: true,
+            configured_manifest_source: configured_agent_role_manifest_source(
+                Some("agent_job_worker"),
+                configured_role.is_some(),
+                configured_role.is_some_and(|role| role.config_file.is_some()),
+                configured_role.and_then(|role| role.agent_card_manifest_source.as_deref()),
+            ),
+            configured_manifest_version: configured_role
+                .and_then(|role| role.agent_card_manifest_version.clone()),
+            configured_manifest_overlay: configured_role
+                .and_then(|role| role.agent_card_manifest.clone()),
+            budget_present: turn
+                .config
+                .agent_max_threads
+                .is_none_or(|max_threads| max_threads > 0 && requested_concurrency <= max_threads),
+            output_contract_present: Some(output_schema_present),
+            result_contract_present: None,
+            verifier_present: None,
+            reducer_present: None,
+            attempted_tool: Some("report_agent_job_result"),
+            observed_lane: Some("agent_jobs"),
+        },
+    )
 }
 
 fn default_output_csv_path(input_csv_path: &AbsolutePathBuf, job_id: &str) -> AbsolutePathBuf {

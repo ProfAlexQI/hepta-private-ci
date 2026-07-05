@@ -1,5 +1,6 @@
 use hepta_core::HeptaError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Durable, runtime-owned session lifecycle state machine for Hepta-style
 /// `/new`, `/reset`, `/compact`, `/focus`, and `/unfocus` flows.

@@ -1,9 +1,16 @@
-use hepta_core::{
-    DoctorArea, DoctorCheckOutcome, DoctorOwner, MessageRole, ModelMessage, ModelRef, ModelRequest,
-    ModelResponse, ProviderDescriptor, ThinkingLevel,
-};
+use hepta_core::DoctorArea;
+use hepta_core::DoctorCheckOutcome;
+use hepta_core::DoctorOwner;
+use hepta_core::MessageRole;
+use hepta_core::ModelMessage;
+use hepta_core::ModelRef;
+use hepta_core::ModelRequest;
+use hepta_core::ModelResponse;
+use hepta_core::ProviderDescriptor;
+use hepta_core::ThinkingLevel;
 
-use super::{DoctorProviderProbe, DoctorStatus};
+use super::DoctorProviderProbe;
+use super::DoctorStatus;
 
 const DOCTOR_PING_CONTENT: &str = "doctor:ping";
 const NO_ASSISTANT_MESSAGE: &str = "no assistant message";
@@ -177,10 +184,12 @@ fn sanitize_segment(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{
-        DoctorArea, DoctorStatus as CoreDoctorStatus, FinishReason, ModelRef,
-        ProviderTransportKind, Usage,
-    };
+    use hepta_core::DoctorArea;
+    use hepta_core::DoctorStatus as CoreDoctorStatus;
+    use hepta_core::FinishReason;
+    use hepta_core::ModelRef;
+    use hepta_core::ProviderTransportKind;
+    use hepta_core::Usage;
 
     use super::*;
 

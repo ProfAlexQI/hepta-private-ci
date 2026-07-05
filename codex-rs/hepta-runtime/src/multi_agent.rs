@@ -1,16 +1,26 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use hepta_core::{AgentId, EventKind, HeptaError, SessionId};
-use serde::{Deserialize, Serialize};
+use hepta_core::AgentId;
+use hepta_core::EventKind;
+use hepta_core::HeptaError;
+use hepta_core::SessionId;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use tokio::task::JoinSet;
 
-use super::{RuntimeKernel, current_unix_ms};
+use crate::operator_policy::OperatorPolicyDecision;
+use crate::operator_policy::OperatorPolicyEvaluationReport;
+use crate::operator_policy::OperatorPolicyInput;
+use crate::operator_policy::evaluate_operator_policy;
+
+use super::RuntimeKernel;
+use super::current_unix_ms;
 
 const DEFAULT_AGENT_MAX_INBOX_MESSAGES: usize = 64;
 const DEFAULT_AGENT_MAX_TURNS_PER_RUN: usize = 4;
@@ -18,6 +28,12 @@ const DEFAULT_AGENT_MAX_PARALLEL_TOOL_SLOTS: usize = 2;
 const DEFAULT_AGENT_MAX_CONCURRENT_RUNS: usize = 1;
 const DEFAULT_MULTI_AGENT_DEMO_AGENTS: usize = 4;
 const DEFAULT_MULTI_AGENT_DEMO_MESSAGES_PER_AGENT: usize = 1;
+const MULTI_AGENT_CONTEXT_RECALL_OPERATOR_INVOCATION_SURFACE: &str =
+    "hepta-context-recall-multi-agent-operator-invocation";
+const MULTI_AGENT_CONTEXT_RECALL_OPERATOR_INVOCATION_COMMAND: &str =
+    "/hepta-context-recall-multi-agent-handoff --execute --json";
+const MULTI_AGENT_CONTEXT_RECALL_OPERATOR_TOOL_NAME: &str =
+    "hepta_context_recall_multi_agent_handoff";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -348,6 +364,19 @@ pub struct AgentRuntimeRunFailure {
     pub retry_messages: Vec<AgentInboxMessage>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRuntimeContextRecallHandoffPolicy {
+    Disabled,
+    ExperimentalOperatorApproved,
+}
+
+impl AgentRuntimeContextRecallHandoffPolicy {
+    fn experimental_api_enabled(self) -> bool {
+        matches!(self, Self::ExperimentalOperatorApproved)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MultiAgentConcurrentRunReport {
     pub schema_version: u32,
@@ -369,6 +398,65 @@ pub struct MultiAgentConcurrentRunReport {
     pub runs: Vec<AgentRuntimeRunResult>,
     pub failures: Vec<AgentRuntimeRunFailure>,
     pub pool: AgentRuntimePoolReport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MultiAgentContextRecallConcurrentRunReport {
+    pub context_recall_handoff_policy: AgentRuntimeContextRecallHandoffPolicy,
+    pub provider_rollup_present_count: usize,
+    pub selected_snippets_present_count: usize,
+    pub selected_snippet_count: u32,
+    pub selected_snippet_text_exposed: bool,
+    pub source_ids_exposed: bool,
+    pub query_payload_exposed: bool,
+    pub stable_schema_promoted: bool,
+    pub run: MultiAgentConcurrentRunReport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MultiAgentContextRecallOperatorInvocationRequest {
+    pub channel_id: String,
+    pub sender_id: String,
+    pub sender_is_owner: bool,
+    pub operator_id: String,
+    pub operator_confirmed: bool,
+    pub idempotency_key: String,
+    pub limit: Option<usize>,
+    pub reducer_mode: AgentReducerMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MultiAgentContextRecallOperatorInvocationReport {
+    pub invocation_surface: &'static str,
+    pub source_command: &'static str,
+    pub status: &'static str,
+    pub operator_identity_redacted: bool,
+    pub sender_identity_redacted: bool,
+    pub idempotency_key_present: bool,
+    pub operator_confirmed: bool,
+    pub operator_policy_decision: OperatorPolicyDecision,
+    pub operator_policy_decision_label: &'static str,
+    pub operator_policy_allowed: bool,
+    pub operator_policy_requires_approval: bool,
+    pub operator_policy_denied_reason_count: usize,
+    pub context_recall_handoff_policy: AgentRuntimeContextRecallHandoffPolicy,
+    pub agent_runtime_executed: bool,
+    pub limit: Option<usize>,
+    pub reducer_mode: AgentReducerMode,
+    pub requested_agent_count: usize,
+    pub launched_agent_count: usize,
+    pub completed_agent_count: usize,
+    pub failed_agent_count: usize,
+    pub total_messages_processed: usize,
+    pub provider_rollup_present_count: usize,
+    pub selected_snippets_present_count: usize,
+    pub selected_snippet_count: u32,
+    pub selected_snippet_text_exposed: bool,
+    pub source_ids_exposed: bool,
+    pub query_payload_exposed: bool,
+    pub prompt_or_final_text_exposed: bool,
+    pub stable_schema_promoted: bool,
+    pub blockers: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone)]
@@ -901,31 +989,99 @@ impl RuntimeKernel {
         limit: Option<usize>,
         reducer_mode: AgentReducerMode,
     ) -> Result<MultiAgentConcurrentRunReport, HeptaError> {
+        Ok(self
+            .run_ready_agents_with_context_recall_handoff(
+                limit,
+                reducer_mode,
+                AgentRuntimeContextRecallHandoffPolicy::Disabled,
+            )
+            .await?
+            .run)
+    }
+
+    pub async fn run_ready_agents_with_context_recall_operator_invocation(
+        &self,
+        request: MultiAgentContextRecallOperatorInvocationRequest,
+    ) -> Result<MultiAgentContextRecallOperatorInvocationReport, HeptaError> {
+        let _operator_id = normalize_non_empty(&request.operator_id, "operator id")?;
+        let _idempotency_key = normalize_non_empty(&request.idempotency_key, "idempotency key")?;
+        let policy = evaluate_multi_agent_context_recall_operator_invocation_policy(&request)?;
+        let policy_allowed = policy.decision == OperatorPolicyDecision::Allow;
+
+        let mut blockers = Vec::new();
+        if !request.operator_confirmed {
+            blockers.push("operator_not_confirmed");
+        }
+        if !policy_allowed {
+            blockers.push("policy_not_allowed");
+        }
+        if !blockers.is_empty() {
+            return Ok(multi_agent_context_recall_operator_invocation_report(
+                &request,
+                &policy,
+                policy_allowed,
+                None,
+                blockers,
+            ));
+        }
+
+        let run = self
+            .run_ready_agents_with_context_recall_handoff(
+                request.limit,
+                request.reducer_mode,
+                AgentRuntimeContextRecallHandoffPolicy::ExperimentalOperatorApproved,
+            )
+            .await?;
+        Ok(multi_agent_context_recall_operator_invocation_report(
+            &request,
+            &policy,
+            policy_allowed,
+            Some(&run),
+            Vec::new(),
+        ))
+    }
+
+    pub async fn run_ready_agents_with_context_recall_handoff(
+        &self,
+        limit: Option<usize>,
+        reducer_mode: AgentReducerMode,
+        context_recall_handoff_policy: AgentRuntimeContextRecallHandoffPolicy,
+    ) -> Result<MultiAgentContextRecallConcurrentRunReport, HeptaError> {
         let plans = self.select_ready_agent_run_plans(limit)?;
         let requested_agent_count = plans.len();
         let launched_agent_count = plans.len();
         if plans.is_empty() {
             let pool = self.agent_runtime_pool_report()?;
-            return Ok(MultiAgentConcurrentRunReport {
-                schema_version: 1,
-                scheduler_kind: "tokio_join_set",
-                requested_agent_count: 0,
-                launched_agent_count: 0,
-                completed_agent_count: 0,
-                failed_agent_count: 0,
-                total_messages_processed: 0,
-                max_parallelism_observed: pool.latest_max_parallelism_observed,
-                true_concurrent: pool.latest_max_parallelism_observed >= 2,
-                barrier_joined: true,
-                reducer_mode,
-                quorum_threshold: 0,
-                reducer_passed: true,
-                consensus_status: "idle",
-                reducer_output: "no ready agents".into(),
-                ratings: pool.ratings.clone(),
-                runs: Vec::new(),
-                failures: Vec::new(),
-                pool,
+            return Ok(MultiAgentContextRecallConcurrentRunReport {
+                context_recall_handoff_policy,
+                provider_rollup_present_count: 0,
+                selected_snippets_present_count: 0,
+                selected_snippet_count: 0,
+                selected_snippet_text_exposed: false,
+                source_ids_exposed: false,
+                query_payload_exposed: false,
+                stable_schema_promoted: false,
+                run: MultiAgentConcurrentRunReport {
+                    schema_version: 1,
+                    scheduler_kind: "tokio_join_set",
+                    requested_agent_count: 0,
+                    launched_agent_count: 0,
+                    completed_agent_count: 0,
+                    failed_agent_count: 0,
+                    total_messages_processed: 0,
+                    max_parallelism_observed: pool.latest_max_parallelism_observed,
+                    true_concurrent: pool.latest_max_parallelism_observed >= 2,
+                    barrier_joined: true,
+                    reducer_mode,
+                    quorum_threshold: 0,
+                    reducer_passed: true,
+                    consensus_status: "idle",
+                    reducer_output: "no ready agents".into(),
+                    ratings: pool.ratings.clone(),
+                    runs: Vec::new(),
+                    failures: Vec::new(),
+                    pool,
+                },
             });
         }
         let reply_plans = plans.clone();
@@ -1090,6 +1246,9 @@ impl RuntimeKernel {
             .map(|run| (run.agent_id.clone(), run.workspace_id.clone()))
             .collect::<HashSet<_>>();
         let mut turn_results_by_agent = HashMap::new();
+        let mut provider_rollup_present_count = 0usize;
+        let mut selected_snippets_present_count = 0usize;
+        let mut selected_snippet_count = 0u32;
         for plan in &reply_plans {
             let run_key = (plan.agent_id.clone(), plan.workspace_id.clone());
             if !successful_agents.contains(&run_key) {
@@ -1097,30 +1256,72 @@ impl RuntimeKernel {
             }
             let mut turn_results = Vec::new();
             for message in &plan.messages {
-                let turn_result = match self
-                    .run_demo_turn_in_session(&plan.session_id, &message.content)
-                    .await
-                {
-                    Ok(result) => AgentRuntimeTurnResult {
-                        message_id: message.message_id.clone(),
-                        workspace_id: message.workspace_id.clone(),
-                        input: message.content.clone(),
-                        final_text: result.final_text,
-                        invoked_tool: result.invoked_tool,
-                        tool_output_json: result.tool_output_json,
-                        approval_required: result.approval_required,
-                        blocked_reason: result.blocked_reason,
-                    },
-                    Err(err) => AgentRuntimeTurnResult {
-                        message_id: message.message_id.clone(),
-                        workspace_id: message.workspace_id.clone(),
-                        input: message.content.clone(),
-                        final_text: format!("agent runtime error: {}", err.0),
-                        invoked_tool: None,
-                        tool_output_json: None,
-                        approval_required: None,
-                        blocked_reason: Some(err.0),
-                    },
+                let turn_result = if context_recall_handoff_policy.experimental_api_enabled() {
+                    match self
+                        .run_demo_turn_in_session_with_context_recall_handoff(
+                            &plan.session_id,
+                            &message.content,
+                            true,
+                        )
+                        .await
+                    {
+                        Ok(run) => {
+                            provider_rollup_present_count =
+                                provider_rollup_present_count.saturating_add(1);
+                            if run.selected_snippets_present {
+                                selected_snippets_present_count =
+                                    selected_snippets_present_count.saturating_add(1);
+                            }
+                            selected_snippet_count =
+                                selected_snippet_count.saturating_add(run.selected_snippet_count);
+                            AgentRuntimeTurnResult {
+                                message_id: message.message_id.clone(),
+                                workspace_id: message.workspace_id.clone(),
+                                input: message.content.clone(),
+                                final_text: run.result.final_text,
+                                invoked_tool: run.result.invoked_tool,
+                                tool_output_json: run.result.tool_output_json,
+                                approval_required: run.result.approval_required,
+                                blocked_reason: run.result.blocked_reason,
+                            }
+                        }
+                        Err(err) => AgentRuntimeTurnResult {
+                            message_id: message.message_id.clone(),
+                            workspace_id: message.workspace_id.clone(),
+                            input: message.content.clone(),
+                            final_text: format!("agent runtime error: {}", err.0),
+                            invoked_tool: None,
+                            tool_output_json: None,
+                            approval_required: None,
+                            blocked_reason: Some(err.0),
+                        },
+                    }
+                } else {
+                    match self
+                        .run_demo_turn_in_session(&plan.session_id, &message.content)
+                        .await
+                    {
+                        Ok(result) => AgentRuntimeTurnResult {
+                            message_id: message.message_id.clone(),
+                            workspace_id: message.workspace_id.clone(),
+                            input: message.content.clone(),
+                            final_text: result.final_text,
+                            invoked_tool: result.invoked_tool,
+                            tool_output_json: result.tool_output_json,
+                            approval_required: result.approval_required,
+                            blocked_reason: result.blocked_reason,
+                        },
+                        Err(err) => AgentRuntimeTurnResult {
+                            message_id: message.message_id.clone(),
+                            workspace_id: message.workspace_id.clone(),
+                            input: message.content.clone(),
+                            final_text: format!("agent runtime error: {}", err.0),
+                            invoked_tool: None,
+                            tool_output_json: None,
+                            approval_required: None,
+                            blocked_reason: Some(err.0),
+                        },
+                    }
                 };
                 turn_results.push(turn_result);
             }
@@ -1161,26 +1362,36 @@ impl RuntimeKernel {
             pool.ratings.clone(),
             failed_agent_count == 0 && barrier_joined && reducer_decision.passed,
         );
-        Ok(MultiAgentConcurrentRunReport {
-            schema_version: 1,
-            scheduler_kind: "tokio_join_set",
-            requested_agent_count,
-            launched_agent_count,
-            completed_agent_count,
-            failed_agent_count,
-            total_messages_processed,
-            max_parallelism_observed: observed_parallelism,
-            true_concurrent,
-            barrier_joined,
-            reducer_mode,
-            quorum_threshold,
-            reducer_passed: reducer_decision.passed,
-            consensus_status: reducer_decision.consensus_status,
-            reducer_output: reducer_decision.summary,
-            ratings,
-            runs,
-            failures,
-            pool,
+        Ok(MultiAgentContextRecallConcurrentRunReport {
+            context_recall_handoff_policy,
+            provider_rollup_present_count,
+            selected_snippets_present_count,
+            selected_snippet_count,
+            selected_snippet_text_exposed: false,
+            source_ids_exposed: false,
+            query_payload_exposed: false,
+            stable_schema_promoted: false,
+            run: MultiAgentConcurrentRunReport {
+                schema_version: 1,
+                scheduler_kind: "tokio_join_set",
+                requested_agent_count,
+                launched_agent_count,
+                completed_agent_count,
+                failed_agent_count,
+                total_messages_processed,
+                max_parallelism_observed: observed_parallelism,
+                true_concurrent,
+                barrier_joined,
+                reducer_mode,
+                quorum_threshold,
+                reducer_passed: reducer_decision.passed,
+                consensus_status: reducer_decision.consensus_status,
+                reducer_output: reducer_decision.summary,
+                ratings,
+                runs,
+                failures,
+                pool,
+            },
         })
     }
 
@@ -1717,9 +1928,140 @@ fn normalize_workspace_id(
     }
 }
 
+fn evaluate_multi_agent_context_recall_operator_invocation_policy(
+    request: &MultiAgentContextRecallOperatorInvocationRequest,
+) -> Result<OperatorPolicyEvaluationReport, HeptaError> {
+    evaluate_operator_policy(OperatorPolicyInput {
+        channel_id: request.channel_id.clone(),
+        sender_id: request.sender_id.clone(),
+        sender_is_owner: request.sender_is_owner,
+        tool_name: MULTI_AGENT_CONTEXT_RECALL_OPERATOR_TOOL_NAME.to_string(),
+        tool_action: "run".to_string(),
+        current_session_id: None,
+        target_session_id: None,
+        message_cross_context_allowed: false,
+        message_action_allowed: false,
+        provider_auth_ref: None,
+        pairing_request_kind: None,
+        pairing_provenance_verified: false,
+        target_path: None,
+        sandbox_mode: None,
+        workspace_mount_path: None,
+        payload_preview: Some("context-recall multi-agent handoff request".to_string()),
+        terminal_output_preview: None,
+    })
+}
+
+fn multi_agent_context_recall_operator_invocation_report(
+    request: &MultiAgentContextRecallOperatorInvocationRequest,
+    policy: &OperatorPolicyEvaluationReport,
+    policy_allowed: bool,
+    run: Option<&MultiAgentContextRecallConcurrentRunReport>,
+    blockers: Vec<&'static str>,
+) -> MultiAgentContextRecallOperatorInvocationReport {
+    let context_recall_handoff_policy = run
+        .map(|report| report.context_recall_handoff_policy)
+        .unwrap_or(AgentRuntimeContextRecallHandoffPolicy::Disabled);
+    let run_report = run.map(|report| &report.run);
+
+    MultiAgentContextRecallOperatorInvocationReport {
+        invocation_surface: MULTI_AGENT_CONTEXT_RECALL_OPERATOR_INVOCATION_SURFACE,
+        source_command: MULTI_AGENT_CONTEXT_RECALL_OPERATOR_INVOCATION_COMMAND,
+        status: if run.is_some() { "executed" } else { "blocked" },
+        operator_identity_redacted: true,
+        sender_identity_redacted: true,
+        idempotency_key_present: true,
+        operator_confirmed: request.operator_confirmed,
+        operator_policy_decision: policy.decision,
+        operator_policy_decision_label: policy.decision_label,
+        operator_policy_allowed: policy_allowed,
+        operator_policy_requires_approval: policy.requires_approval,
+        operator_policy_denied_reason_count: policy.denied_reasons.len(),
+        context_recall_handoff_policy,
+        agent_runtime_executed: run.is_some(),
+        limit: request.limit,
+        reducer_mode: request.reducer_mode,
+        requested_agent_count: run_report
+            .map(|report| report.requested_agent_count)
+            .unwrap_or(0),
+        launched_agent_count: run_report
+            .map(|report| report.launched_agent_count)
+            .unwrap_or(0),
+        completed_agent_count: run_report
+            .map(|report| report.completed_agent_count)
+            .unwrap_or(0),
+        failed_agent_count: run_report
+            .map(|report| report.failed_agent_count)
+            .unwrap_or(0),
+        total_messages_processed: run_report
+            .map(|report| report.total_messages_processed)
+            .unwrap_or(0),
+        provider_rollup_present_count: run
+            .map(|report| report.provider_rollup_present_count)
+            .unwrap_or(0),
+        selected_snippets_present_count: run
+            .map(|report| report.selected_snippets_present_count)
+            .unwrap_or(0),
+        selected_snippet_count: run.map(|report| report.selected_snippet_count).unwrap_or(0),
+        selected_snippet_text_exposed: false,
+        source_ids_exposed: false,
+        query_payload_exposed: false,
+        prompt_or_final_text_exposed: false,
+        stable_schema_promoted: false,
+        blockers,
+    }
+}
+
+fn normalize_non_empty(value: &str, label: &str) -> Result<String, HeptaError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(HeptaError(format!("{label} is required")));
+    }
+    Ok(trimmed.to_string())
+}
+
 #[cfg(test)]
 mod tests {
+    use hepta_core::MemoryRecord;
+    use hepta_core::MemoryScope;
+    use hepta_core::MemoryStore;
+
     use super::*;
+
+    fn assert_multi_agent_context_recall_report_does_not_leak(rendered: &str) {
+        for forbidden in [
+            "multi-agent-selected-safe-context",
+            "multi-agent-selected-source-id",
+            "[redacted-query]",
+            "<selected_context_recall>",
+        ] {
+            assert!(
+                !rendered.contains(forbidden),
+                "multi-agent context recall report leaked {forbidden}"
+            );
+        }
+    }
+
+    fn assert_multi_agent_operator_invocation_report_does_not_leak(rendered: &str) {
+        for forbidden in [
+            "multi-agent-operator-safe-context",
+            "multi-agent-operator-source-id",
+            "multi-agent-operator-needle",
+            "operator-a",
+            "telegram:6476198178",
+            "6476198178",
+            "multi-agent-operator-invocation-denied-1",
+            "multi-agent-operator-invocation-unconfirmed-1",
+            "multi-agent-operator-invocation-approved-1",
+            "[redacted-query]",
+            "<selected_context_recall>",
+        ] {
+            assert!(
+                !rendered.contains(forbidden),
+                "multi-agent operator invocation report leaked {forbidden}"
+            );
+        }
+    }
 
     #[tokio::test]
     async fn top_level_multi_agent_runtime_executes_true_concurrent_joinset() {
@@ -1815,6 +2157,242 @@ mod tests {
         assert_eq!(session.history.len(), 1);
         assert_eq!(session.history[0].input, "hello chat reply");
         assert!(session.history[0].final_text.contains("hello chat reply"));
+    }
+
+    #[tokio::test]
+    async fn multi_agent_context_recall_handoff_is_explicit_without_snippet_leak() {
+        let disabled_runtime = RuntimeKernel::new();
+        disabled_runtime
+            .memory
+            .put(MemoryRecord {
+                id: "multi-agent-selected-source-id".into(),
+                scope: MemoryScope::LongTerm,
+                content: format!(
+                    "multi-agent-needle {}",
+                    "multi-agent-selected-safe-context ".repeat(80)
+                ),
+            })
+            .await
+            .expect("memory should store");
+        disabled_runtime
+            .register_agent_runtime("disabled-context-agent")
+            .expect("agent should register");
+        disabled_runtime
+            .enqueue_agent_message(
+                "disabled-context-agent",
+                "multi-agent-needle",
+                Some("operator"),
+            )
+            .expect("message should enqueue");
+
+        let disabled = disabled_runtime
+            .run_ready_agents_with_context_recall_handoff(
+                Some(1),
+                AgentReducerMode::Any,
+                AgentRuntimeContextRecallHandoffPolicy::Disabled,
+            )
+            .await
+            .expect("disabled context recall run should complete");
+
+        assert_eq!(
+            disabled.context_recall_handoff_policy,
+            AgentRuntimeContextRecallHandoffPolicy::Disabled
+        );
+        assert_eq!(disabled.provider_rollup_present_count, 0);
+        assert_eq!(disabled.selected_snippets_present_count, 0);
+        assert_eq!(disabled.selected_snippet_count, 0);
+        assert_eq!(disabled.run.completed_agent_count, 1);
+        assert_eq!(disabled.run.runs[0].turn_results.len(), 1);
+        assert_multi_agent_context_recall_report_does_not_leak(
+            &serde_json::to_string(&disabled).expect("report should serialize"),
+        );
+        assert_multi_agent_context_recall_report_does_not_leak(&format!("{disabled:?}"));
+
+        let opted_runtime = RuntimeKernel::new();
+        opted_runtime
+            .memory
+            .put(MemoryRecord {
+                id: "multi-agent-selected-source-id".into(),
+                scope: MemoryScope::LongTerm,
+                content: format!(
+                    "multi-agent-needle {}",
+                    "multi-agent-selected-safe-context ".repeat(80)
+                ),
+            })
+            .await
+            .expect("memory should store");
+        opted_runtime
+            .register_agent_runtime("opted-context-agent")
+            .expect("agent should register");
+        opted_runtime
+            .enqueue_agent_message(
+                "opted-context-agent",
+                "multi-agent-needle",
+                Some("operator"),
+            )
+            .expect("message should enqueue");
+
+        let opted = opted_runtime
+            .run_ready_agents_with_context_recall_handoff(
+                Some(1),
+                AgentReducerMode::Any,
+                AgentRuntimeContextRecallHandoffPolicy::ExperimentalOperatorApproved,
+            )
+            .await
+            .expect("opted-in context recall run should complete");
+
+        assert_eq!(
+            opted.context_recall_handoff_policy,
+            AgentRuntimeContextRecallHandoffPolicy::ExperimentalOperatorApproved
+        );
+        assert_eq!(opted.provider_rollup_present_count, 1);
+        assert_eq!(opted.selected_snippets_present_count, 1);
+        assert!(opted.selected_snippet_count > 0);
+        assert_eq!(opted.run.completed_agent_count, 1);
+        assert_eq!(opted.run.runs[0].turn_results.len(), 1);
+        assert_multi_agent_context_recall_report_does_not_leak(
+            &serde_json::to_string(&opted).expect("report should serialize"),
+        );
+        assert_multi_agent_context_recall_report_does_not_leak(&format!("{opted:?}"));
+    }
+
+    #[tokio::test]
+    async fn multi_agent_context_recall_operator_invocation_requires_policy_and_confirmation_without_leak()
+     {
+        let runtime = RuntimeKernel::new();
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "multi-agent-operator-source-id".into(),
+                scope: MemoryScope::LongTerm,
+                content: format!(
+                    "multi-agent-operator-needle {}",
+                    "multi-agent-operator-safe-context ".repeat(80)
+                ),
+            })
+            .await
+            .expect("memory should store");
+        runtime
+            .register_agent_runtime("operator-context-agent")
+            .expect("agent should register");
+        runtime
+            .enqueue_agent_message(
+                "operator-context-agent",
+                "multi-agent-operator-needle",
+                Some("operator"),
+            )
+            .expect("message should enqueue");
+
+        let denied = runtime
+            .run_ready_agents_with_context_recall_operator_invocation(
+                MultiAgentContextRecallOperatorInvocationRequest {
+                    channel_id: "telegram:6476198178".into(),
+                    sender_id: "6476198178".into(),
+                    sender_is_owner: false,
+                    operator_id: "operator-a".into(),
+                    operator_confirmed: true,
+                    idempotency_key: "multi-agent-operator-invocation-denied-1".into(),
+                    limit: Some(1),
+                    reducer_mode: AgentReducerMode::Any,
+                },
+            )
+            .await
+            .expect("denied invocation should return a report");
+
+        assert_eq!(denied.status, "blocked");
+        assert_eq!(
+            denied.operator_policy_decision,
+            OperatorPolicyDecision::RequireApproval
+        );
+        assert!(denied.operator_policy_requires_approval);
+        assert!(!denied.operator_policy_allowed);
+        assert!(!denied.agent_runtime_executed);
+        assert_eq!(
+            denied.context_recall_handoff_policy,
+            AgentRuntimeContextRecallHandoffPolicy::Disabled
+        );
+        assert_eq!(denied.completed_agent_count, 0);
+        assert_eq!(denied.selected_snippets_present_count, 0);
+        assert_eq!(denied.selected_snippet_count, 0);
+        assert_eq!(denied.blockers, vec!["policy_not_allowed"]);
+
+        let unconfirmed = runtime
+            .run_ready_agents_with_context_recall_operator_invocation(
+                MultiAgentContextRecallOperatorInvocationRequest {
+                    channel_id: "telegram:6476198178".into(),
+                    sender_id: "6476198178".into(),
+                    sender_is_owner: true,
+                    operator_id: "operator-a".into(),
+                    operator_confirmed: false,
+                    idempotency_key: "multi-agent-operator-invocation-unconfirmed-1".into(),
+                    limit: Some(1),
+                    reducer_mode: AgentReducerMode::Any,
+                },
+            )
+            .await
+            .expect("unconfirmed invocation should return a report");
+
+        assert_eq!(unconfirmed.status, "blocked");
+        assert_eq!(
+            unconfirmed.operator_policy_decision,
+            OperatorPolicyDecision::Allow
+        );
+        assert!(unconfirmed.operator_policy_allowed);
+        assert!(!unconfirmed.operator_policy_requires_approval);
+        assert!(!unconfirmed.agent_runtime_executed);
+        assert_eq!(
+            unconfirmed.context_recall_handoff_policy,
+            AgentRuntimeContextRecallHandoffPolicy::Disabled
+        );
+        assert_eq!(unconfirmed.completed_agent_count, 0);
+        assert_eq!(unconfirmed.blockers, vec!["operator_not_confirmed"]);
+
+        let approved = runtime
+            .run_ready_agents_with_context_recall_operator_invocation(
+                MultiAgentContextRecallOperatorInvocationRequest {
+                    channel_id: "telegram:6476198178".into(),
+                    sender_id: "6476198178".into(),
+                    sender_is_owner: true,
+                    operator_id: "operator-a".into(),
+                    operator_confirmed: true,
+                    idempotency_key: "multi-agent-operator-invocation-approved-1".into(),
+                    limit: Some(1),
+                    reducer_mode: AgentReducerMode::Any,
+                },
+            )
+            .await
+            .expect("owner-approved invocation should execute");
+
+        assert_eq!(approved.status, "executed");
+        assert_eq!(
+            approved.operator_policy_decision,
+            OperatorPolicyDecision::Allow
+        );
+        assert!(approved.operator_policy_allowed);
+        assert!(!approved.operator_policy_requires_approval);
+        assert!(approved.agent_runtime_executed);
+        assert_eq!(
+            approved.context_recall_handoff_policy,
+            AgentRuntimeContextRecallHandoffPolicy::ExperimentalOperatorApproved
+        );
+        assert_eq!(approved.requested_agent_count, 1);
+        assert_eq!(approved.completed_agent_count, 1);
+        assert_eq!(approved.total_messages_processed, 1);
+        assert_eq!(approved.provider_rollup_present_count, 1);
+        assert_eq!(approved.selected_snippets_present_count, 1);
+        assert!(approved.selected_snippet_count > 0);
+        assert!(approved.blockers.is_empty());
+
+        for rendered in [
+            serde_json::to_string(&denied).expect("denied report should serialize"),
+            format!("{denied:?}"),
+            serde_json::to_string(&unconfirmed).expect("unconfirmed report should serialize"),
+            format!("{unconfirmed:?}"),
+            serde_json::to_string(&approved).expect("approved report should serialize"),
+            format!("{approved:?}"),
+        ] {
+            assert_multi_agent_operator_invocation_report_does_not_leak(&rendered);
+        }
     }
 
     #[tokio::test]

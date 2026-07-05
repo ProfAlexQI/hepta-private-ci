@@ -1,9 +1,12 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use crate::model::{ModelRef, ProviderDescriptor};
-use serde::{Deserialize, Serialize};
+use crate::model::ModelRef;
+use crate::model::ProviderDescriptor;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalConfigImportSourceSummary {

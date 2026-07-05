@@ -6424,6 +6424,9 @@ async fn load_config_rejects_missing_agent_role_config_file() -> std::io::Result
                 AgentRoleToml {
                     description: Some("Research role".to_string()),
                     config_file: Some(missing_path.abs()),
+                    agent_card_manifest_source: None,
+                    agent_card_manifest_version: None,
+                    agent_card_manifest: None,
                     nickname_candidates: None,
                 },
             )]),
@@ -6491,6 +6494,144 @@ nickname_candidates = ["Hypatia", "Noether"]
             .map(|candidates| candidates.iter().map(String::as_str).collect::<Vec<_>>()),
         Some(vec!["Hypatia", "Noether"])
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn agent_role_manifest_metadata_resolves_from_inline_and_role_file() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let role_config_path = codex_home.path().join("agents").join("researcher.toml");
+    tokio::fs::create_dir_all(
+        role_config_path
+            .parent()
+            .expect("role config should have a parent directory"),
+    )
+    .await?;
+    tokio::fs::write(
+        &role_config_path,
+        r#"agent_card_manifest_source = "agent-card://file/researcher"
+agent_card_manifest_version = "hepta.agent_card_manifest.v1"
+developer_instructions = "Research carefully"
+model = "gpt-5"
+
+[agent_card_manifest]
+schema_version = "hepta.agent_card_manifest.v1"
+source_surface_id = "spawn_agents_on_csv"
+capabilities = ["csv_row_processing", "task_result_reporting", "work_graph_shadow_event_emission"]
+allowed_tools = ["report_agent_job_result"]
+lane = "agent_jobs"
+max_threads = 4
+"#,
+    )
+    .await?;
+    tokio::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[agents.researcher]
+description = "Research role"
+config_file = "./agents/researcher.toml"
+agent_card_manifest_source = "agent-card://inline/researcher"
+agent_card_manifest_version = "stale.v0"
+
+[agents.researcher.agent_card_manifest]
+schema_version = "stale.v0"
+source_surface_id = "spawn_agent_v2"
+capabilities = ["local_subagent_spawn"]
+allowed_tools = ["send_message"]
+lane = "subagent"
+max_depth = 2
+
+[agents.reviewer]
+description = "Review role"
+agent_card_manifest_source = "agent-card://inline/reviewer"
+agent_card_manifest_version = "hepta.agent_card_manifest.v1"
+
+[agents.reviewer.agent_card_manifest]
+schema_version = "hepta.agent_card_manifest.v1"
+source_surface_id = "spawn_agent_v2"
+capabilities = ["local_subagent_spawn", "inter_agent_mailbox", "named_task_path"]
+allowed_tools = ["send_message", "followup_task", "wait_agent", "close_agent"]
+lane = "subagent"
+max_threads = 2
+"#,
+    )
+    .await?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+    let researcher = config
+        .agent_roles
+        .get("researcher")
+        .expect("researcher role should load");
+    assert_eq!(
+        researcher.agent_card_manifest_source.as_deref(),
+        Some("agent-card://file/researcher")
+    );
+    assert_eq!(
+        researcher.agent_card_manifest_version.as_deref(),
+        Some("hepta.agent_card_manifest.v1")
+    );
+    let researcher_manifest = researcher
+        .agent_card_manifest
+        .as_ref()
+        .expect("researcher manifest should load from role file");
+    assert_eq!(
+        researcher_manifest.schema_version.as_deref(),
+        Some("hepta.agent_card_manifest.v1")
+    );
+    assert_eq!(
+        researcher_manifest.source_surface_id.as_deref(),
+        Some("spawn_agents_on_csv")
+    );
+    assert_eq!(
+        researcher_manifest.capabilities,
+        vec![
+            "csv_row_processing".to_string(),
+            "task_result_reporting".to_string(),
+            "work_graph_shadow_event_emission".to_string()
+        ]
+    );
+    assert_eq!(
+        researcher_manifest.allowed_tools,
+        vec!["report_agent_job_result".to_string()]
+    );
+    assert_eq!(researcher_manifest.lane.as_deref(), Some("agent_jobs"));
+    assert_eq!(researcher_manifest.max_threads, Some(4));
+    assert_eq!(researcher_manifest.max_depth, None);
+    let reviewer = config
+        .agent_roles
+        .get("reviewer")
+        .expect("reviewer role should load");
+    assert_eq!(
+        reviewer.agent_card_manifest_source.as_deref(),
+        Some("agent-card://inline/reviewer")
+    );
+    assert_eq!(
+        reviewer.agent_card_manifest_version.as_deref(),
+        Some("hepta.agent_card_manifest.v1")
+    );
+    let reviewer_manifest = reviewer
+        .agent_card_manifest
+        .as_ref()
+        .expect("reviewer manifest should load inline");
+    assert_eq!(
+        reviewer_manifest.source_surface_id.as_deref(),
+        Some("spawn_agent_v2")
+    );
+    assert_eq!(
+        reviewer_manifest.allowed_tools,
+        vec![
+            "send_message".to_string(),
+            "followup_task".to_string(),
+            "wait_agent".to_string(),
+            "close_agent".to_string()
+        ]
+    );
+    assert_eq!(reviewer_manifest.lane.as_deref(), Some("subagent"));
+    assert_eq!(reviewer_manifest.max_threads, Some(2));
 
     Ok(())
 }
@@ -7372,6 +7513,9 @@ async fn load_config_normalizes_agent_role_nickname_candidates() -> std::io::Res
                 AgentRoleToml {
                     description: Some("Research role".to_string()),
                     config_file: None,
+                    agent_card_manifest_source: None,
+                    agent_card_manifest_version: None,
+                    agent_card_manifest: None,
                     nickname_candidates: Some(vec![
                         "  Hypatia  ".to_string(),
                         "Noether".to_string(),
@@ -7415,6 +7559,9 @@ async fn load_config_rejects_empty_agent_role_nickname_candidates() -> std::io::
                 AgentRoleToml {
                     description: Some("Research role".to_string()),
                     config_file: None,
+                    agent_card_manifest_source: None,
+                    agent_card_manifest_version: None,
+                    agent_card_manifest: None,
                     nickname_candidates: Some(Vec::new()),
                 },
             )]),
@@ -7452,6 +7599,9 @@ async fn load_config_rejects_duplicate_agent_role_nickname_candidates() -> std::
                 AgentRoleToml {
                     description: Some("Research role".to_string()),
                     config_file: None,
+                    agent_card_manifest_source: None,
+                    agent_card_manifest_version: None,
+                    agent_card_manifest: None,
                     nickname_candidates: Some(vec!["Hypatia".to_string(), " Hypatia ".to_string()]),
                 },
             )]),
@@ -7489,6 +7639,9 @@ async fn load_config_rejects_unsafe_agent_role_nickname_candidates() -> std::io:
                 AgentRoleToml {
                     description: Some("Research role".to_string()),
                     config_file: None,
+                    agent_card_manifest_source: None,
+                    agent_card_manifest_version: None,
+                    agent_card_manifest: None,
                     nickname_candidates: Some(vec!["Agent <One>".to_string()]),
                 },
             )]),

@@ -1,23 +1,55 @@
 use std::collections::BTreeSet;
 
-use hepta_core::{
-    ContextRecallItem, ContextRecallScore, ContextRecallSource, MemoryConflict, MemoryLink,
-    MemoryLinkKind, MemorySourceKind, MemorySourceSpan, MemoryUnit, MemoryUnitKind, SessionId,
-    TranscriptRange, TranscriptSpanRef,
-};
-use hepta_kg::{
-    KgConfidence, KgEntity, KgEntityKind, KgEpisode, KgEpisodeKind, KgExternalAdapterClientAudit,
-    KgExternalAdapterClientBlocker, KgExternalAdapterClientRequest, KgExternalAdapterConfigEnvRead,
-    KgExternalAdapterDryRunPlan, KgExternalAdapterKind, KgExternalAdapterStagingBlocker,
-    KgExternalAdapterStagingConfig, KgExternalAdapterStagingPlan, KgOperatorReviewState,
-    KgProvenance, KgReadQuery, KgRecallPlan, KgRedactionState, KgRelation, KgRelationKind,
-    KgSourceKind, KgSourceSpan, KgTemporalValidity, KgWriteCandidate, KgWriteMode, KgWritePlan,
-    KgWritePolicy, default_external_adapter_staging_configs, plan_external_adapter_dry_run,
-    plan_external_adapter_staging_gate, plan_kg_recall, plan_kg_write,
-    preview_disabled_external_adapter_write,
-    read_all_external_adapter_staging_configs_from_env_pairs,
-};
-use serde::{Deserialize, Serialize};
+use hepta_core::ContextRecallItem;
+use hepta_core::ContextRecallScore;
+use hepta_core::ContextRecallSource;
+use hepta_core::MemoryConflict;
+use hepta_core::MemoryLink;
+use hepta_core::MemoryLinkKind;
+use hepta_core::MemorySourceKind;
+use hepta_core::MemorySourceSpan;
+use hepta_core::MemoryUnit;
+use hepta_core::MemoryUnitKind;
+use hepta_core::SessionId;
+use hepta_core::TranscriptRange;
+use hepta_core::TranscriptSpanRef;
+use hepta_kg::KgConfidence;
+use hepta_kg::KgEntity;
+use hepta_kg::KgEntityKind;
+use hepta_kg::KgEpisode;
+use hepta_kg::KgEpisodeKind;
+use hepta_kg::KgExternalAdapterClientAudit;
+use hepta_kg::KgExternalAdapterClientBlocker;
+use hepta_kg::KgExternalAdapterClientRequest;
+use hepta_kg::KgExternalAdapterConfigEnvRead;
+use hepta_kg::KgExternalAdapterDryRunPlan;
+use hepta_kg::KgExternalAdapterKind;
+use hepta_kg::KgExternalAdapterStagingBlocker;
+use hepta_kg::KgExternalAdapterStagingConfig;
+use hepta_kg::KgExternalAdapterStagingPlan;
+use hepta_kg::KgOperatorReviewState;
+use hepta_kg::KgProvenance;
+use hepta_kg::KgReadQuery;
+use hepta_kg::KgRecallPlan;
+use hepta_kg::KgRedactionState;
+use hepta_kg::KgRelation;
+use hepta_kg::KgRelationKind;
+use hepta_kg::KgSourceKind;
+use hepta_kg::KgSourceSpan;
+use hepta_kg::KgTemporalValidity;
+use hepta_kg::KgWriteCandidate;
+use hepta_kg::KgWriteMode;
+use hepta_kg::KgWritePlan;
+use hepta_kg::KgWritePolicy;
+use hepta_kg::default_external_adapter_staging_configs;
+use hepta_kg::plan_external_adapter_dry_run;
+use hepta_kg::plan_external_adapter_staging_gate;
+use hepta_kg::plan_kg_recall;
+use hepta_kg::plan_kg_write;
+use hepta_kg::preview_disabled_external_adapter_write;
+use hepta_kg::read_all_external_adapter_staging_configs_from_env_pairs;
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const MEMORY_KG_WRITE_CANDIDATE_V0_CONTRACT: &str =
     "hepta-intelligence-memory-kg-write-candidate-v0";

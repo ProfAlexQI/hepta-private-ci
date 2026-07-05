@@ -6,9 +6,11 @@
 //! gate refuses live writes until provenance, redaction, idempotency, rollback,
 //! and post-write validation are wired by an adapter.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const DEFAULT_KG_SCHEMA_VERSION: &str = "hepta-kg-v0";
 

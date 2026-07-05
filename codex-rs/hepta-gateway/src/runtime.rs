@@ -1,14 +1,16 @@
-use crate::{
-    GatewayEnvelope, GatewayPluginResolutionSnapshot, GatewayRouteIntegritySnapshot,
-    GatewaySurface, GatewayTransport,
-};
+use crate::GatewayEnvelope;
+use crate::GatewayPluginResolutionSnapshot;
+use crate::GatewayRouteIntegritySnapshot;
+use crate::GatewaySurface;
+use crate::GatewayTransport;
 use hepta_core::channels::InboundMessage;
-use std::{
-    collections::VecDeque,
-    fs::{self, OpenOptions},
-    io::{self, Write},
-    path::{Path, PathBuf},
-};
+use std::collections::VecDeque;
+use std::fs::OpenOptions;
+use std::fs::{self};
+use std::io::Write;
+use std::io::{self};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GatewayDeliveryState {
@@ -844,18 +846,27 @@ fn transport_key_for_report(transport: GatewayTransport) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        GatewayDeliveryLedger, GatewayDeliveryRecord, GatewayDeliveryState,
-        GatewayDeterministicDispatcher, GatewayRetryPolicy, GatewayRuntime,
-        envelope_from_inbound_message, frame_bridge_report,
-    };
-    use crate::{
-        GatewayEnvelope, GatewayPluginHandoffDraft, GatewayPluginResolutionSnapshot,
-        GatewayResolvedPluginCandidate, GatewaySurface, GatewayTransport,
-    };
-    use hepta_core::channels::{AttachmentRef, InboundMessage, MessageEnvelope};
+    use super::GatewayDeliveryLedger;
+    use super::GatewayDeliveryRecord;
+    use super::GatewayDeliveryState;
+    use super::GatewayDeterministicDispatcher;
+    use super::GatewayRetryPolicy;
+    use super::GatewayRuntime;
+    use super::envelope_from_inbound_message;
+    use super::frame_bridge_report;
+    use crate::GatewayEnvelope;
+    use crate::GatewayPluginHandoffDraft;
+    use crate::GatewayPluginResolutionSnapshot;
+    use crate::GatewayResolvedPluginCandidate;
+    use crate::GatewaySurface;
+    use crate::GatewayTransport;
+    use hepta_core::channels::AttachmentRef;
+    use hepta_core::channels::InboundMessage;
+    use hepta_core::channels::MessageEnvelope;
     use hepta_core::runtime_types::SessionId;
-    use std::{env, fs, path::PathBuf};
+    use std::env;
+    use std::fs;
+    use std::path::PathBuf;
 
     fn resolved_queue_snapshot() -> (
         GatewaySurface,

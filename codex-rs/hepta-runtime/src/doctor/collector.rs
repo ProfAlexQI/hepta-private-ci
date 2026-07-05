@@ -1,7 +1,10 @@
-use hepta_core::{DoctorReportV2, HeptaError};
+use hepta_core::DoctorReportV2;
+use hepta_core::HeptaError;
 
-use super::{DoctorReport, report_inputs::DoctorReportInputs};
-use crate::{RuntimeKernel, current_unix_ms};
+use super::DoctorReport;
+use super::report_inputs::DoctorReportInputs;
+use crate::RuntimeKernel;
+use crate::current_unix_ms;
 
 pub(super) async fn collect_doctor_report(
     runtime: &RuntimeKernel,

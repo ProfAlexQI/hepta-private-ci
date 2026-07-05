@@ -1,4 +1,5 @@
-use crate::{GatewayPluginResolutionSnapshot, GatewayResolvedPluginTier};
+use crate::GatewayPluginResolutionSnapshot;
+use crate::GatewayResolvedPluginTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayResolutionLookupTraceStep {
@@ -70,11 +71,12 @@ fn trace_note(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GatewayPluginHandoffDraft, GatewayPluginResolutionSnapshot,
-        GatewayResolutionLookupTraceStep, GatewayResolvedPluginCandidate, GatewayRoutePlan,
-        GatewayTransport,
-    };
+    use crate::GatewayPluginHandoffDraft;
+    use crate::GatewayPluginResolutionSnapshot;
+    use crate::GatewayResolutionLookupTraceStep;
+    use crate::GatewayResolvedPluginCandidate;
+    use crate::GatewayRoutePlan;
+    use crate::GatewayTransport;
 
     #[test]
     fn resolution_snapshot_can_emit_lookup_trace_steps() {

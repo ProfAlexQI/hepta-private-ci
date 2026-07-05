@@ -1,6 +1,8 @@
+use super::AgentCardManifestConfig;
 use super::AgentRoleConfig;
 use codex_config::ConfigLayerStack;
 use codex_config::ConfigLayerStackOrdering;
+use codex_config::config_toml::AgentCardManifestToml;
 use codex_config::config_toml::AgentRoleToml;
 use codex_config::config_toml::AgentsToml;
 use codex_config::config_toml::ConfigToml;
@@ -156,6 +158,13 @@ async fn read_declared_role(
         role_name = parsed_file.role_name;
         role.description = parsed_file.description.or(role.description);
         role.nickname_candidates = parsed_file.nickname_candidates.or(role.nickname_candidates);
+        role.agent_card_manifest_source = parsed_file
+            .agent_card_manifest_source
+            .or(role.agent_card_manifest_source);
+        role.agent_card_manifest_version = parsed_file
+            .agent_card_manifest_version
+            .or(role.agent_card_manifest_version);
+        role.agent_card_manifest = parsed_file.agent_card_manifest.or(role.agent_card_manifest);
     }
 
     Ok((role_name, role))
@@ -168,6 +177,18 @@ fn merge_missing_role_fields(role: &mut AgentRoleConfig, fallback: &AgentRoleCon
         .nickname_candidates
         .clone()
         .or(fallback.nickname_candidates.clone());
+    role.agent_card_manifest_source = role
+        .agent_card_manifest_source
+        .clone()
+        .or(fallback.agent_card_manifest_source.clone());
+    role.agent_card_manifest_version = role
+        .agent_card_manifest_version
+        .clone()
+        .or(fallback.agent_card_manifest_version.clone());
+    role.agent_card_manifest = role
+        .agent_card_manifest
+        .clone()
+        .or(fallback.agent_card_manifest.clone());
 }
 
 fn agents_toml_from_layer(
@@ -206,11 +227,26 @@ async fn agent_role_config_from_toml(
         &format!("agents.{role_name}.nickname_candidates"),
         role.nickname_candidates.as_deref(),
     )?;
+    let agent_card_manifest_source = normalize_agent_role_manifest_field(
+        &format!("agents.{role_name}.agent_card_manifest_source"),
+        role.agent_card_manifest_source.as_deref(),
+    )?;
+    let agent_card_manifest_version = normalize_agent_role_manifest_field(
+        &format!("agents.{role_name}.agent_card_manifest_version"),
+        role.agent_card_manifest_version.as_deref(),
+    )?;
+    let agent_card_manifest = normalize_agent_card_manifest_document(
+        &format!("agents.{role_name}.agent_card_manifest"),
+        role.agent_card_manifest.as_ref(),
+    )?;
 
     Ok(AgentRoleConfig {
         description,
         config_file: config_file.map(AbsolutePathBuf::into_path_buf),
         nickname_candidates,
+        agent_card_manifest_source,
+        agent_card_manifest_version,
+        agent_card_manifest,
     })
 }
 
@@ -220,6 +256,9 @@ struct RawAgentRoleFileToml {
     name: Option<String>,
     description: Option<String>,
     nickname_candidates: Option<Vec<String>>,
+    agent_card_manifest_source: Option<String>,
+    agent_card_manifest_version: Option<String>,
+    agent_card_manifest: Option<AgentCardManifestToml>,
     #[serde(flatten)]
     config: ConfigToml,
 }
@@ -229,6 +268,9 @@ pub(crate) struct ResolvedAgentRoleFile {
     pub(crate) role_name: String,
     pub(crate) description: Option<String>,
     pub(crate) nickname_candidates: Option<Vec<String>>,
+    pub(crate) agent_card_manifest_source: Option<String>,
+    pub(crate) agent_card_manifest_version: Option<String>,
+    pub(crate) agent_card_manifest: Option<AgentCardManifestConfig>,
     pub(crate) config: TomlValue,
 }
 
@@ -291,6 +333,27 @@ pub(crate) fn parse_agent_role_file_contents(
         ),
         parsed.nickname_candidates.as_deref(),
     )?;
+    let agent_card_manifest_source = normalize_agent_role_manifest_field(
+        &format!(
+            "agent role file {}.agent_card_manifest_source",
+            role_file_label.display()
+        ),
+        parsed.agent_card_manifest_source.as_deref(),
+    )?;
+    let agent_card_manifest_version = normalize_agent_role_manifest_field(
+        &format!(
+            "agent role file {}.agent_card_manifest_version",
+            role_file_label.display()
+        ),
+        parsed.agent_card_manifest_version.as_deref(),
+    )?;
+    let agent_card_manifest = normalize_agent_card_manifest_document(
+        &format!(
+            "agent role file {}.agent_card_manifest",
+            role_file_label.display()
+        ),
+        parsed.agent_card_manifest.as_ref(),
+    )?;
 
     let mut config = role_file_toml;
     let Some(config_table) = config.as_table_mut() else {
@@ -305,11 +368,17 @@ pub(crate) fn parse_agent_role_file_contents(
     config_table.remove("name");
     config_table.remove("description");
     config_table.remove("nickname_candidates");
+    config_table.remove("agent_card_manifest_source");
+    config_table.remove("agent_card_manifest_version");
+    config_table.remove("agent_card_manifest");
 
     Ok(ResolvedAgentRoleFile {
         role_name,
         description,
         nickname_candidates,
+        agent_card_manifest_source,
+        agent_card_manifest_version,
+        agent_card_manifest,
         config,
     })
 }
@@ -355,6 +424,108 @@ fn validate_required_agent_role_description(
             format!("agent role `{role_name}` must define a description"),
         ))
     }
+}
+
+fn normalize_agent_role_manifest_field(
+    field_label: &str,
+    value: Option<&str>,
+) -> std::io::Result<Option<String>> {
+    match value.map(str::trim) {
+        Some("") => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{field_label} cannot be blank"),
+        )),
+        Some(value) => Ok(Some(value.to_string())),
+        None => Ok(None),
+    }
+}
+
+fn normalize_agent_card_manifest_document(
+    field_label: &str,
+    manifest: Option<&AgentCardManifestToml>,
+) -> std::io::Result<Option<AgentCardManifestConfig>> {
+    let Some(manifest) = manifest else {
+        return Ok(None);
+    };
+
+    let schema_version = normalize_agent_role_manifest_field(
+        &format!("{field_label}.schema_version"),
+        manifest.schema_version.as_deref(),
+    )?;
+    let source_surface_id = normalize_agent_role_manifest_field(
+        &format!("{field_label}.source_surface_id"),
+        manifest.source_surface_id.as_deref(),
+    )?;
+    let capabilities = normalize_agent_card_manifest_list(
+        &format!("{field_label}.capabilities"),
+        manifest.capabilities.as_deref(),
+    )?;
+    let allowed_tools = normalize_agent_card_manifest_list(
+        &format!("{field_label}.allowed_tools"),
+        manifest.allowed_tools.as_deref(),
+    )?;
+    let lane = normalize_agent_role_manifest_field(
+        &format!("{field_label}.lane"),
+        manifest.lane.as_deref(),
+    )?;
+    if manifest.max_threads == Some(0) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{field_label}.max_threads must be at least 1"),
+        ));
+    }
+    if manifest.max_depth.is_some_and(|max_depth| max_depth < 1) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{field_label}.max_depth must be at least 1"),
+        ));
+    }
+
+    Ok(Some(AgentCardManifestConfig {
+        schema_version,
+        source_surface_id,
+        capabilities,
+        allowed_tools,
+        lane,
+        max_threads: manifest.max_threads,
+        max_depth: manifest.max_depth,
+    }))
+}
+
+fn normalize_agent_card_manifest_list(
+    field_label: &str,
+    values: Option<&[String]>,
+) -> std::io::Result<Vec<String>> {
+    let Some(values) = values else {
+        return Ok(Vec::new());
+    };
+    if values.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{field_label} must contain at least one value"),
+        ));
+    }
+
+    let mut normalized = Vec::with_capacity(values.len());
+    let mut seen = BTreeSet::new();
+    for value in values {
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{field_label} cannot contain blank values"),
+            ));
+        }
+        if !seen.insert(value.to_owned()) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{field_label} cannot contain duplicates"),
+            ));
+        }
+        normalized.push(value.to_owned());
+    }
+
+    Ok(normalized)
 }
 
 fn validate_agent_role_file_developer_instructions(
@@ -508,6 +679,9 @@ async fn discover_agent_roles_in_dir(
                 description: parsed_file.description,
                 config_file: Some(agent_file.to_path_buf()),
                 nickname_candidates: parsed_file.nickname_candidates,
+                agent_card_manifest_source: parsed_file.agent_card_manifest_source,
+                agent_card_manifest_version: parsed_file.agent_card_manifest_version,
+                agent_card_manifest: parsed_file.agent_card_manifest,
             },
         );
     }

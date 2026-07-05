@@ -1,12 +1,17 @@
-use std::{fs, path::PathBuf};
+use std::fs;
+use std::path::PathBuf;
 
 use hepta_core::HeptaError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-    ChannelSendHandoffInput, ChannelSendHandoffReport, DurableDeliveryQueue,
-    ReadbackEvidenceLedger, WorkerTaskStatus, current_unix_ms, task_status_label,
-};
+use crate::ChannelSendHandoffInput;
+use crate::ChannelSendHandoffReport;
+use crate::DurableDeliveryQueue;
+use crate::ReadbackEvidenceLedger;
+use crate::WorkerTaskStatus;
+use crate::current_unix_ms;
+use crate::task_status_label;
 
 pub const DEFAULT_TASK_BOARD_PATH: &str = ".hepta/task-board-v0.json";
 pub const DEFAULT_TASK_BOARD_ID: &str = "hepta-development-lanes";
@@ -147,9 +152,48 @@ pub struct TaskBoardTerminalDeliveryReport {
     pub task_id: String,
     pub task_status: WorkerTaskStatus,
     pub handoff: ChannelSendHandoffReport,
+    #[serde(rename = "workGraphReportOnly")]
+    pub work_graph_report_only: TaskBoardWorkGraphReportOnlyEmission,
     pub queue_mutated_by_gate: bool,
     pub external_send_performed_by_gate: bool,
     pub persisted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskBoardWorkGraphReportOnlyEmission {
+    pub task_id: String,
+    pub status: String,
+    pub summary: String,
+    pub artifacts: Vec<String>,
+    pub evidence: Vec<String>,
+    pub risks: Vec<String>,
+    pub next_actions: Vec<String>,
+    pub verifier: String,
+    pub reducer: String,
+    pub usage: TaskBoardWorkGraphReportOnlyUsage,
+    pub trace_id: String,
+    pub span_id: String,
+    pub source_surface_id: &'static str,
+    pub admission_decision: &'static str,
+    pub feature_flag_id: &'static str,
+    pub feature_flag_enabled: bool,
+    pub canary_stage: &'static str,
+    pub canary_traffic_ppm: u32,
+    pub readback_required: bool,
+    pub rollback_replay_required: bool,
+    pub blocking_guardrail_preview: bool,
+    pub live_blocking_enabled: bool,
+    pub live_cutover_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskBoardWorkGraphReportOnlyUsage {
+    pub model_tokens: u64,
+    pub tool_calls: u64,
+    pub command_count: u64,
+    pub budget_state: &'static str,
 }
 
 pub struct TaskBoardStore {
@@ -475,8 +519,8 @@ impl TaskBoardStore {
                 task_status_label(task.status)
             )));
         }
-        let payload_preview =
-            task_delivery_payload_preview(task, latest_task_event(&board, &task_id));
+        let latest_event = latest_task_event(&board, &task_id);
+        let payload_preview = task_delivery_payload_preview(task, latest_event);
         let handoff = queue.gated_channel_send_handoff(
             evidence_ledger,
             ChannelSendHandoffInput {
@@ -488,6 +532,8 @@ impl TaskBoardStore {
                 idempotency_key: input.idempotency_key,
             },
         )?;
+        let work_graph_report_only =
+            task_board_work_graph_report_only_emission(task, latest_event, &handoff);
         Ok(TaskBoardTerminalDeliveryReport {
             board_path: self.path_display(),
             task_id,
@@ -495,6 +541,7 @@ impl TaskBoardStore {
             queue_mutated_by_gate: handoff.queue_mutated_by_gate,
             external_send_performed_by_gate: handoff.external_send_performed_by_gate,
             persisted: handoff.persisted,
+            work_graph_report_only,
             handoff,
         })
     }
@@ -793,6 +840,61 @@ fn task_delivery_payload_preview(task: &TaskBoardTask, event: Option<&TaskBoardE
     parts.join("; ")
 }
 
+fn task_board_work_graph_report_only_emission(
+    task: &TaskBoardTask,
+    event: Option<&TaskBoardEvent>,
+    handoff: &ChannelSendHandoffReport,
+) -> TaskBoardWorkGraphReportOnlyEmission {
+    let event_summary = event
+        .map(|event| compact_preview(&event.summary, 160))
+        .unwrap_or_else(|| "terminal task has no event summary".into());
+    let event_ref = event
+        .map(|event| event.event_id.clone())
+        .unwrap_or_else(|| "event:missing".into());
+
+    TaskBoardWorkGraphReportOnlyEmission {
+        task_id: task.task_id.clone(),
+        status: task_status_label(task.status).into(),
+        summary: format!("task-board terminal report-only TaskResultEnvelope preview: {event_summary}"),
+        artifacts: vec![format!("task-board-terminal-ref:{}", task.task_id)],
+        evidence: vec![
+            event_ref,
+            format!("delivery_id:{}", handoff.delivery_id),
+            format!("readback_evidence_id:{}", handoff.readback_evidence_id),
+        ],
+        risks: vec![
+            "report-only emission is returned with terminal summary and is not persisted to WorkGraph event store"
+                .into(),
+            "external delivery remains governed by the existing gated queue handoff".into(),
+        ],
+        next_actions: vec![
+            "project terminal event into append-only WorkGraph shadow path before live cutover".into(),
+            "require approval and readback replay evidence before external delivery promotion".into(),
+        ],
+        verifier: "task_board_terminal_event_report_only_verifier".into(),
+        reducer: "task_board_terminal_result_reducer".into(),
+        usage: TaskBoardWorkGraphReportOnlyUsage {
+            model_tokens: 0,
+            tool_calls: 0,
+            command_count: 0,
+            budget_state: "not_debited_report_only",
+        },
+        trace_id: format!("trace-task-board-report-only-{}", task.task_id),
+        span_id: format!("span-task-board-terminal-{}", task.task_id),
+        source_surface_id: "hepta_runtime_task_board",
+        admission_decision: "allow_report_only_no_live_blocking",
+        feature_flag_id: "work_graph_task_board_non_blocking_canary",
+        feature_flag_enabled: false,
+        canary_stage: "shadow_0ppm_report_only",
+        canary_traffic_ppm: 0,
+        readback_required: true,
+        rollback_replay_required: true,
+        blocking_guardrail_preview: true,
+        live_blocking_enabled: false,
+        live_cutover_enabled: false,
+    }
+}
+
 fn compact_preview(value: &str, max_chars: usize) -> String {
     let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
     if compact.chars().count() <= max_chars {
@@ -922,8 +1024,10 @@ fn diagnose_board(board: &TaskBoardFile, now_unix_ms: u64) -> TaskBoardDiagnosti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DurableDeliveryQueue, ReadbackEvidenceLedger};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use crate::DurableDeliveryQueue;
+    use crate::ReadbackEvidenceLedger;
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
     fn temp_board_path(name: &str) -> PathBuf {
         let unique = SystemTime::now()
@@ -1096,6 +1200,36 @@ mod tests {
         assert_eq!(report.task_status, WorkerTaskStatus::Completed);
         assert!(report.queue_mutated_by_gate);
         assert!(!report.external_send_performed_by_gate);
+        assert_eq!(report.work_graph_report_only.task_id, completed.task_id);
+        assert_eq!(report.work_graph_report_only.status, "completed");
+        assert!(
+            report
+                .work_graph_report_only
+                .summary
+                .contains("TaskResultEnvelope")
+        );
+        assert!(
+            report
+                .work_graph_report_only
+                .evidence
+                .iter()
+                .any(|evidence| evidence.contains("readback_evidence_id:"))
+        );
+        assert!(report.work_graph_report_only.blocking_guardrail_preview);
+        assert_eq!(
+            report.work_graph_report_only.feature_flag_id,
+            "work_graph_task_board_non_blocking_canary"
+        );
+        assert!(!report.work_graph_report_only.feature_flag_enabled);
+        assert_eq!(
+            report.work_graph_report_only.canary_stage,
+            "shadow_0ppm_report_only"
+        );
+        assert_eq!(report.work_graph_report_only.canary_traffic_ppm, 0);
+        assert!(report.work_graph_report_only.readback_required);
+        assert!(report.work_graph_report_only.rollback_replay_required);
+        assert!(!report.work_graph_report_only.live_blocking_enabled);
+        assert!(!report.work_graph_report_only.live_cutover_enabled);
         let queue_report = queue.report(None).unwrap();
         assert_eq!(queue_report.queued_count, 1);
         assert_eq!(

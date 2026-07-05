@@ -1,7 +1,8 @@
-use super::{
-    RollbackGroupLockDiagnostics, WriteGroupLockReport, WriteLockReport, WriteTargetLockReport,
-    report_bundle,
-};
+use super::RollbackGroupLockDiagnostics;
+use super::WriteGroupLockReport;
+use super::WriteLockReport;
+use super::WriteTargetLockReport;
+use super::report_bundle;
 
 pub(crate) fn collect_rollback_group_lock_diagnostics(
     session_id: &str,

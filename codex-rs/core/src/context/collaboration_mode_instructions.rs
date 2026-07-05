@@ -19,6 +19,14 @@ impl CollaborationModeInstructions {
                 instructions: instructions.clone(),
             })
     }
+
+    pub(crate) fn cleared() -> Self {
+        Self {
+            instructions:
+                "Collaboration mode developer instructions were cleared. Do not continue applying previously injected collaboration mode instructions."
+                    .to_string(),
+        }
+    }
 }
 
 impl ContextualUserFragment for CollaborationModeInstructions {

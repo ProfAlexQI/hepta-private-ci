@@ -1,6 +1,12 @@
-use super::{RuntimeKernel, current_unix_ms};
-use hepta_core::{CorrelationId, Event, EventKind, HeptaError, SessionId};
-use serde::{Deserialize, Serialize};
+use super::RuntimeKernel;
+use super::current_unix_ms;
+use hepta_core::CorrelationId;
+use hepta_core::Event;
+use hepta_core::EventKind;
+use hepta_core::HeptaError;
+use hepta_core::SessionId;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -226,9 +232,14 @@ impl RuntimeKernel {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{Event, EventKind, SessionId};
+    use hepta_core::Event;
+    use hepta_core::EventKind;
+    use hepta_core::SessionId;
 
-    use super::{EventRecord, EventState, format_event_record, summarize_line};
+    use super::EventRecord;
+    use super::EventState;
+    use super::format_event_record;
+    use super::summarize_line;
 
     #[test]
     fn format_event_record_uses_global_fallback_and_compacts_whitespace() {

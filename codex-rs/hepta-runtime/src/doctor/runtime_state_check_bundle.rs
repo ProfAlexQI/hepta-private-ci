@@ -1,6 +1,9 @@
 use hepta_core::ModelRef;
 
-use super::{DoctorCheck, DoctorStatus, integrity, runtime_state_findings::RuntimeStateFindings};
+use super::DoctorCheck;
+use super::DoctorStatus;
+use super::integrity;
+use super::runtime_state_findings::RuntimeStateFindings;
 
 pub(super) struct RuntimeStateCheckInputs<'a> {
     pub active_model: &'a ModelRef,

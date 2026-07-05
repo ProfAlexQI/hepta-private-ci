@@ -1,12 +1,17 @@
 use std::collections::HashSet;
 
-use hepta_core::{MemoryRecord, ModelRef, SessionRecord};
+use hepta_core::MemoryRecord;
+use hepta_core::ModelRef;
+use hepta_core::SessionRecord;
 
-use super::{
-    DoctorCheck, runtime_state_check_bundle, runtime_state_check_bundle::RuntimeStateCheckInputs,
-    runtime_state_findings,
-};
-use crate::{RuntimeKernel, RuntimeSnapshot, SessionApprovalState, TurnRecord};
+use super::DoctorCheck;
+use super::runtime_state_check_bundle;
+use super::runtime_state_check_bundle::RuntimeStateCheckInputs;
+use super::runtime_state_findings;
+use crate::RuntimeKernel;
+use crate::RuntimeSnapshot;
+use crate::SessionApprovalState;
+use crate::TurnRecord;
 
 pub(super) struct RuntimeStateIntegrityChecks {
     pub(super) known_session_ids: HashSet<String>,

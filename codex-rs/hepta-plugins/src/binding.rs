@@ -423,10 +423,11 @@ impl GatewayPluginBindingTier {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        GatewayPluginBinding, GatewayPluginBindingCatalog, GatewayPluginBindingLookupResolution,
-        GatewayPluginBindingMatch, GatewayPluginBindingTier,
-    };
+    use super::GatewayPluginBinding;
+    use super::GatewayPluginBindingCatalog;
+    use super::GatewayPluginBindingLookupResolution;
+    use super::GatewayPluginBindingMatch;
+    use super::GatewayPluginBindingTier;
 
     #[test]
     fn binding_match_captures_lookup_snapshot_fields() {

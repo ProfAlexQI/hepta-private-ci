@@ -1,15 +1,16 @@
 use std::fs;
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-pub use hepta_runtime::{
-    HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH as DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH,
-    NativeTelegramCursorPlan, NativeTelegramCursorStatus,
-};
-use hepta_runtime::{
-    NativeTelegramCursorStatusInput, build_native_telegram_cursor_status,
-    native_telegram_cursor_body, parse_native_telegram_cursor_next_update_offset,
-};
+pub use hepta_runtime::HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH as DEFAULT_TELEGRAM_INGRESS_CURSOR_PATH;
+pub use hepta_runtime::NativeTelegramCursorPlan;
+pub use hepta_runtime::NativeTelegramCursorStatus;
+use hepta_runtime::NativeTelegramCursorStatusInput;
+use hepta_runtime::build_native_telegram_cursor_status;
+use hepta_runtime::native_telegram_cursor_body;
+use hepta_runtime::parse_native_telegram_cursor_next_update_offset;
 
 pub fn telegram_cursor_status(requested: bool, path: &Path) -> NativeTelegramCursorStatus {
     if !requested {
@@ -104,10 +105,9 @@ fn file_modified_unix_ms(path: &Path) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        parse_telegram_cursor_next_update_offset, telegram_cursor_status_from_path,
-        write_telegram_cursor_next_update_offset,
-    };
+    use super::parse_telegram_cursor_next_update_offset;
+    use super::telegram_cursor_status_from_path;
+    use super::write_telegram_cursor_next_update_offset;
     use std::fs;
 
     #[test]

@@ -1,8 +1,8 @@
-use crate::{
-    GatewayPluginBindingDiagnosticNote, GatewayPluginBindingLookupResolution,
-    GatewayPluginBindingLookupTraceStep, GatewayPluginBindingScaffoldNote,
-    GatewayPluginCoverageGapNote,
-};
+use crate::GatewayPluginBindingDiagnosticNote;
+use crate::GatewayPluginBindingLookupResolution;
+use crate::GatewayPluginBindingLookupTraceStep;
+use crate::GatewayPluginBindingScaffoldNote;
+use crate::GatewayPluginCoverageGapNote;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayPluginBindingContractReport {
@@ -43,11 +43,13 @@ impl GatewayPluginBindingLookupResolution {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GatewayPluginBinding, GatewayPluginBindingCatalog, GatewayPluginBindingContractReport,
-        GatewayPluginBindingDiagnosticNote, GatewayPluginBindingLookupTraceStep,
-        GatewayPluginBindingScaffoldNote, GatewayPluginCoverageGapNote,
-    };
+    use crate::GatewayPluginBinding;
+    use crate::GatewayPluginBindingCatalog;
+    use crate::GatewayPluginBindingContractReport;
+    use crate::GatewayPluginBindingDiagnosticNote;
+    use crate::GatewayPluginBindingLookupTraceStep;
+    use crate::GatewayPluginBindingScaffoldNote;
+    use crate::GatewayPluginCoverageGapNote;
 
     #[test]
     fn contract_report_can_bundle_partial_lookup_coverage_artifacts() {

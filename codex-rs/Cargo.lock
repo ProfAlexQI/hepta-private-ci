@@ -2259,9 +2259,7 @@ dependencies = [
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
- "hepta-core",
  "hepta-gateway",
- "hepta-memory",
  "http 1.4.0",
  "libc",
  "owo-colors",
@@ -3458,8 +3456,10 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "codex-api",
+ "codex-protocol",
  "http 1.4.0",
  "pretty_assertions",
+ "serde",
  "serde_json",
 ]
 
@@ -7145,9 +7145,7 @@ name = "hepta-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "hepta-core",
  "hepta-gateway",
- "hepta-memory",
  "reqwest",
  "serde",
  "serde_json",
@@ -7228,6 +7226,7 @@ dependencies = [
 name = "hepta-runtime"
 version = "0.0.0"
 dependencies = [
+ "codex-protocol",
  "hepta-core",
  "hepta-intelligence",
  "hepta-kernel",
@@ -7235,6 +7234,8 @@ dependencies = [
  "hepta-plugins",
  "serde",
  "serde_json",
+ "sqlx",
+ "tempfile",
  "tokio",
 ]
 

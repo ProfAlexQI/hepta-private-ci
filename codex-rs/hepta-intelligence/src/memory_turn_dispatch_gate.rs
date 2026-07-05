@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{MEMORY_LIVE_TURN_PREFLIGHT_V1_CONTRACT, memory_live_turn_preflight_sample_report};
+use crate::MEMORY_LIVE_TURN_PREFLIGHT_V1_CONTRACT;
+use crate::memory_live_turn_preflight_sample_report;
 
 pub const MEMORY_TURN_DISPATCH_GATE_V1_CONTRACT: &str =
     "hepta-intelligence-memory-turn-dispatch-gate-v1";

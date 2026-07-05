@@ -1,4 +1,5 @@
-use crate::{GatewayPluginBindingLookupResolution, GatewayPluginBindingTier};
+use crate::GatewayPluginBindingLookupResolution;
+use crate::GatewayPluginBindingTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayPluginBindingCoverageDigest {
@@ -69,10 +70,10 @@ impl GatewayPluginBindingLookupResolution {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GatewayPluginBinding, GatewayPluginBindingCatalog, GatewayPluginBindingCoverageDigest,
-        GatewayPluginBindingTier,
-    };
+    use crate::GatewayPluginBinding;
+    use crate::GatewayPluginBindingCatalog;
+    use crate::GatewayPluginBindingCoverageDigest;
+    use crate::GatewayPluginBindingTier;
 
     #[test]
     fn lookup_resolution_can_summarize_partial_lookup_coverage() {

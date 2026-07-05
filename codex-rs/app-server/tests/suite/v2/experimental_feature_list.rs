@@ -95,6 +95,20 @@ async fn experimental_feature_list_returns_feature_metadata_with_stage() -> Resu
     };
 
     assert_eq!(actual, expected);
+    let source_aware_compression_canary = actual
+        .data
+        .iter()
+        .find(|feature| feature.name == "source_aware_compression_canary")
+        .expect("source-aware compression canary should be listed");
+    assert_eq!(
+        source_aware_compression_canary.stage,
+        ExperimentalFeatureStage::UnderDevelopment
+    );
+    assert!(!source_aware_compression_canary.enabled);
+    assert!(!source_aware_compression_canary.default_enabled);
+    assert_eq!(source_aware_compression_canary.display_name, None);
+    assert_eq!(source_aware_compression_canary.description, None);
+    assert_eq!(source_aware_compression_canary.announcement, None);
     Ok(())
 }
 
@@ -239,6 +253,7 @@ async fn experimental_feature_enablement_set_only_updates_named_features() -> Re
         BTreeMap::from([
             ("memories".to_string(), true),
             ("plugins".to_string(), true),
+            ("source_aware_compression_canary".to_string(), true),
             ("tool_search".to_string(), true),
             ("tool_suggest".to_string(), true),
             ("tool_call_mcp_elicitation".to_string(), false),
@@ -252,6 +267,7 @@ async fn experimental_feature_enablement_set_only_updates_named_features() -> Re
             enablement: BTreeMap::from([
                 ("memories".to_string(), true),
                 ("plugins".to_string(), true),
+                ("source_aware_compression_canary".to_string(), true),
                 ("tool_search".to_string(), true),
                 ("tool_suggest".to_string(), true),
                 ("tool_call_mcp_elicitation".to_string(), false),
@@ -280,6 +296,13 @@ async fn experimental_feature_enablement_set_only_updates_named_features() -> Re
             .additional
             .get("features")
             .and_then(|features| features.get("plugins")),
+        Some(&json!(true))
+    );
+    assert_eq!(
+        config
+            .additional
+            .get("features")
+            .and_then(|features| features.get("source_aware_compression_canary")),
         Some(&json!(true))
     );
     assert_eq!(
@@ -382,7 +405,7 @@ async fn experimental_feature_enablement_set_rejects_non_allowlisted_feature() -
     );
     assert!(
         error.message.contains(
-            "apps, memories, mentions_v2, plugins, remote_control, tool_search, tool_suggest, tool_call_mcp_elicitation"
+            "apps, memories, mentions_v2, plugins, remote_control, source_aware_compression_canary, tool_search, tool_suggest, tool_call_mcp_elicitation"
         ),
         "{}",
         error.message

@@ -1,14 +1,23 @@
-use hepta_core::{
-    AcpAgentBridgeMatrix, AcpCodexApprovalLifecyclePlane, ChannelDeliveryStreamingParityPlane,
-    ChannelMessageContractMap, CliStatusAuthParityPlane,
-    ConfigUpdateSecuritySecretsLifecycleDryRunMap, GatewayPluginStartupDiagnosticsPlane,
-    GatewaySessionTaskLivenessPlane, Hepta2026_5_6HardeningRegressions, HeptaCliCompatibilityMap,
-    HeptaContractPlaneSummary, NodeDeviceContractPlane, OperationalUtilityContractMap,
-    PluginInstallSecretContractLifecyclePlane, QaLiveProofHarnessContractPlane,
-    TalkSessionControllerContractPlane, VendoredHeptaSidecarRuntimeRpcContract,
-    hepta_cli_compatibility_summary,
-};
-use serde::{Deserialize, Serialize};
+use hepta_core::AcpAgentBridgeMatrix;
+use hepta_core::AcpCodexApprovalLifecyclePlane;
+use hepta_core::ChannelDeliveryStreamingParityPlane;
+use hepta_core::ChannelMessageContractMap;
+use hepta_core::CliStatusAuthParityPlane;
+use hepta_core::ConfigUpdateSecuritySecretsLifecycleDryRunMap;
+use hepta_core::GatewayPluginStartupDiagnosticsPlane;
+use hepta_core::GatewaySessionTaskLivenessPlane;
+use hepta_core::Hepta2026_5_6HardeningRegressions;
+use hepta_core::HeptaCliCompatibilityMap;
+use hepta_core::HeptaContractPlaneSummary;
+use hepta_core::NodeDeviceContractPlane;
+use hepta_core::OperationalUtilityContractMap;
+use hepta_core::PluginInstallSecretContractLifecyclePlane;
+use hepta_core::QaLiveProofHarnessContractPlane;
+use hepta_core::TalkSessionControllerContractPlane;
+use hepta_core::VendoredHeptaSidecarRuntimeRpcContract;
+use hepta_core::hepta_cli_compatibility_summary;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaRuntimeContractInventory {

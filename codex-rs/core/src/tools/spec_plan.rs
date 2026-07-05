@@ -223,7 +223,7 @@ fn is_hidden_by_code_mode_only(
     #[cfg(not(feature = "code-mode-v8"))]
     {
         let _ = (config, registry, spec);
-        return false;
+        false
     }
 
     #[cfg(feature = "code-mode-v8")]

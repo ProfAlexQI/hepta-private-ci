@@ -118,6 +118,121 @@ pub struct AgentJobProgress {
     pub failed_items: usize,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgentJobWorkGraphShadowEvent {
+    pub sequence_id: i64,
+    pub job_id: String,
+    pub item_id: Option<String>,
+    pub event_type: String,
+    pub task_id: String,
+    pub status: String,
+    pub summary: String,
+    pub payload_json: Value,
+    pub trace_id: Option<String>,
+    pub span_id: String,
+    pub source_surface_id: String,
+    pub created_at: DateTime<Utc>,
+    pub live_blocking_enabled: bool,
+    pub live_cutover_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentJobWorkGraphShadowProjection {
+    pub job_id: String,
+    pub total_events: usize,
+    pub distinct_tasks: usize,
+    pub latest_sequence_id: Option<i64>,
+    pub item_started_events: usize,
+    pub item_completed_events: usize,
+    pub item_failed_events: usize,
+    pub job_terminal_events: usize,
+    pub live_blocking_event_count: usize,
+    pub live_cutover_event_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentJobWorkGraphShadowProjectionDiff {
+    pub job_id: String,
+    pub progress: AgentJobProgress,
+    pub projection: AgentJobWorkGraphShadowProjection,
+    pub completed_item_delta: isize,
+    pub failed_item_delta: isize,
+    pub projection_matches_items: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgentJobWorkGraphPromotionReviewReadback {
+    pub job_id: String,
+    pub admission_shadow_decision_events: usize,
+    pub promotion_readiness_matrix_events: usize,
+    pub operator_review_promotion_packet_events: usize,
+    pub promotion_review_replay_consistency_events: usize,
+    pub promotion_closeout_receipt_events: usize,
+    pub promotion_closeout_replay_consistency_events: usize,
+    pub promotion_review_audit_chain_receipt_events: usize,
+    pub reviewed_flag_precondition_plan_events: usize,
+    pub reviewed_flag_precondition_plan_replay_consistency_events: usize,
+    pub reviewed_flag_readiness_closeout_receipt_events: usize,
+    pub reviewed_flag_readiness_closeout_replay_consistency_events: usize,
+    pub reviewed_flag_audit_chain_closeout_receipt_events: usize,
+    pub live_blocking_event_count: usize,
+    pub live_cutover_event_count: usize,
+    pub latest_admission_shadow_decision: Option<Value>,
+    pub latest_promotion_readiness_matrix: Option<Value>,
+    pub latest_operator_review_promotion_packet: Option<Value>,
+    pub latest_promotion_review_replay_consistency: Option<Value>,
+    pub latest_promotion_closeout_receipt: Option<Value>,
+    pub latest_promotion_closeout_replay_consistency: Option<Value>,
+    pub latest_promotion_review_audit_chain_receipt: Option<Value>,
+    pub latest_reviewed_flag_precondition_plan: Option<Value>,
+    pub latest_reviewed_flag_precondition_plan_replay_consistency: Option<Value>,
+    pub latest_reviewed_flag_readiness_closeout_receipt: Option<Value>,
+    pub latest_reviewed_flag_readiness_closeout_replay_consistency: Option<Value>,
+    pub latest_reviewed_flag_audit_chain_closeout_receipt: Option<Value>,
+    pub readback_ready: bool,
+    pub replay_consistency_ready: bool,
+    pub closeout_receipt_ready: bool,
+    pub closeout_replay_consistency_ready: bool,
+    pub audit_chain_receipt_ready: bool,
+    pub reviewed_flag_precondition_plan_ready: bool,
+    pub reviewed_flag_precondition_plan_replay_consistency_ready: bool,
+    pub reviewed_flag_readiness_closeout_receipt_ready: bool,
+    pub reviewed_flag_readiness_closeout_replay_consistency_ready: bool,
+    pub reviewed_flag_audit_chain_closeout_receipt_ready: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AgentJobWorkGraphAuditChainSegmentSpec {
+    pub segment_id: &'static str,
+    pub event_type: &'static str,
+    pub replay_consistency_field: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgentJobWorkGraphAuditChainReadback {
+    pub job_id: String,
+    pub segments: Vec<AgentJobWorkGraphAuditChainSegmentReadback>,
+    pub live_blocking_event_count: usize,
+    pub live_cutover_event_count: usize,
+    pub chain_readback_ready: bool,
+    pub chain_replay_consistent: bool,
+    pub no_live_guardrails_ready: bool,
+    pub chain_ready: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgentJobWorkGraphAuditChainSegmentReadback {
+    pub segment_id: String,
+    pub event_type: String,
+    pub event_count: usize,
+    pub latest_payload: Option<Value>,
+    pub latest_decision: String,
+    pub readback_ready: bool,
+    pub replay_consistent: bool,
+    pub no_live_guardrail_ready: bool,
+    pub ready: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct AgentJobCreateParams {
     pub id: String,
@@ -246,6 +361,47 @@ impl TryFrom<AgentJobItemRow> for AgentJobItem {
                 .reported_at
                 .map(epoch_seconds_to_datetime)
                 .transpose()?,
+        })
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub(crate) struct AgentJobWorkGraphShadowEventRow {
+    pub(crate) sequence_id: i64,
+    pub(crate) job_id: String,
+    pub(crate) item_id: Option<String>,
+    pub(crate) event_type: String,
+    pub(crate) task_id: String,
+    pub(crate) status: String,
+    pub(crate) summary: String,
+    pub(crate) payload_json: String,
+    pub(crate) trace_id: Option<String>,
+    pub(crate) span_id: String,
+    pub(crate) source_surface_id: String,
+    pub(crate) created_at: i64,
+    pub(crate) live_blocking_enabled: i64,
+    pub(crate) live_cutover_enabled: i64,
+}
+
+impl TryFrom<AgentJobWorkGraphShadowEventRow> for AgentJobWorkGraphShadowEvent {
+    type Error = anyhow::Error;
+
+    fn try_from(value: AgentJobWorkGraphShadowEventRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            sequence_id: value.sequence_id,
+            job_id: value.job_id,
+            item_id: value.item_id,
+            event_type: value.event_type,
+            task_id: value.task_id,
+            status: value.status,
+            summary: value.summary,
+            payload_json: serde_json::from_str(value.payload_json.as_str())?,
+            trace_id: value.trace_id,
+            span_id: value.span_id,
+            source_surface_id: value.source_surface_id,
+            created_at: epoch_seconds_to_datetime(value.created_at)?,
+            live_blocking_enabled: value.live_blocking_enabled != 0,
+            live_cutover_enabled: value.live_cutover_enabled != 0,
         })
     }
 }

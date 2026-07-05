@@ -1,6 +1,8 @@
 use hepta_core::DoctorSummaryCounts;
 
-use super::{DoctorCheck, DoctorProviderProbe, DoctorStatus};
+use super::DoctorCheck;
+use super::DoctorProviderProbe;
+use super::DoctorStatus;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DoctorStatusRollup {

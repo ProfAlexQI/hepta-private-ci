@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-    MEMORY_ACTIVATION_CUTOVER_GATE_V1_CONTRACT, memory_activation_cutover_gate_sample_report,
-};
+use crate::MEMORY_ACTIVATION_CUTOVER_GATE_V1_CONTRACT;
+use crate::memory_activation_cutover_gate_sample_report;
 
 pub const MEMORY_PROVIDER_ROUTER_ACTIVATION_GATE_V1_CONTRACT: &str =
     "hepta-intelligence-memory-provider-router-activation-gate-v1";

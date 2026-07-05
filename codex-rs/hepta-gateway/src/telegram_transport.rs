@@ -1,49 +1,67 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use serde_json::Value;
 
 use crate::telegram_config::NativeTelegramConfigStatus;
 use crate::telegram_cursor::write_telegram_cursor_next_update_offset;
-use crate::telegram_delivery::{
-    append_telegram_delivery_lifecycle_record, telegram_delivery_lifecycle_record,
-};
-use crate::telegram_policy::{
-    NativeTelegramReplyTargetMaterial, NativeTelegramSendExecutionReport,
-    NativeTelegramSendRequestPlan,
-};
-use hepta_runtime::{
-    native_telegram_bot_api_client_build_error, native_telegram_bot_api_http_status_error,
-    native_telegram_bot_api_json_parse_error, native_telegram_bot_api_request_failed_error,
-    native_telegram_bot_token_shape_ok, native_telegram_get_updates_error_is_conflict,
-    native_telegram_get_updates_error_is_transient, native_telegram_get_updates_query,
-    native_telegram_get_updates_should_retry, native_telegram_read_max_attempts_policy,
-    native_telegram_read_retry_backoff_policy, native_telegram_send_chat_action_request_body,
-    native_telegram_send_error_is_transient, native_telegram_send_max_attempts_policy,
-    native_telegram_send_message_request_body, native_telegram_send_min_interval_policy,
-    native_telegram_send_rate_limit_sleep_for, native_telegram_send_retry_backoff_policy,
-    native_telegram_send_should_retry, native_telegram_transport_plan_for_config_status,
-    native_telegram_typing_keepalive_interval_policy,
-    native_telegram_typing_keepalive_should_start,
-    plan_native_telegram_get_updates_provider_result,
-    plan_native_telegram_send_execution_preflight, plan_native_telegram_send_provider_result,
-    redact_native_telegram_token_like_text,
-};
+use crate::telegram_delivery::append_telegram_delivery_lifecycle_record;
+use crate::telegram_delivery::telegram_delivery_lifecycle_record;
+use crate::telegram_policy::NativeTelegramReplyTargetMaterial;
+use crate::telegram_policy::NativeTelegramSendExecutionReport;
+use crate::telegram_policy::NativeTelegramSendRequestPlan;
+use hepta_runtime::native_telegram_bot_api_client_build_error;
+use hepta_runtime::native_telegram_bot_api_http_status_error;
+use hepta_runtime::native_telegram_bot_api_json_parse_error;
+use hepta_runtime::native_telegram_bot_api_request_failed_error;
+use hepta_runtime::native_telegram_bot_token_shape_ok;
+use hepta_runtime::native_telegram_get_updates_error_is_conflict;
+use hepta_runtime::native_telegram_get_updates_error_is_transient;
+use hepta_runtime::native_telegram_get_updates_query;
+use hepta_runtime::native_telegram_get_updates_should_retry;
+use hepta_runtime::native_telegram_read_max_attempts_policy;
+use hepta_runtime::native_telegram_read_retry_backoff_policy;
+use hepta_runtime::native_telegram_send_chat_action_request_body;
+use hepta_runtime::native_telegram_send_error_is_transient;
+use hepta_runtime::native_telegram_send_max_attempts_policy;
+use hepta_runtime::native_telegram_send_message_request_body;
+use hepta_runtime::native_telegram_send_min_interval_policy;
+use hepta_runtime::native_telegram_send_rate_limit_sleep_for;
+use hepta_runtime::native_telegram_send_retry_backoff_policy;
+use hepta_runtime::native_telegram_send_should_retry;
+use hepta_runtime::native_telegram_transport_plan_for_config_status;
+use hepta_runtime::native_telegram_typing_keepalive_interval_policy;
+use hepta_runtime::native_telegram_typing_keepalive_should_start;
+use hepta_runtime::plan_native_telegram_get_updates_provider_result;
+use hepta_runtime::plan_native_telegram_send_execution_preflight;
+use hepta_runtime::plan_native_telegram_send_provider_result;
+use hepta_runtime::redact_native_telegram_token_like_text;
 
-pub use hepta_runtime::{
-    DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS, DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS,
-    DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS, DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-    DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MAX_TELEGRAM_READ_MAX_ATTEMPTS,
-    MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
-    MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramGetUpdatesProviderResultInput,
-    NativeTelegramSendExecutionPreflightInput, NativeTelegramSendPlan,
-    NativeTelegramSendProviderResultInput, NativeTelegramTransportPlan, TELEGRAM_ALLOWED_UPDATES,
-};
+pub use hepta_runtime::DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS;
+pub use hepta_runtime::DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS;
+pub use hepta_runtime::DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS;
+pub use hepta_runtime::DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS;
+pub use hepta_runtime::DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
+pub use hepta_runtime::MAX_TELEGRAM_READ_MAX_ATTEMPTS;
+pub use hepta_runtime::MAX_TELEGRAM_READ_RETRY_BACKOFF_MS;
+pub use hepta_runtime::MAX_TELEGRAM_SEND_MAX_ATTEMPTS;
+pub use hepta_runtime::MAX_TELEGRAM_SEND_MIN_INTERVAL_MS;
+pub use hepta_runtime::MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS;
+pub use hepta_runtime::MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
+pub use hepta_runtime::NativeTelegramGetUpdatesProviderResultInput;
+pub use hepta_runtime::NativeTelegramSendExecutionPreflightInput;
+pub use hepta_runtime::NativeTelegramSendPlan;
+pub use hepta_runtime::NativeTelegramSendProviderResultInput;
+pub use hepta_runtime::NativeTelegramTransportPlan;
+pub use hepta_runtime::TELEGRAM_ALLOWED_UPDATES;
 const TELEGRAM_BOT_API_BASE_URL: &str = "https://api.telegram.org";
 static TELEGRAM_SEND_RATE_LIMITS: OnceLock<Mutex<HashMap<i64, Instant>>> = OnceLock::new();
 
@@ -540,27 +558,44 @@ fn telegram_bot_api_json_response(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS, DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS,
-        DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS, DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-        DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MAX_TELEGRAM_READ_MAX_ATTEMPTS,
-        MAX_TELEGRAM_READ_RETRY_BACKOFF_MS, MAX_TELEGRAM_SEND_MAX_ATTEMPTS,
-        MAX_TELEGRAM_SEND_MIN_INTERVAL_MS, MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS,
-        MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, NativeTelegramSendExecutionInput,
-        TELEGRAM_ALLOWED_UPDATES, execute_telegram_send_after_model_output,
-        telegram_bot_token_shape_ok, telegram_call_get_updates_once,
-        telegram_call_send_chat_action, telegram_call_send_message,
-        telegram_get_updates_error_is_conflict, telegram_get_updates_error_is_transient,
-        telegram_get_updates_query, telegram_get_updates_should_retry,
-        telegram_get_updates_with_retry, telegram_read_max_attempts_policy,
-        telegram_read_retry_backoff_policy, telegram_redact_token_like_text,
-        telegram_send_chat_action_request_body, telegram_send_error_is_transient,
-        telegram_send_max_attempts_policy, telegram_send_message_request_body,
-        telegram_send_min_interval_policy, telegram_send_rate_limit_sleep_for,
-        telegram_send_retry_backoff_policy, telegram_send_should_retry,
-        telegram_start_typing_keepalive, telegram_transport_plan_for_config_status,
-        telegram_typing_keepalive_interval_policy, telegram_typing_keepalive_should_start,
-    };
+    use super::DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS;
+    use super::DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS;
+    use super::DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS;
+    use super::DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS;
+    use super::DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
+    use super::MAX_TELEGRAM_READ_MAX_ATTEMPTS;
+    use super::MAX_TELEGRAM_READ_RETRY_BACKOFF_MS;
+    use super::MAX_TELEGRAM_SEND_MAX_ATTEMPTS;
+    use super::MAX_TELEGRAM_SEND_MIN_INTERVAL_MS;
+    use super::MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS;
+    use super::MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
+    use super::NativeTelegramSendExecutionInput;
+    use super::TELEGRAM_ALLOWED_UPDATES;
+    use super::execute_telegram_send_after_model_output;
+    use super::telegram_bot_token_shape_ok;
+    use super::telegram_call_get_updates_once;
+    use super::telegram_call_send_chat_action;
+    use super::telegram_call_send_message;
+    use super::telegram_get_updates_error_is_conflict;
+    use super::telegram_get_updates_error_is_transient;
+    use super::telegram_get_updates_query;
+    use super::telegram_get_updates_should_retry;
+    use super::telegram_get_updates_with_retry;
+    use super::telegram_read_max_attempts_policy;
+    use super::telegram_read_retry_backoff_policy;
+    use super::telegram_redact_token_like_text;
+    use super::telegram_send_chat_action_request_body;
+    use super::telegram_send_error_is_transient;
+    use super::telegram_send_max_attempts_policy;
+    use super::telegram_send_message_request_body;
+    use super::telegram_send_min_interval_policy;
+    use super::telegram_send_rate_limit_sleep_for;
+    use super::telegram_send_retry_backoff_policy;
+    use super::telegram_send_should_retry;
+    use super::telegram_start_typing_keepalive;
+    use super::telegram_transport_plan_for_config_status;
+    use super::telegram_typing_keepalive_interval_policy;
+    use super::telegram_typing_keepalive_should_start;
     use crate::telegram_config::NativeTelegramConfigStatus;
     use crate::telegram_cursor::telegram_cursor_status_from_path;
     use crate::telegram_delivery::telegram_delivery_ledger_status_from_path;

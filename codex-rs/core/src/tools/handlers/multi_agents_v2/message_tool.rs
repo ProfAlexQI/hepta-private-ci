@@ -4,9 +4,17 @@
 //! resulting `InterAgentCommunication` should wake the target immediately.
 
 use super::*;
+use crate::session::turn_context::TurnContext;
 use crate::tools::context::FunctionToolOutput;
+use crate::tools::handlers::multi_agents_common::tool_output_json_text;
+use crate::tools::handlers::work_graph_admission::WorkGraphAgentCardManifestObservation;
+use crate::tools::handlers::work_graph_admission::WorkGraphRoleManifestShadowDecision;
+use crate::tools::handlers::work_graph_admission::build_agent_card_manifest_shadow_decision;
+use crate::tools::handlers::work_graph_admission::configured_agent_role_manifest_source;
+use crate::tools::handlers::work_graph_admission::subagent_handoff_agent_card_manifest;
 use crate::turn_timing::now_unix_timestamp_ms;
 use codex_protocol::protocol::InterAgentCommunication;
+use serde::Serialize;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MessageDeliveryMode {
@@ -28,6 +36,19 @@ impl MessageDeliveryMode {
             },
         }
     }
+
+    fn tool_name(self) -> &'static str {
+        match self {
+            Self::QueueOnly => "send_message",
+            Self::TriggerTurn => "followup_task",
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MessageToolShadowResult {
+    work_graph_handoff_shadow_decision: WorkGraphRoleManifestShadowDecision,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,6 +122,11 @@ pub(crate) async fn handle_message_string_tool(
     let receiver_agent_path = receiver_agent.agent_path.clone().ok_or_else(|| {
         FunctionCallError::RespondToModel("target agent is missing an agent_path".to_string())
     })?;
+    let handoff_shadow_decision = build_handoff_role_manifest_shadow_decision(
+        mode,
+        &turn,
+        receiver_agent.agent_role.as_ref(),
+    );
     let communication = InterAgentCommunication::new(
         turn.session_source
             .get_agent_path()
@@ -139,5 +165,59 @@ pub(crate) async fn handle_message_string_tool(
         .await;
     result?;
 
-    Ok(FunctionToolOutput::from_text(String::new(), Some(true)))
+    Ok(FunctionToolOutput::from_text(
+        tool_output_json_text(
+            &MessageToolShadowResult {
+                work_graph_handoff_shadow_decision: handoff_shadow_decision,
+            },
+            mode.tool_name(),
+        ),
+        Some(true),
+    ))
+}
+
+fn build_handoff_role_manifest_shadow_decision(
+    mode: MessageDeliveryMode,
+    turn: &TurnContext,
+    receiver_agent_role: Option<&String>,
+) -> WorkGraphRoleManifestShadowDecision {
+    let requested_role = receiver_agent_role
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|role| !role.is_empty());
+    let configured_role = requested_role.and_then(|role| turn.config.agent_roles.get(role));
+    let role_declared = requested_role.is_none() || configured_role.is_some();
+    let role_description_present = requested_role.is_none()
+        || configured_role
+            .and_then(|role| role.description.as_deref())
+            .is_some_and(|description| !description.trim().is_empty());
+
+    build_agent_card_manifest_shadow_decision(
+        subagent_handoff_agent_card_manifest(mode.tool_name()),
+        WorkGraphAgentCardManifestObservation {
+            role_name: requested_role.map(str::to_string),
+            role_declared,
+            role_description_present,
+            configured_manifest_source: configured_agent_role_manifest_source(
+                requested_role,
+                configured_role.is_some(),
+                configured_role.is_some_and(|role| role.config_file.is_some()),
+                configured_role.and_then(|role| role.agent_card_manifest_source.as_deref()),
+            ),
+            configured_manifest_version: configured_role
+                .and_then(|role| role.agent_card_manifest_version.clone()),
+            configured_manifest_overlay: configured_role
+                .and_then(|role| role.agent_card_manifest.clone()),
+            budget_present: turn
+                .config
+                .agent_max_threads
+                .is_none_or(|max_threads| max_threads > 0),
+            output_contract_present: None,
+            result_contract_present: None,
+            verifier_present: None,
+            reducer_present: None,
+            attempted_tool: Some(mode.tool_name()),
+            observed_lane: Some("subagent_handoff"),
+        },
+    )
 }

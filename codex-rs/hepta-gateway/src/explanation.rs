@@ -1,6 +1,6 @@
-use crate::{
-    GatewayPluginResolutionSnapshot, GatewayResolvedPluginCandidate, GatewayResolvedPluginTier,
-};
+use crate::GatewayPluginResolutionSnapshot;
+use crate::GatewayResolvedPluginCandidate;
+use crate::GatewayResolvedPluginTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayResolvedPluginDiagnosticNote {
@@ -86,10 +86,11 @@ fn gap_explanation(tier: Option<GatewayResolvedPluginTier>, lookup_key: &str) ->
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GatewayPluginHandoffDraft, GatewayPluginResolutionSnapshot, GatewayResolvedPluginCandidate,
-        GatewayRoutePlan, GatewayTransport,
-    };
+    use crate::GatewayPluginHandoffDraft;
+    use crate::GatewayPluginResolutionSnapshot;
+    use crate::GatewayResolvedPluginCandidate;
+    use crate::GatewayRoutePlan;
+    use crate::GatewayTransport;
 
     #[test]
     fn snapshot_exposes_diagnostic_notes_with_stable_tier_labels() {

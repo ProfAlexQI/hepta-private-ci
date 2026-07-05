@@ -355,6 +355,7 @@ mod tests {
                 developer_instructions: None,
                 final_output_json_schema: None,
                 truncation_policy: None,
+                context_manifest: None,
             }),
             "test-provider",
         );
@@ -395,6 +396,7 @@ mod tests {
                 developer_instructions: None,
                 final_output_json_schema: None,
                 truncation_policy: None,
+                context_manifest: None,
             }),
             "test-provider",
         );
@@ -429,6 +431,7 @@ mod tests {
                 developer_instructions: None,
                 final_output_json_schema: None,
                 truncation_policy: None,
+                context_manifest: None,
             }),
             "test-provider",
         );

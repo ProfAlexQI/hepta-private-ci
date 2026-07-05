@@ -27,6 +27,9 @@ use codex_protocol::protocol::AgentStatus as CoreAgentStatus;
 use codex_protocol::protocol::AskForApproval as CoreAskForApproval;
 use codex_protocol::protocol::GranularApprovalConfig as CoreGranularApprovalConfig;
 use codex_protocol::protocol::NetworkAccess as CoreNetworkAccess;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippet as CoreTurnContextRecallSelectedSnippet;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope as CoreTurnContextRecallSelectedSnippetEnvelope;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippetSafety as CoreTurnContextRecallSelectedSnippetSafety;
 use codex_protocol::request_permissions::RequestPermissionProfile as CoreRequestPermissionProfile;
 use codex_protocol::user_input::UserInput as CoreUserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -3549,6 +3552,7 @@ fn turn_start_params_preserve_explicit_null_service_tier() {
         thread_id: "thread_123".to_string(),
         input: vec![],
         responsesapi_client_metadata: None,
+        context_recall_selected_snippets: None,
         environments: None,
         cwd: None,
         runtime_workspace_roots: None,
@@ -3567,6 +3571,119 @@ fn turn_start_params_preserve_explicit_null_service_tier() {
     let serialized_without_override =
         serde_json::to_value(&without_override).expect("params should serialize");
     assert_eq!(serialized_without_override.get("serviceTier"), None);
+}
+
+#[test]
+fn turn_start_params_round_trip_context_recall_selected_snippets() {
+    let params: TurnStartParams = serde_json::from_value(json!({
+        "threadId": "thread_123",
+        "input": [],
+        "contextRecallSelectedSnippets": {
+            "version": codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+            "maxSnippets": 4,
+            "maxSnippetChars": 120,
+            "selectedSnippetCount": 1,
+            "omittedSnippetCount": 2,
+            "redactedSnippetCount": 1,
+            "truncatedSnippetCount": 0,
+            "snippets": [
+                {
+                    "snippetHash": "fedcba9876543210",
+                    "text": "[redacted-query] bounded memory",
+                    "estimatedTokens": 8,
+                    "redacted": true,
+                    "truncated": false
+                }
+            ],
+            "safety": {
+                "readyForShadowHandoff": true,
+                "bounded": true,
+                "originIdentifiersExposed": false,
+                "rawRankedPayloadExposed": false,
+                "rankExplanationExposed": false,
+                "controlMarkerExposed": false,
+                "queryPayloadExposed": false,
+                "perOriginListExposed": false
+            }
+        }
+    }))
+    .expect("params should deserialize");
+    let selected_snippets = params
+        .context_recall_selected_snippets
+        .clone()
+        .expect("selected snippets should deserialize");
+
+    assert!(selected_snippets.into_core().has_shadow_integrity());
+    assert_eq!(
+        crate::experimental_api::ExperimentalApi::experimental_reason(&params),
+        Some("turn/start.contextRecallSelectedSnippets")
+    );
+
+    let serialized = serde_json::to_value(&params).expect("params should serialize");
+    let serialized_text = serialized.to_string();
+    assert_eq!(
+        serialized["contextRecallSelectedSnippets"]["selectedSnippetCount"],
+        json!(1)
+    );
+    assert_eq!(
+        serialized["contextRecallSelectedSnippets"]["snippets"][0]["snippetHash"],
+        json!("fedcba9876543210")
+    );
+    assert!(!serialized_text.contains("selected_snippet_count"));
+    assert!(!serialized_text.contains("snippet_hash"));
+}
+
+#[test]
+fn context_recall_selected_snippets_from_core_maps_caller_envelope() {
+    let selected_snippets =
+        ContextRecallSelectedSnippetEnvelope::from_core(test_core_selected_snippet_envelope());
+
+    assert!(selected_snippets.clone().into_core().has_shadow_integrity());
+
+    let serialized = serde_json::to_value(&selected_snippets).expect("serialize selected snippets");
+    let serialized_text = serialized.to_string();
+    assert_eq!(serialized["selectedSnippetCount"], json!(1));
+    assert_eq!(
+        serialized["snippets"][0]["snippetHash"],
+        json!("fedcba9876543210")
+    );
+    assert_eq!(
+        serialized["snippets"][0]["text"],
+        json!("[redacted-query] bounded memory")
+    );
+    assert!(!serialized_text.contains("selected_snippet_count"));
+    assert!(!serialized_text.contains("snippet_hash"));
+    assert!(!serialized_text.contains("source_id"));
+}
+
+#[test]
+fn context_recall_selected_snippets_from_core_requires_experimental_and_integrity() {
+    let valid = test_core_selected_snippet_envelope();
+
+    assert!(
+        ContextRecallSelectedSnippetEnvelope::from_core_for_experimental_client(
+            Some(valid.clone()),
+            false
+        )
+        .is_none()
+    );
+    assert!(
+        ContextRecallSelectedSnippetEnvelope::from_core_for_experimental_client(
+            Some(valid.clone()),
+            true
+        )
+        .is_some()
+    );
+
+    let mut invalid = valid;
+    invalid.selected_snippet_count = 2;
+    assert!(
+        ContextRecallSelectedSnippetEnvelope::from_core_for_experimental_client(
+            Some(invalid),
+            true
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -3606,6 +3723,35 @@ fn turn_start_params_round_trip_environments() {
             }
         ]))
     );
+}
+
+fn test_core_selected_snippet_envelope() -> CoreTurnContextRecallSelectedSnippetEnvelope {
+    CoreTurnContextRecallSelectedSnippetEnvelope {
+        version: codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+        max_snippets: 4,
+        max_snippet_chars: 120,
+        selected_snippet_count: 1,
+        omitted_snippet_count: 2,
+        redacted_snippet_count: 1,
+        truncated_snippet_count: 0,
+        snippets: vec![CoreTurnContextRecallSelectedSnippet {
+            snippet_hash: "fedcba9876543210".to_string(),
+            text: "[redacted-query] bounded memory".to_string(),
+            estimated_tokens: 8,
+            redacted: true,
+            truncated: false,
+        }],
+        safety: CoreTurnContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff: true,
+            bounded: true,
+            origin_identifiers_exposed: false,
+            raw_ranked_payload_exposed: false,
+            rank_explanation_exposed: false,
+            control_marker_exposed: false,
+            query_payload_exposed: false,
+            per_origin_list_exposed: false,
+        },
+    }
 }
 
 #[test]

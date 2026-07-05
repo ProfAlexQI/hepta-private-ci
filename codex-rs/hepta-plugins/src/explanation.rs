@@ -1,7 +1,7 @@
-use crate::{
-    GatewayPluginBindingLookupResolution, GatewayPluginBindingMatch,
-    GatewayPluginBindingResolution, GatewayPluginBindingTier,
-};
+use crate::GatewayPluginBindingLookupResolution;
+use crate::GatewayPluginBindingMatch;
+use crate::GatewayPluginBindingResolution;
+use crate::GatewayPluginBindingTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayPluginBindingDiagnosticNote {
@@ -96,7 +96,8 @@ fn gap_explanation(tier: Option<GatewayPluginBindingTier>, lookup_key: &str) -> 
 
 #[cfg(test)]
 mod tests {
-    use crate::{GatewayPluginBinding, GatewayPluginBindingCatalog};
+    use crate::GatewayPluginBinding;
+    use crate::GatewayPluginBindingCatalog;
 
     #[test]
     fn route_resolution_exposes_diagnostic_notes_with_stable_tier_labels() {

@@ -7,12 +7,12 @@
 
 use std::collections::BTreeMap;
 
-use crate::{
-    memory::{IntelligenceTurnFrame, TranscriptRange},
-    runtime_types::SessionId,
-    tools::RiskTier,
-};
-use serde::{Deserialize, Serialize};
+use crate::memory::IntelligenceTurnFrame;
+use crate::memory::TranscriptRange;
+use crate::runtime_types::SessionId;
+use crate::tools::RiskTier;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TopicId(pub String);

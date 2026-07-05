@@ -1,6 +1,11 @@
-use hepta_core::{DoctorArea, DoctorCheckOutcome, DoctorOwner};
+use hepta_core::DoctorArea;
+use hepta_core::DoctorCheckOutcome;
+use hepta_core::DoctorOwner;
 
-use super::{DoctorCheck, DoctorStatus, event_log_integrity, integrity};
+use super::DoctorCheck;
+use super::DoctorStatus;
+use super::event_log_integrity;
+use super::integrity;
 
 pub(super) fn adapt_integrity_check(check: DoctorCheck) -> DoctorCheckOutcome {
     let metadata = integrity_check_metadata(&check.name);
@@ -193,7 +198,8 @@ fn owner(responsibility: &str) -> DoctorOwner {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{DoctorArea, DoctorStatus as CoreDoctorStatus};
+    use hepta_core::DoctorArea;
+    use hepta_core::DoctorStatus as CoreDoctorStatus;
 
     use super::*;
 

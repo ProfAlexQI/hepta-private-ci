@@ -6,9 +6,69 @@
       "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
       "type": "string"
     },
+    "AgentCardManifestToml": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tools": {
+          "description": "Tools allowed for this role on this surface.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "capabilities": {
+          "description": "Capabilities granted to the role for this surface.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "lane": {
+          "description": "WorkGraph lane expected for this surface.",
+          "type": "string"
+        },
+        "max_depth": {
+          "description": "Optional configured maximum child depth for this role.",
+          "format": "int32",
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "max_threads": {
+          "description": "Optional configured maximum number of threads for this role.",
+          "format": "uint",
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "schema_version": {
+          "description": "AgentCard document schema version.",
+          "type": "string"
+        },
+        "source_surface_id": {
+          "description": "Tool or lifecycle surface governed by this manifest.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "AgentRoleToml": {
       "additionalProperties": false,
       "properties": {
+        "agent_card_manifest": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AgentCardManifestToml"
+            }
+          ],
+          "description": "Optional structured AgentCard manifest used for shadow registry overlay checks."
+        },
+        "agent_card_manifest_source": {
+          "description": "Optional identifier for the AgentCard manifest that governs this role.",
+          "type": "string"
+        },
+        "agent_card_manifest_version": {
+          "description": "Optional AgentCard manifest version. Used for shadow drift detection.",
+          "type": "string"
+        },
         "config_file": {
           "allOf": [
             {
@@ -548,6 +608,9 @@
               "type": "boolean"
             },
             "skill_mcp_dependency_install": {
+              "type": "boolean"
+            },
+            "source_aware_compression_canary": {
               "type": "boolean"
             },
             "sqlite": {
@@ -4328,6 +4391,9 @@
           "type": "boolean"
         },
         "skill_mcp_dependency_install": {
+          "type": "boolean"
+        },
+        "source_aware_compression_canary": {
           "type": "boolean"
         },
         "sqlite": {

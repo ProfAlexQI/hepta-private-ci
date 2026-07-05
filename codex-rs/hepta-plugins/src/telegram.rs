@@ -144,7 +144,8 @@ pub fn telegram_plugin_bindings() -> Vec<GatewayPluginBinding> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GatewayPluginBindingCatalog, GatewayPluginBindingTier};
+    use crate::GatewayPluginBindingCatalog;
+    use crate::GatewayPluginBindingTier;
 
     #[test]
     fn telegram_plugin_manifest_and_bindings_cover_service_entrypoint() {

@@ -1,9 +1,12 @@
-use crate::{RollbackGroupAttempt, WriteGroupLock, WriteTargetLock};
+use crate::RollbackGroupAttempt;
+use crate::WriteGroupLock;
+use crate::WriteTargetLock;
 
-use super::{
-    WriteGroupLockReport, WriteLockPruneReport, WriteLockReport, WriteLockSummaryReport,
-    WriteTargetLockReport,
-};
+use super::WriteGroupLockReport;
+use super::WriteLockPruneReport;
+use super::WriteLockReport;
+use super::WriteLockSummaryReport;
+use super::WriteTargetLockReport;
 
 pub(crate) fn build_write_target_lock_report(
     lock: WriteTargetLock,

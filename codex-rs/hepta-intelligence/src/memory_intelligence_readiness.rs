@@ -1,10 +1,12 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-    memory_atom_pipeline_sample_report, memory_core_blocks_sample_report,
-    memory_eval_gate_sample_report, memory_hybrid_recall_sample_report,
-    memory_short_term_offload_sample_report, memory_temporal_graph_sample_report,
-};
+use crate::memory_atom_pipeline_sample_report;
+use crate::memory_core_blocks_sample_report;
+use crate::memory_eval_gate_sample_report;
+use crate::memory_hybrid_recall_sample_report;
+use crate::memory_short_term_offload_sample_report;
+use crate::memory_temporal_graph_sample_report;
 
 pub const MEMORY_INTELLIGENCE_READINESS_V1_CONTRACT: &str =
     "hepta-intelligence-memory-readiness-v1";

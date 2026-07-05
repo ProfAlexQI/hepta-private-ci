@@ -1,7 +1,11 @@
 use std::collections::BTreeSet;
 
-use hepta_core::{MemoryLinkKind, MemorySourceSpan, MemoryUnit, MemoryUnitKind};
-use serde::{Deserialize, Serialize};
+use hepta_core::MemoryLinkKind;
+use hepta_core::MemorySourceSpan;
+use hepta_core::MemoryUnit;
+use hepta_core::MemoryUnitKind;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::memory_atom_pipeline_sample_report;
 

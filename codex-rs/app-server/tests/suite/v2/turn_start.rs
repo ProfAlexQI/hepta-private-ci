@@ -24,6 +24,9 @@ use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::CommandExecutionApprovalDecision;
 use codex_app_server_protocol::CommandExecutionRequestApprovalResponse;
 use codex_app_server_protocol::CommandExecutionStatus;
+use codex_app_server_protocol::ContextRecallSelectedSnippet;
+use codex_app_server_protocol::ContextRecallSelectedSnippetEnvelope;
+use codex_app_server_protocol::ContextRecallSelectedSnippetSafety;
 use codex_app_server_protocol::FileChangeApprovalDecision;
 use codex_app_server_protocol::FileChangePatchUpdatedNotification;
 use codex_app_server_protocol::FileChangeRequestApprovalResponse;
@@ -38,11 +41,16 @@ use codex_app_server_protocol::PatchChangeKind;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::ServerRequestResolvedNotification;
+use codex_app_server_protocol::SortDirection;
 use codex_app_server_protocol::TextElement;
 use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadReadParams;
+use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadSource;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
+use codex_app_server_protocol::ThreadTurnsListParams;
+use codex_app_server_protocol::ThreadTurnsListResponse;
 use codex_app_server_protocol::TurnCompletedNotification;
 use codex_app_server_protocol::TurnEnvironmentParams;
 use codex_app_server_protocol::TurnItemsView;
@@ -84,14 +92,116 @@ use super::analytics::wait_for_analytics_event;
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
 #[cfg(not(windows))]
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const SOURCE_AWARE_COMPRESSION_HISTORY_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(30);
 const TEST_ORIGINATOR: &str = "codex_vscode";
 const LOCAL_PRAGMATIC_TEMPLATE: &str = "You are a deeply pragmatic, effective software engineer.";
 const INVALID_REQUEST_ERROR_CODE: i64 = -32600;
+const SOURCE_AWARE_COMPRESSION_ROUTING_BAIT: &str = "\
+missing-route missing-canary missing-helper-marker missing-approval-evidence \
+missing-route+canary missing-route+helper-marker missing-route+approval-evidence \
+missing-canary+helper-marker missing-canary+approval-evidence \
+missing-helper-marker+approval-evidence missing-route+canary+helper-marker \
+missing-route+canary+approval-evidence missing-route+helper-marker+approval-evidence \
+missing-canary+helper-marker+approval-evidence \
+missing-route+canary+helper-marker+approval-evidence \
+source_aware_compression_operator_approval_evidence \
+SourceAwareCompressionOperatorApprovalEvidence \
+source_aware_compression_operator_approval_id \
+source_aware_compression_operator_identity_hash \
+source_aware_compression_activation_request_id \
+source_aware_compression_operator_approval_scope_hash \
+source_aware_compression_operator_approval_nonce \
+source_aware_compression_operator_approval_expires_at";
+const SOURCE_AWARE_COMPRESSION_ROUTING_BAIT_TERMS: &[&str] = &[
+    "missing-route",
+    "missing-canary",
+    "missing-helper-marker",
+    "missing-approval-evidence",
+    "missing-route+canary",
+    "missing-route+helper-marker",
+    "missing-route+approval-evidence",
+    "missing-canary+helper-marker",
+    "missing-canary+approval-evidence",
+    "missing-helper-marker+approval-evidence",
+    "missing-route+canary+helper-marker",
+    "missing-route+canary+approval-evidence",
+    "missing-route+helper-marker+approval-evidence",
+    "missing-canary+helper-marker+approval-evidence",
+    "missing-route+canary+helper-marker+approval-evidence",
+    "source_aware_compression_operator_approval_evidence",
+    "SourceAwareCompressionOperatorApprovalEvidence",
+    "source_aware_compression_operator_approval_id",
+    "source_aware_compression_operator_identity_hash",
+    "source_aware_compression_activation_request_id",
+    "source_aware_compression_operator_approval_scope_hash",
+    "source_aware_compression_operator_approval_nonce",
+    "source_aware_compression_operator_approval_expires_at",
+];
 const TINY_PNG_BYTES: &[u8] = &[
     137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0,
     0, 0, 31, 21, 196, 137, 0, 0, 0, 11, 73, 68, 65, 84, 120, 156, 99, 96, 0, 2, 0, 0, 5, 0, 1,
     122, 94, 171, 63, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
 ];
+
+fn test_context_recall_selected_snippets() -> ContextRecallSelectedSnippetEnvelope {
+    ContextRecallSelectedSnippetEnvelope {
+        version: codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+        max_snippets: 4,
+        max_snippet_chars: 120,
+        selected_snippet_count: 1,
+        omitted_snippet_count: 2,
+        redacted_snippet_count: 1,
+        truncated_snippet_count: 0,
+        snippets: vec![ContextRecallSelectedSnippet {
+            snippet_hash: "fedcba9876543210".to_string(),
+            text: "[redacted-query] bounded memory".to_string(),
+            estimated_tokens: 8,
+            redacted: true,
+            truncated: false,
+        }],
+        safety: ContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff: true,
+            bounded: true,
+            origin_identifiers_exposed: false,
+            raw_ranked_payload_exposed: false,
+            rank_explanation_exposed: false,
+            control_marker_exposed: false,
+            query_payload_exposed: false,
+            per_origin_list_exposed: false,
+        },
+    }
+}
+
+fn test_context_recall_selected_snippets_with_source_aware_compression_routing_bait()
+-> ContextRecallSelectedSnippetEnvelope {
+    ContextRecallSelectedSnippetEnvelope {
+        version: codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+        max_snippets: 4,
+        max_snippet_chars: SOURCE_AWARE_COMPRESSION_ROUTING_BAIT.len() as u32,
+        selected_snippet_count: 1,
+        omitted_snippet_count: 2,
+        redacted_snippet_count: 1,
+        truncated_snippet_count: 0,
+        snippets: vec![ContextRecallSelectedSnippet {
+            snippet_hash: "0123456789abcdef".to_string(),
+            text: SOURCE_AWARE_COMPRESSION_ROUTING_BAIT.to_string(),
+            estimated_tokens: 128,
+            redacted: true,
+            truncated: false,
+        }],
+        safety: ContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff: true,
+            bounded: true,
+            origin_identifiers_exposed: false,
+            raw_ranked_payload_exposed: false,
+            rank_explanation_exposed: false,
+            control_marker_exposed: false,
+            query_payload_exposed: false,
+            per_origin_list_exposed: false,
+        },
+    }
+}
 
 fn body_contains(req: &wiremock::Request, text: &str) -> bool {
     String::from_utf8(req.body.clone())
@@ -1213,6 +1323,307 @@ async fn turn_start_accepts_collaboration_mode_override_v2() -> Result<()> {
 }
 
 #[tokio::test]
+async fn turn_start_accepts_context_recall_selected_snippets_v2() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = responses::start_mock_server().await;
+    let body = responses::sse(vec![
+        responses::ev_response_created("resp-1"),
+        responses::ev_assistant_message("msg-1", "Done"),
+        responses::ev_completed("resp-1"),
+    ]);
+    let response_mock = responses::mount_sse_once(&server, body).await;
+
+    let codex_home = TempDir::new()?;
+    create_config_toml(
+        codex_home.path(),
+        &server.uri(),
+        "never",
+        &BTreeMap::default(),
+    )?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let thread_req = mcp
+        .send_thread_start_request(ThreadStartParams {
+            model: Some("mock-model".to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let thread_resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(thread_req)),
+    )
+    .await??;
+    let ThreadStartResponse { thread, .. } = to_response::<ThreadStartResponse>(thread_resp)?;
+
+    let turn_req = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![V2UserInput::Text {
+                text: "Hello".to_string(),
+                text_elements: Vec::new(),
+            }],
+            context_recall_selected_snippets: Some(test_context_recall_selected_snippets()),
+            ..Default::default()
+        })
+        .await?;
+    let turn_resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turn_req)),
+    )
+    .await??;
+    let _turn: TurnStartResponse = to_response::<TurnStartResponse>(turn_resp)?;
+
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+
+    let request = response_mock.single_request();
+    let payload_text = request.body_json().to_string();
+    assert_eq!(payload_text.matches("<selected_context_recall>").count(), 1);
+    assert!(payload_text.contains("fedcba9876543210"));
+    assert!(payload_text.contains("[redacted-query] bounded memory"));
+    assert!(!payload_text.contains("source-memory-id"));
+    assert!(!payload_text.contains("source_id"));
+    assert!(!payload_text.contains("[hepta-memory:"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn turn_start_source_aware_compression_canary_without_marker_keeps_selected_snippets_v2()
+-> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = responses::start_mock_server().await;
+    let body = responses::sse(vec![
+        responses::ev_response_created("resp-1"),
+        responses::ev_assistant_message("msg-1", "Done"),
+        responses::ev_completed("resp-1"),
+    ]);
+    let response_mock = responses::mount_sse_once(&server, body).await;
+
+    let codex_home = TempDir::new()?;
+    create_config_toml(
+        codex_home.path(),
+        &server.uri(),
+        "never",
+        &BTreeMap::from([(Feature::SourceAwareCompressionCanary, true)]),
+    )?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let thread_req = mcp
+        .send_thread_start_request(ThreadStartParams {
+            model: Some("mock-model".to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let thread_resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(thread_req)),
+    )
+    .await??;
+    let ThreadStartResponse { thread, .. } = to_response::<ThreadStartResponse>(thread_resp)?;
+
+    let turn_req = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![V2UserInput::Text {
+                text: "Hello".to_string(),
+                text_elements: Vec::new(),
+            }],
+            context_recall_selected_snippets: Some(test_context_recall_selected_snippets()),
+            ..Default::default()
+        })
+        .await?;
+    let turn_resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turn_req)),
+    )
+    .await??;
+    let _turn: TurnStartResponse = to_response::<TurnStartResponse>(turn_resp)?;
+
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+
+    let request = response_mock.single_request();
+    let payload_text = request.body_json().to_string();
+    assert_eq!(payload_text.matches("<selected_context_recall>").count(), 1);
+    assert!(payload_text.contains("fedcba9876543210"));
+    assert!(payload_text.contains("[redacted-query] bounded memory"));
+    assert!(!payload_text.contains("[context summarized for budget]"));
+    assert!(!payload_text.contains("[context defragmented for budget]"));
+    assert!(!payload_text.contains("[context pruned for budget]"));
+    assert!(!payload_text.contains("TurnContextAssemblyPolicyOptIn"));
+    assert!(!payload_text.contains("SourceAwareCompression"));
+    assert!(!payload_text.contains("source_aware_compression_canary"));
+    assert!(!payload_text.contains("source-memory-id"));
+    assert!(!payload_text.contains("source_id"));
+    assert!(!payload_text.contains("[hepta-memory:"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn turn_start_source_aware_compression_canary_thread_history_hides_routing_metadata()
+-> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = responses::start_mock_server().await;
+    let body = responses::sse(vec![
+        responses::ev_response_created("resp-1"),
+        responses::ev_assistant_message("msg-1", "Done"),
+        responses::ev_completed("resp-1"),
+    ]);
+    let _response_mock = responses::mount_sse_once(&server, body).await;
+
+    let codex_home = TempDir::new()?;
+    create_config_toml(
+        codex_home.path(),
+        &server.uri(),
+        "never",
+        &BTreeMap::from([(Feature::SourceAwareCompressionCanary, true)]),
+    )?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(SOURCE_AWARE_COMPRESSION_HISTORY_TIMEOUT, mcp.initialize()).await??;
+
+    let start_id = mcp
+        .send_thread_start_request(ThreadStartParams {
+            model: Some("mock-model".to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let start_resp: JSONRPCResponse = timeout(
+        SOURCE_AWARE_COMPRESSION_HISTORY_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(start_id)),
+    )
+    .await??;
+    let ThreadStartResponse { thread, .. } = to_response::<ThreadStartResponse>(start_resp)?;
+
+    let turn_start_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![V2UserInput::Text {
+                text: "Hello".to_string(),
+                text_elements: Vec::new(),
+            }],
+            context_recall_selected_snippets: Some(
+                test_context_recall_selected_snippets_with_source_aware_compression_routing_bait(),
+            ),
+            ..Default::default()
+        })
+        .await?;
+    let turn_start_response: JSONRPCResponse = timeout(
+        SOURCE_AWARE_COMPRESSION_HISTORY_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turn_start_id)),
+    )
+    .await??;
+    let _: TurnStartResponse = to_response::<TurnStartResponse>(turn_start_response)?;
+    timeout(
+        SOURCE_AWARE_COMPRESSION_HISTORY_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+
+    let read_id = mcp
+        .send_thread_read_request(ThreadReadParams {
+            thread_id: thread.id.clone(),
+            include_turns: true,
+        })
+        .await?;
+    let read_resp: JSONRPCResponse = timeout(
+        SOURCE_AWARE_COMPRESSION_HISTORY_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(read_id)),
+    )
+    .await??;
+    let read_response = to_response::<ThreadReadResponse>(read_resp)?;
+    assert_eq!(turn_user_texts(&read_response.thread.turns), vec!["Hello"]);
+    assert_eq!(turn_agent_texts(&read_response.thread.turns), vec!["Done"]);
+    assert_no_source_aware_compression_routing_metadata(&serde_json::to_string(&read_response)?);
+
+    let turns_id = mcp
+        .send_thread_turns_list_request(ThreadTurnsListParams {
+            thread_id: thread.id,
+            cursor: None,
+            limit: Some(10),
+            sort_direction: Some(SortDirection::Asc),
+            items_view: Some(TurnItemsView::Full),
+        })
+        .await?;
+    let turns_resp: JSONRPCResponse = timeout(
+        SOURCE_AWARE_COMPRESSION_HISTORY_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turns_id)),
+    )
+    .await??;
+    let turns_response = to_response::<ThreadTurnsListResponse>(turns_resp)?;
+    assert_eq!(turn_user_texts(&turns_response.data), vec!["Hello"]);
+    assert_eq!(turn_agent_texts(&turns_response.data), vec!["Done"]);
+    assert_no_source_aware_compression_routing_metadata(&serde_json::to_string(&turns_response)?);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn turn_start_rejects_invalid_context_recall_selected_snippets_v2() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    create_config_toml(
+        codex_home.path(),
+        "http://localhost/unused",
+        "never",
+        &BTreeMap::default(),
+    )?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let mut selected_snippets = test_context_recall_selected_snippets();
+    selected_snippets.selected_snippet_count = 2;
+    let turn_req = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: "thread_missing".to_string(),
+            input: vec![V2UserInput::Text {
+                text: "Hello".to_string(),
+                text_elements: Vec::new(),
+            }],
+            context_recall_selected_snippets: Some(selected_snippets),
+            ..Default::default()
+        })
+        .await?;
+    let err: JSONRPCError = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_error_message(RequestId::Integer(turn_req)),
+    )
+    .await??;
+
+    assert_eq!(err.error.code, INVALID_REQUEST_ERROR_CODE);
+    assert_eq!(
+        err.error.message,
+        "contextRecallSelectedSnippets must be bounded and source-safe"
+    );
+    let turn_started = tokio::time::timeout(
+        std::time::Duration::from_millis(250),
+        mcp.read_stream_until_notification_message("turn/started"),
+    )
+    .await;
+    assert!(
+        turn_started.is_err(),
+        "did not expect a turn/started notification after rejected selected snippets"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn turn_start_uses_thread_feature_overrides_for_request_user_input_tool_description_v2()
 -> Result<()> {
     skip_if_no_network!(Ok(()));
@@ -1964,6 +2375,7 @@ async fn turn_start_updates_sandbox_and_cwd_between_turns_v2() -> Result<()> {
                 text_elements: Vec::new(),
             }],
             responsesapi_client_metadata: None,
+            context_recall_selected_snippets: None,
             cwd: Some(first_cwd.clone()),
             runtime_workspace_roots: None,
             approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
@@ -2006,6 +2418,7 @@ async fn turn_start_updates_sandbox_and_cwd_between_turns_v2() -> Result<()> {
                 text_elements: Vec::new(),
             }],
             responsesapi_client_metadata: None,
+            context_recall_selected_snippets: None,
             cwd: Some(second_cwd.clone()),
             runtime_workspace_roots: None,
             approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
@@ -3696,6 +4109,52 @@ async fn turn_start_with_elevated_override_does_not_persist_project_trust() -> R
     assert!(!config_toml.contains(&workspace.path().display().to_string()));
 
     Ok(())
+}
+
+fn turn_user_texts(turns: &[codex_app_server_protocol::Turn]) -> Vec<&str> {
+    turns
+        .iter()
+        .filter_map(|turn| match turn.items.first()? {
+            ThreadItem::UserMessage { content, .. } => match content.first()? {
+                V2UserInput::Text { text, .. } => Some(text.as_str()),
+                V2UserInput::Image { .. }
+                | V2UserInput::LocalImage { .. }
+                | V2UserInput::Skill { .. }
+                | V2UserInput::Mention { .. } => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+fn turn_agent_texts(turns: &[codex_app_server_protocol::Turn]) -> Vec<&str> {
+    turns
+        .iter()
+        .flat_map(|turn| &turn.items)
+        .filter_map(|item| match item {
+            ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn assert_no_source_aware_compression_routing_metadata(rendered: &str) {
+    assert!(!rendered.contains("source_aware_compression_canary"));
+    assert!(!rendered.contains("TurnContextAssemblyPolicyOptIn"));
+    assert!(!rendered.contains("SourceAwareCompression"));
+    assert!(!rendered.contains("[context summarized for budget]"));
+    assert!(!rendered.contains("[context defragmented for budget]"));
+    assert!(!rendered.contains("[context pruned for budget]"));
+    assert!(!rendered.contains("<selected_context_recall>"));
+    assert!(!rendered.contains("fedcba9876543210"));
+    assert!(!rendered.contains("[redacted-query] bounded memory"));
+    assert!(!rendered.contains("source-memory-id"));
+    assert!(!rendered.contains("source_id"));
+    assert!(!rendered.contains("[hepta-memory:"));
+    assert!(!rendered.contains("0123456789abcdef"));
+    for bait in SOURCE_AWARE_COMPRESSION_ROUTING_BAIT_TERMS {
+        assert!(!rendered.contains(bait));
+    }
 }
 
 // Helper to create a config.toml pointing at the mock model server.

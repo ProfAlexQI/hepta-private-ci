@@ -20,6 +20,13 @@ fn detects_agents_instructions_fragment() {
 }
 
 #[test]
+fn detects_extension_contextual_user_fragment() {
+    assert!(is_contextual_user_fragment(&ContentItem::InputText {
+        text: "<extension_contextual_user>\nbody\n</extension_contextual_user>".to_string(),
+    }));
+}
+
+#[test]
 fn detects_subagent_notification_fragment_case_insensitively() {
     assert!(SubagentNotification::matches_text(
         "<SUBAGENT_NOTIFICATION>{}</subagent_notification>"

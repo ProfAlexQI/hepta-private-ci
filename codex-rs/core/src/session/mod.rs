@@ -26,6 +26,8 @@ use crate::context::AvailablePluginsInstructions;
 use crate::context::AvailableSkillsInstructions;
 use crate::context::CollaborationModeInstructions;
 use crate::context::ContextualUserFragment;
+use crate::context::ExtensionPromptFragment;
+use crate::context::ExtensionPromptSlot;
 use crate::context::NetworkRuleSaved;
 use crate::context::PermissionsInstructions;
 use crate::context::PersonalitySpecInstructions;
@@ -1566,6 +1568,10 @@ impl Session {
         };
         let shell = self.user_shell();
         let exec_policy = self.services.exec_policy.current();
+        let capability_sections = self
+            .build_capability_context_sections(current_context, SkillRenderSideEffects::None)
+            .await;
+        let extension_sections = self.build_extension_context_sections().await;
         crate::context_manager::updates::build_settings_update_items(
             reference_context_item,
             previous_turn_settings.as_ref(),
@@ -1573,7 +1579,118 @@ impl Session {
             shell.as_ref(),
             exec_policy.as_ref(),
             self.features.enabled(Feature::Personality),
+            capability_sections,
+            extension_sections,
         )
+    }
+
+    async fn build_extension_context_sections(
+        &self,
+    ) -> crate::context_manager::updates::ExtensionContextSections {
+        let mut sections = crate::context_manager::updates::ExtensionContextSections::default();
+        let context_contributors = self.services.extensions.context_contributors().to_vec();
+        for contributor in context_contributors {
+            for fragment in contributor
+                .contribute(
+                    &self.services.session_extension_data,
+                    &self.services.thread_extension_data,
+                )
+                .await
+            {
+                match fragment.slot() {
+                    PromptSlot::DeveloperPolicy => {
+                        sections.developer_policy.push(
+                            ExtensionPromptFragment::new(
+                                ExtensionPromptSlot::DeveloperPolicy,
+                                fragment.text(),
+                            )
+                            .render(),
+                        );
+                    }
+                    PromptSlot::DeveloperCapabilities => {
+                        sections.developer_capabilities.push(
+                            ExtensionPromptFragment::new(
+                                ExtensionPromptSlot::DeveloperCapabilities,
+                                fragment.text(),
+                            )
+                            .render(),
+                        );
+                    }
+                    PromptSlot::SeparateDeveloper => {
+                        sections.separate_developer.push(
+                            ExtensionPromptFragment::new(
+                                ExtensionPromptSlot::SeparateDeveloper,
+                                fragment.text(),
+                            )
+                            .render(),
+                        );
+                    }
+                    PromptSlot::ContextualUser => {
+                        sections.contextual_user.push(
+                            ExtensionPromptFragment::new(
+                                ExtensionPromptSlot::ContextualUser,
+                                fragment.text(),
+                            )
+                            .render(),
+                        );
+                    }
+                }
+            }
+        }
+        sections
+    }
+
+    async fn list_accessible_and_enabled_connectors_for_context(
+        &self,
+        config: &Config,
+    ) -> Vec<connectors::AppInfo> {
+        let tool_list_snapshot = {
+            let mcp_connection_manager = self.services.mcp_connection_manager.read().await;
+            mcp_connection_manager.tool_list_snapshot()
+        };
+        let mcp_tools = tool_list_snapshot.list_all_tools().await;
+        connectors::list_accessible_and_enabled_connectors_from_mcp_tools(&mcp_tools, config)
+    }
+
+    async fn build_capability_context_sections(
+        &self,
+        turn_context: &TurnContext,
+        skill_render_side_effects: SkillRenderSideEffects<'_>,
+    ) -> crate::context_manager::updates::CapabilityContextSections {
+        let apps = if turn_context.config.include_apps_instructions && turn_context.apps_enabled() {
+            let accessible_and_enabled_connectors = self
+                .list_accessible_and_enabled_connectors_for_context(&turn_context.config)
+                .await;
+            AppsInstructions::from_connectors(&accessible_and_enabled_connectors)
+                .map(|instructions| instructions.render())
+        } else {
+            None
+        };
+        let available_skills = if turn_context.config.include_skill_instructions {
+            build_available_skills(
+                &turn_context.turn_skills.outcome,
+                default_skill_metadata_budget(turn_context.model_info.context_window),
+                skill_render_side_effects,
+            )
+            .map(AvailableSkillsInstructions::from)
+            .map(|instructions| instructions.render())
+        } else {
+            None
+        };
+        let loaded_plugins = self
+            .services
+            .plugins_manager
+            .plugins_for_config(&turn_context.config.plugins_config_input())
+            .await;
+        let available_plugins =
+            AvailablePluginsInstructions::from_plugins(loaded_plugins.capability_summaries())
+                .map(|instructions| instructions.render());
+
+        crate::context_manager::updates::CapabilityContextSections {
+            apps,
+            available_skills,
+            available_plugins,
+        }
     }
 
     /// Persist the event to rollout and send it to clients.
@@ -2626,10 +2743,6 @@ impl Session {
         }
     }
 
-    #[expect(
-        clippy::await_holding_invalid_type,
-        reason = "MCP app context rendering reads through the session-owned manager guard"
-    )]
     pub(crate) async fn build_initial_context(
         &self,
         turn_context: &TurnContext,
@@ -2722,12 +2835,8 @@ impl Session {
             }
         }
         if turn_context.config.include_apps_instructions && turn_context.apps_enabled() {
-            let mcp_connection_manager = self.services.mcp_connection_manager.read().await;
-            let accessible_and_enabled_connectors =
-                connectors::list_accessible_and_enabled_connectors_from_manager(
-                    &mcp_connection_manager,
-                    &turn_context.config,
-                )
+            let accessible_and_enabled_connectors = self
+                .list_accessible_and_enabled_connectors_for_context(&turn_context.config)
                 .await;
             if let Some(apps_instructions) =
                 AppsInstructions::from_connectors(&accessible_and_enabled_connectors)
@@ -2768,28 +2877,11 @@ impl Session {
         {
             developer_sections.push(plugin_instructions.render());
         }
-        let context_contributors = self.services.extensions.context_contributors().to_vec();
-        for contributor in context_contributors {
-            for fragment in contributor
-                .contribute(
-                    &self.services.session_extension_data,
-                    &self.services.thread_extension_data,
-                )
-                .await
-            {
-                match fragment.slot() {
-                    PromptSlot::DeveloperPolicy | PromptSlot::DeveloperCapabilities => {
-                        developer_sections.push(fragment.text().to_string());
-                    }
-                    PromptSlot::ContextualUser => {
-                        contextual_user_sections.push(fragment.text().to_string());
-                    }
-                    PromptSlot::SeparateDeveloper => {
-                        separate_developer_sections.push(fragment.text().to_string());
-                    }
-                }
-            }
-        }
+        let extension_sections = self.build_extension_context_sections().await;
+        developer_sections.extend(extension_sections.developer_policy);
+        developer_sections.extend(extension_sections.developer_capabilities);
+        contextual_user_sections.extend(extension_sections.contextual_user);
+        separate_developer_sections.extend(extension_sections.separate_developer);
         if let Some(user_instructions) = turn_context.user_instructions.as_deref() {
             contextual_user_sections.push(
                 UserInstructions {
@@ -2893,19 +2985,88 @@ impl Session {
         &self,
         turn_context: &TurnContext,
     ) {
+        let manifest_options =
+            crate::context_manager::manifest::turn_context_manifest_options_from_extension_data(
+                turn_context.extension_data.as_ref(),
+            );
+        self.record_context_updates_and_set_reference_context_item_with_manifest_options(
+            turn_context,
+            manifest_options,
+        )
+        .await;
+    }
+
+    pub(crate) async fn record_context_updates_and_set_reference_context_item_with_manifest_options(
+        &self,
+        turn_context: &TurnContext,
+        manifest_options: crate::context_manager::manifest::TurnContextManifestOptions,
+    ) {
+        let opt_in_gate = if self.features.enabled(Feature::SourceAwareCompressionCanary) {
+            crate::context_manager::manifest::TurnContextAssemblyPolicyOptInGate::SourceAwareCompressionCanary
+        } else {
+            crate::context_manager::manifest::TurnContextAssemblyPolicyOptInGate::Disabled
+        };
+        let assembly_policy =
+            crate::context_manager::manifest::turn_context_assembly_policy_from_extension_data(
+                turn_context.extension_data.as_ref(),
+                turn_context.model_context_window(),
+                opt_in_gate,
+            );
+        self.record_context_updates_and_set_reference_context_item_with_policy(
+            turn_context,
+            manifest_options,
+            assembly_policy,
+        )
+        .await;
+    }
+
+    pub(crate) async fn record_context_updates_and_set_reference_context_item_with_policy(
+        &self,
+        turn_context: &TurnContext,
+        manifest_options: crate::context_manager::manifest::TurnContextManifestOptions,
+        assembly_policy: crate::context_manager::manifest::ContextAssemblyPolicy,
+    ) {
         let reference_context_item = {
             let state = self.state.lock().await;
             state.reference_context_item()
         };
         let should_inject_full_context = reference_context_item.is_none();
-        let context_items = if should_inject_full_context {
+        let mut context_items = if should_inject_full_context {
             self.build_initial_context(turn_context).await
         } else {
             // Steady-state path: append only context diffs to minimize token overhead.
             self.build_settings_update_items(reference_context_item.as_ref(), turn_context)
                 .await
         };
-        let turn_context_item = turn_context.to_turn_context_item();
+        if let Some(selected_snippets_context_item) =
+            crate::context_manager::manifest::build_recall_selected_snippets_live_context_item(
+                manifest_options.recall_selected_snippets.as_ref(),
+            )
+        {
+            let selected_snippets_already_in_history = {
+                let state = self.state.lock().await;
+                state
+                    .clone_history()
+                    .raw_items()
+                    .iter()
+                    .any(|item| item == &selected_snippets_context_item)
+            };
+            if !selected_snippets_already_in_history {
+                context_items.push(selected_snippets_context_item);
+            }
+        }
+        let previous_manifest = reference_context_item
+            .as_ref()
+            .and_then(|item| item.context_manifest.as_ref());
+        let assembly_result = crate::context_manager::manifest::assemble_turn_context_with_policy(
+            &context_items,
+            previous_manifest,
+            &manifest_options,
+            &assembly_policy,
+        );
+        let context_items = assembly_result.context_items;
+        let mut turn_context_item = turn_context.to_turn_context_item();
+        turn_context_item.context_manifest = assembly_result.context_manifest;
         if !context_items.is_empty() {
             self.record_conversation_items(turn_context, &context_items)
                 .await;
@@ -3236,8 +3397,11 @@ impl Session {
         self.mailbox.subscribe()
     }
 
-    pub(crate) fn enqueue_mailbox_communication(&self, communication: InterAgentCommunication) {
-        self.mailbox.send(communication);
+    pub(crate) fn enqueue_mailbox_communication(
+        &self,
+        communication: InterAgentCommunication,
+    ) -> u64 {
+        self.mailbox.send(communication)
     }
 
     pub(crate) async fn has_trigger_turn_mailbox_items(&self) -> bool {
@@ -3285,14 +3449,32 @@ impl Session {
         if !accepts_mailbox_delivery {
             return pending_input;
         }
-        let mailbox_items = {
+        let mailbox_deliveries = {
             let mut mailbox_rx = self.mailbox_rx.lock().await;
-            mailbox_rx
-                .drain()
-                .into_iter()
-                .map(|mail| mail.to_response_input_item())
-                .collect::<Vec<_>>()
+            mailbox_rx.drain_deliveries()
         };
+        if !mailbox_deliveries.is_empty()
+            && let Some(state_db) = self.state_db()
+        {
+            let trace_id = current_span_trace_id();
+            for delivery in &mailbox_deliveries {
+                if let Err(err) = state_db
+                    .record_inter_agent_mailbox_delivered(
+                        self.conversation_id,
+                        delivery.sequence,
+                        &delivery.communication,
+                        trace_id.as_deref(),
+                    )
+                    .await
+                {
+                    warn!("failed to record inter-agent mailbox delivery shadow event: {err}");
+                }
+            }
+        }
+        let mailbox_items = mailbox_deliveries
+            .into_iter()
+            .map(|delivery| delivery.communication.to_response_input_item())
+            .collect::<Vec<_>>();
         if pending_input.is_empty() {
             mailbox_items
         } else if mailbox_items.is_empty() {

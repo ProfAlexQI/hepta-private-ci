@@ -140,6 +140,7 @@ fn reference_context_item() -> TurnContextItem {
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(codex_protocol::protocol::TruncationPolicy::Tokens(10_000)),
+        context_manifest: None,
     }
 }
 
@@ -923,6 +924,41 @@ fn drop_last_n_user_turns_trims_context_updates_above_rolled_back_turn() {
             user_input_text_msg("turn 1 user"),
             assistant_msg("turn 1 assistant"),
             developer_msg("Generated images are saved to /tmp as /tmp/image-1.png by default."),
+        ]
+    );
+    assert_eq!(
+        serde_json::to_value(history.reference_context_item())
+            .expect("serialize retained reference context item"),
+        serde_json::to_value(Some(reference_context_item))
+            .expect("serialize expected reference context item")
+    );
+}
+
+#[test]
+fn drop_last_n_user_turns_trims_selected_context_recall_above_rolled_back_turn() {
+    let items = vec![
+        assistant_msg("session prefix item"),
+        user_input_text_msg("turn 1 user"),
+        assistant_msg("turn 1 assistant"),
+        developer_msg(
+            "<selected_context_recall>\n- snippet_hash=fedcba9876543210 text: bounded memory\n</selected_context_recall>",
+        ),
+        user_input_text_msg("turn 2 user"),
+        assistant_msg("turn 2 assistant"),
+    ];
+
+    let modalities = default_input_modalities();
+    let mut history = create_history_with_items(items);
+    let reference_context_item = reference_context_item();
+    history.set_reference_context_item(Some(reference_context_item.clone()));
+    history.drop_last_n_user_turns(/*num_turns*/ 1);
+
+    assert_eq!(
+        history.clone().for_prompt(&modalities),
+        vec![
+            assistant_msg("session prefix item"),
+            user_input_text_msg("turn 1 user"),
+            assistant_msg("turn 1 assistant"),
         ]
     );
     assert_eq!(

@@ -88,11 +88,24 @@ pub use upstream_codex_sync::*;
 mod contract_tests {
     use serde_json::json;
 
-    use crate::{
-        AgentId, ApprovalRequirement, ChannelError, CorrelationId, Event, EventKind, MemoryError,
-        ModelError, ModelRef, PathCapabilityGate, PolicyRule, ProviderTransportKind, RiskTier,
-        SessionId, ToolError, ToolExecutionMetadata, Usage, WritePathScope,
-    };
+    use crate::AgentId;
+    use crate::ApprovalRequirement;
+    use crate::ChannelError;
+    use crate::CorrelationId;
+    use crate::Event;
+    use crate::EventKind;
+    use crate::MemoryError;
+    use crate::ModelError;
+    use crate::ModelRef;
+    use crate::PathCapabilityGate;
+    use crate::PolicyRule;
+    use crate::ProviderTransportKind;
+    use crate::RiskTier;
+    use crate::SessionId;
+    use crate::ToolError;
+    use crate::ToolExecutionMetadata;
+    use crate::Usage;
+    use crate::WritePathScope;
 
     #[test]
     fn runtime_event_contract_uses_snake_case_and_optional_payload() {

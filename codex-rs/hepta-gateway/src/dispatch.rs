@@ -1,4 +1,6 @@
-use crate::{GatewayEnvelope, GatewayRoutePlan, GatewayTransport};
+use crate::GatewayEnvelope;
+use crate::GatewayRoutePlan;
+use crate::GatewayTransport;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayPluginHandoffDraft {
@@ -68,8 +70,11 @@ fn command_selector(normalized_text: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayPluginHandoffDraft, plugin_handoff_draft};
-    use crate::{GatewayEnvelope, GatewayRoutePlan, GatewayTransport};
+    use super::GatewayPluginHandoffDraft;
+    use super::plugin_handoff_draft;
+    use crate::GatewayEnvelope;
+    use crate::GatewayRoutePlan;
+    use crate::GatewayTransport;
 
     #[test]
     fn handoff_draft_extracts_command_selector_from_route() {

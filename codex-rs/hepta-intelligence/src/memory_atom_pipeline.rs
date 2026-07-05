@@ -1,11 +1,22 @@
 use std::collections::BTreeSet;
 
-use hepta_core::{
-    MemoryConflict, MemoryLayer, MemoryLifecycleState, MemoryLink, MemorySourceKind,
-    MemorySourceSpan, MemoryTemporalValidity, MemoryUnit, MemoryUnitKind, MessageRole, SessionId,
-    TranscriptEntry, TranscriptEntryKind, TranscriptRange, TranscriptSpanRef,
-};
-use serde::{Deserialize, Serialize};
+use hepta_core::MemoryConflict;
+use hepta_core::MemoryLayer;
+use hepta_core::MemoryLifecycleState;
+use hepta_core::MemoryLink;
+use hepta_core::MemorySourceKind;
+use hepta_core::MemorySourceSpan;
+use hepta_core::MemoryTemporalValidity;
+use hepta_core::MemoryUnit;
+use hepta_core::MemoryUnitKind;
+use hepta_core::MessageRole;
+use hepta_core::SessionId;
+use hepta_core::TranscriptEntry;
+use hepta_core::TranscriptEntryKind;
+use hepta_core::TranscriptRange;
+use hepta_core::TranscriptSpanRef;
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const MEMORY_ATOM_PIPELINE_V1_CONTRACT: &str = "hepta-intelligence-l0-to-l1-atom-pipeline-v1";
 

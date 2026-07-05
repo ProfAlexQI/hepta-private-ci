@@ -1,4 +1,5 @@
-use crate::{GatewayPluginBindingLookupResolution, GatewayPluginBindingTier};
+use crate::GatewayPluginBindingLookupResolution;
+use crate::GatewayPluginBindingTier;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayPluginBindingScaffoldPlan {
@@ -293,10 +294,11 @@ fn slugify(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GatewayPluginBinding, GatewayPluginBindingCatalog, GatewayPluginBindingScaffoldNote,
-        GatewayPluginBindingScaffoldPlan, GatewayPluginScaffoldStub,
-    };
+    use crate::GatewayPluginBinding;
+    use crate::GatewayPluginBindingCatalog;
+    use crate::GatewayPluginBindingScaffoldNote;
+    use crate::GatewayPluginBindingScaffoldPlan;
+    use crate::GatewayPluginScaffoldStub;
 
     #[test]
     fn lookup_resolution_can_emit_binding_scaffold_notes_for_remaining_gaps() {

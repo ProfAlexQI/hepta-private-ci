@@ -1,146 +1,232 @@
 use std::path::Path;
-use std::process::{Child, ExitStatus};
+use std::process::Child;
+use std::process::ExitStatus;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use serde_json::Value;
 
-pub use hepta_kernel::{
-    CODEX_ENGINE_ID, DEFAULT_TELEGRAM_MLX_BASE_URL, DEFAULT_TELEGRAM_MLX_MAX_TOKENS,
-    DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS, DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS,
-    DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS, DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS,
-    DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS, DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION,
-    DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, DEFAULT_TELEGRAM_SOAK_MIN_POLLS,
-    DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, HEPTA_KERNEL_CONTRACT, HEPTA_KERNEL_OWNER,
-    HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES as TELEGRAM_ALLOWED_UPDATES,
-    HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA, HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES,
-    HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER,
-    HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES as TELEGRAM_DRAIN_ONCE_STAGES,
-    HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-    HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE, HEPTA_KERNEL_TELEGRAM_RUNNER_KIND,
-    HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY, HeptaKernelEngine, HeptaKernelTelegramCandidateMaterial,
-    HeptaKernelTelegramConfigMetadata, HeptaKernelTelegramConfigStatus,
-    HeptaKernelTelegramConfigStatusInput, HeptaKernelTelegramCursorPlan,
-    HeptaKernelTelegramCursorStatus, HeptaKernelTelegramCursorStatusInput,
-    HeptaKernelTelegramDeliveryLedgerStatus, HeptaKernelTelegramDeliveryLedgerStatusInput,
-    HeptaKernelTelegramDrainFinalStatusPlan, HeptaKernelTelegramDrainOnceApiResultInput,
-    HeptaKernelTelegramDrainOnceApiResultPlan, HeptaKernelTelegramDrainOncePreflightInput,
-    HeptaKernelTelegramDrainOncePreflightPlan, HeptaKernelTelegramDrainOnceShellReadinessInput,
-    HeptaKernelTelegramDrainOnceShellReadinessPlan, HeptaKernelTelegramDrainOnceStatus,
-    HeptaKernelTelegramDrainOnceStatusInput, HeptaKernelTelegramDrainPipelineDeliveryInput,
-    HeptaKernelTelegramDrainPipelineDeliveryPlan, HeptaKernelTelegramDrainPipelineFinalStatus,
-    HeptaKernelTelegramDrainPipelineOutcome, HeptaKernelTelegramDuplicateDecision,
-    HeptaKernelTelegramExecutionPlan, HeptaKernelTelegramGatewayGateSummary,
-    HeptaKernelTelegramGatewayGateSummaryInput, HeptaKernelTelegramGetUpdatesProviderResultInput,
-    HeptaKernelTelegramGetUpdatesProviderResultPlan, HeptaKernelTelegramIngressInspection,
-    HeptaKernelTelegramLiveSoakObservationReport, HeptaKernelTelegramLiveSoakObservationState,
-    HeptaKernelTelegramLiveSoakStatus, HeptaKernelTelegramLiveSoakStatusInput,
-    HeptaKernelTelegramModelBridgeStatus, HeptaKernelTelegramModelBridgeStatusInput,
-    HeptaKernelTelegramModelExecutionInput, HeptaKernelTelegramModelExecutionOutcome,
-    HeptaKernelTelegramModelExecutionReport, HeptaKernelTelegramModelInvocationRequestPlan,
-    HeptaKernelTelegramModelTurnPlan, HeptaKernelTelegramModelTurnPlanStatus,
-    HeptaKernelTelegramModelTurnPlanStatusInput, HeptaKernelTelegramPluginStatus,
-    HeptaKernelTelegramPluginStatusInput, HeptaKernelTelegramPollLoopStatus,
-    HeptaKernelTelegramPollLoopStatusInput, HeptaKernelTelegramProductionGuardPolicyInput,
-    HeptaKernelTelegramProductionGuardStatus, HeptaKernelTelegramProductionGuardStatusInput,
-    HeptaKernelTelegramProductionReadinessInput, HeptaKernelTelegramProductionReadinessStatus,
-    HeptaKernelTelegramReceiveOnceApiResultInput, HeptaKernelTelegramReceiveOnceErrorInput,
-    HeptaKernelTelegramReceiveOncePreflightInput,
-    HeptaKernelTelegramReceiveOnceShellReadinessInput,
-    HeptaKernelTelegramReceiveOnceShellReadinessPlan, HeptaKernelTelegramReceiveOnceStatus,
-    HeptaKernelTelegramReceiveOnceStatusInput, HeptaKernelTelegramReplyTargetMaterial,
-    HeptaKernelTelegramRunnerInvocationOutcome, HeptaKernelTelegramRunnerPlan,
-    HeptaKernelTelegramSendExecutionPreflightInput, HeptaKernelTelegramSendExecutionPreflightPlan,
-    HeptaKernelTelegramSendExecutionReport, HeptaKernelTelegramSendPlan,
-    HeptaKernelTelegramSendPlanStatus, HeptaKernelTelegramSendPlanStatusInput,
-    HeptaKernelTelegramSendProviderResultInput, HeptaKernelTelegramSendProviderResultPlan,
-    HeptaKernelTelegramSendRequestPlan, HeptaKernelTelegramSessionBridgePlan,
-    HeptaKernelTelegramTokenObservation, HeptaKernelTelegramTokenObservationInput,
-    HeptaKernelTelegramTransportPlan, HeptaKernelTurnChannel, HeptaKernelTurnInput,
-    HeptaKernelTurnPlan, HeptaKernelTurnStagePlan, MAX_TELEGRAM_MLX_MAX_TOKENS,
-    MAX_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS,
-    MAX_TELEGRAM_READ_MAX_ATTEMPTS, MAX_TELEGRAM_READ_RETRY_BACKOFF_MS,
-    MAX_TELEGRAM_SEND_MAX_ATTEMPTS, MAX_TELEGRAM_SEND_MIN_INTERVAL_MS,
-    MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS, MAX_TELEGRAM_SOAK_MAX_ATTENTION,
-    MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS, MAX_TELEGRAM_SOAK_MIN_POLLS,
-    MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS, MIN_TELEGRAM_MODEL_TIMEOUT_MS,
-    MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS, build_hepta_kernel_telegram_config_status,
-    build_hepta_kernel_telegram_cursor_status, build_hepta_kernel_telegram_delivery_ledger_status,
-    build_hepta_kernel_telegram_drain_once_status,
-    build_hepta_kernel_telegram_gateway_gate_summary, build_hepta_kernel_telegram_live_soak_status,
-    build_hepta_kernel_telegram_model_bridge_status,
-    build_hepta_kernel_telegram_model_execution_outcome_without_runner,
-    build_hepta_kernel_telegram_model_turn_plan_status, build_hepta_kernel_telegram_plugin_status,
-    build_hepta_kernel_telegram_poll_loop_status,
-    build_hepta_kernel_telegram_production_guard_status,
-    build_hepta_kernel_telegram_production_guard_status_from_policy,
-    build_hepta_kernel_telegram_production_readiness_status,
-    build_hepta_kernel_telegram_receive_once_error_status,
-    build_hepta_kernel_telegram_receive_once_status,
-    build_hepta_kernel_telegram_receive_once_status_from_api_result,
-    build_hepta_kernel_telegram_send_plan_status, classify_hepta_kernel_telegram_runner_error,
-    execute_hepta_kernel_telegram_model_turn_after_candidate,
-    extract_hepta_kernel_exec_child_final_message,
-    extract_hepta_kernel_openai_chat_completion_text,
-    extract_hepta_kernel_telegram_candidate_material,
-    extract_hepta_kernel_telegram_config_metadata,
-    finalize_hepta_kernel_telegram_drain_pipeline_status, hepta_kernel_exec_child_args,
-    hepta_kernel_exec_child_status_error, hepta_kernel_mlx_chat_completion_body,
-    hepta_kernel_telegram_bot_api_client_build_error,
-    hepta_kernel_telegram_bot_api_http_status_error,
-    hepta_kernel_telegram_bot_api_json_parse_error,
-    hepta_kernel_telegram_bot_api_request_failed_error, hepta_kernel_telegram_bot_token_shape_ok,
-    hepta_kernel_telegram_cursor_body, hepta_kernel_telegram_cursor_duplicate_rule_valid,
-    hepta_kernel_telegram_delivery_backoff_ms, hepta_kernel_telegram_delivery_error_is_permanent,
-    hepta_kernel_telegram_delivery_lifecycle_record, hepta_kernel_telegram_drain_execution_plan,
-    hepta_kernel_telegram_drain_final_status, hepta_kernel_telegram_drain_first_missing_gate,
-    hepta_kernel_telegram_drain_status_probe_executes_pipeline,
-    hepta_kernel_telegram_duplicate_decision, hepta_kernel_telegram_env_truthy_value,
-    hepta_kernel_telegram_env_u64_value, hepta_kernel_telegram_error_is_transient,
-    hepta_kernel_telegram_first_model_candidate_for_updates_with_duplicate_decision,
-    hepta_kernel_telegram_first_model_candidate_with_duplicate_decision,
-    hepta_kernel_telegram_get_updates_error_is_conflict,
-    hepta_kernel_telegram_get_updates_error_is_transient, hepta_kernel_telegram_get_updates_query,
-    hepta_kernel_telegram_get_updates_should_retry, hepta_kernel_telegram_message_has_reply_target,
-    hepta_kernel_telegram_message_is_reply_candidate, hepta_kernel_telegram_message_text_present,
-    hepta_kernel_telegram_model_failure_fallback_allowed,
-    hepta_kernel_telegram_model_invocation_request_plan_for_updates,
-    hepta_kernel_telegram_model_timeout, hepta_kernel_telegram_model_turn_plan_for_updates,
-    hepta_kernel_telegram_model_turn_plan_from_candidates,
-    hepta_kernel_telegram_next_update_offset, hepta_kernel_telegram_normalize_binding_id,
-    hepta_kernel_telegram_poll_loop_interval_ms_policy,
-    hepta_kernel_telegram_poll_loop_should_spawn, hepta_kernel_telegram_prompt,
-    hepta_kernel_telegram_read_max_attempts_policy,
-    hepta_kernel_telegram_read_retry_backoff_policy, hepta_kernel_telegram_receive_limit_policy,
-    hepta_kernel_telegram_send_chat_action_request_body,
-    hepta_kernel_telegram_send_error_is_transient, hepta_kernel_telegram_send_max_attempts_policy,
-    hepta_kernel_telegram_send_message_request_body,
-    hepta_kernel_telegram_send_min_interval_policy,
-    hepta_kernel_telegram_send_rate_limit_sleep_for,
-    hepta_kernel_telegram_send_retry_backoff_policy, hepta_kernel_telegram_send_should_retry,
-    hepta_kernel_telegram_soak_max_attention_count_policy,
-    hepta_kernel_telegram_soak_max_observed_age_ms_policy,
-    hepta_kernel_telegram_soak_min_poll_iterations_policy,
-    hepta_kernel_telegram_system_time_unix_ms, hepta_kernel_telegram_token_observation,
-    hepta_kernel_telegram_transport_plan_for_config_status,
-    hepta_kernel_telegram_typing_keepalive_interval_policy,
-    hepta_kernel_telegram_typing_keepalive_should_start,
-    hepta_kernel_telegram_update_already_drained, inspect_hepta_kernel_telegram_updates,
-    invoke_hepta_kernel_telegram_runner_with_plan, parse_hepta_kernel_mlx_model_ref,
-    parse_hepta_kernel_telegram_cursor_next_update_offset,
-    plan_hepta_kernel_telegram_drain_once_api_result,
-    plan_hepta_kernel_telegram_drain_once_preflight,
-    plan_hepta_kernel_telegram_drain_once_shell_readiness,
-    plan_hepta_kernel_telegram_drain_pipeline_delivery,
-    plan_hepta_kernel_telegram_get_updates_provider_result,
-    plan_hepta_kernel_telegram_receive_once_preflight_status,
-    plan_hepta_kernel_telegram_receive_once_shell_readiness,
-    plan_hepta_kernel_telegram_send_execution_preflight,
-    plan_hepta_kernel_telegram_send_provider_result, plan_hepta_kernel_telegram_session_bridge,
-    plan_hepta_kernel_turn, redact_hepta_kernel_telegram_runner_error,
-    redact_hepta_kernel_telegram_token_like_text,
-    resolve_hepta_kernel_telegram_secret_provider_path, select_hepta_kernel_telegram_runner,
-};
+pub use hepta_kernel::CODEX_ENGINE_ID;
+pub use hepta_kernel::DEFAULT_TELEGRAM_MLX_BASE_URL;
+pub use hepta_kernel::DEFAULT_TELEGRAM_MLX_MAX_TOKENS;
+pub use hepta_kernel::DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS;
+pub use hepta_kernel::DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS;
+pub use hepta_kernel::DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS;
+pub use hepta_kernel::DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS;
+pub use hepta_kernel::DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS;
+pub use hepta_kernel::DEFAULT_TELEGRAM_SOAK_MAX_ATTENTION;
+pub use hepta_kernel::DEFAULT_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS;
+pub use hepta_kernel::DEFAULT_TELEGRAM_SOAK_MIN_POLLS;
+pub use hepta_kernel::DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
+pub use hepta_kernel::HEPTA_KERNEL_CONTRACT;
+pub use hepta_kernel::HEPTA_KERNEL_OWNER;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES as TELEGRAM_ALLOWED_UPDATES;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_DELIVERY_MAX_RETRIES;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_DELIVERY_STORE_IDENTIFIER;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_DRAIN_ONCE_STAGES as TELEGRAM_DRAIN_ONCE_STAGES;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_MODEL_FAILURE_FALLBACK_MESSAGE;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_RUNNER_KIND;
+pub use hepta_kernel::HEPTA_KERNEL_TELEGRAM_RUNNER_STRATEGY;
+pub use hepta_kernel::HeptaKernelEngine;
+pub use hepta_kernel::HeptaKernelTelegramCandidateMaterial;
+pub use hepta_kernel::HeptaKernelTelegramConfigMetadata;
+pub use hepta_kernel::HeptaKernelTelegramConfigStatus;
+pub use hepta_kernel::HeptaKernelTelegramConfigStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramCursorPlan;
+pub use hepta_kernel::HeptaKernelTelegramCursorStatus;
+pub use hepta_kernel::HeptaKernelTelegramCursorStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramDeliveryLedgerStatus;
+pub use hepta_kernel::HeptaKernelTelegramDeliveryLedgerStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramDrainFinalStatusPlan;
+pub use hepta_kernel::HeptaKernelTelegramDrainOnceApiResultInput;
+pub use hepta_kernel::HeptaKernelTelegramDrainOnceApiResultPlan;
+pub use hepta_kernel::HeptaKernelTelegramDrainOncePreflightInput;
+pub use hepta_kernel::HeptaKernelTelegramDrainOncePreflightPlan;
+pub use hepta_kernel::HeptaKernelTelegramDrainOnceShellReadinessInput;
+pub use hepta_kernel::HeptaKernelTelegramDrainOnceShellReadinessPlan;
+pub use hepta_kernel::HeptaKernelTelegramDrainOnceStatus;
+pub use hepta_kernel::HeptaKernelTelegramDrainOnceStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramDrainPipelineDeliveryInput;
+pub use hepta_kernel::HeptaKernelTelegramDrainPipelineDeliveryPlan;
+pub use hepta_kernel::HeptaKernelTelegramDrainPipelineFinalStatus;
+pub use hepta_kernel::HeptaKernelTelegramDrainPipelineOutcome;
+pub use hepta_kernel::HeptaKernelTelegramDuplicateDecision;
+pub use hepta_kernel::HeptaKernelTelegramExecutionPlan;
+pub use hepta_kernel::HeptaKernelTelegramGatewayGateSummary;
+pub use hepta_kernel::HeptaKernelTelegramGatewayGateSummaryInput;
+pub use hepta_kernel::HeptaKernelTelegramGetUpdatesProviderResultInput;
+pub use hepta_kernel::HeptaKernelTelegramGetUpdatesProviderResultPlan;
+pub use hepta_kernel::HeptaKernelTelegramIngressInspection;
+pub use hepta_kernel::HeptaKernelTelegramLiveSoakObservationReport;
+pub use hepta_kernel::HeptaKernelTelegramLiveSoakObservationState;
+pub use hepta_kernel::HeptaKernelTelegramLiveSoakStatus;
+pub use hepta_kernel::HeptaKernelTelegramLiveSoakStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramModelBridgeStatus;
+pub use hepta_kernel::HeptaKernelTelegramModelBridgeStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramModelExecutionInput;
+pub use hepta_kernel::HeptaKernelTelegramModelExecutionOutcome;
+pub use hepta_kernel::HeptaKernelTelegramModelExecutionReport;
+pub use hepta_kernel::HeptaKernelTelegramModelInvocationRequestPlan;
+pub use hepta_kernel::HeptaKernelTelegramModelTurnPlan;
+pub use hepta_kernel::HeptaKernelTelegramModelTurnPlanStatus;
+pub use hepta_kernel::HeptaKernelTelegramModelTurnPlanStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramPluginStatus;
+pub use hepta_kernel::HeptaKernelTelegramPluginStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramPollLoopStatus;
+pub use hepta_kernel::HeptaKernelTelegramPollLoopStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramProductionGuardPolicyInput;
+pub use hepta_kernel::HeptaKernelTelegramProductionGuardStatus;
+pub use hepta_kernel::HeptaKernelTelegramProductionGuardStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramProductionReadinessInput;
+pub use hepta_kernel::HeptaKernelTelegramProductionReadinessStatus;
+pub use hepta_kernel::HeptaKernelTelegramReceiveOnceApiResultInput;
+pub use hepta_kernel::HeptaKernelTelegramReceiveOnceErrorInput;
+pub use hepta_kernel::HeptaKernelTelegramReceiveOncePreflightInput;
+pub use hepta_kernel::HeptaKernelTelegramReceiveOnceShellReadinessInput;
+pub use hepta_kernel::HeptaKernelTelegramReceiveOnceShellReadinessPlan;
+pub use hepta_kernel::HeptaKernelTelegramReceiveOnceStatus;
+pub use hepta_kernel::HeptaKernelTelegramReceiveOnceStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramReplyTargetMaterial;
+pub use hepta_kernel::HeptaKernelTelegramRunnerInvocationOutcome;
+pub use hepta_kernel::HeptaKernelTelegramRunnerPlan;
+pub use hepta_kernel::HeptaKernelTelegramSendExecutionPreflightInput;
+pub use hepta_kernel::HeptaKernelTelegramSendExecutionPreflightPlan;
+pub use hepta_kernel::HeptaKernelTelegramSendExecutionReport;
+pub use hepta_kernel::HeptaKernelTelegramSendPlan;
+pub use hepta_kernel::HeptaKernelTelegramSendPlanStatus;
+pub use hepta_kernel::HeptaKernelTelegramSendPlanStatusInput;
+pub use hepta_kernel::HeptaKernelTelegramSendProviderResultInput;
+pub use hepta_kernel::HeptaKernelTelegramSendProviderResultPlan;
+pub use hepta_kernel::HeptaKernelTelegramSendRequestPlan;
+pub use hepta_kernel::HeptaKernelTelegramSessionBridgePlan;
+pub use hepta_kernel::HeptaKernelTelegramTokenObservation;
+pub use hepta_kernel::HeptaKernelTelegramTokenObservationInput;
+pub use hepta_kernel::HeptaKernelTelegramTransportPlan;
+pub use hepta_kernel::HeptaKernelTurnChannel;
+pub use hepta_kernel::HeptaKernelTurnInput;
+pub use hepta_kernel::HeptaKernelTurnPlan;
+pub use hepta_kernel::HeptaKernelTurnStagePlan;
+pub use hepta_kernel::MAX_TELEGRAM_MLX_MAX_TOKENS;
+pub use hepta_kernel::MAX_TELEGRAM_MODEL_TIMEOUT_MS;
+pub use hepta_kernel::MAX_TELEGRAM_POLL_LOOP_INTERVAL_MS;
+pub use hepta_kernel::MAX_TELEGRAM_READ_MAX_ATTEMPTS;
+pub use hepta_kernel::MAX_TELEGRAM_READ_RETRY_BACKOFF_MS;
+pub use hepta_kernel::MAX_TELEGRAM_SEND_MAX_ATTEMPTS;
+pub use hepta_kernel::MAX_TELEGRAM_SEND_MIN_INTERVAL_MS;
+pub use hepta_kernel::MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS;
+pub use hepta_kernel::MAX_TELEGRAM_SOAK_MAX_ATTENTION;
+pub use hepta_kernel::MAX_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS;
+pub use hepta_kernel::MAX_TELEGRAM_SOAK_MIN_POLLS;
+pub use hepta_kernel::MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
+pub use hepta_kernel::MIN_TELEGRAM_MODEL_TIMEOUT_MS;
+pub use hepta_kernel::MIN_TELEGRAM_POLL_LOOP_INTERVAL_MS;
+pub use hepta_kernel::build_hepta_kernel_telegram_config_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_cursor_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_delivery_ledger_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_drain_once_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_gateway_gate_summary;
+pub use hepta_kernel::build_hepta_kernel_telegram_live_soak_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_model_bridge_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_model_execution_outcome_without_runner;
+pub use hepta_kernel::build_hepta_kernel_telegram_model_turn_plan_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_plugin_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_poll_loop_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_production_guard_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_production_guard_status_from_policy;
+pub use hepta_kernel::build_hepta_kernel_telegram_production_readiness_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_receive_once_error_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_receive_once_status;
+pub use hepta_kernel::build_hepta_kernel_telegram_receive_once_status_from_api_result;
+pub use hepta_kernel::build_hepta_kernel_telegram_send_plan_status;
+pub use hepta_kernel::classify_hepta_kernel_telegram_runner_error;
+pub use hepta_kernel::execute_hepta_kernel_telegram_model_turn_after_candidate;
+pub use hepta_kernel::extract_hepta_kernel_exec_child_final_message;
+pub use hepta_kernel::extract_hepta_kernel_openai_chat_completion_text;
+pub use hepta_kernel::extract_hepta_kernel_telegram_candidate_material;
+pub use hepta_kernel::extract_hepta_kernel_telegram_config_metadata;
+pub use hepta_kernel::finalize_hepta_kernel_telegram_drain_pipeline_status;
+pub use hepta_kernel::hepta_kernel_exec_child_args;
+pub use hepta_kernel::hepta_kernel_exec_child_status_error;
+pub use hepta_kernel::hepta_kernel_mlx_chat_completion_body;
+pub use hepta_kernel::hepta_kernel_telegram_bot_api_client_build_error;
+pub use hepta_kernel::hepta_kernel_telegram_bot_api_http_status_error;
+pub use hepta_kernel::hepta_kernel_telegram_bot_api_json_parse_error;
+pub use hepta_kernel::hepta_kernel_telegram_bot_api_request_failed_error;
+pub use hepta_kernel::hepta_kernel_telegram_bot_token_shape_ok;
+pub use hepta_kernel::hepta_kernel_telegram_cursor_body;
+pub use hepta_kernel::hepta_kernel_telegram_cursor_duplicate_rule_valid;
+pub use hepta_kernel::hepta_kernel_telegram_delivery_backoff_ms;
+pub use hepta_kernel::hepta_kernel_telegram_delivery_error_is_permanent;
+pub use hepta_kernel::hepta_kernel_telegram_delivery_lifecycle_record;
+pub use hepta_kernel::hepta_kernel_telegram_drain_execution_plan;
+pub use hepta_kernel::hepta_kernel_telegram_drain_final_status;
+pub use hepta_kernel::hepta_kernel_telegram_drain_first_missing_gate;
+pub use hepta_kernel::hepta_kernel_telegram_drain_status_probe_executes_pipeline;
+pub use hepta_kernel::hepta_kernel_telegram_duplicate_decision;
+pub use hepta_kernel::hepta_kernel_telegram_env_truthy_value;
+pub use hepta_kernel::hepta_kernel_telegram_env_u64_value;
+pub use hepta_kernel::hepta_kernel_telegram_error_is_transient;
+pub use hepta_kernel::hepta_kernel_telegram_first_model_candidate_for_updates_with_duplicate_decision;
+pub use hepta_kernel::hepta_kernel_telegram_first_model_candidate_with_duplicate_decision;
+pub use hepta_kernel::hepta_kernel_telegram_get_updates_error_is_conflict;
+pub use hepta_kernel::hepta_kernel_telegram_get_updates_error_is_transient;
+pub use hepta_kernel::hepta_kernel_telegram_get_updates_query;
+pub use hepta_kernel::hepta_kernel_telegram_get_updates_should_retry;
+pub use hepta_kernel::hepta_kernel_telegram_message_has_reply_target;
+pub use hepta_kernel::hepta_kernel_telegram_message_is_reply_candidate;
+pub use hepta_kernel::hepta_kernel_telegram_message_text_present;
+pub use hepta_kernel::hepta_kernel_telegram_model_failure_fallback_allowed;
+pub use hepta_kernel::hepta_kernel_telegram_model_invocation_request_plan_for_updates;
+pub use hepta_kernel::hepta_kernel_telegram_model_timeout;
+pub use hepta_kernel::hepta_kernel_telegram_model_turn_plan_for_updates;
+pub use hepta_kernel::hepta_kernel_telegram_model_turn_plan_from_candidates;
+pub use hepta_kernel::hepta_kernel_telegram_next_update_offset;
+pub use hepta_kernel::hepta_kernel_telegram_normalize_binding_id;
+pub use hepta_kernel::hepta_kernel_telegram_poll_loop_interval_ms_policy;
+pub use hepta_kernel::hepta_kernel_telegram_poll_loop_should_spawn;
+pub use hepta_kernel::hepta_kernel_telegram_prompt;
+pub use hepta_kernel::hepta_kernel_telegram_read_max_attempts_policy;
+pub use hepta_kernel::hepta_kernel_telegram_read_retry_backoff_policy;
+pub use hepta_kernel::hepta_kernel_telegram_receive_limit_policy;
+pub use hepta_kernel::hepta_kernel_telegram_send_chat_action_request_body;
+pub use hepta_kernel::hepta_kernel_telegram_send_error_is_transient;
+pub use hepta_kernel::hepta_kernel_telegram_send_max_attempts_policy;
+pub use hepta_kernel::hepta_kernel_telegram_send_message_request_body;
+pub use hepta_kernel::hepta_kernel_telegram_send_min_interval_policy;
+pub use hepta_kernel::hepta_kernel_telegram_send_rate_limit_sleep_for;
+pub use hepta_kernel::hepta_kernel_telegram_send_retry_backoff_policy;
+pub use hepta_kernel::hepta_kernel_telegram_send_should_retry;
+pub use hepta_kernel::hepta_kernel_telegram_soak_max_attention_count_policy;
+pub use hepta_kernel::hepta_kernel_telegram_soak_max_observed_age_ms_policy;
+pub use hepta_kernel::hepta_kernel_telegram_soak_min_poll_iterations_policy;
+pub use hepta_kernel::hepta_kernel_telegram_system_time_unix_ms;
+pub use hepta_kernel::hepta_kernel_telegram_token_observation;
+pub use hepta_kernel::hepta_kernel_telegram_transport_plan_for_config_status;
+pub use hepta_kernel::hepta_kernel_telegram_typing_keepalive_interval_policy;
+pub use hepta_kernel::hepta_kernel_telegram_typing_keepalive_should_start;
+pub use hepta_kernel::hepta_kernel_telegram_update_already_drained;
+pub use hepta_kernel::inspect_hepta_kernel_telegram_updates;
+pub use hepta_kernel::invoke_hepta_kernel_telegram_runner_with_plan;
+pub use hepta_kernel::parse_hepta_kernel_mlx_model_ref;
+pub use hepta_kernel::parse_hepta_kernel_telegram_cursor_next_update_offset;
+pub use hepta_kernel::plan_hepta_kernel_telegram_drain_once_api_result;
+pub use hepta_kernel::plan_hepta_kernel_telegram_drain_once_preflight;
+pub use hepta_kernel::plan_hepta_kernel_telegram_drain_once_shell_readiness;
+pub use hepta_kernel::plan_hepta_kernel_telegram_drain_pipeline_delivery;
+pub use hepta_kernel::plan_hepta_kernel_telegram_get_updates_provider_result;
+pub use hepta_kernel::plan_hepta_kernel_telegram_receive_once_preflight_status;
+pub use hepta_kernel::plan_hepta_kernel_telegram_receive_once_shell_readiness;
+pub use hepta_kernel::plan_hepta_kernel_telegram_send_execution_preflight;
+pub use hepta_kernel::plan_hepta_kernel_telegram_send_provider_result;
+pub use hepta_kernel::plan_hepta_kernel_telegram_session_bridge;
+pub use hepta_kernel::plan_hepta_kernel_turn;
+pub use hepta_kernel::redact_hepta_kernel_telegram_runner_error;
+pub use hepta_kernel::redact_hepta_kernel_telegram_token_like_text;
+pub use hepta_kernel::resolve_hepta_kernel_telegram_secret_provider_path;
+pub use hepta_kernel::select_hepta_kernel_telegram_runner;
 
 pub type NativeTelegramModelRunnerPlan = HeptaKernelTelegramRunnerPlan;
 pub type NativeTelegramModelRunnerInvocationOutcome = HeptaKernelTelegramRunnerInvocationOutcome;
