@@ -1,9 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use codex_protocol::protocol::TurnContextRecallSelectedSnippet as CoreTurnContextRecallSelectedSnippet;
-use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope as CoreTurnContextRecallSelectedSnippetEnvelope;
-use codex_protocol::protocol::TurnContextRecallSelectedSnippetSafety as CoreTurnContextRecallSelectedSnippetSafety;
 use hepta_core::ApprovalRequirement;
 use hepta_core::ContextRecallAvailability;
 use hepta_core::ContextRecallBundle;
@@ -118,6 +115,103 @@ use crate::MemorySnapshot;
 use crate::RuntimeKernel;
 use crate::SessionSnapshot;
 use crate::ToolDescriptor;
+
+pub const TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CoreTurnContextRecallSelectedSnippetEnvelope {
+    pub version: u32,
+    pub max_snippets: u32,
+    pub max_snippet_chars: u32,
+    pub selected_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub omitted_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub redacted_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub truncated_snippet_count: u32,
+    pub snippets: Vec<CoreTurnContextRecallSelectedSnippet>,
+    pub safety: CoreTurnContextRecallSelectedSnippetSafety,
+}
+
+impl CoreTurnContextRecallSelectedSnippetEnvelope {
+    pub fn counts_match(&self) -> bool {
+        self.selected_snippet_count == u32::try_from(self.snippets.len()).unwrap_or(u32::MAX)
+            && self.redacted_snippet_count
+                == u32::try_from(
+                    self.snippets
+                        .iter()
+                        .filter(|snippet| snippet.redacted)
+                        .count(),
+                )
+                .unwrap_or(u32::MAX)
+            && self.truncated_snippet_count
+                == u32::try_from(
+                    self.snippets
+                        .iter()
+                        .filter(|snippet| snippet.truncated)
+                        .count(),
+                )
+                .unwrap_or(u32::MAX)
+    }
+
+    pub fn bounds_match(&self) -> bool {
+        self.selected_snippet_count <= self.max_snippets
+            && self.snippets.len() <= usize::try_from(self.max_snippets).unwrap_or(usize::MAX)
+            && self.snippets.iter().all(|snippet| {
+                !snippet.text.is_empty()
+                    && snippet.text.chars().count()
+                        <= usize::try_from(self.max_snippet_chars).unwrap_or(usize::MAX)
+                    && is_stable_manifest_replay_hash(&snippet.snippet_hash)
+            })
+    }
+
+    pub fn safety_matches(&self) -> bool {
+        let forbidden_exposure = self.safety.origin_identifiers_exposed
+            || self.safety.raw_ranked_payload_exposed
+            || self.safety.rank_explanation_exposed
+            || self.safety.control_marker_exposed
+            || self.safety.query_payload_exposed
+            || self.safety.per_origin_list_exposed
+            || self
+                .snippets
+                .iter()
+                .any(|snippet| snippet.text.contains("[hepta-memory:"));
+        self.safety.bounded == self.bounds_match()
+            && self.safety.ready_for_shadow_handoff == (self.safety.bounded && !forbidden_exposure)
+            && self.safety.ready_for_shadow_handoff
+    }
+
+    pub fn has_shadow_integrity(&self) -> bool {
+        self.version == TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION
+            && self.counts_match()
+            && self.bounds_match()
+            && self.safety_matches()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CoreTurnContextRecallSelectedSnippet {
+    pub snippet_hash: String,
+    pub text: String,
+    pub estimated_tokens: u32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub redacted: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub truncated: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CoreTurnContextRecallSelectedSnippetSafety {
+    pub ready_for_shadow_handoff: bool,
+    pub bounded: bool,
+    pub origin_identifiers_exposed: bool,
+    pub raw_ranked_payload_exposed: bool,
+    pub rank_explanation_exposed: bool,
+    pub control_marker_exposed: bool,
+    pub query_payload_exposed: bool,
+    pub per_origin_list_exposed: bool,
+}
 use crate::TopicGraphState;
 use crate::TurnRecord;
 use crate::current_unix_ms;
@@ -2200,6 +2294,14 @@ impl RuntimeContextRecallSelectionSummary {
 
 fn is_zero_u32(value: &u32) -> bool {
     *value == 0
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+fn is_stable_manifest_replay_hash(value: &str) -> bool {
+    value.len() == 16 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -8372,8 +8474,9 @@ mod tests {
             )
             .expect("snippet envelope should build");
         let serialized = serde_json::to_string(&envelope).expect("envelope should serialize");
-        let protocol_envelope: codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope =
-            serde_json::from_str(&serialized).expect("runtime envelope should match protocol shape");
+        let protocol_envelope: CoreTurnContextRecallSelectedSnippetEnvelope =
+            serde_json::from_str(&serialized)
+                .expect("runtime envelope should match protocol shape");
         let mapped_core_envelope = envelope
             .clone()
             .into_core_envelope()

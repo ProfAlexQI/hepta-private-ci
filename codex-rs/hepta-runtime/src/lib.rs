@@ -37,7 +37,6 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope as CoreTurnContextRecallSelectedSnippetEnvelope;
 use hepta_core::AgentId;
 use hepta_core::ApprovalRequirement;
 use hepta_core::CorrelationId;
@@ -10396,6 +10395,9 @@ pub use process_supervisor::ProcessSupervisorReport;
 pub use process_supervisor::ProcessSupervisorTransitionReport;
 pub use process_supervisor::SupervisedProcessRecord;
 pub use process_supervisor::SupervisedProcessStatus;
+pub use query::CoreTurnContextRecallSelectedSnippet;
+pub use query::CoreTurnContextRecallSelectedSnippetEnvelope;
+pub use query::CoreTurnContextRecallSelectedSnippetSafety;
 pub use query::RuntimeActivitySlice;
 pub use query::RuntimeContextRecallProviderRollup;
 pub use query::RuntimeContextRecallSelectedSnippet;
