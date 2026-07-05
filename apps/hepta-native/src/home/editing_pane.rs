@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use makepad_widgets::{text::selection::Cursor, *};
 use matrix_sdk::{
     room::edit::EditedContent,
@@ -8,14 +10,186 @@ use matrix_sdk::{
         },
     },
 };
-use matrix_sdk_ui::timeline::{EventTimelineItem, MsgLikeKind, TimelineEventItemId, TimelineItemContent};
-
-use crate::shared::mentionable_text_input::{MentionableTextInputWidgetExt, MentionableTextInputWidgetRefExt};
-use crate::{
-    settings::app_preferences::{AppPreferencesGlobal, AppPreferencesAction},
-    shared::popup_list::{enqueue_popup_notification, PopupKind},
-    sliding_sync::{submit_async_request, MatrixRequest, TimelineKind},
+use matrix_sdk_ui::timeline::{
+    EventTimelineItem, MsgLikeKind, TimelineEventItemId, TimelineItemContent,
 };
+
+use crate::shared::mentionable_text_input::{
+    MentionableTextInputWidgetExt, MentionableTextInputWidgetRefExt,
+};
+use crate::{
+    app::PositiveConfirmationModalAction,
+    settings::app_preferences::{AppPreferencesAction, AppPreferencesGlobal},
+    shared::{
+        confirmation_modal::ConfirmationModalContent,
+        popup_list::{PopupKind, enqueue_popup_notification},
+    },
+    sliding_sync::{MatrixRequest, TimelineKind, submit_async_request},
+};
+
+const EDITING_PANE_CONFIRMATION_COMPACT_LABEL: &str =
+    "Confirmation required before the Matrix edit request.";
+const EDITING_PANE_LIMITS_COMPACT_LABEL: &str =
+    "Edit extras stay local; Save Edit uses confirmation.";
+pub const EDITING_PANE_DETAIL_PACKET_EVIDENCE: &str = "Edit/Poll detail packet records attachment_edit_slot not_built, mention_payload_scope preserve_existing_only_or_none, poll_answer_edit_slot not_built, save_spinner_operation_id not_assigned, result_mapping not_wired, and stale-result policy before the existing confirmed Matrix EditMessage request.";
+pub const EDITING_PANE_ATTACHMENT_PREFLIGHT_PACKET_EVIDENCE: &str = "Edit attachment preflight packet records original_attachment_scope, add/remove/replace/upload/delete slots not_built, caption_edit_handoff existing_confirmed_MatrixRequest_EditMessage_body_only, MIME/size probe not_started, retry idempotency, and cancel policy while keeping SendAttachment/media delete/upload unwired.";
+pub const EDITING_PANE_MENTION_PAYLOAD_PREFLIGHT_PACKET_EVIDENCE: &str = "Edit mention payload preflight packet records edited @token counts, literal Matrix user-id token counts, @room token scope, completed pill reconciliation not_connected, directory result scope unavailable, fresh_mentions_payload_slot not_built, existing_mentions_handoff preserve_existing_only_or_none, retry source-hash slot missing, and cancel policy while keeping fresh Matrix Mentions extraction unwired.";
+pub const EDITING_PANE_MENTION_PAYLOAD_TYPED_CONTRACT_PACKET_EVIDENCE: &str = "Edit mention payload typed contract packet records token_scan_source edited_text_only, source_hash_slot not_assigned, directory_snapshot_id_slot unavailable, completed_pill_snapshot_slot unavailable, fresh_mentions_payload_result_slot not_built, retry_idempotency_key_slot missing, and result_mapping not_wired while keeping fresh Matrix Mentions extraction unwired.";
+pub const EDITING_PANE_SAVE_RESULT_MAPPING_PACKET_EVIDENCE: &str = "Edit/Poll save-result mapping packet records lifecycle_state, operation_id_slot not_assigned, request_slot existing_confirmed_MatrixRequest_EditMessage, spinner_slot not_rendered, result_mapping saved/failed/canceled/stale/ignored-late, stale_result_guard timeline_event_item_id_match_only, repeated_save_policy not_held_until_pending_operation_id, and retry_slot not_built without changing the existing confirmed Matrix EditMessage path.";
+pub const EDITING_PANE_RETRY_ERROR_DRILLDOWN_PACKET_EVIDENCE: &str = "Edit/Poll retry/error drilldown packet records failure_source existing_MatrixRequest_EditMessage_result_only, retry_request_slot not_built, retry_confirmation_slot not_built, late_result_guard timeline_event_item_id_match_only_without_operation_id, pending_operation_id missing_backend_contract, spinner_state not_rendered, cancel_state confirmation_cancel_no_request, and error_redaction popup_text_not_persisted_or_reused without changing the existing confirmed Matrix EditMessage path.";
+
+fn editing_pane_detail_packet_label(
+    content_kind: &str,
+    edited_text_len: usize,
+    preserves_existing_mentions: bool,
+) -> String {
+    let mention_scope = if preserves_existing_mentions {
+        "preserve_existing_mentions_only"
+    } else {
+        "none"
+    };
+    format!(
+        "{EDITING_PANE_LIMITS_COMPACT_LABEL} Detail packet: content_kind {content_kind}; edited_text_len {edited_text_len}; attachment_edit_slot not_built; mention_payload_scope {mention_scope}; poll_answer_edit_slot not_built; save_spinner_operation_id not_assigned; result_mapping not_wired; stale_result_policy ignore_late_result_without_matching_operation_id; no attachment upload/remove, Matrix mention payload, poll answer edit, timeline reload, message send, room-state, or membership request was sent."
+    )
+}
+
+fn editing_pane_attachment_preflight_packet_label(
+    content_kind: &str,
+    edited_text_len: usize,
+) -> String {
+    let original_attachment_scope = match content_kind {
+        "image_caption" => "existing_image_media_caption_only",
+        "audio_caption" => "existing_audio_media_caption_only",
+        "file_caption" => "existing_file_media_caption_only",
+        "video_caption" => "existing_video_media_caption_only",
+        "text_body" | "emote_body" => "no_existing_media_attachment",
+        "poll_question_preserve_answers" => "poll_no_attachment",
+        _ => "unsupported_attachment_scope",
+    };
+    format!(
+        "Attachment preflight packet: content_kind {content_kind}; edited_text_len {edited_text_len}; original_attachment_scope {original_attachment_scope}; selected_attachment_slot unavailable; add_attachment_slot not_built; remove_attachment_slot not_built; replace_attachment_slot not_built; upload_request_slot not_built; media_delete_slot not_built; caption_edit_handoff existing_confirmed_MatrixRequest_EditMessage_body_only; mime_size_probe not_started; retry_policy no_duplicate_upload_without_operation_id; cancel_policy leaves_original_media_and_local_selection_untouched; no SendAttachment, media delete, upload, timeline reload, room-state, membership request, gateway/runtime/auth, or live mutation was sent."
+    )
+}
+
+fn editing_pane_mention_payload_preflight_packet_label(
+    content_kind: &str,
+    edited_text: &str,
+    preserves_existing_mentions: bool,
+) -> String {
+    let at_token_count = edited_text
+        .split_whitespace()
+        .filter(|token| token.starts_with('@'))
+        .count();
+    let literal_user_id_token_count = edited_text
+        .split_whitespace()
+        .filter(|token| token.starts_with('@') && token.contains(':'))
+        .count();
+    let room_token_scope = if edited_text.split_whitespace().any(|token| token == "@room") {
+        "present_requires_power_level_recheck"
+    } else {
+        "absent"
+    };
+    let existing_mentions_handoff = if preserves_existing_mentions {
+        "preserve_existing_mentions_only"
+    } else {
+        "none"
+    };
+    format!(
+        "Mention payload preflight packet: content_kind {content_kind}; edited_text_len {}; edited_at_token_count {at_token_count}; literal_user_id_token_count {literal_user_id_token_count}; room_token_scope {room_token_scope}; completed_pill_reconcile_slot not_connected_to_editing_pane; directory_result_scope unavailable_in_editing_pane; fresh_mentions_payload_slot not_built; existing_mentions_handoff {existing_mentions_handoff}; reply_sendtime_state not_reused; retry_source_hash_slot missing; stale_token_policy backend_required_before_live_mentions; cancel_policy confirmation_cancel_no_request; no fresh Matrix Mentions payload, profile lookup, directory search, SendMessage, SendAttachment, room-state, membership request, gateway/runtime/auth, or live mutation was sent.",
+        edited_text.len()
+    )
+}
+
+fn editing_pane_mention_payload_typed_contract_packet_label(
+    content_kind: &str,
+    edited_text: &str,
+    preserves_existing_mentions: bool,
+) -> String {
+    let at_token_count = edited_text
+        .split_whitespace()
+        .filter(|token| token.starts_with('@'))
+        .count();
+    let literal_user_id_token_count = edited_text
+        .split_whitespace()
+        .filter(|token| token.starts_with('@') && token.contains(':'))
+        .count();
+    let room_token_contract_scope = if edited_text.split_whitespace().any(|token| token == "@room")
+    {
+        "requires_power_level_recheck_before_payload"
+    } else {
+        "absent"
+    };
+    let existing_mentions_handoff = if preserves_existing_mentions {
+        "preserve_existing_mentions_only"
+    } else {
+        "none"
+    };
+    format!(
+        "Mention payload typed contract packet: content_kind {content_kind}; edited_text_len {}; mention_contract_version local_v0; token_scan_source edited_text_only; edited_at_token_count {at_token_count}; literal_user_id_contract_count {literal_user_id_token_count}; room_token_contract_scope {room_token_contract_scope}; directory_snapshot_id_slot unavailable; completed_pill_snapshot_slot unavailable; existing_mentions_handoff {existing_mentions_handoff}; source_hash_slot not_assigned; fresh_mentions_payload_result_slot not_built; retry_idempotency_key_slot missing; stale_result_guard body_source_hash_required_before_live_mentions; result_mapping accepted|permission_denied|stale_body|malformed_token|directory_unavailable not_wired; privacy_redaction token_counts_only; no fresh Matrix Mentions payload, directory snapshot reuse, profile lookup, SendMessage, SendAttachment, room-state, membership request, gateway/runtime/auth, or live mutation was sent.",
+        edited_text.len()
+    )
+}
+
+fn editing_pane_save_result_mapping_packet_label(
+    content_kind: &str,
+    edited_text_len: usize,
+    preserves_existing_mentions: bool,
+    lifecycle_state: &str,
+) -> String {
+    let mention_scope = if preserves_existing_mentions {
+        "preserve_existing_mentions_only"
+    } else {
+        "none"
+    };
+    format!(
+        "Save result mapping packet: lifecycle_state {lifecycle_state}; content_kind {content_kind}; edited_text_len {edited_text_len}; mention_payload_scope {mention_scope}; operation_id_slot not_assigned; request_slot existing_confirmed_MatrixRequest_EditMessage; spinner_slot not_rendered; result_mapping saved_hide_pane|failed_popup|canceled_no_request|stale_event_id_ignored|ignored_late_result_without_matching_operation_id; stale_result_guard timeline_event_item_id_match_only; repeated_save_policy not_held_until_pending_operation_id; retry_slot not_built; no attachment upload/remove, Matrix mention payload, poll answer edit, timeline reload, message send, room-state, or membership request was sent."
+    )
+}
+
+fn editing_pane_retry_error_drilldown_packet_label(
+    content_kind: &str,
+    edited_text_len: usize,
+    preserves_existing_mentions: bool,
+    lifecycle_state: &str,
+) -> String {
+    let mention_scope = if preserves_existing_mentions {
+        "preserve_existing_mentions_only"
+    } else {
+        "none"
+    };
+    let retry_state = match lifecycle_state {
+        "confirmation_opened" => "confirmation_pending_cancel_no_request_until_accept",
+        "failed_popup" => "manual_retry_not_built_existing_popup_only",
+        "stale_event_id_ignored" => "retry_blocked_stale_event_id",
+        "saved_hide_pane" => "not_needed_after_success",
+        _ => "idle_not_started",
+    };
+    format!(
+        "Retry/error drilldown packet: lifecycle_state {lifecycle_state}; content_kind {content_kind}; edited_text_len {edited_text_len}; mention_payload_scope {mention_scope}; failure_source existing_MatrixRequest_EditMessage_result_only; error_redaction popup_text_not_persisted_or_reused; retry_request_slot not_built; retry_confirmation_slot not_built; late_result_guard timeline_event_item_id_match_only_without_operation_id; pending_operation_id missing_backend_contract; spinner_state not_rendered; cancel_state confirmation_cancel_no_request; repeated_save_policy not_held_until_pending_operation_id; stale_result_policy ignore_late_result_without_matching_operation_id; retry_state {retry_state}; no attachment upload/remove, Matrix mention payload, poll answer edit, timeline reload, extra message send beyond the existing confirmed edit request, room-state, membership request, gateway/runtime/auth, or live mutation was sent."
+    )
+}
+
+fn editing_pane_detail_packet_source(event_tl_item: &EventTimelineItem) -> (&'static str, bool) {
+    match event_tl_item.content() {
+        TimelineItemContent::MsgLike(msg_like_content) => match &msg_like_content.kind {
+            MsgLikeKind::Message(message) => {
+                let content_kind = match message.msgtype() {
+                    MessageType::Text(_) => "text_body",
+                    MessageType::Emote(_) => "emote_body",
+                    MessageType::Image(_) => "image_caption",
+                    MessageType::Audio(_) => "audio_caption",
+                    MessageType::File(_) => "file_caption",
+                    MessageType::Video(_) => "video_caption",
+                    _ => "unsupported_message",
+                };
+                (content_kind, message.mentions().is_some())
+            }
+            MsgLikeKind::Poll(_) => ("poll_question_preserve_answers", false),
+            _ => ("unsupported_event", false),
+        },
+        _ => ("unsupported_event", false),
+    }
+}
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -33,10 +207,10 @@ script_mod! {
         margin: Inset{left: -4, right: -4, bottom: -4 }
         show_bg: true,
         draw_bg +: {
-            color: (COLOR_PRIMARY)
-            border_radius: 5.0
-            border_color: (COLOR_SECONDARY)
-            border_size: 2.0
+            color: (COLOR_TELEGRAM_PANEL)
+            border_radius: 0.0
+            border_color: (COLOR_TELEGRAM_BORDER)
+            border_size: 1.0
             // shadow_color: #0006
             // shadow_radius: 0.0
             // shadow_offset: vec2(0.0,0.0)
@@ -54,7 +228,7 @@ script_mod! {
                 margin: Inset{top: 3}
                 draw_text +: {
                     text_style: USERNAME_TEXT_STYLE {},
-                    color: #222,
+                    color: (COLOR_TELEGRAM_BLUE),
                 }
                 text: "Editing:"
             }
@@ -88,6 +262,60 @@ script_mod! {
             width: Fill
             height: Fit{max: FitBound.Rel{base: Base.Full, factor: 0.75}}
             margin: Inset{ bottom: 5, top: 5 }
+        }
+
+        edit_unsupported_features_evidence := Label {
+            width: Fill,
+            draw_text +: {
+                text_style: MESSAGE_TEXT_STYLE { font_size: 9.5 },
+                color: (COLOR_TELEGRAM_MUTED),
+            }
+            text: "Edit/Poll detail packet keeps attachment edit, mention payload extraction, poll answer edit, and save spinner result local until typed contracts exist."
+        }
+
+        edit_attachment_preflight_packet := Label {
+            width: Fill,
+            draw_text +: {
+                text_style: MESSAGE_TEXT_STYLE { font_size: 9.5 },
+                color: (COLOR_TELEGRAM_MUTED),
+            }
+            text: "Attachment preflight packet keeps add, remove, replace, upload, delete, retry, and cancel local."
+        }
+
+        edit_mention_payload_preflight_packet := Label {
+            width: Fill,
+            draw_text +: {
+                text_style: MESSAGE_TEXT_STYLE { font_size: 9.5 },
+                color: (COLOR_TELEGRAM_MUTED),
+            }
+            text: "Mention payload preflight packet keeps fresh Matrix Mentions extraction local."
+        }
+
+        edit_mention_payload_typed_contract_packet := Label {
+            width: Fill,
+            draw_text +: {
+                text_style: MESSAGE_TEXT_STYLE { font_size: 9.5 },
+                color: (COLOR_TELEGRAM_MUTED),
+            }
+            text: "Mention payload typed contract packet keeps source hash, idempotency, and result mapping local."
+        }
+
+        edit_save_result_mapping_packet := Label {
+            width: Fill,
+            draw_text +: {
+                text_style: MESSAGE_TEXT_STYLE { font_size: 9.5 },
+                color: (COLOR_TELEGRAM_MUTED),
+            }
+            text: "Save result mapping packet stays local until operation/result contracts exist."
+        }
+
+        edit_retry_error_drilldown_packet := Label {
+            width: Fill,
+            draw_text +: {
+                text_style: MESSAGE_TEXT_STYLE { font_size: 9.5 },
+                color: (COLOR_TELEGRAM_MUTED),
+            }
+            text: "Retry/error drilldown packet keeps failure, retry, cancel, and late-result states local."
         }
     }
 
@@ -151,17 +379,25 @@ struct EditingPaneInfo {
 /// A view that slides in from the bottom of the screen to allow editing a message.
 #[derive(Script, Widget, Animator)]
 pub struct EditingPane {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
-    #[apply_default] animator: Animator,
-    #[live] slide: f32,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
+    #[apply_default]
+    animator: Animator,
+    #[live]
+    slide: f32,
 
-    #[rust] info: Option<EditingPaneInfo>,
-    #[rust] is_animating_out: bool,
-    #[rust] last_content_height: f64,
+    #[rust]
+    info: Option<EditingPaneInfo>,
+    #[rust]
+    is_animating_out: bool,
+    #[rust]
+    last_content_height: f64,
     /// Used to force this widget's parent to do a re-draw
     /// after the hide animation completes on this pane.
-    #[rust] next_frame: NextFrame,
+    #[rust]
+    next_frame: NextFrame,
 }
 
 impl ScriptHook for EditingPane {
@@ -195,7 +431,9 @@ impl Widget for EditingPane {
             }
         }
 
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
 
         let animator_action = self.animator_handle_event(cx, event);
         if animator_action.must_redraw() {
@@ -244,12 +482,15 @@ impl Widget for EditingPane {
                 return;
             }
 
-            let Some(info) = self.info.as_ref() else { return };
+            let Some(info) = self.info.as_ref() else {
+                return;
+            };
 
             if self.button(cx, ids!(accept_button)).clicked(actions)
                 || edit_text_input.returned(actions).is_some()
             {
                 let edited_text = edit_text_input.text().trim().to_string();
+                let edited_text_len = edited_text.len();
                 let edited_content = match info.event_tl_item.content() {
                     TimelineItemContent::MsgLike(msg_like_content) => {
                         match &msg_like_content.kind {
@@ -262,7 +503,9 @@ impl Widget for EditingPane {
 
                                     // TODO: also handle "/html" or "/plain" prefixes, just like when sending new messages.
                                     MessageType::Text(_text) => EditedContent::RoomMessage(
-                                        RoomMessageEventContentWithoutRelation::text_markdown(&edited_text),
+                                        RoomMessageEventContentWithoutRelation::text_markdown(
+                                            &edited_text,
+                                        ),
                                     ),
                                     MessageType::Emote(_emote) => EditedContent::RoomMessage(
                                         RoomMessageEventContentWithoutRelation::emote_markdown(
@@ -276,7 +519,8 @@ impl Widget for EditingPane {
                                     MessageType::Image(image) => {
                                         let mut new_image_msg = image.clone();
                                         if image.formatted.is_some() {
-                                            new_image_msg.formatted = FormattedBody::markdown(&edited_text);
+                                            new_image_msg.formatted =
+                                                FormattedBody::markdown(&edited_text);
                                         }
                                         new_image_msg.body = edited_text.clone();
                                         EditedContent::RoomMessage(
@@ -284,11 +528,12 @@ impl Widget for EditingPane {
                                                 MessageType::Image(new_image_msg),
                                             ),
                                         )
-                                    },
+                                    }
                                     MessageType::Audio(audio) => {
                                         let mut new_audio_msg = audio.clone();
                                         if audio.formatted.is_some() {
-                                            new_audio_msg.formatted = FormattedBody::markdown(&edited_text);
+                                            new_audio_msg.formatted =
+                                                FormattedBody::markdown(&edited_text);
                                         }
                                         new_audio_msg.body = edited_text.clone();
                                         EditedContent::RoomMessage(
@@ -296,23 +541,25 @@ impl Widget for EditingPane {
                                                 MessageType::Audio(new_audio_msg),
                                             ),
                                         )
-                                    },
+                                    }
                                     MessageType::File(file) => {
                                         let mut new_file_msg = file.clone();
                                         if file.formatted.is_some() {
-                                            new_file_msg.formatted = FormattedBody::markdown(&edited_text);
+                                            new_file_msg.formatted =
+                                                FormattedBody::markdown(&edited_text);
                                         }
                                         new_file_msg.body = edited_text.clone();
                                         EditedContent::RoomMessage(
-                                            RoomMessageEventContentWithoutRelation::new(MessageType::File(
-                                                new_file_msg,
-                                            )),
+                                            RoomMessageEventContentWithoutRelation::new(
+                                                MessageType::File(new_file_msg),
+                                            ),
                                         )
-                                    },
+                                    }
                                     MessageType::Video(video) => {
                                         let mut new_video_msg = video.clone();
                                         if video.formatted.is_some() {
-                                            new_video_msg.formatted = FormattedBody::markdown(&edited_text);
+                                            new_video_msg.formatted =
+                                                FormattedBody::markdown(&edited_text);
                                         }
                                         new_video_msg.body = edited_text.clone();
                                         EditedContent::RoomMessage(
@@ -320,7 +567,7 @@ impl Widget for EditingPane {
                                                 MessageType::Video(new_video_msg),
                                             ),
                                         )
-                                    },
+                                    }
                                     _non_editable => {
                                         enqueue_popup_notification(
                                             "That message type cannot be edited.",
@@ -328,10 +575,13 @@ impl Widget for EditingPane {
                                             None,
                                         );
                                         self.animator_play(cx, ids!(panel.hide));
-                                        cx.widget_action(self.widget_uid(), EditingPaneAction::HideAnimationStarted);
+                                        cx.widget_action(
+                                            self.widget_uid(),
+                                            EditingPaneAction::HideAnimationStarted,
+                                        );
                                         self.redraw(cx);
                                         return;
-                                    },
+                                    }
                                 };
 
                                 // TODO: extract mentions out of the new edited text and use them here.
@@ -339,7 +589,8 @@ impl Widget for EditingPane {
                                     if let EditedContent::RoomMessage(new_message_content) =
                                         &mut edited_content
                                     {
-                                        new_message_content.mentions = Some(existing_mentions.clone());
+                                        new_message_content.mentions =
+                                            Some(existing_mentions.clone());
                                     }
                                     // TODO: once we update the matrix-sdk dependency, uncomment this.
                                     // EditedContent::MediaCaption { mentions, .. }) => {
@@ -377,10 +628,9 @@ impl Widget for EditingPane {
                                     .inspect_err(|e| error!("BUG: failed to obtain existing poll max selections while editing: {}", e))
                                     .unwrap_or_default();
                                 EditedContent::PollStart {
-                                    fallback_text: edited_text,
+                                    fallback_text: edited_text.clone(),
                                     new_content: new_content_block,
                                 }
-
                             }
                             _ => {
                                 enqueue_popup_notification(
@@ -399,14 +649,65 @@ impl Widget for EditingPane {
                             None,
                         );
                         return;
-                    },
+                    }
                 };
 
-                submit_async_request(MatrixRequest::EditMessage {
-                    timeline_kind: info.timeline_kind.clone(),
-                    timeline_event_item_id: info.event_tl_item.identifier(),
-                    edited_content,
-                });
+                let timeline_kind = info.timeline_kind.clone();
+                let timeline_event_item_id = info.event_tl_item.identifier();
+                let (content_kind, preserves_existing_mentions) =
+                    editing_pane_detail_packet_source(&info.event_tl_item);
+                self.set_mention_payload_preflight_packet_label(
+                    cx,
+                    content_kind,
+                    &edited_text,
+                    preserves_existing_mentions,
+                );
+                self.set_save_result_mapping_packet_label(
+                    cx,
+                    content_kind,
+                    edited_text_len,
+                    preserves_existing_mentions,
+                    "confirmation_opened",
+                );
+
+                let content = ConfirmationModalContent {
+                    title_text: "Confirm Message Edit".into(),
+                    body_text:
+                        "Save this edited message? Confirmation required before the Matrix edit request."
+                            .into(),
+                    accept_button_text: Some("Save Edit".into()),
+                    on_accept_clicked: Some(Box::new(move |_cx| {
+                        submit_async_request(MatrixRequest::EditMessage {
+                            timeline_kind,
+                            timeline_event_item_id,
+                            edited_content,
+                        });
+                        enqueue_popup_notification(
+                            "Existing Matrix message edit path was requested.".to_string(),
+                            PopupKind::Info,
+                            Some(4.0),
+                        );
+                    })),
+                    on_cancel_clicked: Some(Box::new(move |_cx| {
+                        enqueue_popup_notification(
+                            "Message edit canceled. Matrix edit request was not sent."
+                                .to_string(),
+                            PopupKind::Info,
+                            Some(4.0),
+                        );
+                    })),
+                    ..Default::default()
+                };
+                cx.action(PositiveConfirmationModalAction::Show(RefCell::new(Some(
+                    content,
+                ))));
+                enqueue_popup_notification(
+                    format!(
+                        "Message edit confirmation opened. {EDITING_PANE_CONFIRMATION_COMPACT_LABEL}"
+                    ),
+                    PopupKind::Info,
+                    Some(4.0),
+                );
 
                 // TODO: show a loading spinner within the accept button.
             }
@@ -464,6 +765,135 @@ impl Widget for EditingPane {
 }
 
 impl EditingPane {
+    fn set_detail_packet_label(
+        &mut self,
+        cx: &mut Cx,
+        content_kind: &str,
+        edited_text: &str,
+        preserves_existing_mentions: bool,
+    ) {
+        let edited_text_len = edited_text.len();
+        let label = editing_pane_detail_packet_label(
+            content_kind,
+            edited_text_len,
+            preserves_existing_mentions,
+        );
+        self.label(cx, ids!(editing_content.edit_unsupported_features_evidence))
+            .set_text(cx, &label);
+        self.set_attachment_preflight_packet_label(cx, content_kind, edited_text_len);
+        self.set_mention_payload_preflight_packet_label(
+            cx,
+            content_kind,
+            edited_text,
+            preserves_existing_mentions,
+        );
+        self.set_save_result_mapping_packet_label(
+            cx,
+            content_kind,
+            edited_text_len,
+            preserves_existing_mentions,
+            "idle_preflight",
+        );
+    }
+
+    fn set_attachment_preflight_packet_label(
+        &mut self,
+        cx: &mut Cx,
+        content_kind: &str,
+        edited_text_len: usize,
+    ) {
+        let label = editing_pane_attachment_preflight_packet_label(content_kind, edited_text_len);
+        self.label(cx, ids!(editing_content.edit_attachment_preflight_packet))
+            .set_text(cx, &label);
+    }
+
+    fn set_mention_payload_preflight_packet_label(
+        &mut self,
+        cx: &mut Cx,
+        content_kind: &str,
+        edited_text: &str,
+        preserves_existing_mentions: bool,
+    ) {
+        let label = editing_pane_mention_payload_preflight_packet_label(
+            content_kind,
+            edited_text,
+            preserves_existing_mentions,
+        );
+        self.label(
+            cx,
+            ids!(editing_content.edit_mention_payload_preflight_packet),
+        )
+        .set_text(cx, &label);
+        self.set_mention_payload_typed_contract_packet_label(
+            cx,
+            content_kind,
+            edited_text,
+            preserves_existing_mentions,
+        );
+    }
+
+    fn set_mention_payload_typed_contract_packet_label(
+        &mut self,
+        cx: &mut Cx,
+        content_kind: &str,
+        edited_text: &str,
+        preserves_existing_mentions: bool,
+    ) {
+        let label = editing_pane_mention_payload_typed_contract_packet_label(
+            content_kind,
+            edited_text,
+            preserves_existing_mentions,
+        );
+        self.label(
+            cx,
+            ids!(editing_content.edit_mention_payload_typed_contract_packet),
+        )
+        .set_text(cx, &label);
+    }
+
+    fn set_save_result_mapping_packet_label(
+        &mut self,
+        cx: &mut Cx,
+        content_kind: &str,
+        edited_text_len: usize,
+        preserves_existing_mentions: bool,
+        lifecycle_state: &str,
+    ) {
+        let label = editing_pane_save_result_mapping_packet_label(
+            content_kind,
+            edited_text_len,
+            preserves_existing_mentions,
+            lifecycle_state,
+        );
+        self.label(cx, ids!(editing_content.edit_save_result_mapping_packet))
+            .set_text(cx, &label);
+        self.set_retry_error_drilldown_packet_label(
+            cx,
+            content_kind,
+            edited_text_len,
+            preserves_existing_mentions,
+            lifecycle_state,
+        );
+    }
+
+    fn set_retry_error_drilldown_packet_label(
+        &mut self,
+        cx: &mut Cx,
+        content_kind: &str,
+        edited_text_len: usize,
+        preserves_existing_mentions: bool,
+        lifecycle_state: &str,
+    ) {
+        let label = editing_pane_retry_error_drilldown_packet_label(
+            content_kind,
+            edited_text_len,
+            preserves_existing_mentions,
+            lifecycle_state,
+        );
+        self.label(cx, ids!(editing_content.edit_retry_error_drilldown_packet))
+            .set_text(cx, &label);
+    }
+
     /// Returns `true` if this pane is currently being shown.
     pub fn is_currently_shown(&self, _cx: &mut Cx) -> bool {
         self.visible
@@ -483,22 +913,62 @@ impl EditingPane {
             error!("Editing pane received and edit result but had no info set.");
             return;
         };
-        if info.event_tl_item.identifier() != timeline_event_item_id {
+        let current_event_item_id = info.event_tl_item.identifier();
+        let (content_kind, preserves_existing_mentions) =
+            editing_pane_detail_packet_source(&info.event_tl_item);
+        let edited_text_len = self
+            .mentionable_text_input(cx, ids!(editing_content.edit_text_input))
+            .text()
+            .trim()
+            .len();
+        let edited_text = self
+            .mentionable_text_input(cx, ids!(editing_content.edit_text_input))
+            .text()
+            .trim()
+            .to_string();
+        self.set_mention_payload_preflight_packet_label(
+            cx,
+            content_kind,
+            &edited_text,
+            preserves_existing_mentions,
+        );
+        if current_event_item_id != timeline_event_item_id {
+            self.set_save_result_mapping_packet_label(
+                cx,
+                content_kind,
+                edited_text_len,
+                preserves_existing_mentions,
+                "stale_event_id_ignored",
+            );
             error!("Editing pane received an edit result for a different event.");
             return;
         }
         match edit_result {
             Ok(()) => {
+                self.set_save_result_mapping_packet_label(
+                    cx,
+                    content_kind,
+                    edited_text_len,
+                    preserves_existing_mentions,
+                    "saved_hide_pane",
+                );
                 self.animator_play(cx, ids!(panel.hide));
                 cx.widget_action(self.widget_uid(), EditingPaneAction::HideAnimationStarted);
-            },
+            }
             Err(e) => {
+                self.set_save_result_mapping_packet_label(
+                    cx,
+                    content_kind,
+                    edited_text_len,
+                    preserves_existing_mentions,
+                    "failed_popup",
+                );
                 enqueue_popup_notification(
                     format!("Failed to edit message: {}", e),
                     PopupKind::Error,
                     None,
                 );
-            },
+            }
         }
     }
 
@@ -510,15 +980,12 @@ impl EditingPane {
         timeline_kind: TimelineKind,
     ) {
         if !event_tl_item.is_editable() {
-            enqueue_popup_notification(
-                "That message cannot be edited.",
-                PopupKind::Error,
-                None,
-            );
+            enqueue_popup_notification("That message cannot be edited.", PopupKind::Error, None);
             return;
         }
 
-        let edit_text_input = self.mentionable_text_input(cx, ids!(editing_content.edit_text_input));
+        let edit_text_input =
+            self.mentionable_text_input(cx, ids!(editing_content.edit_text_input));
 
         if let Some(message) = event_tl_item.content().as_message() {
             edit_text_input.set_text(cx, message.body());
@@ -533,6 +1000,14 @@ impl EditingPane {
             return;
         }
 
+        let (content_kind, preserves_existing_mentions) =
+            editing_pane_detail_packet_source(&event_tl_item);
+        self.set_detail_packet_label(
+            cx,
+            content_kind,
+            &edit_text_input.text(),
+            preserves_existing_mentions,
+        );
 
         self.info = Some(EditingPaneInfo {
             event_tl_item,
@@ -550,7 +1025,10 @@ impl EditingPane {
         let text_len = edit_text_input.text().len();
         inner_text_input.set_cursor(
             cx,
-            Cursor { index: text_len, prefer_next_row: false },
+            Cursor {
+                index: text_len,
+                prefer_next_row: false,
+            },
             false,
         );
         // TODO: this doesn't work, likely because of Makepad's bug in which you cannot
@@ -563,7 +1041,8 @@ impl EditingPane {
     pub fn save_state(&self) -> Option<EditingPaneState> {
         self.info.as_ref().map(|info| EditingPaneState {
             event_tl_item: info.event_tl_item.clone(),
-            text_input_state: self.child_by_path(ids!(editing_content.edit_text_input))
+            text_input_state: self
+                .child_by_path(ids!(editing_content.edit_text_input))
                 .as_mentionable_text_input()
                 .text_input_ref()
                 .save_state(),
@@ -577,10 +1056,25 @@ impl EditingPane {
         editing_pane_state: EditingPaneState,
         timeline_kind: TimelineKind,
     ) {
-        let EditingPaneState { event_tl_item, text_input_state } = editing_pane_state;
+        let EditingPaneState {
+            event_tl_item,
+            text_input_state,
+        } = editing_pane_state;
         self.mentionable_text_input(cx, ids!(editing_content.edit_text_input))
             .text_input_ref()
             .restore_state(cx, text_input_state);
+        let (content_kind, preserves_existing_mentions) =
+            editing_pane_detail_packet_source(&event_tl_item);
+        let restored_text = self
+            .mentionable_text_input(cx, ids!(editing_content.edit_text_input))
+            .text()
+            .to_string();
+        self.set_detail_packet_label(
+            cx,
+            content_kind,
+            &restored_text,
+            preserves_existing_mentions,
+        );
         self.info = Some(EditingPaneInfo {
             event_tl_item,
             timeline_kind,
@@ -620,7 +1114,9 @@ impl EditingPaneRef {
         timeline_event_item_id: TimelineEventItemId,
         edit_result: Result<(), matrix_sdk_ui::timeline::Error>,
     ) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.handle_edit_result(cx, timeline_event_item_id, edit_result);
     }
 
@@ -642,13 +1138,10 @@ impl EditingPaneRef {
     }
 
     /// See [`EditingPane::show()`].
-    pub fn show(
-        &self,
-        cx: &mut Cx,
-        event_tl_item: EventTimelineItem,
-        timeline_kind: TimelineKind,
-    ) {
-        let Some(mut inner) = self.borrow_mut() else { return; };
+    pub fn show(&self, cx: &mut Cx, event_tl_item: EventTimelineItem, timeline_kind: TimelineKind) {
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx, event_tl_item, timeline_kind);
     }
 
@@ -666,7 +1159,9 @@ impl EditingPaneRef {
         editing_pane_state: EditingPaneState,
         timeline_kind: TimelineKind,
     ) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.restore_state(cx, editing_pane_state, timeline_kind);
     }
 
@@ -674,7 +1169,9 @@ impl EditingPaneRef {
     ///
     /// This function *DOES NOT* emit an [`EditingPaneAction::Hidden`] action.
     pub fn force_reset_hide(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.visible = false;
         inner.animator_cut(cx, ids!(panel.hide));
         inner.is_animating_out = false;
@@ -694,4 +1191,289 @@ impl EditingPaneRef {
 pub struct EditingPaneState {
     event_tl_item: EventTimelineItem,
     text_input_state: TextInputState,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn editing_pane_detail_packet_marks_unsupported_edit_edges_local() {
+        let label = editing_pane_detail_packet_label("image_caption", 42, true);
+
+        assert!(label.contains("Edit extras stay local"));
+        assert!(label.contains("Detail packet"));
+        assert!(label.contains("content_kind image_caption"));
+        assert!(label.contains("edited_text_len 42"));
+        assert!(label.contains("attachment_edit_slot not_built"));
+        assert!(label.contains("mention_payload_scope preserve_existing_mentions_only"));
+        assert!(label.contains("poll_answer_edit_slot not_built"));
+        assert!(label.contains("save_spinner_operation_id not_assigned"));
+        assert!(label.contains("result_mapping not_wired"));
+        assert!(label.contains("stale_result_policy"));
+        assert!(label.contains("no attachment upload/remove"));
+        assert!(label.contains("Matrix mention payload"));
+        assert!(label.contains("poll answer edit"));
+        assert!(label.contains("room-state"));
+        assert!(label.contains("membership request was sent"));
+        assert!(EDITING_PANE_DETAIL_PACKET_EVIDENCE.contains("attachment_edit_slot not_built"));
+    }
+
+    #[test]
+    fn editing_pane_detail_packet_records_no_mention_scope() {
+        let label = editing_pane_detail_packet_label("poll_question_preserve_answers", 18, false);
+
+        assert!(label.contains("content_kind poll_question_preserve_answers"));
+        assert!(label.contains("mention_payload_scope none"));
+        assert!(label.contains("poll_answer_edit_slot not_built"));
+    }
+
+    #[test]
+    fn editing_pane_attachment_preflight_packet_records_media_boundaries() {
+        let label = editing_pane_attachment_preflight_packet_label("image_caption", 42);
+
+        assert!(label.contains("Attachment preflight packet"));
+        assert!(label.contains("content_kind image_caption"));
+        assert!(label.contains("edited_text_len 42"));
+        assert!(label.contains("original_attachment_scope existing_image_media_caption_only"));
+        assert!(label.contains("selected_attachment_slot unavailable"));
+        assert!(label.contains("add_attachment_slot not_built"));
+        assert!(label.contains("remove_attachment_slot not_built"));
+        assert!(label.contains("replace_attachment_slot not_built"));
+        assert!(label.contains("upload_request_slot not_built"));
+        assert!(label.contains("media_delete_slot not_built"));
+        assert!(label.contains(
+            "caption_edit_handoff existing_confirmed_MatrixRequest_EditMessage_body_only"
+        ));
+        assert!(label.contains("mime_size_probe not_started"));
+        assert!(label.contains("retry_policy no_duplicate_upload_without_operation_id"));
+        assert!(
+            label.contains("cancel_policy leaves_original_media_and_local_selection_untouched")
+        );
+        assert!(label.contains("no SendAttachment"));
+        assert!(label.contains("media delete"));
+        assert!(label.contains("gateway/runtime/auth"));
+        assert!(
+            EDITING_PANE_ATTACHMENT_PREFLIGHT_PACKET_EVIDENCE
+                .contains("add/remove/replace/upload/delete slots not_built")
+        );
+    }
+
+    #[test]
+    fn editing_pane_attachment_preflight_packet_records_non_media_scope() {
+        let text_label = editing_pane_attachment_preflight_packet_label("text_body", 18);
+        let poll_label =
+            editing_pane_attachment_preflight_packet_label("poll_question_preserve_answers", 18);
+
+        assert!(text_label.contains("original_attachment_scope no_existing_media_attachment"));
+        assert!(poll_label.contains("original_attachment_scope poll_no_attachment"));
+        assert!(poll_label.contains("add_attachment_slot not_built"));
+    }
+
+    #[test]
+    fn editing_pane_mention_payload_preflight_packet_records_token_boundaries() {
+        let label = editing_pane_mention_payload_preflight_packet_label(
+            "text_body",
+            "hello @room @alice:example.org @bob",
+            true,
+        );
+
+        assert!(label.contains("Mention payload preflight packet"));
+        assert!(label.contains("content_kind text_body"));
+        assert!(label.contains("edited_at_token_count 3"));
+        assert!(label.contains("literal_user_id_token_count 1"));
+        assert!(label.contains("room_token_scope present_requires_power_level_recheck"));
+        assert!(label.contains("completed_pill_reconcile_slot not_connected_to_editing_pane"));
+        assert!(label.contains("directory_result_scope unavailable_in_editing_pane"));
+        assert!(label.contains("fresh_mentions_payload_slot not_built"));
+        assert!(label.contains("existing_mentions_handoff preserve_existing_mentions_only"));
+        assert!(label.contains("reply_sendtime_state not_reused"));
+        assert!(label.contains("retry_source_hash_slot missing"));
+        assert!(label.contains("stale_token_policy backend_required_before_live_mentions"));
+        assert!(label.contains("cancel_policy confirmation_cancel_no_request"));
+        assert!(label.contains("no fresh Matrix Mentions payload"));
+        assert!(label.contains("profile lookup"));
+        assert!(label.contains("directory search"));
+        assert!(label.contains("gateway/runtime/auth"));
+        assert!(
+            EDITING_PANE_MENTION_PAYLOAD_PREFLIGHT_PACKET_EVIDENCE
+                .contains("fresh_mentions_payload_slot not_built")
+        );
+    }
+
+    #[test]
+    fn editing_pane_mention_payload_preflight_packet_records_empty_scope() {
+        let label = editing_pane_mention_payload_preflight_packet_label(
+            "poll_question_preserve_answers",
+            "question only",
+            false,
+        );
+
+        assert!(label.contains("content_kind poll_question_preserve_answers"));
+        assert!(label.contains("edited_at_token_count 0"));
+        assert!(label.contains("literal_user_id_token_count 0"));
+        assert!(label.contains("room_token_scope absent"));
+        assert!(label.contains("existing_mentions_handoff none"));
+    }
+
+    #[test]
+    fn editing_pane_mention_payload_typed_contract_packet_records_contract_shape() {
+        let label = editing_pane_mention_payload_typed_contract_packet_label(
+            "text_body",
+            "hello @room @alice:example.org @bob",
+            true,
+        );
+
+        assert!(label.contains("Mention payload typed contract packet"));
+        assert!(label.contains("mention_contract_version local_v0"));
+        assert!(label.contains("token_scan_source edited_text_only"));
+        assert!(label.contains("edited_at_token_count 3"));
+        assert!(label.contains("literal_user_id_contract_count 1"));
+        assert!(
+            label.contains("room_token_contract_scope requires_power_level_recheck_before_payload")
+        );
+        assert!(label.contains("directory_snapshot_id_slot unavailable"));
+        assert!(label.contains("completed_pill_snapshot_slot unavailable"));
+        assert!(label.contains("existing_mentions_handoff preserve_existing_mentions_only"));
+        assert!(label.contains("source_hash_slot not_assigned"));
+        assert!(label.contains("fresh_mentions_payload_result_slot not_built"));
+        assert!(label.contains("retry_idempotency_key_slot missing"));
+        assert!(
+            label.contains("stale_result_guard body_source_hash_required_before_live_mentions")
+        );
+        assert!(label.contains("result_mapping accepted|permission_denied"));
+        assert!(label.contains("privacy_redaction token_counts_only"));
+        assert!(label.contains("no fresh Matrix Mentions payload"));
+        assert!(label.contains("directory snapshot reuse"));
+        assert!(label.contains("gateway/runtime/auth"));
+        assert!(
+            EDITING_PANE_MENTION_PAYLOAD_TYPED_CONTRACT_PACKET_EVIDENCE
+                .contains("fresh_mentions_payload_result_slot not_built")
+        );
+    }
+
+    #[test]
+    fn editing_pane_mention_payload_typed_contract_packet_records_empty_scope() {
+        let label = editing_pane_mention_payload_typed_contract_packet_label(
+            "poll_question_preserve_answers",
+            "question only",
+            false,
+        );
+
+        assert!(label.contains("content_kind poll_question_preserve_answers"));
+        assert!(label.contains("edited_at_token_count 0"));
+        assert!(label.contains("literal_user_id_contract_count 0"));
+        assert!(label.contains("room_token_contract_scope absent"));
+        assert!(label.contains("existing_mentions_handoff none"));
+        assert!(label.contains("result_mapping accepted|permission_denied"));
+    }
+
+    #[test]
+    fn editing_pane_save_result_mapping_packet_records_operation_slots() {
+        let label = editing_pane_save_result_mapping_packet_label(
+            "text_body",
+            64,
+            true,
+            "confirmation_opened",
+        );
+
+        assert!(label.contains("Save result mapping packet"));
+        assert!(label.contains("lifecycle_state confirmation_opened"));
+        assert!(label.contains("content_kind text_body"));
+        assert!(label.contains("edited_text_len 64"));
+        assert!(label.contains("mention_payload_scope preserve_existing_mentions_only"));
+        assert!(label.contains("operation_id_slot not_assigned"));
+        assert!(label.contains("request_slot existing_confirmed_MatrixRequest_EditMessage"));
+        assert!(label.contains("spinner_slot not_rendered"));
+        assert!(label.contains("result_mapping saved_hide_pane"));
+        assert!(label.contains("failed_popup"));
+        assert!(label.contains("canceled_no_request"));
+        assert!(label.contains("stale_event_id_ignored"));
+        assert!(label.contains("ignored_late_result_without_matching_operation_id"));
+        assert!(label.contains("stale_result_guard timeline_event_item_id_match_only"));
+        assert!(label.contains("repeated_save_policy not_held_until_pending_operation_id"));
+        assert!(label.contains("retry_slot not_built"));
+        assert!(label.contains("no attachment upload/remove"));
+        assert!(label.contains("timeline reload"));
+        assert!(label.contains("membership request was sent"));
+        assert!(
+            EDITING_PANE_SAVE_RESULT_MAPPING_PACKET_EVIDENCE
+                .contains("result_mapping saved/failed")
+        );
+    }
+
+    #[test]
+    fn editing_pane_save_result_mapping_packet_records_poll_scope() {
+        let label = editing_pane_save_result_mapping_packet_label(
+            "poll_question_preserve_answers",
+            18,
+            false,
+            "stale_event_id_ignored",
+        );
+
+        assert!(label.contains("content_kind poll_question_preserve_answers"));
+        assert!(label.contains("mention_payload_scope none"));
+        assert!(label.contains("lifecycle_state stale_event_id_ignored"));
+        assert!(label.contains("poll answer edit"));
+    }
+
+    #[test]
+    fn editing_pane_retry_error_drilldown_packet_records_retry_boundaries() {
+        let label =
+            editing_pane_retry_error_drilldown_packet_label("text_body", 64, true, "failed_popup");
+
+        assert!(label.contains("Retry/error drilldown packet"));
+        assert!(label.contains("lifecycle_state failed_popup"));
+        assert!(label.contains("content_kind text_body"));
+        assert!(label.contains("edited_text_len 64"));
+        assert!(label.contains("mention_payload_scope preserve_existing_mentions_only"));
+        assert!(label.contains("failure_source existing_MatrixRequest_EditMessage_result_only"));
+        assert!(label.contains("error_redaction popup_text_not_persisted_or_reused"));
+        assert!(label.contains("retry_request_slot not_built"));
+        assert!(label.contains("retry_confirmation_slot not_built"));
+        assert!(
+            label.contains(
+                "late_result_guard timeline_event_item_id_match_only_without_operation_id"
+            )
+        );
+        assert!(label.contains("pending_operation_id missing_backend_contract"));
+        assert!(label.contains("spinner_state not_rendered"));
+        assert!(label.contains("cancel_state confirmation_cancel_no_request"));
+        assert!(label.contains("retry_state manual_retry_not_built_existing_popup_only"));
+        assert!(label.contains("gateway/runtime/auth"));
+        assert!(label.contains("live mutation"));
+        assert!(
+            EDITING_PANE_RETRY_ERROR_DRILLDOWN_PACKET_EVIDENCE
+                .contains("retry_request_slot not_built")
+        );
+    }
+
+    #[test]
+    fn editing_pane_retry_error_drilldown_packet_records_stale_and_cancel_state() {
+        let stale_label = editing_pane_retry_error_drilldown_packet_label(
+            "poll_question_preserve_answers",
+            18,
+            false,
+            "stale_event_id_ignored",
+        );
+        let confirmation_label = editing_pane_retry_error_drilldown_packet_label(
+            "poll_question_preserve_answers",
+            18,
+            false,
+            "confirmation_opened",
+        );
+
+        assert!(stale_label.contains("content_kind poll_question_preserve_answers"));
+        assert!(stale_label.contains("mention_payload_scope none"));
+        assert!(stale_label.contains("retry_state retry_blocked_stale_event_id"));
+        assert!(
+            stale_label
+                .contains("stale_result_policy ignore_late_result_without_matching_operation_id")
+        );
+        assert!(
+            confirmation_label
+                .contains("retry_state confirmation_pending_cancel_no_request_until_accept")
+        );
+        assert!(confirmation_label.contains("cancel_state confirmation_cancel_no_request"));
+    }
 }

@@ -12,25 +12,25 @@ script_mod! {
         ..mod.widgets.RoundedView
 
         width: Fill,
-        height: 35,
+        height: 34,
 
         show_bg: true,
         draw_bg +: {
-            color: (COLOR_PRIMARY)
-            border_radius: 4.0
-            border_color: (COLOR_SECONDARY)
+            color: (COLOR_TELEGRAM_INPUT)
+            border_radius: 17.0
+            border_color: (COLOR_TELEGRAM_GLASS_HAIRLINE)
             border_size: 1.0
         }
 
-        padding: Inset{top: 3, bottom: 3, left: 10, right: 4.5}
+        padding: Inset{top: 3, bottom: 3, left: 12, right: 5}
         margin: 0
-        spacing: 4,
+        spacing: 6,
         align: Align{x: 0.0, y: 0.5},
 
         Icon {
             draw_icon +: {
                 svg: (ICON_SEARCH),
-                color: (COLOR_TEXT_INPUT_IDLE),
+                color: (COLOR_TELEGRAM_DIM),
             }
             icon_walk: Walk{width: 14, height: 14}
         }
@@ -41,10 +41,18 @@ script_mod! {
             flow: Right, // do not wrap
             padding: 5
 
-            empty_text: "Filter rooms & spaces..."
+            empty_text: "Search"
 
             draw_bg.border_size: 0.0
+            draw_bg.color: (COLOR_TELEGRAM_INPUT)
+            draw_bg.color_empty: (COLOR_TELEGRAM_INPUT)
+            draw_bg.color_focus: (COLOR_TELEGRAM_INPUT)
+            draw_bg.color_hover: (COLOR_TELEGRAM_INPUT)
             draw_text +: {
+                color: (COLOR_TELEGRAM_TEXT)
+                color_empty: (COLOR_TELEGRAM_DIM)
+                color_empty_hover: (COLOR_TELEGRAM_DIM)
+                color_empty_focus: (COLOR_TELEGRAM_DIM)
                 text_style: theme.font_regular { font_size: 10 },
             }
         }
@@ -56,6 +64,7 @@ script_mod! {
             spacing: 0,
             align: Align{x: 0.5, y: 0.5}
             draw_icon.svg: (ICON_CLOSE)
+            draw_icon.color: (COLOR_TELEGRAM_DIM)
             icon_walk: Walk{width: Fit, height: 10, margin: 0}
         }
     }
@@ -66,7 +75,8 @@ script_mod! {
 /// See the module-level docs for more detail.
 #[derive(Script, Widget)]
 pub struct RoomFilterInputBar {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 }
 
 impl ScriptHook for RoomFilterInputBar {
@@ -85,7 +95,8 @@ impl ScriptHook for RoomFilterInputBar {
         }
         let cx = _vm.cx_mut();
         let has_text = !self.text_input(cx, ids!(input)).text().is_empty();
-        self.button(cx, ids!(clear_button)).set_visible(cx, has_text);
+        self.button(cx, ids!(clear_button))
+            .set_visible(cx, has_text);
     }
 }
 
@@ -165,20 +176,14 @@ impl WidgetMatchEvent for RoomFilterInputBar {
             };
             clear_button.set_visible(cx, !keywords.is_empty());
             clear_button.reset_hover(cx);
-            cx.widget_action(
-                self.widget_uid(),
-                FilterAction::Changed(keywords)
-            );
+            cx.widget_action(self.widget_uid(), FilterAction::Changed(keywords));
         }
 
         if clear_button.clicked(actions) {
             input.set_text(cx, "");
             clear_button.set_visible(cx, false);
             input.set_key_focus(cx);
-            cx.widget_action(
-                self.widget_uid(),
-                FilterAction::Changed(String::new())
-            );
+            cx.widget_action(self.widget_uid(), FilterAction::Changed(String::new()));
         }
     }
 }

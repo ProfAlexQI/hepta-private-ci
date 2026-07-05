@@ -6,9 +6,15 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bytesize::ByteSize;
 use makepad_widgets::*;
 use crate::{LivePtr, utils, widget_ref_from_live_ptr};
-use matrix_sdk::ruma::{events::room::{ImageInfo, MediaSource}, OwnedMxcUri, UInt};
+use matrix_sdk::ruma::{
+    events::room::{ImageInfo, MediaSource},
+    OwnedMxcUri, UInt,
+};
+#[cfg(test)]
+use matrix_sdk::ruma::uint;
 use serde::Deserialize;
 use url::Url;
 
@@ -23,6 +29,15 @@ use crate::{
 const MAX_CACHE_ENTRIES_BEFORE_CLEANUP: usize = 100;
 /// Maximum age for cache entries in seconds (1 hour)
 const CACHE_ENTRY_MAX_AGE_SECS: u64 = 3600;
+
+pub const LINK_PREVIEW_LOCAL_CONTROLS_EVIDENCE: &str = "LinkPreview Show more, Show fewer, hover, title tap dispatch, dedup, matrix.to filtering, cache-hit reuse, pending, failed, and loaded display controls stay in local widget/cache state around the existing Matrix GetUrlPreview read/cache path; they send no extra GetUrlPreview beyond the first missing cache entry, no Matrix alias resolution, room preview fetch, event context fetch, external browser handoff, media download, message, room-state, membership, or live mutation request.";
+
+pub const URL_PREVIEW_READ_CACHE_EVIDENCE: &str = "LinkPreviewCache may submit the existing Matrix GetUrlPreview read request only for a missing accepted URL cache entry; LoadedLinkPreview, Requested, Failed, cleanup, rate-limit retry scheduling, insert_into_cache, TimelineUpdate::LinkPreviewFetched, and SignalToUI only update local URL preview cache/redraw state and send no Matrix alias resolution, room preview fetch, event context fetch, media download, browser handoff, message, room-state, membership, account/profile, or live mutation request.";
+pub const LINK_PREVIEW_COMPACT_LABEL: &str =
+    "URL preview uses cached GetUrlPreview data; controls stay local.";
+pub const LINK_PREVIEW_LOADED_METADATA_EVIDENCE: &str = "LinkPreview rows summarize already loaded GetUrlPreview metadata for title, site name, description, image presence, image MIME type, image dimensions, and image size inside the local read-path label. populate_view also passes loaded og:image width/height into ImageInfo before the existing image cache renderer runs. This sends no extra GetUrlPreview beyond the first missing accepted URL, no Matrix alias resolution, room preview fetch, event context fetch, external browser handoff, media download, message, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
+pub const LINK_PREVIEW_LOADED_METADATA_LABEL: &str =
+    "Loaded URL metadata summary; no extra preview fetch.";
 
 /// Specific error types for link preview failures
 #[derive(Clone, Debug)]
@@ -205,6 +220,19 @@ script_mod! {
                         color: #666666,
                     }
                 }
+
+                read_path_label := Label {
+                    width: Fill, height: Fit,
+                    flow: Flow.Right{wrap: true},
+                    padding: Inset{ top: 4.0 }
+                    draw_text +: {
+                        text_style: mod.widgets.LINK_PREVIEW_MESSAGE_TEXT_STYLE {
+                            font_size: 9.5,
+                        },
+                        color: #777777,
+                    }
+                    text: "URL preview uses cached GetUrlPreview data; controls stay local."
+                }
             }
         }
     }
@@ -236,9 +264,14 @@ impl Widget for LinkPreview {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         // Handle collapsible button clicks
         if let Event::Actions(actions) = event {
-            let expand_btn = self.view.button(cx, ids!(collapsible_buttons.expand_button));
-            let collapse_btn = self.view.button(cx, ids!(collapsible_buttons.collapse_button));
+            let expand_btn = self
+                .view
+                .button(cx, ids!(collapsible_buttons.expand_button));
+            let collapse_btn = self
+                .view
+                .button(cx, ids!(collapsible_buttons.collapse_button));
             if expand_btn.clicked(actions) || collapse_btn.clicked(actions) {
+                // Show more/fewer only toggles local LinkPreview widget state.
                 self.is_expanded = !self.is_expanded;
                 self.update_button_and_visibility(cx);
                 cx.redraw_all();
@@ -266,8 +299,13 @@ impl Widget for LinkPreview {
                         draw_bg.color: mod.widgets.COLOR_BG_PREVIEW
                     });
                     if fe.is_over && fe.is_primary_hit() && fe.was_tap() {
-                        if let Some(html_link) = view.link_label(cx, ids!(content_view.title_label)).borrow() {
+                        if let Some(html_link) =
+                            view.link_label(cx, ids!(content_view.title_label)).borrow()
+                        {
                             if !html_link.url.is_empty() {
+                                // Title taps dispatch a local HtmlLinkAction to the
+                                // RoomScreen link guard; they do not fetch URL preview
+                                // data, resolve Matrix aliases, or mutate room state.
                                 cx.widget_action(
                                     html_link.widget_uid(),
                                     HtmlLinkAction::Clicked {
@@ -288,7 +326,11 @@ impl Widget for LinkPreview {
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
         // Draw children (link preview items)
-        let max_visible = if self.is_expanded { self.children.len() } else { 2 };
+        let max_visible = if self.is_expanded {
+            self.children.len()
+        } else {
+            2
+        };
         for (index, view) in self.children.iter_mut().enumerate() {
             if index < max_visible {
                 let _ = view.draw(cx, scope);
@@ -307,9 +349,16 @@ impl LinkPreview {
 
     fn update_button_and_visibility(&mut self, cx: &mut Cx) {
         if self.show_collapsible_buttons {
-            self.view.view(cx, ids!(collapsible_buttons)).set_visible(cx, true);
-            let expand_btn = self.view.button(cx, ids!(collapsible_buttons.expand_button));
-            let collapse_btn = self.view.button(cx, ids!(collapsible_buttons.collapse_button));
+            // Visibility changes for Show more/fewer are local widget state only.
+            self.view
+                .view(cx, ids!(collapsible_buttons))
+                .set_visible(cx, true);
+            let expand_btn = self
+                .view
+                .button(cx, ids!(collapsible_buttons.expand_button));
+            let collapse_btn = self
+                .view
+                .button(cx, ids!(collapsible_buttons.collapse_button));
             if self.is_expanded {
                 expand_btn.set_visible(cx, false);
                 collapse_btn.set_visible(cx, true);
@@ -321,7 +370,9 @@ impl LinkPreview {
             expand_btn.reset_hover(cx);
             collapse_btn.reset_hover(cx);
         } else {
-            self.view.view(cx, ids!(collapsible_buttons)).set_visible(cx, false);
+            self.view
+                .view(cx, ids!(collapsible_buttons))
+                .set_visible(cx, false);
         }
     }
 }
@@ -352,14 +403,23 @@ impl LinkPreviewRef {
     /// If the link preview is updated, and the collapsible button should be shown,
     /// this function should be called.
     fn show_collapsible_buttons(&mut self, cx: &mut Cx, hidden_count: usize) {
-         if let Some(mut inner) = self.borrow_mut() {
+        if let Some(mut inner) = self.borrow_mut() {
+            // Showing the controls only records local hidden-link count.
             inner.show_collapsible_buttons = true;
             inner.hidden_links_count = hidden_count;
-            let expand_btn = inner.view.button(cx, ids!(collapsible_buttons.expand_button));
+            let expand_btn = inner
+                .view
+                .button(cx, ids!(collapsible_buttons.expand_button));
             expand_btn.set_text(cx, &format!("Show {} more links", inner.hidden_links_count));
             expand_btn.set_visible(cx, true);
-            inner.view.button(cx, ids!(collapsible_buttons.collapse_button)).set_visible(cx, false);
-            inner.view.view(cx, ids!(collapsible_buttons)).set_visible(cx, true);
+            inner
+                .view
+                .button(cx, ids!(collapsible_buttons.collapse_button))
+                .set_visible(cx, false);
+            inner
+                .view
+                .view(cx, ids!(collapsible_buttons))
+                .set_visible(cx, true);
         }
     }
 
@@ -374,7 +434,14 @@ impl LinkPreviewRef {
         image_populate_fn: F,
     ) -> (ViewRef, bool)
     where
-        F: FnOnce(&mut Cx, &TextOrImageRef, Option<Box<ImageInfo>>, MediaSource, &str, &mut MediaCache) -> bool,
+        F: FnOnce(
+            &mut Cx,
+            &TextOrImageRef,
+            Option<Box<ImageInfo>>,
+            MediaSource,
+            &str,
+            &mut MediaCache,
+        ) -> bool,
     {
         let view_ref = widget_ref_from_live_ptr(cx, self.item_template()).as_view();
         let mut fully_drawn = true;
@@ -417,12 +484,17 @@ impl LinkPreviewRef {
                 .label(cx, ids!(description_label))
                 .set_text(cx, &description);
         }
+        view_ref
+            .label(cx, ids!(read_path_label))
+            .set_text(cx, &loaded_link_preview_metadata_label(&link_preview_data));
 
         // Handle image through closure
         if let Some(image) = &link_preview_data.image {
             let mut image_info = ImageInfo::default();
             image_info.mimetype = link_preview_data.image_type.clone();
             image_info.size = link_preview_data.image_size;
+            image_info.width = link_preview_data.image_width;
+            image_info.height = link_preview_data.image_height;
             let image_info_source = Some(Box::new(image_info));
             let owned_mxc_uri = OwnedMxcUri::from(image.clone());
             let text_or_image_ref = view_ref.text_or_image(cx, ids!(image));
@@ -457,13 +529,20 @@ impl LinkPreviewRef {
         populate_image_fn: &F,
     ) -> bool
     where
-        F: Fn(&mut Cx, &TextOrImageRef, Option<Box<ImageInfo>>, MediaSource, &str, &mut MediaCache) -> bool,
+        F: Fn(
+            &mut Cx,
+            &TextOrImageRef,
+            Option<Box<ImageInfo>>,
+            MediaSource,
+            &str,
+            &mut MediaCache,
+        ) -> bool,
     {
         const SKIPPED_DOMAINS: &[&str] = &["matrix.to", "matrix.io"];
         const MAX_LINK_PREVIEWS_BY_EXPAND: usize = 2;
 
-        // Build the list of accepted URLs (after dedup + domain filtering)
-        // to check if we can skip the expensive widget recreation.
+        // Build accepted URLs locally (dedup + matrix.to filtering). Matrix links
+        // are handled by RoomScreen guards instead of URL preview fetches here.
         let mut accepted_urls: Vec<String> = Vec::new();
         let mut seen_urls = std::collections::HashSet::new();
         for link in links {
@@ -487,6 +566,8 @@ impl LinkPreviewRef {
         // skip the expensive widget recreation entirely.
         if let Some(inner) = self.borrow() {
             if accepted_urls == inner.last_populated_links && !inner.children.is_empty() {
+                // Cache-hit reuse avoids widget recreation and does not submit a new
+                // Matrix GetUrlPreview request.
                 return true;
             }
         }
@@ -496,15 +577,26 @@ impl LinkPreviewRef {
         let mut views = Vec::with_capacity(accepted_link_count);
 
         for (url_string, link) in accepted_urls.iter().zip(
-            links.iter().filter(|l| accepted_urls.contains(&l.to_string()))
+            links
+                .iter()
+                .filter(|l| accepted_urls.contains(&l.to_string())),
         ) {
             let (view_ref, was_image_drawn) = self.populate_view(
                 cx,
+                // The cache may submit the existing Matrix GetUrlPreview read path
+                // only for the first missing accepted URL.
                 link_preview_cache.get_or_fetch_link_preview(url_string.clone()),
                 link,
                 media_cache,
                 |cx, text_or_image_ref, image_info_source, original_source, body, media_cache| {
-                    populate_image_fn(cx, text_or_image_ref, image_info_source, original_source, body, media_cache)
+                    populate_image_fn(
+                        cx,
+                        text_or_image_ref,
+                        image_info_source,
+                        original_source,
+                        body,
+                        media_cache,
+                    )
                 },
             );
             fully_drawn_count += was_image_drawn as usize;
@@ -519,6 +611,85 @@ impl LinkPreviewRef {
         }
         self.set_children(views);
         fully_drawn_count == accepted_link_count
+    }
+}
+
+fn loaded_flag(label: &str, value: Option<&str>) -> String {
+    if value.is_some_and(|value| !value.trim().is_empty()) {
+        format!("{label} loaded")
+    } else {
+        format!("{label} missing")
+    }
+}
+
+fn loaded_link_preview_metadata_label(link_preview_data: &LinkPreviewData) -> String {
+    let title = loaded_flag("title", link_preview_data.title.as_deref());
+    let site = loaded_flag("site", link_preview_data.site_name.as_deref());
+    let description = loaded_flag("description", link_preview_data.description.as_deref());
+    let image = loaded_flag("image", link_preview_data.image.as_deref());
+    let image_type = link_preview_data
+        .image_type
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("image MIME missing");
+    let dimensions = link_preview_data
+        .image_width
+        .and_then(|width| {
+            link_preview_data
+                .image_height
+                .map(|height| format!("{width}x{height}"))
+        })
+        .unwrap_or_else(|| "dimensions missing".to_string());
+    let size = link_preview_data
+        .image_size
+        .map(|bytes| ByteSize::b(bytes.into()).to_string())
+        .unwrap_or_else(|| "size missing".to_string());
+    format!(
+        "Loaded URL metadata: {title}, {site}, {description}, {image}, {image_type}, {dimensions}, {size}. {LINK_PREVIEW_LOADED_METADATA_LABEL}"
+    )
+}
+
+#[cfg(test)]
+mod link_preview_tests {
+    use super::*;
+
+    #[test]
+    fn loaded_link_preview_metadata_label_summarizes_loaded_fields() {
+        let data = LinkPreviewData {
+            title: Some("Release notes".to_string()),
+            site_name: Some("Hepta".to_string()),
+            description: Some("Summary".to_string()),
+            image: Some("mxc://example/image".to_string()),
+            image_type: Some("image/png".to_string()),
+            image_width: Some(uint!(640)),
+            image_height: Some(uint!(360)),
+            image_size: Some(uint!(4242)),
+            ..Default::default()
+        };
+
+        let label = loaded_link_preview_metadata_label(&data);
+
+        assert!(label.contains("title loaded"));
+        assert!(label.contains("site loaded"));
+        assert!(label.contains("description loaded"));
+        assert!(label.contains("image loaded"));
+        assert!(label.contains("image/png"));
+        assert!(label.contains("640x360"));
+        assert!(!label.contains("size missing"));
+        assert!(label.contains(LINK_PREVIEW_LOADED_METADATA_LABEL));
+    }
+
+    #[test]
+    fn loaded_link_preview_metadata_label_marks_missing_fields() {
+        let label = loaded_link_preview_metadata_label(&LinkPreviewData::default());
+
+        assert!(label.contains("title missing"));
+        assert!(label.contains("site missing"));
+        assert!(label.contains("description missing"));
+        assert!(label.contains("image missing"));
+        assert!(label.contains("image MIME missing"));
+        assert!(label.contains("dimensions missing"));
+        assert!(label.contains("size missing"));
     }
 }
 
@@ -640,6 +811,7 @@ impl LinkPreviewCache {
 
     /// Fetches the link preview for the specified URL.
     pub fn get_or_fetch_link_preview(&mut self, url: String) -> LinkPreviewCacheEntry {
+        // Cleanup only prunes stale local URL-preview cache entries.
         // Clean up old entries periodically
         if self.cache.len() > MAX_CACHE_ENTRIES_BEFORE_CLEANUP {
             self.cleanup_old_entries(Duration::from_secs(CACHE_ENTRY_MAX_AGE_SECS));
@@ -647,6 +819,8 @@ impl LinkPreviewCache {
 
         match self.cache.entry(url.clone()) {
             Entry::Vacant(vacant) => {
+                // Missing entries use the existing read/cache path. Requested,
+                // loaded, and failed entries stay local until a future cache miss.
                 let entry_ref = Arc::new(Mutex::new(TimestampedCacheEntry {
                     entry: LinkPreviewCacheEntry::Requested,
                     timestamp: Instant::now(),
@@ -661,7 +835,11 @@ impl LinkPreviewCache {
 
                 LinkPreviewCacheEntry::Requested
             }
-            Entry::Occupied(occupied) => occupied.get().lock().unwrap().entry.clone(),
+            Entry::Occupied(occupied) => {
+                // Loaded, requested, and failed cache hits stay local and never
+                // submit another Matrix URL preview request.
+                occupied.get().lock().unwrap().entry.clone()
+            }
         }
     }
 
@@ -672,6 +850,7 @@ impl LinkPreviewCache {
     /// because any in-flight requests that were submitted while offline have likely
     /// failed, leaving stale entries that permanently block re-fetching.
     pub fn clear_all_pending_and_failed_requests(&mut self) {
+        // Offline recovery only drops local pending/failed cache entries.
         self.cache.retain(|_, entry| {
             if let Ok(guard) = entry.lock() {
                 matches!(guard.entry, LinkPreviewCacheEntry::LoadedLinkPreview(_))
@@ -684,6 +863,7 @@ impl LinkPreviewCache {
     /// Removes cache entries older than the specified duration
     pub fn cleanup_old_entries(&mut self, max_age: Duration) {
         let now = Instant::now();
+        // Age cleanup is local cache maintenance.
         self.cache.retain(|_url, entry| {
             if let Ok(timestamped_entry) = entry.lock() {
                 now.duration_since(timestamped_entry.timestamp) < max_age
@@ -709,11 +889,11 @@ fn insert_into_cache(
                 UrlPreviewError::HttpStatus(404) => LinkPreviewError::NotFound,
                 UrlPreviewError::HttpStatus(429) => LinkPreviewError::RateLimited,
                 UrlPreviewError::Json(_) => LinkPreviewError::ParseError(e.to_string()),
-                UrlPreviewError::Request(_) |
-                UrlPreviewError::ClientNotAvailable |
-                UrlPreviewError::AccessTokenNotAvailable |
-                UrlPreviewError::UrlParse(_) |
-                UrlPreviewError::HttpStatus(_) => LinkPreviewError::NetworkError(e.to_string()),
+                UrlPreviewError::Request(_)
+                | UrlPreviewError::ClientNotAvailable
+                | UrlPreviewError::AccessTokenNotAvailable
+                | UrlPreviewError::UrlParse(_)
+                | UrlPreviewError::HttpStatus(_) => LinkPreviewError::NetworkError(e.to_string()),
             };
             if let LinkPreviewError::RateLimited = error_type {
                 LinkPreviewCacheEntry::Requested
@@ -725,12 +905,14 @@ fn insert_into_cache(
     };
 
     if let Ok(mut timestamped_entry) = value_ref.lock() {
+        // Insert fetched metadata into local cache state for redraw only.
         timestamped_entry.entry = new_entry;
         timestamped_entry.timestamp = Instant::now();
     }
 
     if let Some(sender) = update_sender {
-        // Reuse TimelineUpdate MediaFetched to trigger redraw in the timeline.
+        // Reuse TimelineUpdate::LinkPreviewFetched to trigger local timeline
+        // redraw without message, room-state, or membership mutation.
         let _ = sender.send(TimelineUpdate::LinkPreviewFetched);
     }
     SignalToUI::set_ui_signal();

@@ -1,11 +1,53 @@
 //! A top-level view for adding (joining) or exploring new rooms and spaces.
 
+use std::cell::RefCell;
 
 use makepad_widgets::*;
 use matrix_sdk::RoomState;
-use ruma::{IdParseError, MatrixToUri, MatrixUri, OwnedRoomOrAliasId, OwnedServerName, matrix_uri::MatrixId, room::{JoinRuleSummary, RoomType}};
+use ruma::{
+    IdParseError, MatrixToUri, MatrixUri, OwnedRoomOrAliasId, OwnedServerName,
+    matrix_uri::MatrixId,
+    room::{JoinRuleSummary, RoomType},
+};
 
-use crate::{app::AppStateAction, home::invite_screen::JoinRoomResultAction, room::{FetchedRoomAvatar, FetchedRoomPreview, RoomPreviewAction}, shared::{avatar::AvatarWidgetRefExt, popup_list::{PopupKind, enqueue_popup_notification}}, sliding_sync::{MatrixRequest, RoomPreviewResponseMode, submit_async_request}, utils};
+use crate::{
+    app::{AppStateAction, PositiveConfirmationModalAction},
+    home::invite_screen::JoinRoomResultAction,
+    room::{FetchedRoomAvatar, FetchedRoomPreview, RoomPreviewAction},
+    shared::{
+        avatar::AvatarWidgetRefExt,
+        confirmation_modal::ConfirmationModalContent,
+        popup_list::{PopupKind, enqueue_popup_notification},
+    },
+    sliding_sync::{MatrixRequest, RoomPreviewResponseMode, submit_async_request},
+    utils,
+};
+
+const ADD_ROOM_RESTRICTED_JOIN_RULE_LOCAL_EVIDENCE: &str = "Join rule edge: Restricted or unknown previews keep membership actions disabled locally until newer Matrix join-rule handling is wired; no JoinRoom, Knock, cancel-prior-knock, message, room-state, or membership request is sent.";
+const ADD_ROOM_COMPACT_CONFIRMATION_LABEL: &str =
+    "Confirmation required before any join or knock request.";
+const ADD_ROOM_COMPACT_EDGE_LABEL: &str =
+    "Local edge preview only; membership action stays guarded.";
+pub const ADD_ROOM_REKNOCK_CANCEL_PRIOR_PACKET_EVIDENCE: &str = "AddRoom knocked preview now renders a local re-knock/cancel-prior packet before any membership action is promoted. Re-knock can only reuse the existing PositiveConfirmationModal -> MatrixRequest::Knock path; cancel-prior-knock has no request id, request body, result slot, retry taxonomy, or stale membership policy yet, and no cancel-prior-knock, JoinRoom, LeaveRoom, message, room-state, or membership request is sent by the packet.";
+
+fn add_room_reknock_cancel_prior_packet_label(
+    room_or_space_lc: &str,
+    room_id: &str,
+    join_rule: Option<&JoinRuleSummary>,
+) -> String {
+    let join_rule_state = match join_rule {
+        Some(JoinRuleSummary::Public) => "public",
+        Some(JoinRuleSummary::Invite) => "invite",
+        Some(JoinRuleSummary::Knock) => "knock",
+        Some(JoinRuleSummary::KnockRestricted(_)) => "knock_restricted",
+        Some(JoinRuleSummary::Restricted(_)) => "restricted",
+        None => "unknown",
+        _ => "other",
+    };
+    format!(
+        "Re-knock/cancel-prior packet: target {room_or_space_lc} {room_id}; membership_state knocked; join_rule {join_rule_state}; reknock_path existing_confirmed_MatrixRequest_Knock; previous_knock_request_id missing; cancel_prior_request_slot not_built; cancel_prior_result_slot not_wired; stale_membership_policy wait_for_knock_result_or_new_preview; no cancel-prior-knock, JoinRoom, LeaveRoom, message, room-state, or membership request was sent by this packet. {ADD_ROOM_REKNOCK_CANCEL_PRIOR_PACKET_EVIDENCE}"
+    )
+}
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -176,6 +218,36 @@ script_mod! {
                 }
             }
 
+            room_preview_read_path := Label {
+                width: Fill, height: Fit
+                flow: Flow.Right{wrap: true},
+                margin: Inset{top: 8}
+                draw_text +: {
+                    color: (SMALL_STATE_TEXT_COLOR),
+                    text_style: MESSAGE_TEXT_STYLE { font_size: 10 },
+                }
+            }
+
+            room_membership_edge_evidence := Label {
+                width: Fill, height: Fit
+                flow: Flow.Right{wrap: true},
+                margin: Inset{top: 6}
+                draw_text +: {
+                    color: (SMALL_STATE_TEXT_COLOR),
+                    text_style: MESSAGE_TEXT_STYLE { font_size: 10 },
+                }
+            }
+
+            room_join_rule_evidence := Label {
+                width: Fill, height: Fit
+                flow: Flow.Right{wrap: true},
+                margin: Inset{top: 6}
+                draw_text +: {
+                    color: (SMALL_STATE_TEXT_COLOR),
+                    text_style: MESSAGE_TEXT_STYLE { font_size: 10 },
+                }
+            }
+
             subsection_alias_id := SubsectionLabel {
                 draw_text +: { text_style: theme.font_regular { font_size: 12 } }
             }
@@ -254,10 +326,13 @@ script_mod! {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct AddRoomScreen {
-    #[deref] view: View,
-    #[rust] state: AddRoomState,
+    #[deref]
+    view: View,
+    #[rust]
+    state: AddRoomState,
     /// The function to perform when the user clicks the `join_room_button`.
-    #[rust(JoinButtonFunction::None)] join_function: JoinButtonFunction,
+    #[rust(JoinButtonFunction::None)]
+    join_function: JoinButtonFunction,
 }
 
 #[derive(Default)]
@@ -286,20 +361,16 @@ enum AddRoomState {
     FetchError(String),
     /// We successfully knocked on the room or space, and are waiting for
     /// a member of that room/space to acknowledge our knock by inviting us.
-    Knocked {
-        frp: FetchedRoomPreview,
-    },
+    Knocked { frp: FetchedRoomPreview },
     /// We successfully joined the room or space, and are waiting for it
     /// to be loaded from the homeserver.
-    Joined {
-        frp: FetchedRoomPreview,
-    },
+    Joined { frp: FetchedRoomPreview },
     /// The fetched room or space has been loaded from the homeserver,
     /// so we can allow the user to jump to it via the `join_room_button`.
     Loaded {
         frp: FetchedRoomPreview,
         is_invite: bool,
-    }
+    },
 }
 impl AddRoomState {
     fn fetched_room_preview(&self) -> Option<&FetchedRoomPreview> {
@@ -333,9 +404,7 @@ impl AddRoomState {
     fn transition_to_loaded(&mut self, is_invite: bool) {
         let prev = std::mem::take(self);
         match prev {
-            Self::FetchedRoomPreview { frp, .. }
-            | Self::Joined { frp }
-            | Self::Knocked { frp } => {
+            Self::FetchedRoomPreview { frp, .. } | Self::Joined { frp } | Self::Knocked { frp } => {
                 *self = Self::Loaded { frp, is_invite };
             }
             _ => {
@@ -352,8 +421,12 @@ impl Widget for AddRoomScreen {
         if let Event::Actions(actions) = event {
             let room_alias_id_input = self.view.text_input(cx, ids!(room_alias_id_input));
             let search_for_room_button = self.view.button(cx, ids!(search_for_room_button));
-            let cancel_button = self.view.button(cx, ids!(fetched_room_summary.buttons_view.cancel_button));
-            let join_room_button = self.view.button(cx, ids!(fetched_room_summary.buttons_view.join_room_button));
+            let cancel_button = self
+                .view
+                .button(cx, ids!(fetched_room_summary.buttons_view.cancel_button));
+            let join_room_button = self
+                .view
+                .button(cx, ids!(fetched_room_summary.buttons_view.join_room_button));
 
             // Enable or disable the button based on if the text input is empty.
             if let Some(text) = room_alias_id_input.changed(actions) {
@@ -362,6 +435,11 @@ impl Widget for AddRoomScreen {
 
             // If the cancel button was clicked, hide the room preview and return to default state.
             if cancel_button.clicked(actions) {
+                enqueue_popup_notification(
+                    "Room preview closed locally. No Matrix join or knock request was sent.",
+                    PopupKind::Info,
+                    Some(3.0),
+                );
                 self.state = AddRoomState::WaitingOnUserInput;
                 room_alias_id_input.set_text(cx, "");
                 room_alias_id_input.set_key_focus(cx);
@@ -373,7 +451,8 @@ impl Widget for AddRoomScreen {
                 match (&self.join_function, &self.state) {
                     (
                         JoinButtonFunction::NavigateOrJoin,
-                        AddRoomState::FetchedRoomPreview { frp, .. } | AddRoomState::Loaded { frp, .. }
+                        AddRoomState::FetchedRoomPreview { frp, .. }
+                        | AddRoomState::Loaded { frp, .. },
                     ) => {
                         cx.action(AppStateAction::NavigateToRoom {
                             room_to_close: None,
@@ -382,23 +461,74 @@ impl Widget for AddRoomScreen {
                     }
                     (
                         JoinButtonFunction::Knock,
-                        AddRoomState::FetchedRoomPreview { frp, room_or_alias_id, via }
+                        AddRoomState::FetchedRoomPreview {
+                            frp,
+                            room_or_alias_id,
+                            via,
+                        },
                     ) => {
-                        submit_async_request(MatrixRequest::Knock {
-                            room_or_alias_id: frp.canonical_alias.clone().map_or_else(
-                                || room_or_alias_id.clone(),
-                                Into::into
+                        let knock_room_or_alias_id = frp
+                            .canonical_alias
+                            .clone()
+                            .map_or_else(|| room_or_alias_id.clone(), Into::into);
+                        let server_names = via.clone();
+                        let room_label = frp.room_name_id.to_string();
+                        let room_type = match &frp.room_type {
+                            Some(RoomType::Space) => "space",
+                            _ => "room",
+                        };
+                        let room_label_for_accept = room_label.clone();
+                        let room_label_for_cancel = room_label.clone();
+                        let content = ConfirmationModalContent {
+                            title_text: format!("Knock on {room_type}?").into(),
+                            body_text: format!(
+                                "Request access to {room_label}? {ADD_ROOM_COMPACT_CONFIRMATION_LABEL}"
+                            )
+                            .into(),
+                            accept_button_text: Some("Knock".into()),
+                            cancel_button_text: Some("Cancel".into()),
+                            on_accept_clicked: Some(Box::new(move |_cx| {
+                                submit_async_request(MatrixRequest::Knock {
+                                    room_or_alias_id: knock_room_or_alias_id,
+                                    reason: None,
+                                    server_names,
+                                });
+                                enqueue_popup_notification(
+                                    format!(
+                                        "Knock request sent for {room_label_for_accept}. Existing Matrix Knock path was requested."
+                                    ),
+                                    PopupKind::Info,
+                                    Some(4.0),
+                                );
+                            })),
+                            on_cancel_clicked: Some(Box::new(move |_cx| {
+                                enqueue_popup_notification(
+                                    format!(
+                                        "Knock canceled for {room_label_for_cancel}. {ADD_ROOM_COMPACT_CONFIRMATION_LABEL}"
+                                    ),
+                                    PopupKind::Info,
+                                    Some(3.0),
+                                );
+                            })),
+                        };
+                        enqueue_popup_notification(
+                            format!(
+                                "Knock confirmation opened for {room_label}. {ADD_ROOM_COMPACT_CONFIRMATION_LABEL}"
                             ),
-                            reason: None,
-                            server_names: via.clone(),
-                        });
+                            PopupKind::Info,
+                            Some(4.0),
+                        );
+                        cx.action(PositiveConfirmationModalAction::Show(RefCell::new(Some(
+                            content,
+                        ))));
                     }
-                    _ => { }
+                    _ => {}
                 }
             }
 
             // If the button was clicked or enter was pressed, try to parse the room address.
-            let new_room_query = search_for_room_button.clicked(actions)
+            let new_room_query = search_for_room_button
+                .clicked(actions)
                 .then(|| room_alias_id_input.text())
                 .or_else(|| room_alias_id_input.returned(actions).map(|(t, _)| t));
             if let Some(t) = new_room_query {
@@ -415,12 +545,10 @@ impl Widget for AddRoomScreen {
                         });
                     }
                     Err(e) => {
-                        let err_str = format!("Could not parse the text as a valid room address.\nError: {e}.");
-                        enqueue_popup_notification(
-                            err_str.clone(),
-                            PopupKind::Error,
-                            None,
+                        let err_str = format!(
+                            "Could not parse the text as a valid room address.\nError: {e}."
                         );
+                        enqueue_popup_notification(err_str.clone(), PopupKind::Error, None);
                         self.state = AddRoomState::ParseError(err_str);
                         room_alias_id_input.set_key_focus(cx);
                     }
@@ -430,7 +558,11 @@ impl Widget for AddRoomScreen {
 
             // If we're waiting for the room preview to be fetched (i.e., in the Parsed state),
             // then check if we've received it via an action.
-            if let AddRoomState::Parsed { room_or_alias_id, via } = &self.state {
+            if let AddRoomState::Parsed {
+                room_or_alias_id,
+                via,
+            } = &self.state
+            {
                 for action in actions {
                     match action.downcast_ref() {
                         Some(RoomPreviewAction::Fetched(Ok(frp))) => {
@@ -448,12 +580,10 @@ impl Widget for AddRoomScreen {
                             break;
                         }
                         Some(RoomPreviewAction::Fetched(Err(e))) => {
-                            let err_str = format!("Failed to fetch room info.\n\nError: {e}.");
-                            enqueue_popup_notification(
-                                err_str.clone(),
-                                PopupKind::Error,
-                                None,
+                            let err_str = format!(
+                                "Failed to fetch room preview via the existing GetRoomPreview read path.\n\nError: {e}."
                             );
+                            enqueue_popup_notification(err_str.clone(), PopupKind::Error, None);
                             self.state = AddRoomState::FetchError(err_str);
                             self.redraw(cx);
                             break;
@@ -463,28 +593,40 @@ impl Widget for AddRoomScreen {
                 }
             }
 
-
             // If we've fetched and displayed the room preview, handle any responses to
             // the user clicking the join button (e.g., knocked on or joined the room/space).
             let mut transition_to_knocked = false;
-            let mut transition_to_joined  = false;
-            if let AddRoomState::FetchedRoomPreview { frp, room_or_alias_id, .. } = &self.state {
+            let mut transition_to_joined = false;
+            if let AddRoomState::FetchedRoomPreview {
+                frp,
+                room_or_alias_id,
+                ..
+            } = &self.state
+            {
                 for action in actions {
                     match action.downcast_ref() {
-                        Some(KnockResultAction::Knocked { room, .. }) if room.room_id() == frp.room_name_id.room_id() => {
+                        Some(KnockResultAction::Knocked { room, .. })
+                            if room.room_id() == frp.room_name_id.room_id() =>
+                        {
                             let room_type = match room.room_type() {
                                 Some(RoomType::Space) => "space",
                                 _ => "room",
                             };
                             enqueue_popup_notification(
-                                format!("Successfully knocked on {room_type} {}.", frp.room_name_id),
+                                format!(
+                                    "Successfully knocked on {room_type} {}.",
+                                    frp.room_name_id
+                                ),
                                 PopupKind::Success,
                                 Some(4.0),
                             );
                             transition_to_knocked = true;
                             break;
                         }
-                        Some(KnockResultAction::Failed { error, room_or_alias_id: roai }) if room_or_alias_id == roai => {
+                        Some(KnockResultAction::Failed {
+                            error,
+                            room_or_alias_id: roai,
+                        }) if room_or_alias_id == roai => {
                             enqueue_popup_notification(
                                 format!("Failed to knock on room.\n\nError: {error}."),
                                 PopupKind::Error,
@@ -492,11 +634,13 @@ impl Widget for AddRoomScreen {
                             );
                             break;
                         }
-                        _ => { }
+                        _ => {}
                     }
 
                     match action.downcast_ref() {
-                        Some(JoinRoomResultAction::Joined { room_id }) if room_id == frp.room_name_id.room_id() => {
+                        Some(JoinRoomResultAction::Joined { room_id })
+                            if room_id == frp.room_name_id.room_id() =>
+                        {
                             let room_type = match &frp.room_type {
                                 Some(RoomType::Space) => "space",
                                 _ => "room",
@@ -509,7 +653,9 @@ impl Widget for AddRoomScreen {
                             transition_to_joined = true;
                             break;
                         }
-                        Some(JoinRoomResultAction::Failed { room_id, error }) if room_id == frp.room_name_id.room_id() => {
+                        Some(JoinRoomResultAction::Failed { room_id, error })
+                            if room_id == frp.room_name_id.room_id() =>
+                        {
                             enqueue_popup_notification(
                                 format!("Failed to join room.\n\nError: {error}."),
                                 PopupKind::Error,
@@ -534,8 +680,16 @@ impl Widget for AddRoomScreen {
                 // If the room/space the user is searching for has been loaded from the homeserver
                 // (e.g., by getting invited to it, or joining it in another client),
                 // then update the state of
-                if let Some(AppStateAction::RoomLoadedSuccessfully { room_name_id, is_invite }) = action.downcast_ref() {
-                    if self.state.fetched_room_preview().is_some_and(|frp| frp.room_name_id.room_id() == room_name_id.room_id()) {
+                if let Some(AppStateAction::RoomLoadedSuccessfully {
+                    room_name_id,
+                    is_invite,
+                }) = action.downcast_ref()
+                {
+                    if self
+                        .state
+                        .fetched_room_preview()
+                        .is_some_and(|frp| frp.room_name_id.room_id() == room_name_id.room_id())
+                    {
                         self.state.transition_to_loaded(*is_invite);
                         self.redraw(cx);
                     }
@@ -543,7 +697,6 @@ impl Widget for AddRoomScreen {
             }
         }
     }
-
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
         let loading_room_view = self.view.view(cx, ids!(loading_room_view));
@@ -562,12 +715,15 @@ impl Widget for AddRoomScreen {
                 error_view.set_visible(cx, true);
                 error_view.label(cx, ids!(error_text)).set_text(cx, err_str);
             }
-            AddRoomState::Parsed { room_or_alias_id, .. } => {
+            AddRoomState::Parsed {
+                room_or_alias_id, ..
+            } => {
                 loading_room_view.set_visible(cx, true);
-                loading_room_view.label(cx, ids!(loading_text)).set_text(
-                    cx,
-                    &format!("Fetching {room_or_alias_id}..."),
-                );
+                loading_room_view
+                    .label(cx, ids!(loading_text))
+                    .set_text(cx, &format!(
+                        "Fetching {room_or_alias_id} through the existing Matrix GetRoomPreview read path..."
+                    ));
                 fetched_room_summary.set_visible(cx, false);
                 error_view.set_visible(cx, false);
             }
@@ -586,11 +742,9 @@ impl Widget for AddRoomScreen {
                         room_avatar.show_text(cx, None, None, text);
                     }
                     FetchedRoomAvatar::Image(image_data) => {
-                        let res = room_avatar.show_image(
-                            cx,
-                            None,
-                            |cx, img_ref| utils::load_png_or_jpg(&img_ref, cx, image_data),
-                        );
+                        let res = room_avatar.show_image(cx, None, |cx, img_ref| {
+                            utils::load_png_or_jpg(&img_ref, cx, image_data)
+                        });
                         if res.is_err() {
                             room_avatar.show_text(
                                 cx,
@@ -609,55 +763,111 @@ impl Widget for AddRoomScreen {
                 let room_name = fetched_room_summary.label(cx, ids!(room_name));
                 match frp.room_name_id.name_for_avatar() {
                     Some(n) => room_name.set_text(cx, n),
-                    _ => room_name.set_text(cx, &format!("Unnamed {room_or_space_uc}, ID: {}", frp.room_name_id.room_id())),
+                    _ => room_name.set_text(
+                        cx,
+                        &format!(
+                            "Unnamed {room_or_space_uc}, ID: {}",
+                            frp.room_name_id.room_id()
+                        ),
+                    ),
                 }
 
-                fetched_room_summary.label(cx, ids!(subsection_alias_id)).set_text(
-                    cx,
-                    &format!("Main {room_or_space_uc} Alias and ID"),
-                );
+                fetched_room_summary
+                    .label(cx, ids!(subsection_alias_id))
+                    .set_text(cx, &format!("Main {room_or_space_uc} Alias and ID"));
                 fetched_room_summary.label(cx, ids!(room_alias)).set_text(
                     cx,
-                    &format!("Alias: {}", frp.canonical_alias.as_ref().map_or("not set", |a| a.as_str())),
+                    &format!(
+                        "Alias: {}",
+                        frp.canonical_alias
+                            .as_ref()
+                            .map_or("not set", |a| a.as_str())
+                    ),
                 );
-                fetched_room_summary.label(cx, ids!(room_id)).set_text(
-                    cx,
-                    &format!("ID: {}", frp.room_name_id.room_id().as_str()),
-                );
-                fetched_room_summary.label(cx, ids!(subsection_topic)).set_text(
-                    cx,
-                    &format!("{room_or_space_uc} Topic"),
-                );
-                fetched_room_summary.html(cx, ids!(room_topic)).set_text(
-                    cx,
-                    frp.topic.as_deref().unwrap_or("<i>No topic set</i>"),
-                );
+                fetched_room_summary
+                    .label(cx, ids!(room_id))
+                    .set_text(cx, &format!("ID: {}", frp.room_name_id.room_id().as_str()));
+                fetched_room_summary
+                    .label(cx, ids!(subsection_topic))
+                    .set_text(cx, &format!("{room_or_space_uc} Topic"));
+                fetched_room_summary
+                    .html(cx, ids!(room_topic))
+                    .set_text(cx, frp.topic.as_deref().unwrap_or("<i>No topic set</i>"));
 
                 let room_summary = fetched_room_summary.label(cx, ids!(room_summary));
+                fetched_room_summary.label(cx, ids!(room_preview_read_path)).set_text(
+                    cx,
+                    "Preview uses existing Matrix GetRoomPreview; preview search sends no JoinRoom, Knock, or membership mutation.",
+                );
+                let membership_edge_evidence = match &frp.state {
+                    Some(RoomState::Banned) => {
+                        "Banned preview. Local edge preview only; Join/Knock disabled.".to_string()
+                    }
+                    Some(RoomState::Knocked) => add_room_reknock_cancel_prior_packet_label(
+                        room_or_space_lc,
+                        frp.room_name_id.room_id().as_str(),
+                        frp.join_rule.as_ref(),
+                    ),
+                    _ => ADD_ROOM_COMPACT_EDGE_LABEL.to_string(),
+                };
+                fetched_room_summary
+                    .label(cx, ids!(room_membership_edge_evidence))
+                    .set_text(cx, &membership_edge_evidence);
+                let join_rule_evidence = match &frp.join_rule {
+                    Some(JoinRuleSummary::Public) => {
+                        "Public preview. Join stays behind the guarded button path."
+                    }
+                    Some(JoinRuleSummary::Invite) => {
+                        "Invite-only preview. Join stays disabled until an invite arrives."
+                    }
+                    Some(JoinRuleSummary::Knock | JoinRuleSummary::KnockRestricted(_)) => {
+                        "Knock preview. Access request stays behind confirmation."
+                    }
+                    Some(JoinRuleSummary::Restricted(_)) | None => {
+                        "Restricted/unknown preview. Membership action stays local-disabled."
+                    }
+                    _ => "Restricted/unknown preview. Membership action stays local-disabled.",
+                };
+                fetched_room_summary
+                    .label(cx, ids!(room_join_rule_evidence))
+                    .set_text(cx, join_rule_evidence);
                 let join_room_button = fetched_room_summary.button(cx, ids!(join_room_button));
                 let join_function = match (&frp.state, &frp.join_rule) {
                     (Some(RoomState::Joined), _) => {
-                        room_summary.set_text(cx, &format!("You have already joined this {room_or_space_lc}."));
+                        room_summary.set_text(
+                            cx,
+                            &format!("You have already joined this {room_or_space_lc}."),
+                        );
                         join_room_button.set_text(cx, &format!("Go to {room_or_space_lc}"));
                         JoinButtonFunction::NavigateOrJoin
                     }
                     (Some(RoomState::Banned), _) => {
-                        room_summary.set_text(cx, &format!("You have been banned from this {room_or_space_lc}."));
+                        room_summary.set_text(
+                            cx,
+                            &format!("You have been banned from this {room_or_space_lc}."),
+                        );
                         join_room_button.set_text(cx, "Cannot join until un-banned");
                         JoinButtonFunction::None
                     }
                     (Some(RoomState::Invited), _) => {
-                        room_summary.set_text(cx, &format!("You have already been invited to this {room_or_space_lc}."));
+                        room_summary.set_text(
+                            cx,
+                            &format!("You have already been invited to this {room_or_space_lc}."),
+                        );
                         join_room_button.set_text(cx, "Go to invitation");
                         JoinButtonFunction::NavigateOrJoin
                     }
                     (Some(RoomState::Knocked), _) => {
-                        room_summary.set_text(cx, &format!("You have already knocked on this {room_or_space_lc}."));
+                        room_summary.set_text(
+                            cx,
+                            &format!("You have already knocked on this {room_or_space_lc}."),
+                        );
                         join_room_button.set_text(cx, "Knock again (be nice!)");
                         JoinButtonFunction::Knock
                     }
                     (Some(RoomState::Left), join_rule) => {
-                        room_summary.set_text(cx, &format!("You previously left this {room_or_space_lc}."));
+                        room_summary
+                            .set_text(cx, &format!("You previously left this {room_or_space_lc}."));
                         let (join_room_text, join_function) = match join_rule {
                             Some(JoinRuleSummary::Public) => (
                                 format!("Re-join this {room_or_space_lc}"),
@@ -671,9 +881,12 @@ impl Widget for AddRoomScreen {
                                 format!("Knock to re-join {room_or_space_lc}"),
                                 JoinButtonFunction::Knock,
                             ),
-                            // TODO: handle this after we update matrix-sdk to the new `JoinRule` enum.
+                            // Restricted joins stay disabled locally until the newer Matrix join-rule
+                            // enum is wired; the preview itself sends no membership request.
                             Some(JoinRuleSummary::Restricted(_)) => (
-                                format!("Re-joining {room_or_space_lc} requires an invite or other room membership"),
+                                format!(
+                                    "Re-joining {room_or_space_lc} requires an invite or other room membership"
+                                ),
                                 JoinButtonFunction::None,
                             ),
                             _ => (
@@ -686,15 +899,22 @@ impl Widget for AddRoomScreen {
                     }
                     // This room is not yet known to the user.
                     (None, join_rule) => {
-                        let direct = if frp.is_direct == Some(true) { "direct" } else { "regular" };
-                        room_summary.set_text(cx, &format!(
-                            "This is a {direct} {room_or_space_lc} with {} {}.",
-                            frp.num_joined_members,
-                            match frp.num_joined_members {
-                                1 => "member",
-                                _ => "members",
-                            },
-                        ));
+                        let direct = if frp.is_direct == Some(true) {
+                            "direct"
+                        } else {
+                            "regular"
+                        };
+                        room_summary.set_text(
+                            cx,
+                            &format!(
+                                "This is a {direct} {room_or_space_lc} with {} {}.",
+                                frp.num_joined_members,
+                                match frp.num_joined_members {
+                                    1 => "member",
+                                    _ => "members",
+                                },
+                            ),
+                        );
 
                         let (join_room_text, join_function) = match join_rule {
                             Some(JoinRuleSummary::Public) => (
@@ -709,9 +929,12 @@ impl Widget for AddRoomScreen {
                                 format!("Knock to join {room_or_space_lc}"),
                                 JoinButtonFunction::Knock,
                             ),
-                            // TODO: handle this after we update matrix-sdk to the new `JoinRule` enum.
+                            // Restricted joins stay disabled locally until the newer Matrix join-rule
+                            // enum is wired; the preview itself sends no membership request.
                             Some(JoinRuleSummary::Restricted(_)) => (
-                                format!("Joining {room_or_space_lc} requires an invite or other room membership"),
+                                format!(
+                                    "Joining {room_or_space_lc} requires an invite or other room membership"
+                                ),
                                 JoinButtonFunction::None,
                             ),
                             _ => (
@@ -726,11 +949,15 @@ impl Widget for AddRoomScreen {
 
                 match ars {
                     AddRoomState::FetchedRoomPreview { .. } => {
-                        join_room_button.set_enabled(cx, !matches!(join_function, JoinButtonFunction::None));
+                        join_room_button
+                            .set_enabled(cx, !matches!(join_function, JoinButtonFunction::None));
                         self.join_function = join_function;
                     }
                     AddRoomState::Knocked { .. } => {
-                        room_summary.set_text(cx, &format!("You have knocked on this {room_or_space_lc} and must now wait for someone to invite you in."));
+                        room_summary.set_text(
+                            cx,
+                            &format!("Knock sent for this {room_or_space_lc}; waiting for invite."),
+                        );
                         join_room_button.set_text(cx, "Successfully knocked!");
                         join_room_button.set_enabled(cx, false);
                     }
@@ -740,8 +967,13 @@ impl Widget for AddRoomScreen {
                         join_room_button.set_enabled(cx, false);
                     }
                     AddRoomState::Loaded { is_invite, .. } => {
-                        let verb = if *is_invite { "been invited to" } else { "fully joined" };
-                        room_summary.set_text(cx, &format!("You have {verb} this {room_or_space_lc}."));
+                        let verb = if *is_invite {
+                            "been invited to"
+                        } else {
+                            "fully joined"
+                        };
+                        room_summary
+                            .set_text(cx, &format!("You have {verb} this {room_or_space_lc}."));
                         let adj = if *is_invite { "invited" } else { "joined" };
                         join_room_button.set_text(cx, &format!("Go to {adj} {room_or_space_lc}"));
                         join_room_button.set_enabled(cx, true);
@@ -756,7 +988,6 @@ impl Widget for AddRoomScreen {
     }
 }
 
-
 /// The function to perform when the user clicks the join button in the fetched room preview.
 enum JoinButtonFunction {
     None,
@@ -765,7 +996,6 @@ enum JoinButtonFunction {
     /// Knock on (request to join) a room/space.
     Knock,
 }
-
 
 /// Actions sent from the backend task as a result of a [`MatrixRequest::Knock`].
 #[derive(Debug)]
@@ -782,9 +1012,8 @@ pub enum KnockResultAction {
         /// The room alias/ID that was originally sent with the knock request.
         room_or_alias_id: OwnedRoomOrAliasId,
         error: matrix_sdk::Error,
-    }
+    },
 }
-
 
 /// Tries to extract a room address (Alias or ID) from the given text.
 ///
@@ -799,7 +1028,9 @@ fn parse_address(text: &str) -> Result<(OwnedRoomOrAliasId, Vec<OwnedServerName>
         Err(e) => {
             let uri_result = MatrixToUri::parse(text)
                 .map(|uri| (uri.id().clone(), uri.via().to_owned()))
-                .or_else(|_| MatrixUri::parse(text).map(|uri| (uri.id().clone(), uri.via().to_owned())));
+                .or_else(|_| {
+                    MatrixUri::parse(text).map(|uri| (uri.id().clone(), uri.via().to_owned()))
+                });
 
             if let Ok((matrix_id, via)) = uri_result {
                 if let Some(room_or_alias_id) = match matrix_id {
@@ -813,5 +1044,28 @@ fn parse_address(text: &str) -> Result<(OwnedRoomOrAliasId, Vec<OwnedServerName>
             }
             Err(e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_room_reknock_cancel_prior_packet_keeps_cancel_unbuilt() {
+        let label = add_room_reknock_cancel_prior_packet_label(
+            "room",
+            "!knocked:example.org",
+            Some(&JoinRuleSummary::Knock),
+        );
+
+        assert!(label.contains("Re-knock/cancel-prior packet"));
+        assert!(label.contains("membership_state knocked"));
+        assert!(label.contains("join_rule knock"));
+        assert!(label.contains("existing_confirmed_MatrixRequest_Knock"));
+        assert!(label.contains("previous_knock_request_id missing"));
+        assert!(label.contains("cancel_prior_request_slot not_built"));
+        assert!(label.contains("cancel_prior_result_slot not_wired"));
+        assert!(label.contains("no cancel-prior-knock, JoinRoom, LeaveRoom"));
     }
 }

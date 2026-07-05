@@ -13,7 +13,6 @@ use crate::{
         app_preferences::{AppPreferencesAction, ViewModeOverride},
         settings_screen::SettingsScreenWidgetRefExt,
     },
-    shared::room_filter_input_bar::{MainFilterAction, RoomFilterInputBarWidgetExt},
 };
 
 script_mod! {
@@ -31,7 +30,7 @@ script_mod! {
     // and places its own screen widget inside the body.
     mod.widgets.RobrixContentView = StackNavigationView {
         width: Fill, height: Fill
-        draw_bg.color: (COLOR_PRIMARY)
+        draw_bg.color: (COLOR_TELEGRAM_BG)
         header +: {
             height: (mod.widgets.STACK_VIEW_HEADER_HEIGHT),
             padding: 0
@@ -42,7 +41,7 @@ script_mod! {
             clip_y: false,
             show_bg: true,
             draw_bg +: {
-                color: instance((COLOR_PRIMARY_DARKER))
+                color: instance((COLOR_TELEGRAM_PANEL))
                 color_dither: uniform(1.0)
                 gradient_border_horizontal: uniform(0.0)
                 gradient_fill_horizontal: uniform(0.0)
@@ -53,8 +52,8 @@ script_mod! {
                 border_color: instance(#0000)
                 border_color_2: instance(vec4(-1))
 
-                shadow_color: instance(#0005)
-                shadow_radius: uniform(12.0)
+                shadow_color: instance((COLOR_TELEGRAM_GLASS_SHADOW))
+                shadow_radius: uniform(16.0)
                 shadow_offset: uniform(vec2(0.0, 0.0))
 
                 rect_size2: varying(vec2(0))
@@ -134,7 +133,7 @@ script_mod! {
                         width: Fit, height: Fit,
                         padding: Inset{left: 20, right: 23, top: 10, bottom: 10}
                         margin: Inset{left: 8, right: 0, top: 0, bottom: 0}
-                        draw_icon +: { color: (ROOM_NAME_TEXT_COLOR) }
+                        draw_icon +: { color: (COLOR_TELEGRAM_BLUE) }
                         icon_walk: Walk{width: 13, height: Fit}
                         spacing: 0
                         text: ""
@@ -144,7 +143,7 @@ script_mod! {
                     // padding: Inset{top: 8}
                     title +: {
                         draw_text +: {
-                            color: (ROOM_NAME_TEXT_COLOR)
+                            color: (COLOR_TELEGRAM_TEXT)
                         }
                     }
                 }
@@ -153,11 +152,24 @@ script_mod! {
         body +: {
             // The top margin leaves room for the stack nav header.
             // The other padding is for safe inset areas.
+            flow: Down
             margin: Inset{top: (mod.widgets.STACK_VIEW_HEADER_HEIGHT)}
             padding: Inset{
                 left: (mod.widgets.SAFE_INSET_PAD_LEFT),
                 right: (mod.widgets.SAFE_INSET_PAD_RIGHT),
                 bottom: (mod.widgets.SAFE_INSET_PAD_BOTTOM),
+            }
+
+            mobile_stack_navigation_evidence := Label {
+                width: Fill,
+                height: Fit,
+                margin: Inset{top: 6.0, bottom: 4.0, left: 10.0, right: 10.0}
+                flow: Flow.Right{wrap: true}
+                draw_text +: {
+                    color: (COLOR_TELEGRAM_MUTED),
+                    text_style: theme.font_regular { font_size: 10.0 }
+                }
+                text: "Mobile stack: room pushes/pops reuse 16 local room views, restore previous selected rooms from UI state, and send no Matrix search, message, room-state, or membership request."
             }
         }
     }
@@ -174,11 +186,12 @@ script_mod! {
         }
         show_bg: true
         draw_bg +: {
-            color: (COLOR_PRIMARY_DARKER)
-            border_radius: 4.0
-            border_size: 0.0
-            shadow_color: #0005
-            shadow_radius: 15.0
+            color: (COLOR_TELEGRAM_PANEL)
+            border_radius: 10.0
+            border_size: 1.0
+            border_color: (COLOR_TELEGRAM_GLASS_HAIRLINE)
+            shadow_color: (COLOR_TELEGRAM_GLASS_SHADOW)
+            shadow_radius: 18.0
             shadow_offset: vec2(1.0, 0.0)
         }
 
@@ -214,195 +227,261 @@ script_mod! {
             //       across transitions between the Desktop and Mobile variant.
             Desktop := SolidView {
                 width: Fill, height: Fill
-                flow: Right
+                flow: Overlay
                 align: Align{x: 0.0, y: 0.0}
                 padding: 0,
                 margin: 0,
 
                 show_bg: true
                 draw_bg +: {
-                    color: (COLOR_SECONDARY)
+                    color: (COLOR_TELEGRAM_BG)
+                    color_2: #xEAF7FFFF
+                    gradient_fill_horizontal: 0.0
                 }
 
-                // On the left, show the navigation tab bar vertically.
-                CachedWidget {
-                    navigation_tab_bar := mod.widgets.NavigationTabBar {}
-                }
-
-                // To the right of that, we use the PageFlip widget to show either
-                // the main desktop UI or the settings screen.
-                home_screen_page_flip := PageFlip {
+                tempered_glass_backdrop := Image {
                     width: Fill, height: Fill
-                    // We only need bottom and right-side padding,
-                    // as the others are handled by the parent widget
-                    // or by the navigation bar.
-                    padding: Inset{
-                        bottom: (mod.widgets.SAFE_INSET_PAD_BOTTOM),
-                        right: (mod.widgets.SAFE_INSET_PAD_RIGHT),
+                    fit: ImageFit.Stretch
+                    src: (mod.widgets.IMG_TEMPERED_GLASS_BG)
+                    draw_bg +: {
+                        opacity: 1.0
+                        pixel: fn() {
+                            let color = self.get_color()
+                            return Pal.premul(vec4(color.xyz, color.w * self.opacity))
+                        }
+                    }
+                }
+
+                standard_desktop_shell := SolidView {
+                    width: Fill, height: Fill
+                    flow: Right
+                    show_bg: true
+                    draw_bg.color: #x070B1200
+
+                    // On the left, show the navigation tab bar vertically.
+                    CachedWidget {
+                        navigation_tab_bar := mod.widgets.NavigationTabBar {}
                     }
 
-                    lazy_init: true,
-                    active_page: @home_page
-
-                    home_page := View {
+                    // To the right of that, we use the PageFlip widget to show either
+                    // the main desktop UI or the settings screen.
+                    home_screen_page_flip := PageFlip {
                         width: Fill, height: Fill
-                        flow: Down
+                        // We only need bottom and right-side padding,
+                        // as the others are handled by the parent widget
+                        // or by the navigation bar.
+                        padding: Inset{
+                            bottom: (mod.widgets.SAFE_INSET_PAD_BOTTOM),
+                            right: (mod.widgets.SAFE_INSET_PAD_RIGHT),
+                        }
 
-                        View {
-                            width: Fill,
-                            height: 39,
-                            flow: Right
-                            padding: Inset{top: 2, bottom: 2}
-                            // The negative left/right margins compensate for the gray border,
-                            // such that the inner white input part is aligned with other elements.
-                            margin: Inset{left: -1.5, right: -1.5}
-                            spacing: 2
-                            align: Align{y: 0.5}
+                        lazy_init: true,
+                        active_page: @home_page
 
-                            CachedWidget {
-                                room_filter_input_bar := RoomFilterInputBar {}
+                        home_page := View {
+                            width: Fill, height: Fill
+                            flow: Down
+
+                            mod.widgets.MainDesktopUI {}
+                        }
+
+                        settings_page := RoundedView {
+                            width: Fill, height: Fill
+                            // This weird margin is just to make it line up with the home_page content.
+                            margin: Inset{top: 3, left: 1, right: 0, bottom: 0}
+                            show_bg: true,
+                            draw_bg +: {
+                                color: (COLOR_TELEGRAM_PANEL)
+                                border_color: (COLOR_TELEGRAM_GLASS_HAIRLINE)
+                                border_size: 1.0
+                                border_radius: 10.0
                             }
 
-                            // Hide this until it's implemented.
-                            // search_messages_button := SearchMessagesButton {
-                            //     // make this button match/align with the RoomFilterInputBar
-                            //     height: 32.5,
-                            //     margin: Inset{right: 2}
-                            // }
+                            CachedWidget {
+                                settings_screen := mod.widgets.SettingsScreen {}
+                            }
                         }
 
-                        mod.widgets.MainDesktopUI {}
-                    }
+                        add_room_page := RoundedView {
+                            width: Fill, height: Fill
+                            // This weird margin is just to make it line up with the home_page content.
+                            margin: Inset{top: 3, left: 1, right: 0, bottom: 0}
+                            show_bg: true,
+                            draw_bg +: {
+                                color: (COLOR_TELEGRAM_PANEL)
+                                border_color: (COLOR_TELEGRAM_GLASS_HAIRLINE)
+                                border_size: 1.0
+                                border_radius: 10.0
+                            }
 
-                    settings_page := RoundedView {
-                        width: Fill, height: Fill
-                        // This weird margin is just to make it line up with the home_page content.
-                        margin: Inset{top: 3, left: 1, right: 0, bottom: 0}
-                        show_bg: true,
-                        draw_bg +: {
-                            color: (COLOR_PRIMARY)
-                            border_radius: 4.0
-                        }
-
-                        CachedWidget {
-                            settings_screen := mod.widgets.SettingsScreen {}
+                            CachedWidget {
+                                add_room_screen := mod.widgets.AddRoomScreen {}
+                            }
                         }
                     }
+                }
 
-                    add_room_page := RoundedView {
-                        width: Fill, height: Fill
-                        // This weird margin is just to make it line up with the home_page content.
-                        margin: Inset{top: 3, left: 1, right: 0, bottom: 0}
-                        show_bg: true,
-                        draw_bg +: {
-                            color: (COLOR_PRIMARY)
-                            border_radius: 4.0
-                        }
+                fixture_desktop_product_shell := SolidView {
+                    visible: false
+                    width: Fill, height: Fill
+                    flow: Down
+                    padding: Inset{top: 14.0, bottom: 14.0, left: 14.0, right: 14.0}
+                    show_bg: true
+                    draw_bg.color: (COLOR_TELEGRAM_BG)
 
-                        CachedWidget {
-                            add_room_screen := mod.widgets.AddRoomScreen {}
-                        }
+                    fixture_desktop_product_scroller := ScrollYView {
+                        width: Fill,
+                        height: Fill,
+                        flow: Down,
+
+                        fixture_desktop_cockpit := mod.widgets.HeptaFixtureCockpit {}
                     }
                 }
             }
 
             Mobile := SolidView {
                 width: Fill, height: Fill
-                flow: Down
+                flow: Overlay
 
                 show_bg: true
-                draw_bg.color: (COLOR_PRIMARY)
+                draw_bg +: {
+                    color: (COLOR_TELEGRAM_BG)
+                    color_2: #xEAF7FFFF
+                    gradient_fill_horizontal: 0.0
+                }
 
-                view_stack := StackNavigation {
-                    root_view +: {
-                        flow: Down
-                        width: Fill, height: Fill
+                tempered_glass_backdrop := Image {
+                    width: Fill, height: Fill
+                    fit: ImageFit.Stretch
+                    src: (mod.widgets.IMG_TEMPERED_GLASS_BG)
+                    draw_bg +: {
+                        opacity: 0.98
+                        pixel: fn() {
+                            let color = self.get_color()
+                            return Pal.premul(vec4(color.xyz, color.w * self.opacity))
+                        }
+                    }
+                }
 
-                        // At the top of the root view, we use the PageFlip widget to show either
-                        // the main list of rooms or the settings screen.
-                        home_screen_page_flip := PageFlip {
+                standard_mobile_shell := SolidView {
+                    width: Fill, height: Fill
+                    flow: Down
+                    show_bg: true
+                    draw_bg.color: #x070B1200
+
+                    view_stack := StackNavigation {
+                        root_view +: {
+                            flow: Down
                             width: Fill, height: Fill
-                            padding: Inset{
-                                left: (mod.widgets.SAFE_INSET_PAD_LEFT),
-                                right: (mod.widgets.SAFE_INSET_PAD_RIGHT),
-                            }
 
-                            lazy_init: true,
-                            active_page: @home_page
-
-                            home_page := View {
+                            // At the top of the root view, we use the PageFlip widget to show either
+                            // the main list of rooms or the settings screen.
+                            home_screen_page_flip := PageFlip {
                                 width: Fill, height: Fill
-                                // Note: while the other page views have top padding, we do NOT add that here
-                                // because it is added in the `RoomsSideBar`'s `RoundedShadowView` itself.
-                                flow: Down
+                                padding: Inset{
+                                    left: (mod.widgets.SAFE_INSET_PAD_LEFT),
+                                    right: (mod.widgets.SAFE_INSET_PAD_RIGHT),
+                                }
 
-                                mod.widgets.RoomsSideBar {}
-                            }
+                                lazy_init: true,
+                                active_page: @home_page
 
-                            settings_page := View {
-                                width: Fill, height: Fill
+                                home_page := View {
+                                    width: Fill, height: Fill
+                                    // Note: while the other page views have top padding, we do NOT add that here
+                                    // because it is added in the `RoomsSideBar`'s `RoundedShadowView` itself.
+                                    flow: Down
 
-                                CachedWidget {
-                                    settings_screen := mod.widgets.SettingsScreen {}
+                                    mod.widgets.RoomsSideBar {}
+                                }
+
+                                settings_page := View {
+                                    width: Fill, height: Fill
+
+                                    CachedWidget {
+                                        settings_screen := mod.widgets.SettingsScreen {}
+                                    }
+                                }
+
+                                add_room_page := View {
+                                    width: Fill, height: Fill
+
+                                    CachedWidget {
+                                        add_room_screen := mod.widgets.AddRoomScreen {}
+                                    }
                                 }
                             }
 
-                            add_room_page := View {
-                                width: Fill, height: Fill
+                            // Show the SpacesBar right above the navigation tab bar.
+                            // We wrap it in the SpacesBarWrapper in order to animate it in or out,
+                            // and wrap *that* in a CachedWidget in order to maintain its shown/hidden state
+                            // across AdaptiveView transitions between Mobile view mode and Desktop view mode.
+                            //
+                            // ... Then we wrap *that* in a ... <https://www.youtube.com/watch?v=evUWersr7pc>
+                            CachedWidget {
+                                spaces_bar_wrapper := mod.widgets.SpacesBarWrapper {}
+                            }
 
-                                CachedWidget {
-                                    add_room_screen := mod.widgets.AddRoomScreen {}
-                                }
+                            // At the bottom of the root view, show the navigation tab bar horizontally.
+                            CachedWidget {
+                                navigation_tab_bar := mod.widgets.NavigationTabBar {}
                             }
                         }
 
-                        // Show the SpacesBar right above the navigation tab bar.
-                        // We wrap it in the SpacesBarWrapper in order to animate it in or out,
-                        // and wrap *that* in a CachedWidget in order to maintain its shown/hidden state
-                        // across AdaptiveView transitions between Mobile view mode and Desktop view mode.
-                        //
-                        // ... Then we wrap *that* in a ... <https://www.youtube.com/watch?v=evUWersr7pc>
-                        CachedWidget {
-                            spaces_bar_wrapper := mod.widgets.SpacesBarWrapper {}
+                        // Room views: multiple instances to support deep stacking
+                        // (e.g., room -> thread -> room -> thread -> ...).
+                        // Each stack depth gets its own dedicated view widget,
+                        // avoiding complex state save/restore when views are reused.
+                        room_view_0  := mod.widgets.RobrixContentView { body +: { room_screen_0  := mod.widgets.RoomScreen {} } }
+                        room_view_1  := mod.widgets.RobrixContentView { body +: { room_screen_1  := mod.widgets.RoomScreen {} } }
+                        room_view_2  := mod.widgets.RobrixContentView { body +: { room_screen_2  := mod.widgets.RoomScreen {} } }
+                        room_view_3  := mod.widgets.RobrixContentView { body +: { room_screen_3  := mod.widgets.RoomScreen {} } }
+                        room_view_4  := mod.widgets.RobrixContentView { body +: { room_screen_4  := mod.widgets.RoomScreen {} } }
+                        room_view_5  := mod.widgets.RobrixContentView { body +: { room_screen_5  := mod.widgets.RoomScreen {} } }
+                        room_view_6  := mod.widgets.RobrixContentView { body +: { room_screen_6  := mod.widgets.RoomScreen {} } }
+                        room_view_7  := mod.widgets.RobrixContentView { body +: { room_screen_7  := mod.widgets.RoomScreen {} } }
+                        room_view_8  := mod.widgets.RobrixContentView { body +: { room_screen_8  := mod.widgets.RoomScreen {} } }
+                        room_view_9  := mod.widgets.RobrixContentView { body +: { room_screen_9  := mod.widgets.RoomScreen {} } }
+                        room_view_10 := mod.widgets.RobrixContentView { body +: { room_screen_10 := mod.widgets.RoomScreen {} } }
+                        room_view_11 := mod.widgets.RobrixContentView { body +: { room_screen_11 := mod.widgets.RoomScreen {} } }
+                        room_view_12 := mod.widgets.RobrixContentView { body +: { room_screen_12 := mod.widgets.RoomScreen {} } }
+                        room_view_13 := mod.widgets.RobrixContentView { body +: { room_screen_13 := mod.widgets.RoomScreen {} } }
+                        room_view_14 := mod.widgets.RobrixContentView { body +: { room_screen_14 := mod.widgets.RoomScreen {} } }
+                        room_view_15 := mod.widgets.RobrixContentView { body +: { room_screen_15 := mod.widgets.RoomScreen {} } }
+
+                        invite_view := mod.widgets.RobrixContentView {
+                            body +: {
+                                invite_screen := mod.widgets.InviteScreen {}
+                            }
                         }
 
-                        // At the bottom of the root view, show the navigation tab bar horizontally.
-                        CachedWidget {
-                            navigation_tab_bar := mod.widgets.NavigationTabBar {}
-                        }
-                    }
-
-                    // Room views: multiple instances to support deep stacking
-                    // (e.g., room -> thread -> room -> thread -> ...).
-                    // Each stack depth gets its own dedicated view widget,
-                    // avoiding complex state save/restore when views are reused.
-                    room_view_0  := mod.widgets.RobrixContentView { body +: { room_screen_0  := mod.widgets.RoomScreen {} } }
-                    room_view_1  := mod.widgets.RobrixContentView { body +: { room_screen_1  := mod.widgets.RoomScreen {} } }
-                    room_view_2  := mod.widgets.RobrixContentView { body +: { room_screen_2  := mod.widgets.RoomScreen {} } }
-                    room_view_3  := mod.widgets.RobrixContentView { body +: { room_screen_3  := mod.widgets.RoomScreen {} } }
-                    room_view_4  := mod.widgets.RobrixContentView { body +: { room_screen_4  := mod.widgets.RoomScreen {} } }
-                    room_view_5  := mod.widgets.RobrixContentView { body +: { room_screen_5  := mod.widgets.RoomScreen {} } }
-                    room_view_6  := mod.widgets.RobrixContentView { body +: { room_screen_6  := mod.widgets.RoomScreen {} } }
-                    room_view_7  := mod.widgets.RobrixContentView { body +: { room_screen_7  := mod.widgets.RoomScreen {} } }
-                    room_view_8  := mod.widgets.RobrixContentView { body +: { room_screen_8  := mod.widgets.RoomScreen {} } }
-                    room_view_9  := mod.widgets.RobrixContentView { body +: { room_screen_9  := mod.widgets.RoomScreen {} } }
-                    room_view_10 := mod.widgets.RobrixContentView { body +: { room_screen_10 := mod.widgets.RoomScreen {} } }
-                    room_view_11 := mod.widgets.RobrixContentView { body +: { room_screen_11 := mod.widgets.RoomScreen {} } }
-                    room_view_12 := mod.widgets.RobrixContentView { body +: { room_screen_12 := mod.widgets.RoomScreen {} } }
-                    room_view_13 := mod.widgets.RobrixContentView { body +: { room_screen_13 := mod.widgets.RoomScreen {} } }
-                    room_view_14 := mod.widgets.RobrixContentView { body +: { room_screen_14 := mod.widgets.RoomScreen {} } }
-                    room_view_15 := mod.widgets.RobrixContentView { body +: { room_screen_15 := mod.widgets.RoomScreen {} } }
-
-                    invite_view := mod.widgets.RobrixContentView {
-                        body +: {
-                            invite_screen := mod.widgets.InviteScreen {}
+                        space_lobby_view := mod.widgets.RobrixContentView {
+                            body +: {
+                                space_lobby_screen := mod.widgets.SpaceLobbyScreen {}
+                            }
                         }
                     }
+                }
 
-                    space_lobby_view := mod.widgets.RobrixContentView {
-                        body +: {
-                            space_lobby_screen := mod.widgets.SpaceLobbyScreen {}
-                        }
+                fixture_mobile_product_shell := SolidView {
+                    visible: false
+                    width: Fill, height: Fill
+                    flow: Down
+                    padding: Inset{
+                        top: 10.0,
+                        bottom: (10.0 + mod.widgets.SAFE_INSET_PAD_BOTTOM),
+                        left: (10.0 + mod.widgets.SAFE_INSET_PAD_LEFT),
+                        right: (10.0 + mod.widgets.SAFE_INSET_PAD_RIGHT),
+                    }
+                    show_bg: true
+                    draw_bg.color: (COLOR_TELEGRAM_BG)
+
+                    fixture_mobile_product_scroller := ScrollYView {
+                        width: Fill,
+                        height: Fill,
+                        flow: Down,
+
+                        fixture_mobile_cockpit := mod.widgets.HeptaFixtureCockpit {}
                     }
                 }
             }
@@ -410,13 +489,17 @@ script_mod! {
     }
 }
 
+const HEPTA_FIXTURE_MOBILE_PRODUCT_SHELL_MAX_WIDTH: f64 = 620.0;
 
 /// A simple wrapper around the SpacesBar that allows us to animate showing or hiding it.
 #[derive(Script, Widget, Animator)]
 pub struct SpacesBarWrapper {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
-    #[apply_default] animator: Animator,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
+    #[apply_default]
+    animator: Animator,
 }
 
 impl ScriptHook for SpacesBarWrapper {
@@ -468,7 +551,9 @@ impl Widget for SpacesBarWrapper {
 impl SpacesBarWrapperRef {
     /// Shows or hides the spaces bar by animating it in or out.
     fn show_or_hide(&self, cx: &mut Cx, show: bool) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         if show {
             inner.animator_play(cx, ids!(spaces_bar_animator.show));
         } else {
@@ -478,68 +563,96 @@ impl SpacesBarWrapperRef {
     }
 }
 
-
 #[derive(Script, ScriptHook, Widget)]
 pub struct HomeScreen {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 
     /// The previously-selected navigation tab, used to determine which tab
     /// and top-level view we return to after closing the settings screen.
     ///
     /// Note that the current selected tap is stored in `AppState` so that
     /// other widgets can easily access it.
-    #[rust] previous_selection: SelectedTab,
-    #[rust] is_spaces_bar_shown: bool,
+    #[rust]
+    previous_selection: SelectedTab,
+    #[rust]
+    is_spaces_bar_shown: bool,
 
     /// A stack of previously-selected rooms for mobile stack navigation.
     /// When a view is popped off the stack, the previous `selected_room` is restored.
-    #[rust] mobile_room_nav_stack: Vec<SelectedRoom>,
+    #[rust]
+    mobile_room_nav_stack: Vec<SelectedRoom>,
 
     /// The most recently applied view-mode override, used to short-circuit
     /// redundant `AdaptiveView` selector reinstalls when an
     /// [`AppPreferencesAction::ViewModeChanged`] action repeats the current
     /// value (e.g., the unconditional broadcast on app-state restore).
-    #[rust] applied_view_mode: ViewModeOverride,
+    #[rust]
+    applied_view_mode: ViewModeOverride,
+    #[rust(false)]
+    fixture_desktop_product_shell_logged: bool,
+    #[rust(false)]
+    fixture_mobile_product_shell_logged: bool,
 }
 
 impl Widget for HomeScreen {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         if let Event::Actions(actions) = event {
-            // On desktop, the RoomFilterInputBar is inside this HomeScreen.
-            // Check if it changed and re-emit as a MainFilterAction so that
-            // RoomsList and SpacesBar can respond without cross-talk from
-            // other RoomFilterInputBar instances (e.g., SpaceLobbyScreen's).
-            if let Some(keywords) = self.view.room_filter_input_bar(cx, ids!(room_filter_input_bar)).changed(actions) {
-                cx.action(MainFilterAction::Changed(keywords));
-            }
-
             let app_state = scope.data.get_mut::<AppState>().unwrap();
+            self.push_fixture_initial_mobile_room_view(cx, app_state);
             for action in actions {
                 match action.downcast_ref() {
                     Some(NavigationBarAction::GoToHome) => {
                         if !matches!(app_state.selected_tab, SelectedTab::Home) {
+                            // Top-level tab selection evidence: GoToHome only
+                            // records previous_selection, selects the local
+                            // Home tab, emits TabSelected, and updates the
+                            // local PageFlip. It sends no Matrix search,
+                            // room-list pagination, message, room-state,
+                            // membership, or live mutation request.
                             self.previous_selection = app_state.selected_tab.clone();
                             app_state.selected_tab = SelectedTab::Home;
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
                             self.update_active_page_from_selection(cx, app_state);
                             self.view.redraw(cx);
                         }
                     }
                     Some(NavigationBarAction::GoToAddRoom) => {
                         if !matches!(app_state.selected_tab, SelectedTab::AddRoom) {
+                            // Top-level tab selection evidence: GoToAddRoom
+                            // only records previous_selection, selects the
+                            // local AddRoom page, emits TabSelected, and
+                            // updates the local PageFlip. AddRoom join/knock
+                            // requests remain behind AddRoomScreen guards; the
+                            // tab selection itself sends no Matrix search,
+                            // room-list pagination, message, room-state,
+                            // membership, or live mutation request.
                             self.previous_selection = app_state.selected_tab.clone();
                             app_state.selected_tab = SelectedTab::AddRoom;
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
                             self.update_active_page_from_selection(cx, app_state);
                             self.view.redraw(cx);
                         }
                     }
                     Some(NavigationBarAction::GoToSpace { space_name_id }) => {
-                        let new_space_selection = SelectedTab::Space { space_name_id: space_name_id.clone() };
+                        // SpacesBar entry selection evidence: GoToSpace only
+                        // updates the selected top-level tab and broadcasts
+                        // TabSelected. Space child rows are resolved later
+                        // from cached/read SpaceService state; this branch
+                        // sends no Matrix mutation or live request itself.
+                        let new_space_selection = SelectedTab::Space {
+                            space_name_id: space_name_id.clone(),
+                        };
                         if app_state.selected_tab != new_space_selection {
                             self.previous_selection = app_state.selected_tab.clone();
                             app_state.selected_tab = new_space_selection;
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
                             self.update_active_page_from_selection(cx, app_state);
                             self.view.redraw(cx);
                         }
@@ -547,10 +660,22 @@ impl Widget for HomeScreen {
                     // Only open the settings screen if it is not currently open.
                     Some(NavigationBarAction::OpenSettings) => {
                         if !matches!(app_state.selected_tab, SelectedTab::Settings) {
+                            // ProfileIcon settings evidence: opening settings
+                            // only stores the previous local tab, selects the
+                            // local Settings page, and populates it from the
+                            // current AppState/cache. It does not send account,
+                            // SettingsScreen from the current AppState/cache
+                            // is a local UI populate step here.
+                            // profile, message, room-state, membership, or live
+                            // mutation requests by itself.
                             self.previous_selection = app_state.selected_tab.clone();
                             app_state.selected_tab = SelectedTab::Settings;
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
-                            if let Some(settings_page) = self.update_active_page_from_selection(cx, app_state) {
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
+                            if let Some(settings_page) =
+                                self.update_active_page_from_selection(cx, app_state)
+                            {
                                 settings_page
                                     .settings_screen(cx, ids!(settings_screen))
                                     .populate(cx, None, app_state);
@@ -562,24 +687,33 @@ impl Widget for HomeScreen {
                     }
                     Some(NavigationBarAction::CloseSettings) => {
                         if matches!(app_state.selected_tab, SelectedTab::Settings) {
+                            // Settings close evidence: CloseSettings restores
+                            // previous_selection in local UI state and
+                            // broadcasts the restored tab. It does not send
+                            // logout, account/profile mutation, message,
+                            // room-state, membership, or live mutation
+                            // requests.
                             app_state.selected_tab = self.previous_selection.clone();
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
                             self.update_active_page_from_selection(cx, app_state);
                             self.view.redraw(cx);
                         }
                     }
                     Some(NavigationBarAction::ToggleSpacesBar) => {
                         self.is_spaces_bar_shown = !self.is_spaces_bar_shown;
-                        self.view.spaces_bar_wrapper(cx, ids!(spaces_bar_wrapper))
+                        self.view
+                            .spaces_bar_wrapper(cx, ids!(spaces_bar_wrapper))
                             .show_or_hide(cx, self.is_spaces_bar_shown);
                     }
                     // We're the ones who emitted this action, so we don't need to handle it again.
-                    Some(NavigationBarAction::TabSelected(_))
-                    | None => { }
+                    Some(NavigationBarAction::TabSelected(_)) | None => {}
                 }
 
                 // React to App Settings changes that affect the HomeScreen layout.
-                if let Some(AppPreferencesAction::ViewModeChanged(new_mode)) = action.downcast_ref() {
+                if let Some(AppPreferencesAction::ViewModeChanged(new_mode)) = action.downcast_ref()
+                {
                     if *new_mode != self.applied_view_mode {
                         self.apply_view_mode(cx, *new_mode);
                         self.view.redraw(cx);
@@ -591,7 +725,7 @@ impl Widget for HomeScreen {
                 // to manage dock tabs; the mobile push is harmless there (views aren't drawn).
                 match action.as_widget_action().cast() {
                     RoomsListAction::Selected(selected_room) => {
-                        self.push_selected_room_view(cx, app_state, selected_room);
+                        self.push_selected_room_view(cx, app_state, selected_room, true);
                     }
                     RoomsListAction::InviteAccepted { room_name_id } => {
                         cx.action(AppStateAction::UpgradedInviteToJoinedRoom(
@@ -601,8 +735,9 @@ impl Widget for HomeScreen {
                     _ => {}
                 }
 
-                // When a stack navigation pop is initiated (back button pressed),
-                // pop the mobile nav stack so it stays in sync with StackNavigation.
+                // Mobile stack navigation evidence: pressing back pops the local
+                // selected-room stack to stay in sync with StackNavigation and
+                // sends no Matrix search, message, room-state, or membership request.
                 if let StackNavigationAction::Pop = action.as_widget_action().cast() {
                     if app_state.selected_room.is_some() {
                         app_state.selected_room = self.mobile_room_nav_stack.pop();
@@ -615,12 +750,15 @@ impl Widget for HomeScreen {
     }
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
+        let available_width = cx.turtle().width();
         let app_state = scope.data.get_mut::<AppState>().unwrap();
+        self.push_fixture_initial_mobile_room_view(cx, app_state);
         // Note: We need to update the active page before drawing,
         // because if we switched between Desktop and Mobile views,
         // the PageFlip widget will have been reset to its default,
         // so we must re-set it to the correct page based on `app_state.selected_tab`.
         self.update_active_page_from_selection(cx, app_state);
+        self.sync_fixture_product_shell(cx, app_state, available_width);
 
         self.view.draw_walk(cx, scope, walk)
     }
@@ -647,8 +785,7 @@ impl HomeScreen {
             .set_active_page(
                 cx,
                 match app_state.selected_tab {
-                    SelectedTab::Space { .. }
-                    | SelectedTab::Home => id!(home_page),
+                    SelectedTab::Space { .. } | SelectedTab::Home => id!(home_page),
                     SelectedTab::Settings => id!(settings_page),
                     SelectedTab::AddRoom => id!(add_room_page),
                 },
@@ -659,27 +796,43 @@ impl HomeScreen {
     /// Each depth gets its own dedicated view widget to avoid
     /// complex state save/restore when views would otherwise be reused.
     const ROOM_VIEW_IDS: [LiveId; 16] = [
-        live_id!(room_view_0),  live_id!(room_view_1),
-        live_id!(room_view_2),  live_id!(room_view_3),
-        live_id!(room_view_4),  live_id!(room_view_5),
-        live_id!(room_view_6),  live_id!(room_view_7),
-        live_id!(room_view_8),  live_id!(room_view_9),
-        live_id!(room_view_10), live_id!(room_view_11),
-        live_id!(room_view_12), live_id!(room_view_13),
-        live_id!(room_view_14), live_id!(room_view_15),
+        live_id!(room_view_0),
+        live_id!(room_view_1),
+        live_id!(room_view_2),
+        live_id!(room_view_3),
+        live_id!(room_view_4),
+        live_id!(room_view_5),
+        live_id!(room_view_6),
+        live_id!(room_view_7),
+        live_id!(room_view_8),
+        live_id!(room_view_9),
+        live_id!(room_view_10),
+        live_id!(room_view_11),
+        live_id!(room_view_12),
+        live_id!(room_view_13),
+        live_id!(room_view_14),
+        live_id!(room_view_15),
     ];
 
     /// The RoomScreen widget IDs inside each room view,
     /// corresponding 1:1 with [`Self::ROOM_VIEW_IDS`].
     const ROOM_SCREEN_IDS: [LiveId; 16] = [
-        live_id!(room_screen_0),  live_id!(room_screen_1),
-        live_id!(room_screen_2),  live_id!(room_screen_3),
-        live_id!(room_screen_4),  live_id!(room_screen_5),
-        live_id!(room_screen_6),  live_id!(room_screen_7),
-        live_id!(room_screen_8),  live_id!(room_screen_9),
-        live_id!(room_screen_10), live_id!(room_screen_11),
-        live_id!(room_screen_12), live_id!(room_screen_13),
-        live_id!(room_screen_14), live_id!(room_screen_15),
+        live_id!(room_screen_0),
+        live_id!(room_screen_1),
+        live_id!(room_screen_2),
+        live_id!(room_screen_3),
+        live_id!(room_screen_4),
+        live_id!(room_screen_5),
+        live_id!(room_screen_6),
+        live_id!(room_screen_7),
+        live_id!(room_screen_8),
+        live_id!(room_screen_9),
+        live_id!(room_screen_10),
+        live_id!(room_screen_11),
+        live_id!(room_screen_12),
+        live_id!(room_screen_13),
+        live_id!(room_screen_14),
+        live_id!(room_screen_15),
     ];
 
     /// Returns the room view and room screen LiveIds for the given stack depth.
@@ -699,6 +852,7 @@ impl HomeScreen {
         cx: &mut Cx,
         app_state: &mut AppState,
         selected_room: SelectedRoom,
+        preserve_previous_room: bool,
     ) {
         let new_depth = self.view.stack_navigation(cx, ids!(view_stack)).depth();
 
@@ -706,7 +860,11 @@ impl HomeScreen {
             SelectedRoom::JoinedRoom { room_name_id }
             | SelectedRoom::Thread { room_name_id, .. } => {
                 let (view_id, room_screen_id) = Self::room_ids_for_depth(new_depth);
-                let thread_root = if let SelectedRoom::Thread { thread_root_event_id, .. } = &selected_room {
+                let thread_root = if let SelectedRoom::Thread {
+                    thread_root_event_id,
+                    ..
+                } = &selected_room
+                {
                     Some(thread_root_event_id.clone())
                 } else {
                     None
@@ -734,13 +892,107 @@ impl HomeScreen {
         stack_navigation.set_title(cx, view_id, &selected_room.display_name());
 
         // Save the current selected_room onto the navigation stack before replacing it.
-        if let Some(prev) = app_state.selected_room.take() {
+        if preserve_previous_room && let Some(prev) = app_state.selected_room.take() {
             self.mobile_room_nav_stack.push(prev);
         }
         app_state.selected_room = Some(selected_room);
 
-        // Push the view onto the mobile navigation stack.
+        // Push the view onto the mobile navigation stack. This is local UI state
+        // replay over already selected room data; request paths stay inside the
+        // room widgets and no Matrix search, message, room-state, or membership
+        // request is emitted by the stack push itself.
         stack_navigation.push(cx, view_id);
         self.view.redraw(cx);
+    }
+
+    fn push_fixture_initial_mobile_room_view(&mut self, cx: &mut Cx, app_state: &mut AppState) {
+        if !crate::hepta_fixture::is_fixture_mode_enabled() {
+            return;
+        }
+        if self.view.stack_navigation(cx, ids!(view_stack)).depth() != 0 {
+            return;
+        }
+        let Some(selected_room) = app_state.selected_room.clone() else {
+            return;
+        };
+        self.push_selected_room_view(cx, app_state, selected_room, false);
+    }
+
+    fn sync_fixture_product_shell(
+        &mut self,
+        cx: &mut Cx,
+        app_state: &mut AppState,
+        available_width: f64,
+    ) {
+        let fixture_mode = crate::hepta_fixture::is_fixture_mode_enabled();
+        let mobile_product_shell = fixture_mode
+            && available_width.is_finite()
+            && available_width > 0.0
+            && available_width <= HEPTA_FIXTURE_MOBILE_PRODUCT_SHELL_MAX_WIDTH;
+        let desktop_product_shell = fixture_mode && !mobile_product_shell;
+
+        self.view
+            .view(cx, ids!(standard_desktop_shell))
+            .set_visible(cx, !desktop_product_shell);
+        self.view
+            .view(cx, ids!(fixture_desktop_product_shell))
+            .set_visible(cx, desktop_product_shell);
+        self.view
+            .view(cx, ids!(standard_mobile_shell))
+            .set_visible(cx, !mobile_product_shell);
+        self.view
+            .view(cx, ids!(fixture_mobile_product_shell))
+            .set_visible(cx, mobile_product_shell);
+
+        if !fixture_mode {
+            return;
+        }
+
+        let Some(selected_room) = app_state.selected_room.clone() else {
+            return;
+        };
+        let room_name_id = match selected_room {
+            SelectedRoom::JoinedRoom { room_name_id } => room_name_id,
+            SelectedRoom::Thread { room_name_id, .. } => room_name_id,
+            SelectedRoom::InvitedRoom { .. } | SelectedRoom::Space { .. } => return,
+        };
+        if !crate::hepta_fixture::is_fixture_room_id(room_name_id.room_id().as_str()) {
+            return;
+        }
+
+        if desktop_product_shell {
+            if !self.fixture_desktop_product_shell_logged {
+                log!(
+                    "Hepta Native fixture product shell selected for desktop: {}",
+                    room_name_id
+                );
+                log!(
+                    "Hepta Native fixture cockpit selected for desktop product shell: {}",
+                    room_name_id
+                );
+                log!(
+                    "Hepta Native fixture Matrix composer hidden for desktop product shell: {}",
+                    room_name_id
+                );
+                self.fixture_desktop_product_shell_logged = true;
+            }
+        }
+        if mobile_product_shell {
+            if !self.fixture_mobile_product_shell_logged {
+                log!(
+                    "Hepta Native fixture product shell selected for mobile: {}",
+                    room_name_id
+                );
+                log!(
+                    "Hepta Native fixture cockpit selected for mobile product shell: {}",
+                    room_name_id
+                );
+                log!(
+                    "Hepta Native fixture Matrix composer hidden for mobile product shell: {}",
+                    room_name_id
+                );
+                self.fixture_mobile_product_shell_logged = true;
+            }
+        }
     }
 }

@@ -7,6 +7,9 @@ use crate::sliding_sync::{submit_async_request, LoginByPassword, LoginRequest, M
 
 use super::login_status_modal::{LoginStatusModalAction, LoginStatusModalWidgetExt};
 
+const LOGIN_CANCEL_COMPACT_LABEL: &str =
+    "Local login cancel surface; no Matrix login cancel request.";
+
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
@@ -313,20 +316,25 @@ script_mod! {
     }
 }
 
-static MATRIX_SIGN_UP_URL: &str = "https://matrix.org/docs/chat_basics/matrix-for-im/#creating-a-matrix-account";
+static MATRIX_SIGN_UP_URL: &str =
+    "https://matrix.org/docs/chat_basics/matrix-for-im/#creating-a-matrix-account";
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct LoginScreen {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
     /// Whether the password field is currently showing plaintext.
-    #[rust] password_visible: bool,
+    #[rust]
+    password_visible: bool,
     /// Boolean to indicate if the SSO login process is still in flight
-    #[rust] sso_pending: bool,
+    #[rust]
+    sso_pending: bool,
     /// The URL to redirect to after logging in with SSO.
-    #[rust] sso_redirect_url: Option<String>,
+    #[rust]
+    sso_redirect_url: Option<String>,
 }
-
 
 impl Widget for LoginScreen {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
@@ -348,7 +356,9 @@ impl MatchEvent for LoginScreen {
         let homeserver_input = self.view.text_input(cx, ids!(homeserver_input));
 
         let login_status_modal = self.view.modal(cx, ids!(login_status_modal));
-        let login_status_modal_inner = self.view.login_status_modal(cx, ids!(login_status_modal_inner));
+        let login_status_modal_inner = self
+            .view
+            .login_status_modal(cx, ids!(login_status_modal_inner));
 
         // Handle toggling password visibility
         let show_pw_button = self.view.button(cx, ids!(show_password_button));
@@ -377,20 +387,39 @@ impl MatchEvent for LoginScreen {
             if user_id.is_empty() {
                 login_status_modal_inner.set_title(cx, "Missing User ID");
                 login_status_modal_inner.set_status(cx, "Please enter a valid User ID.");
+                login_status_modal_inner.hide_cancel_evidence(cx);
                 login_status_modal_inner.button_ref(cx).set_text(cx, "Okay");
+                login_status_modal_inner
+                    .button_ref(cx)
+                    .set_enabled(cx, true);
             } else if password.is_empty() {
                 login_status_modal_inner.set_title(cx, "Missing Password");
                 login_status_modal_inner.set_status(cx, "Please enter a valid password.");
+                login_status_modal_inner.hide_cancel_evidence(cx);
                 login_status_modal_inner.button_ref(cx).set_text(cx, "Okay");
+                login_status_modal_inner
+                    .button_ref(cx)
+                    .set_enabled(cx, true);
             } else {
                 login_status_modal_inner.set_title(cx, "Logging in...");
                 login_status_modal_inner.set_status(cx, "Waiting for a login response...");
-                login_status_modal_inner.button_ref(cx).set_text(cx, "Cancel");
-                submit_async_request(MatrixRequest::Login(LoginRequest::LoginByPassword(LoginByPassword {
-                    user_id,
-                    password,
-                    homeserver: homeserver.is_empty().not().then_some(homeserver),
-                })));
+                login_status_modal_inner.set_cancel_evidence(
+                    cx,
+                    "Password login pending. Local status close only; no Matrix login cancel request.",
+                );
+                login_status_modal_inner
+                    .button_ref(cx)
+                    .set_text(cx, "Cancel");
+                login_status_modal_inner
+                    .button_ref(cx)
+                    .set_enabled(cx, true);
+                submit_async_request(MatrixRequest::Login(LoginRequest::LoginByPassword(
+                    LoginByPassword {
+                        user_id,
+                        password,
+                        homeserver: homeserver.is_empty().not().then_some(homeserver),
+                    },
+                )));
             }
             login_status_modal.open(cx);
             self.redraw(cx);
@@ -412,14 +441,19 @@ impl MatchEvent for LoginScreen {
 
             // Handle login-related actions received from background async tasks.
             match action.downcast_ref() {
-                Some(LoginAction::CliAutoLogin { user_id, homeserver }) => {
+                Some(LoginAction::CliAutoLogin {
+                    user_id,
+                    homeserver,
+                }) => {
                     user_id_input.set_text(cx, user_id);
                     password_input.set_text(cx, "");
                     homeserver_input.set_text(cx, homeserver.as_deref().unwrap_or_default());
                     login_status_modal_inner.set_title(cx, "Logging in via CLI...");
-                    login_status_modal_inner.set_status(
+                    login_status_modal_inner
+                        .set_status(cx, &format!("Auto-logging in as user {user_id}..."));
+                    login_status_modal_inner.set_cancel_evidence(
                         cx,
-                        &format!("Auto-logging in as user {user_id}...")
+                        "CLI auto-login pending. Cancel is disabled; no Matrix login cancel request.",
                     );
                     let login_status_modal_button = login_status_modal_inner.button_ref(cx);
                     login_status_modal_button.set_text(cx, "Cancel");
@@ -429,6 +463,15 @@ impl MatchEvent for LoginScreen {
                 Some(LoginAction::Status { title, status }) => {
                     login_status_modal_inner.set_title(cx, title);
                     login_status_modal_inner.set_status(cx, status);
+                    if self.sso_redirect_url.is_some() {
+                        login_status_modal_inner.set_cancel_evidence(
+                            cx,
+                            "SSO Cancel uses local redirect shutdown only; no Matrix login cancel request.",
+                        );
+                    } else {
+                        login_status_modal_inner
+                            .set_cancel_evidence(cx, LOGIN_CANCEL_COMPACT_LABEL);
+                    }
                     let login_status_modal_button = login_status_modal_inner.button_ref(cx);
                     login_status_modal_button.set_text(cx, "Cancel");
                     login_status_modal_button.set_enabled(cx, true);
@@ -441,12 +484,14 @@ impl MatchEvent for LoginScreen {
                     user_id_input.set_text(cx, "");
                     password_input.set_text(cx, "");
                     homeserver_input.set_text(cx, "");
+                    login_status_modal_inner.hide_cancel_evidence(cx);
                     login_status_modal.close(cx);
                     self.redraw(cx);
                 }
                 Some(LoginAction::LoginFailure(error)) => {
                     login_status_modal_inner.set_title(cx, "Login Failed.");
                     login_status_modal_inner.set_status(cx, error);
+                    login_status_modal_inner.hide_cancel_evidence(cx);
                     let login_status_modal_button = login_status_modal_inner.button_ref(cx);
                     login_status_modal_button.set_text(cx, "Okay");
                     login_status_modal_button.set_enabled(cx, true);
@@ -455,9 +500,15 @@ impl MatchEvent for LoginScreen {
                 }
                 Some(LoginAction::SsoPending(pending)) => {
                     let mask = if *pending { 1.0 } else { 0.0 };
-                    let cursor = if *pending { MouseCursor::NotAllowed } else { MouseCursor::Hand };
+                    let cursor = if *pending {
+                        MouseCursor::NotAllowed
+                    } else {
+                        MouseCursor::Hand
+                    };
                     for view_ref in self.view_set(cx, button_set).iter() {
-                        let Some(mut view_mut) = view_ref.borrow_mut() else { continue };
+                        let Some(mut view_mut) = view_ref.borrow_mut() else {
+                            continue;
+                        };
                         let mut image = view_mut.image(cx, ids!(image));
                         script_apply_eval!(cx, image, {
                             draw_bg.mask: #(mask)
@@ -469,8 +520,12 @@ impl MatchEvent for LoginScreen {
                 }
                 Some(LoginAction::SsoSetRedirectUrl(url)) => {
                     self.sso_redirect_url = Some(url.to_string());
+                    login_status_modal_inner.set_cancel_evidence(
+                        cx,
+                        "SSO Cancel uses local redirect shutdown only; no Matrix login cancel request.",
+                    );
                 }
-                _ => { }
+                _ => {}
             }
         }
 
@@ -479,7 +534,10 @@ impl MatchEvent for LoginScreen {
             let login_status_modal_button = login_status_modal_inner.button_ref(cx);
             if login_status_modal_button.clicked(actions) {
                 let request_id = id!(SSO_CANCEL_BUTTON);
-                let request = HttpRequest::new(format!("{}/?login_token=",sso_redirect_url), HttpMethod::GET);
+                let request = HttpRequest::new(
+                    format!("{}/?login_token=", sso_redirect_url),
+                    HttpMethod::GET,
+                );
                 cx.http_request(request_id, request);
                 self.sso_redirect_url = None;
             }
@@ -499,15 +557,14 @@ impl MatchEvent for LoginScreen {
         // Handle any of the SSO login buttons being clicked
         for (view_ref, brand) in self.view_set(cx, button_set).iter().zip(&provider_brands) {
             if view_ref.finger_up(actions).is_some() && !self.sso_pending {
-                submit_async_request(MatrixRequest::SpawnSSOServer{
-                    identity_provider_id: format!("oidc-{}",brand),
+                submit_async_request(MatrixRequest::SpawnSSOServer {
+                    identity_provider_id: format!("oidc-{}", brand),
                     brand: brand.to_string(),
-                    homeserver_url: homeserver_input.text()
+                    homeserver_url: homeserver_input.text(),
                 });
             }
         }
     }
-
 }
 
 /// Actions sent to or from the login screen.
@@ -518,10 +575,7 @@ pub enum LoginAction {
     /// A negative response from the backend Matrix task to the login screen.
     LoginFailure(String),
     /// A login-related status message to display to the user.
-    Status {
-        title: String,
-        status: String,
-    },
+    Status { title: String, status: String },
     /// The given login info was specified on the command line (CLI),
     /// and the login process is underway.
     CliAutoLogin {

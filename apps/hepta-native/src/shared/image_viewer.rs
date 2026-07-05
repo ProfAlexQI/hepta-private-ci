@@ -20,24 +20,17 @@ use crate::{
 
 /// The timeout for hiding the UI overlays after no user mouse/tap activity.
 const SHOW_UI_DURATION: f64 = 3.0;
+pub const IMAGE_VIEWER_LOCAL_CONTROLS_EVIDENCE: &str = "ImageViewer Close, Escape, background tap, Zoom, Rotate, Reset, pan, pinch, and overlay auto-hide controls only update local viewer state; after RoomScreen opens the viewer through the existing media cache/fetch path, these controls send no additional FetchMedia, download, playback, decrypt, message, room-state, membership, or live mutation request.";
 
 /// Loads the given image `data` into an `ImageBuffer` as either a PNG or JPEG, using the `imghdr` library to determine which format it is.
 ///
 /// Returns an error if either load fails or if the image format is unknown.
 pub fn get_png_or_jpg_image_buffer(data: Vec<u8>) -> Result<ImageBuffer, ImageError> {
     match imghdr::from_bytes(&data) {
-        Some(imghdr::Type::Png) => {
-            ImageBuffer::from_png(&data)
-        },
-        Some(imghdr::Type::Jpeg) => {
-            ImageBuffer::from_jpg(&data)
-        },
-        Some(_unsupported) => {
-            Err(ImageError::UnsupportedFormat)
-        }
-        None => {
-            Err(ImageError::UnsupportedFormat)
-        }
+        Some(imghdr::Type::Png) => ImageBuffer::from_png(&data),
+        Some(imghdr::Type::Jpeg) => ImageBuffer::from_jpg(&data),
+        Some(_unsupported) => Err(ImageError::UnsupportedFormat),
+        None => Err(ImageError::UnsupportedFormat),
     }
 }
 
@@ -441,52 +434,74 @@ pub enum ImageViewerAction {
 
 #[derive(Script, ScriptHook, Widget, Animator)]
 struct ImageViewer {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
-    #[rust] drag_state: DragState,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
+    #[rust]
+    drag_state: DragState,
     /// The current rotation angle of the image. Max of 4, each step represents 90 degrees
-    #[rust] rotation_step: i8,
+    #[rust]
+    rotation_step: i8,
     /// A lock to prevent multiple rotation animations from running at the same time
-    #[rust] is_animating_rotation: bool,
-    #[apply_default] animator: Animator,
+    #[rust]
+    is_animating_rotation: bool,
+    #[apply_default]
+    animator: Animator,
     /// Zoom constraints for the image viewer
-    #[rust] config: ImageViewerZoomConfig,
+    #[rust]
+    config: ImageViewerZoomConfig,
     /// Indicates if the mouse cursor is currently hovering over the image.
     /// If true, allows wheel scroll to zoom the image.
-    #[rust] mouse_cursor_hover_over_image: bool,
+    #[rust]
+    mouse_cursor_hover_over_image: bool,
     /// Distance between two touch points for pinch-to-zoom functionality
-    #[rust] previous_pinch_distance: Option<f64>,
+    #[rust]
+    previous_pinch_distance: Option<f64>,
     /// The ID of the background task that is currently running
-    #[rust] background_task_id: u32,
+    #[rust]
+    background_task_id: u32,
     /// The mpsc::Receiver used to receive the result of the background task
-    #[rust] receiver: Option<(u32, Receiver<Result<ImageBuffer, ImageError>>)>,
+    #[rust]
+    receiver: Option<(u32, Receiver<Result<ImageBuffer, ImageError>>)>,
     /// Whether the full image file has been loaded
-    #[rust] is_loaded: bool,
+    #[rust]
+    is_loaded: bool,
     /// The size of the image container.
     ///
     /// Used to compute the necessary width and height for the full screen image.
-    #[rust] image_container_size: DVec2,
+    #[rust]
+    image_container_size: DVec2,
     /// The texture containing the loaded image
-    #[rust] texture: Option<Texture>,
+    #[rust]
+    texture: Option<Texture>,
     /// The event to trigger displaying with the loaded image after peek_walk_turtle of the widget.
-    #[rust] next_frame: NextFrame,
+    #[rust]
+    next_frame: NextFrame,
     /// Whether the UI overlay (buttons + metadata) is currently visible or animating to visible.
-    #[rust] ui_overlay_visible: bool,
+    #[rust]
+    ui_overlay_visible: bool,
     /// Whether the mouse is hovering over the overlay UI (buttons or metadata).
     /// When true, the auto-hide timer should not run.
-    #[rust] mouse_over_overlay_ui: bool,
+    #[rust]
+    mouse_over_overlay_ui: bool,
     /// Whether the hide animation is currently playing. When it finishes,
     /// the overlay views are set to invisible.
-    #[rust] is_hiding_overlay: bool,
+    #[rust]
+    is_hiding_overlay: bool,
     /// Animated slide value for the UI overlay: 0.0 = fully visible, 1.0 = fully hidden.
     /// The animator interpolates this value; `draw_walk` uses it to position the views.
-    #[live] ui_overlay_slide: f32,
+    #[live]
+    ui_overlay_slide: f32,
     /// Timer used to animate-out (hide) the UI overlay after no user mouse/tap activity.
-    #[rust] hide_ui_timer: Timer,
+    #[rust]
+    hide_ui_timer: Timer,
     /// Last known mouse position, used to distinguish actual mouse movement
     /// from the continuous `FingerHoverOver` events that fire every frame.
-    #[rust] last_mouse_pos: DVec2,
-    #[rust] capped_dimension: DVec2,
+    #[rust]
+    last_mouse_pos: DVec2,
+    #[rust]
+    capped_dimension: DVec2,
 }
 
 impl Widget for ImageViewer {
@@ -554,11 +569,20 @@ impl Widget for ImageViewer {
                 let on_image = rotated_image.area().rect(cx).contains(he.abs);
                 if on_image != self.mouse_cursor_hover_over_image {
                     self.mouse_cursor_hover_over_image = on_image;
-                    cx.set_cursor(if on_image { MouseCursor::Hand } else { MouseCursor::Default });
+                    cx.set_cursor(if on_image {
+                        MouseCursor::Hand
+                    } else {
+                        MouseCursor::Default
+                    });
                 }
                 // Track whether cursor is over the overlay UI elements.
                 let on_overlay = button_group_rounded_view.area().rect(cx).contains(he.abs)
-                    || self.view.view(cx, ids!(metadata_rounded_view)).area().rect(cx).contains(he.abs);
+                    || self
+                        .view
+                        .view(cx, ids!(metadata_rounded_view))
+                        .area()
+                        .rect(cx)
+                        .contains(he.abs);
                 if on_overlay != self.mouse_over_overlay_ui {
                     self.mouse_over_overlay_ui = on_overlay;
                     if on_overlay {
@@ -579,15 +603,26 @@ impl Widget for ImageViewer {
             Hit::FingerDown(fe) if fe.is_primary_hit() => {
                 let click_pos = fe.abs;
                 let on_image = rotated_image.area().rect(cx).contains(click_pos);
-                let on_buttons = button_group_rounded_view.area().rect(cx).contains(click_pos);
-                let on_metadata = self.view.view(cx, ids!(metadata_rounded_view))
-                    .area().rect(cx).contains(click_pos);
+                let on_buttons = button_group_rounded_view
+                    .area()
+                    .rect(cx)
+                    .contains(click_pos);
+                let on_metadata = self
+                    .view
+                    .view(cx, ids!(metadata_rounded_view))
+                    .area()
+                    .rect(cx)
+                    .contains(click_pos);
                 if on_image {
                     self.drag_state.drag_start = fe.abs;
                     if self.drag_state.pan_offset.is_none() {
                         self.drag_state.pan_offset = Some(DVec2::default());
                     }
                 } else if !on_buttons && !on_metadata {
+                    // Image viewer local controls evidence: background tap
+                    // closes this viewer locally. It sends no additional
+                    // FetchMedia, download, playback, decrypt, message,
+                    // room-state, membership, or live mutation request.
                     self.reset(cx);
                     cx.action(ImageViewerAction::Hide);
                 }
@@ -662,7 +697,8 @@ impl Widget for ImageViewer {
             self.handle_pinch_to_zoom(cx, touch_event);
         }
 
-        if let (Event::Signal, Some((_background_task_id, receiver))) = (event, &mut self.receiver) {
+        if let (Event::Signal, Some((_background_task_id, receiver))) = (event, &mut self.receiver)
+        {
             let mut remove_receiver = false;
             match receiver.try_recv() {
                 Ok(Ok(image_buffer)) => {
@@ -702,15 +738,18 @@ impl Widget for ImageViewer {
         // so their stale areas don't consume events.
         if self.is_hiding_overlay && !self.animator.is_track_animating(id!(ui_animator)) {
             self.is_hiding_overlay = false;
-            self.view.view(cx, ids!(button_group_view)).set_visible(cx, false);
-            self.view.view(cx, ids!(metadata_view)).set_visible(cx, false);
+            self.view
+                .view(cx, ids!(button_group_view))
+                .set_visible(cx, false);
+            self.view
+                .view(cx, ids!(metadata_view))
+                .set_visible(cx, false);
             self.view.redraw(cx);
         }
 
         if self.next_frame.is_event(event).is_some() {
             self.display_using_texture(cx);
-        }
-        else if let Event::NextFrame(_) = event {
+        } else if let Event::NextFrame(_) = event {
             let animation_id = match self.rotation_step {
                 0 => ids!(mode.upright),    // 0°
                 1 => ids!(mode.degree_90),  // 90°
@@ -719,13 +758,24 @@ impl Widget for ImageViewer {
                 _ => ids!(mode.upright),
             };
             if self.animator.in_state(cx, animation_id) {
-                self.is_animating_rotation = matches!(animator_action, AnimatorAction::Animating { .. });
+                self.is_animating_rotation =
+                    matches!(animator_action, AnimatorAction::Animating { .. });
             }
         }
 
         if event.back_pressed()
-            || matches!(event, Event::KeyDown(KeyEvent { key_code: KeyCode::Escape, .. }))
+            || matches!(
+                event,
+                Event::KeyDown(KeyEvent {
+                    key_code: KeyCode::Escape,
+                    ..
+                })
+            )
         {
+            // Image viewer local controls evidence: Back/Escape only hides the
+            // local viewer and resets zoom/pan state. It sends no additional
+            // FetchMedia, download, playback, decrypt, message, room-state,
+            // membership, or live mutation request.
             self.reset(cx);
             cx.action(ImageViewerAction::Hide);
         }
@@ -752,10 +802,10 @@ impl Widget for ImageViewer {
         let slide = self.ui_overlay_slide as f64;
         let insets = cx.display_context.safe_area_insets;
         let button_top_visible = 20.0_f64.max(insets.top);
-        let button_right        = 20.0_f64.max(insets.right);
-        let meta_top            = 20.0_f64.max(insets.top);
-        let meta_left           = 20.0_f64.max(insets.left);
-        let meta_right          = 20.0_f64.max(insets.right);
+        let button_right = 20.0_f64.max(insets.right);
+        let meta_top = 20.0_f64.max(insets.top);
+        let meta_left = 20.0_f64.max(insets.left);
+        let meta_right = 20.0_f64.max(insets.right);
         let meta_bottom_visible = 20.0_f64.max(insets.bottom);
         let button_top = button_top_visible - (slide * 220.0); // visible → -200
         let meta_bottom = meta_bottom_visible - (slide * 320.0); // visible → -300
@@ -780,26 +830,38 @@ impl Widget for ImageViewer {
 impl MatchEvent for ImageViewer {
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
         if self.view.button(cx, ids!(close_button)).clicked(actions) {
+            // Image viewer local controls evidence: Close only hides the local
+            // viewer and resets local state. It sends no additional FetchMedia,
+            // download, playback, decrypt, message, room-state, membership, or
+            // live mutation request.
             self.reset(cx);
             cx.action(ImageViewerAction::Hide);
         }
 
         let mut was_overlay_button_clicked = false;
         if self.view.button(cx, ids!(reset_button)).clicked(actions) {
+            // Reset updates only local zoom/pan/rotation state.
             was_overlay_button_clicked = true;
             self.reset(cx);
         }
         if self.view.button(cx, ids!(zoom_out_button)).clicked(actions) {
+            // Zoom out updates only local viewer state.
             was_overlay_button_clicked = true;
             self.adjust_zoom(cx, 1.0 / self.config.zoom_scale_factor);
         }
 
         if self.view.button(cx, ids!(zoom_in_button)).clicked(actions) {
+            // Zoom in updates only local viewer state.
             was_overlay_button_clicked = true;
             self.adjust_zoom(cx, self.config.zoom_scale_factor);
         }
 
-        if self.view.button(cx, ids!(rotate_cw_button)).clicked(actions) {
+        if self
+            .view
+            .button(cx, ids!(rotate_cw_button))
+            .clicked(actions)
+        {
+            // Rotate clockwise updates only local viewer state.
             was_overlay_button_clicked = true;
             if !self.is_animating_rotation {
                 self.is_animating_rotation = true;
@@ -811,7 +873,12 @@ impl MatchEvent for ImageViewer {
             }
         }
 
-        if self.view.button(cx, ids!(rotate_ccw_button)).clicked(actions) {
+        if self
+            .view
+            .button(cx, ids!(rotate_ccw_button))
+            .clicked(actions)
+        {
+            // Rotate counter-clockwise updates only local viewer state.
             was_overlay_button_clicked = true;
             if !self.is_animating_rotation {
                 self.is_animating_rotation = true;
@@ -849,7 +916,7 @@ impl MatchEvent for ImageViewer {
                     LoadState::FinishedBackgroundDecoding => {
                         self.is_loaded = true;
                         self.hide_footer(cx);
-                    },
+                    }
                     LoadState::Error(error) => {
                         self.show_error(cx, error);
                     }
@@ -865,8 +932,12 @@ impl ImageViewer {
         if !self.ui_overlay_visible {
             self.ui_overlay_visible = true;
             self.is_hiding_overlay = false;
-            self.view.view(cx, ids!(button_group_view)).set_visible(cx, true);
-            self.view.view(cx, ids!(metadata_view)).set_visible(cx, true);
+            self.view
+                .view(cx, ids!(button_group_view))
+                .set_visible(cx, true);
+            self.view
+                .view(cx, ids!(metadata_view))
+                .set_visible(cx, true);
             self.animator_play(cx, ids!(ui_animator.show));
             self.view.redraw(cx);
         }
@@ -902,8 +973,12 @@ impl ImageViewer {
         self.is_hiding_overlay = false;
         cx.stop_timer(self.hide_ui_timer);
         self.hide_ui_timer = Timer::empty();
-        self.view.view(cx, ids!(button_group_view)).set_visible(cx, true);
-        self.view.view(cx, ids!(metadata_view)).set_visible(cx, true);
+        self.view
+            .view(cx, ids!(button_group_view))
+            .set_visible(cx, true);
+        self.view
+            .view(cx, ids!(metadata_view))
+            .set_visible(cx, true);
         // Snap to fully visible (no animation on reset).
         self.animator_cut(cx, ids!(ui_animator.show));
         self.reset_drag_state(cx);
@@ -1001,9 +1076,9 @@ impl ImageViewer {
 
         let capped_width = (texture_width as f64 * scale).floor();
         let capped_height = (texture_height as f64 * scale).floor();
-        self.capped_dimension = DVec2{
+        self.capped_dimension = DVec2 {
             x: capped_width,
-            y: capped_height
+            y: capped_height,
         };
 
         rotated_image.set_texture(cx, texture);
@@ -1020,7 +1095,10 @@ impl ImageViewer {
         let capped_dimension = self.capped_dimension;
         let target_zoom = self.drag_state.zoom_level * zoom_factor;
         let (width, height) = if target_zoom < self.config.min_zoom {
-            (capped_dimension.x * self.config.min_zoom, capped_dimension.y * self.config.min_zoom)
+            (
+                capped_dimension.x * self.config.min_zoom,
+                capped_dimension.y * self.config.min_zoom,
+            )
         } else {
             let actual_zoom_factor = target_zoom / self.drag_state.zoom_level;
             self.drag_state.zoom_level = target_zoom;
@@ -1073,18 +1151,25 @@ impl ImageViewer {
     /// status label is set to "Loading...".
     pub fn show_loading(&mut self, cx: &mut Cx) {
         let footer = self.view.view(cx, ids!(image_layer.footer));
-        footer.view(cx, ids!(image_viewer_loading_spinner_view))
+        footer
+            .view(cx, ids!(image_viewer_loading_spinner_view))
             .set_visible(cx, true);
-        footer.label(cx, ids!(image_viewer_status_label))
+        footer
+            .label(cx, ids!(image_viewer_status_label))
             .set_text(cx, "Loading...");
-        footer.view(cx, ids!(image_viewer_forbidden_view))
+        footer
+            .view(cx, ids!(image_viewer_forbidden_view))
             .set_visible(cx, false);
         footer.set_visible(cx, true);
         // Snap the overlay to visible immediately on initial open (no animation).
         self.ui_overlay_visible = true;
         self.is_hiding_overlay = false;
-        self.view.view(cx, ids!(button_group_view)).set_visible(cx, true);
-        self.view.view(cx, ids!(metadata_view)).set_visible(cx, true);
+        self.view
+            .view(cx, ids!(button_group_view))
+            .set_visible(cx, true);
+        self.view
+            .view(cx, ids!(metadata_view))
+            .set_visible(cx, true);
         self.animator_cut(cx, ids!(ui_animator.show));
         cx.stop_timer(self.hide_ui_timer);
         self.hide_ui_timer = cx.start_timeout(SHOW_UI_DURATION);
@@ -1099,11 +1184,14 @@ impl ImageViewer {
             return;
         }
         let footer = self.view.view(cx, ids!(image_layer.footer));
-        footer.view(cx, ids!(image_viewer_loading_spinner_view))
+        footer
+            .view(cx, ids!(image_viewer_loading_spinner_view))
             .set_visible(cx, false);
-        footer.view(cx, ids!(image_viewer_forbidden_view))
+        footer
+            .view(cx, ids!(image_viewer_forbidden_view))
             .set_visible(cx, true);
-        footer.label(cx, ids!(image_viewer_status_label))
+        footer
+            .label(cx, ids!(image_viewer_status_label))
             .set_text(cx, &error.to_string());
         footer.set_visible(cx, true);
     }
@@ -1120,7 +1208,11 @@ impl ImageViewer {
     /// via `max_lines: 2` + `text_overflow: Ellipsis` in the layout.
     pub fn set_metadata(&mut self, cx: &mut Cx, metadata: &ImageViewerMetaData) {
         let meta_view = self.view.view(cx, ids!(metadata_view));
-        let display_text = format!("{} ({})", metadata.image_name, ByteSize::b(metadata.image_file_size));
+        let display_text = format!(
+            "{} ({})",
+            metadata.image_name,
+            ByteSize::b(metadata.image_file_size)
+        );
         meta_view
             .label(cx, ids!(image_name_and_size))
             .set_text(cx, &display_text);
@@ -1131,14 +1223,17 @@ impl ImageViewer {
         }
 
         if let Some((timeline_kind, event_timeline_item)) = &metadata.avatar_parameter {
-            let (sender, _) = self.view.avatar(cx, ids!(avatar_timestamp_view.avatar)).set_avatar_and_get_username(
-                cx,
-                timeline_kind,
-                event_timeline_item.sender(),
-                Some(event_timeline_item.sender_profile()),
-                event_timeline_item.event_id(),
-                false,
-            );
+            let (sender, _) = self
+                .view
+                .avatar(cx, ids!(avatar_timestamp_view.avatar))
+                .set_avatar_and_get_username(
+                    cx,
+                    timeline_kind,
+                    event_timeline_item.sender(),
+                    Some(event_timeline_item.sender_profile()),
+                    event_timeline_item.event_id(),
+                    false,
+                );
             meta_view
                 .label(cx, ids!(username_label_view.username))
                 .set_text(cx, &sender);
@@ -1149,13 +1244,17 @@ impl ImageViewer {
 impl ImageViewerRef {
     /// Configure zoom and pan settings for the image viewer
     pub fn configure_zoom(&mut self, config: ImageViewerZoomConfig) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.config = config;
     }
 
     /// See [`ImageViewer::show_loaded()`].
     pub fn show_loaded(&mut self, cx: &mut Cx, image_bytes: &[u8]) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show_loaded(cx, image_bytes)
     }
 
@@ -1166,7 +1265,9 @@ impl ImageViewerRef {
         texture: Option<Texture>,
         metadata: &Option<ImageViewerMetaData>,
     ) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.texture = texture.clone();
         inner.next_frame = cx.new_next_frame();
         if let Some(metadata) = metadata {
@@ -1177,19 +1278,25 @@ impl ImageViewerRef {
 
     /// See [`ImageViewer::show_error()`].
     pub fn show_error(&mut self, cx: &mut Cx, error: &ImageViewerError) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show_error(cx, error);
     }
 
     /// See [`ImageViewer::hide_footer()`].
     pub fn hide_footer(&mut self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.hide_footer(cx);
     }
 
     /// See [`ImageViewer::reset()`].
     pub fn reset(&mut self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.reset(cx);
     }
 }

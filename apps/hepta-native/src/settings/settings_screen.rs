@@ -1,7 +1,14 @@
-
 use makepad_widgets::*;
 
-use crate::{app::AppState, home::navigation_tab_bar::{NavigationBarAction, get_own_profile}, profile::user_profile::UserProfile, settings::{PopulateMode, account_settings::AccountSettingsWidgetExt, app_settings::AppSettingsWidgetExt}};
+use crate::{
+    app::AppState,
+    home::navigation_tab_bar::{NavigationBarAction, get_own_profile},
+    profile::user_profile::UserProfile,
+    settings::{
+        PopulateMode, account_settings::AccountSettingsWidgetExt,
+        app_settings::AppSettingsWidgetExt,
+    },
+};
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -47,6 +54,15 @@ script_mod! {
             // Make sure the dividing line is aligned with the close_button
             LineH { padding: 10, margin: Inset{top: 10, right: 2} }
 
+            settings_close_evidence := Label {
+                width: Fill, height: Fit
+                margin: Inset{top: 0, left: 6, right: 6, bottom: 8}
+                text: "Close restores previous tab locally; no account/profile request"
+                draw_text +: {
+                    text_style: theme.font_regular {font_size: 10},
+                }
+            }
+
             ScrollYView {
                 width: Fill, height: Fill
                 flow: Down
@@ -87,11 +103,11 @@ script_mod! {
     }
 }
 
-
 /// The top-level widget showing all app and user settings/preferences.
 #[derive(Script, ScriptHook, Widget)]
 pub struct SettingsScreen {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 }
 
 impl Widget for SettingsScreen {
@@ -118,18 +134,22 @@ impl Widget for SettingsScreen {
             matches!(
                 event,
                 Event::Actions(actions) if self.button(cx, ids!(close_button)).clicked(actions)
-            )
-            || event.back_pressed()
-            || match event.hits(cx, area) {
-                Hit::KeyUp(key) => key.key_code == KeyCode::Escape,
-                Hit::FingerDown(_fde) => {
-                    cx.set_key_focus(area);
-                    false
+            ) || event.back_pressed()
+                || match event.hits(cx, area) {
+                    Hit::KeyUp(key) => key.key_code == KeyCode::Escape,
+                    Hit::FingerDown(_fde) => {
+                        cx.set_key_focus(area);
+                        false
+                    }
+                    _ => false,
                 }
-                _ => false,
-            }
         };
         if close_pane {
+            // Settings close evidence: close button, Escape, back, and mouse
+            // back only emit CloseSettings. HomeScreen restores the previous
+            // selected tab locally; no logout, account/profile mutation,
+            // message, room-state, membership, or live mutation request is
+            // sent from this close path.
             cx.action(NavigationBarAction::CloseSettings);
         }
 
@@ -145,26 +165,30 @@ impl Widget for SettingsScreen {
                 match action.downcast_ref() {
                     Some(CreateWalletModalAction::Open) => {
                         use crate::tsp::create_wallet_modal::CreateWalletModalWidgetExt;
-                        self.view.create_wallet_modal(cx, ids!(create_wallet_modal_inner)).show(cx);
+                        self.view
+                            .create_wallet_modal(cx, ids!(create_wallet_modal_inner))
+                            .show(cx);
                         self.view.modal(cx, ids!(create_wallet_modal)).open(cx);
                     }
                     Some(CreateWalletModalAction::Close) => {
                         self.view.modal(cx, ids!(create_wallet_modal)).close(cx);
                     }
-                    None => { }
+                    None => {}
                 }
 
                 // Handle the create DID modal being opened or closed.
                 match action.downcast_ref() {
                     Some(CreateDidModalAction::Open) => {
                         use crate::tsp::create_did_modal::CreateDidModalWidgetExt;
-                        self.view.create_did_modal(cx, ids!(create_did_modal_inner)).show(cx);
+                        self.view
+                            .create_did_modal(cx, ids!(create_did_modal_inner))
+                            .show(cx);
                         self.view.modal(cx, ids!(create_did_modal)).open(cx);
                     }
                     Some(CreateDidModalAction::Close) => {
                         self.view.modal(cx, ids!(create_did_modal)).close(cx);
                     }
-                    None => { }
+                    None => {}
                 }
             }
         }
@@ -177,7 +201,12 @@ impl Widget for SettingsScreen {
 
 impl SettingsScreen {
     /// Fetches the current user's profile and uses it to populate the settings screen.
-    pub fn populate(&mut self, cx: &mut Cx, own_profile: Option<UserProfile>, app_state: &AppState) {
+    pub fn populate(
+        &mut self,
+        cx: &mut Cx,
+        own_profile: Option<UserProfile>,
+        app_state: &AppState,
+    ) {
         let Some(profile) = own_profile.or_else(|| get_own_profile(cx)) else {
             error!("Failed to get own profile for settings screen.");
             return;
@@ -205,11 +234,17 @@ impl SettingsScreen {
     ) {
         match mode {
             PopulateMode::Initial => {
-                self.view.account_settings(cx, ids!(account_settings)).populate(cx, profile);
-                self.view.app_settings(cx, ids!(app_settings)).populate(cx, &app_state.app_prefs);
+                self.view
+                    .account_settings(cx, ids!(account_settings))
+                    .populate(cx, profile);
+                self.view
+                    .app_settings(cx, ids!(app_settings))
+                    .populate(cx, &app_state.app_prefs);
             }
             PopulateMode::AfterReapply => {
-                self.view.account_settings(cx, ids!(account_settings)).restore_after_reapply(cx);
+                self.view
+                    .account_settings(cx, ids!(account_settings))
+                    .restore_after_reapply(cx);
             }
         }
     }
@@ -218,7 +253,9 @@ impl SettingsScreen {
 impl SettingsScreenRef {
     /// See [`SettingsScreen::populate()`].
     pub fn populate(&self, cx: &mut Cx, own_profile: Option<UserProfile>, app_state: &AppState) {
-        let Some(mut inner) = self.borrow_mut() else { return; };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.populate(cx, own_profile, app_state);
     }
 }

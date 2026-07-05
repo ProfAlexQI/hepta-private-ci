@@ -21,7 +21,6 @@ pub struct AppPreferences {
     /// UI-wide zoom level, which scaled the entire UI (not just text).
     #[serde(default)]
     pub ui_zoom: UiZoom,
-
     // Note: if you add a new preference here, be sure to add a new
     // function `on_<NEW_PREFERENCE>_changed` and update `broadcast_all()`.
 }
@@ -107,7 +106,9 @@ impl AppPreferences {
             None
         } else {
             let window = &cx.windows[window_id];
-            let baseline = window.os_dpi_factor.unwrap_or(window.window_geom.dpi_factor);
+            let baseline = window
+                .os_dpi_factor
+                .unwrap_or(window.window_geom.dpi_factor);
             Some(baseline * self.ui_zoom.multiplier())
         };
         cx.set_window_dpi_override(window_id, dpi_override);
@@ -161,9 +162,7 @@ impl ViewModeOverride {
     pub fn variant_selector(self) -> impl FnMut(&mut Cx, &Vec2d) -> LiveId + 'static {
         move |cx: &mut Cx, _parent_size: &Vec2d| match self {
             Self::Automatic => {
-                if cx.display_context.is_desktop()
-                    || !cx.display_context.is_screen_size_known()
-                {
+                if cx.display_context.is_desktop() || !cx.display_context.is_screen_size_known() {
                     live_id!(Desktop)
                 } else {
                     live_id!(Mobile)
@@ -216,7 +215,11 @@ impl UiZoom {
 
     /// Create a new zoom value that is properly clamped.
     pub fn new(value: f32) -> Self {
-        let v = if value.is_finite() { value } else { Self::DEFAULT };
+        let v = if value.is_finite() {
+            value
+        } else {
+            Self::DEFAULT
+        };
         Self(v.clamp(Self::MIN, Self::MAX))
     }
 

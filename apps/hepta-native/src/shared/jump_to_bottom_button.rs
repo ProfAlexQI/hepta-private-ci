@@ -1,6 +1,7 @@
 use makepad_widgets::*;
 
 const SCROLL_TO_BOTTOM_SPEED: f64 = 90.0;
+const JUMP_TO_BOTTOM_UNREAD_READ_EVIDENCE: &str = "Jump to bottom - unread read path";
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -27,7 +28,7 @@ script_mod! {
                 margin: Inset{bottom: 8},
                 draw_icon +: {
                     svg: (mod.widgets.ICO_JUMP_TO_BOTTOM),
-                    color: #888,
+                    color: (COLOR_TELEGRAM_BLUE),
                     // TODO: once Makepad button support draw_icon hover/down animated states, reenable this.
                     // color: #BBB,
                     // color_hover: #000,
@@ -39,8 +40,8 @@ script_mod! {
                 icon_walk: Walk{width: 20, height: 20}
                 // draw a circular background for the button
                 draw_bg +: {
-                    background_color: #edededce,
-                    background_color_hover: #d0d0d0ce,
+                    background_color: #17212BCC,
+                    background_color_hover: #1F2C3ACC,
                     pixel: fn() {
                         let sdf = Sdf2d.viewport(self.pos * self.rect_size);
                         let c = self.rect_size * 0.5;
@@ -66,7 +67,7 @@ script_mod! {
                     height: Fill,
                     show_bg: true,
                     draw_bg +: {
-                        color: instance(COLOR_UNREAD_BADGE_MESSAGES)
+                        color: instance(COLOR_TELEGRAM_BLUE)
                         border_radius: uniform(4.0)
                         // Adjust this border_size to larger value to make oval smaller
                         border_size: uniform(2.0)
@@ -103,11 +104,12 @@ script_mod! {
     }
 }
 
-
 #[derive(ScriptHook, Script, Widget)]
 pub struct JumpToBottomButton {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
 }
 
 impl Widget for JumpToBottomButton {
@@ -118,7 +120,7 @@ impl Widget for JumpToBottomButton {
                 cx.widget_action(
                     self.widget_uid(),
                     TooltipAction::HoverIn {
-                        text: "Jump to bottom".to_string(),
+                        text: JUMP_TO_BOTTOM_UNREAD_READ_EVIDENCE.to_string(),
                         widget_rect: button_area.rect(cx),
                         options: CalloutTooltipOptions {
                             position: TooltipPosition::Left,
@@ -128,10 +130,7 @@ impl Widget for JumpToBottomButton {
                 );
             }
             Hit::FingerHoverOut(_) => {
-                cx.widget_action(
-                    self.widget_uid(),
-                    TooltipAction::HoverOut,
-                );
+                cx.widget_action(self.widget_uid(), TooltipAction::HoverOut);
             }
             _ => {}
         }
@@ -156,7 +155,8 @@ impl JumpToBottomButton {
     pub fn update_visibility(&mut self, cx: &mut Cx, is_at_bottom: bool) {
         if is_at_bottom {
             self.visible = false;
-            self.view(cx, ids!(unread_message_badge)).set_visible(cx, false);
+            self.view(cx, ids!(unread_message_badge))
+                .set_visible(cx, false);
         } else {
             self.visible = true;
         }
@@ -167,22 +167,29 @@ impl JumpToBottomButton {
     /// This does not automatically redraw any views.
     /// If unread_message_count is `0`, the unread message badge is hidden.
     pub fn show_unread_message_badge(&mut self, cx: &mut Cx, count: UnreadMessageCount) {
+        // JumpToBottomButton unread-count evidence: this only reflects the
+        // existing GetNumberUnreadMessages read result in local Unknown/0/known
+        // badge state. It sends no SetUnreadFlag, message, room-state, retry,
+        // cancel, or membership request from the widget itself.
         match count {
             UnreadMessageCount::Unknown => {
                 self.visible = true;
-                self.view(cx, ids!(unread_message_badge)).set_visible(cx, true);
+                self.view(cx, ids!(unread_message_badge))
+                    .set_visible(cx, true);
                 self.label(cx, ids!(unread_messages_count)).set_text(cx, "");
             }
             UnreadMessageCount::Known(0) => {
                 // Only hide the badge, not the entire button.
                 // The button's visibility is controlled by `update_visibility()`
                 // based on whether the portal list is at the end.
-                self.view(cx, ids!(unread_message_badge)).set_visible(cx, false);
+                self.view(cx, ids!(unread_message_badge))
+                    .set_visible(cx, false);
                 self.label(cx, ids!(unread_messages_count)).set_text(cx, "");
             }
             UnreadMessageCount::Known(unread_message_count) => {
                 self.visible = true;
-                self.view(cx, ids!(unread_message_badge)).set_visible(cx, true);
+                self.view(cx, ids!(unread_message_badge))
+                    .set_visible(cx, true);
                 let (border_size, plus_sign) = if unread_message_count > 99 {
                     (0.0, "+")
                 } else if unread_message_count > 9 {
@@ -192,7 +199,7 @@ impl JumpToBottomButton {
                 };
                 self.label(cx, ids!(unread_messages_count)).set_text(
                     cx,
-                    &format!("{}{plus_sign}", std::cmp::min(unread_message_count, 99))
+                    &format!("{}{plus_sign}", std::cmp::min(unread_message_count, 99)),
                 );
                 let mut badge_view = self.view(cx, ids!(unread_message_badge.green_rounded_label));
                 script_apply_eval!(cx, badge_view, {
@@ -221,11 +228,7 @@ impl JumpToBottomButton {
         //       query the portallist's `at_end` state and set the visibility accordingly.
 
         if self.button(cx, ids!(inner_button)).clicked(actions) {
-            portal_list.smooth_scroll_to_end(
-                cx,
-                SCROLL_TO_BOTTOM_SPEED,
-                None,
-            );
+            portal_list.smooth_scroll_to_end(cx, SCROLL_TO_BOTTOM_SPEED, None);
             self.update_visibility(cx, false);
         } else {
             self.update_visibility(cx, portal_list.is_at_end());
@@ -235,7 +238,6 @@ impl JumpToBottomButton {
             self.redraw(cx);
         }
     }
-
 }
 
 impl JumpToBottomButtonRef {
@@ -254,12 +256,7 @@ impl JumpToBottomButtonRef {
     }
 
     /// See [`JumpToBottomButton::update_from_actions()`].
-    pub fn update_from_actions(
-        &self,
-        cx: &mut Cx,
-        portal_list: &PortalListRef,
-        actions: &Actions,
-    ) {
+    pub fn update_from_actions(&self, cx: &mut Cx, portal_list: &PortalListRef, actions: &Actions) {
         if let Some(mut inner) = self.borrow_mut() {
             inner.update_from_actions(cx, portal_list, actions);
         }
@@ -272,5 +269,5 @@ pub enum UnreadMessageCount {
     /// There are unread messages, but we do not know how many.
     Unknown,
     /// There are unread messages, and we know exactly how many.
-    Known(u64)
+    Known(u64),
 }

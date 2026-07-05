@@ -52,6 +52,7 @@ pub fn save_window_state(window_ref: WindowRef, cx: &Cx) -> anyhow::Result<()> {
         position: (position.x, position.y),
         is_fullscreen: window_ref.is_fullscreen(cx),
     };
+    std::fs::create_dir_all(app_data_dir())?;
     std::fs::write(
         app_data_dir().join(WINDOW_GEOM_STATE_FILE_NAME),
         serde_json::to_string(&window_geom)?,

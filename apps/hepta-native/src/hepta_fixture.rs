@@ -308,10 +308,11 @@ mod tests {
             "!hepta-runtime-fixture:local"
         );
         assert_eq!(room.room_name_id.to_string(), "Hepta Runtime Cockpit");
-        assert!(room
-            .latest
-            .as_ref()
-            .is_some_and(|(_, latest)| { latest.contains("codex-rs/hepta-*") }));
+        assert!(
+            room.latest
+                .as_ref()
+                .is_some_and(|(_, latest)| { latest.contains("codex-rs/hepta-*") })
+        );
         assert!(room.has_been_paginated);
         assert!(room.is_marked_unread);
         assert!(!room.is_direct);
