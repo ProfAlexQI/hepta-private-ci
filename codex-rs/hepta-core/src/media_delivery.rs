@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -513,9 +514,9 @@ impl ProviderMediaCapabilityRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        MediaDeliveryContractReport, ProviderMediaCapability, ProviderMediaCapabilityRegistry,
-    };
+    use super::MediaDeliveryContractReport;
+    use super::ProviderMediaCapability;
+    use super::ProviderMediaCapabilityRegistry;
 
     #[test]
     fn media_delivery_contract_covers_multi_image_and_centralized_audio_without_side_effects() {

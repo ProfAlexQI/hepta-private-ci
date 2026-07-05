@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{SkillLifecycleReport, SkillWorkshopReport};
+use crate::SkillLifecycleReport;
+use crate::SkillWorkshopReport;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

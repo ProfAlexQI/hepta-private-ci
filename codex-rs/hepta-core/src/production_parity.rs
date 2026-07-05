@@ -1,9 +1,10 @@
 use serde::Serialize;
 
-use crate::{
-    ControlUiReport, ExternalProductionReadinessReport, ExternalProductionStatus,
-    HeptaNativeAbsorptionReport, LocalConfigImportStatus,
-};
+use crate::ControlUiReport;
+use crate::ExternalProductionReadinessReport;
+use crate::ExternalProductionStatus;
+use crate::HeptaNativeAbsorptionReport;
+use crate::LocalConfigImportStatus;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProductionParityDimension {
@@ -361,10 +362,10 @@ fn percent(numerator: usize, denominator: usize) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        ExternalProductionEvidence, ExternalProductionEvidenceManifest, control_ui_report,
-        hepta_native_absorption_report,
-    };
+    use crate::ExternalProductionEvidence;
+    use crate::ExternalProductionEvidenceManifest;
+    use crate::control_ui_report;
+    use crate::hepta_native_absorption_report;
     use std::collections::BTreeMap;
     use std::fs;
 

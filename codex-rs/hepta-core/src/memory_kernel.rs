@@ -5,11 +5,15 @@
 //! contract and a deterministic sample gate only; it does not run LLM
 //! extraction, mutate production memory, or open external indexes.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{SessionId, TranscriptRange, TranscriptSpanRef};
+use crate::SessionId;
+use crate::TranscriptRange;
+use crate::TranscriptSpanRef;
 
 pub const MEMORY_KERNEL_V1_CONTRACT: &str = "hepta-intelligence-memory-kernel-v1";
 
@@ -126,22 +130,12 @@ impl MemorySourceSpan {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct MemoryTemporalValidity {
     pub valid_from_unix_ms: Option<u64>,
     pub valid_until_unix_ms: Option<u64>,
     pub observed_at_unix_ms: Option<u64>,
     pub last_revalidated_unix_ms: Option<u64>,
-}
-
-impl Default for MemoryTemporalValidity {
-    fn default() -> Self {
-        Self {
-            valid_from_unix_ms: None,
-            valid_until_unix_ms: None,
-            observed_at_unix_ms: None,
-            last_revalidated_unix_ms: None,
-        }
-    }
 }
 
 impl MemoryTemporalValidity {
