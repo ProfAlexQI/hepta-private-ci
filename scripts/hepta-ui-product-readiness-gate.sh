@@ -4835,6 +4835,17 @@ run_release_signing_capability_gate() {
     and .release_script_capabilities.notary_keychain_profile_supported == true
     and .release_script_capabilities.release_artifact_receipt_output_supported == true
     and .release_script_capabilities.spctl_failure_is_hard_failure == true
+    and .release_execution_handoff.handoff_kind == "operator_supplied_release_signing_notary_artifact_handoff"
+    and .release_execution_handoff.handoff_ready == true
+    and (.release_execution_handoff.execution_prerequisites_ready | type) == "boolean"
+    and .release_execution_handoff.receipt_contract.release_artifact_receipt_output_env_name == "HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH"
+    and .release_execution_handoff.receipt_contract.release_artifact_intake_input_env_name == "HEPTA_UI_RELEASE_ARTIFACT_INPUT_PATH"
+    and .release_execution_handoff.receipt_contract.release_artifact_intake_gate == "scripts/hepta-ui-release-artifact-intake-gate.sh"
+    and .release_execution_handoff.receipt_contract.post_artifact_refresh_gate == "scripts/hepta-ui-product-readiness-gate.sh"
+    and (.release_execution_handoff.side_effects_must_remain_false_until_explicit_release_command | index("notary_submission_performed") != null)
+    and (.release_execution_handoff.side_effects_must_remain_false_until_explicit_release_command | index("active_binary_mutation") != null)
+    and .release_execution_handoff.claim_boundary_after_handoff.release_claim_ready == false
+    and .release_execution_handoff.claim_boundary_after_handoff.live_product_claim_ready == false
     and (.release_execution_prerequisites.keychain_identity_ready | type) == "boolean"
     and (.release_execution_prerequisites.notary_keychain_profile_ready | type) == "boolean"
     and (.release_execution_prerequisites.notary_credentials_ready | type) == "boolean"
@@ -10588,6 +10599,11 @@ validate_written_artifacts() {
     and .native_distribution_preflight.app_stapled == false
     and .ui_release_signing_capability_gate_ready == true
     and .ui_release_signing_capability.status == "ready"
+    and .ui_release_signing_capability.release_execution_handoff.handoff_ready == true
+    and .ui_release_signing_capability.release_execution_handoff.receipt_contract.release_artifact_receipt_output_env_name == "HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH"
+    and .ui_release_signing_capability.release_execution_handoff.receipt_contract.release_artifact_intake_input_env_name == "HEPTA_UI_RELEASE_ARTIFACT_INPUT_PATH"
+    and (.ui_release_signing_capability.release_execution_handoff.side_effects_must_remain_false_until_explicit_release_command | index("notary_submission_performed") != null)
+    and .ui_release_signing_capability.release_execution_handoff.claim_boundary_after_handoff.release_claim_ready == false
     and .local_release_signing_capability_audit_ready == true
     and (.release_signing_execution_prerequisites_ready | type) == "boolean"
     and (.release_signing_keychain_identity_ready | type) == "boolean"
@@ -15989,6 +16005,11 @@ emit_readiness_json() {
       and .native_distribution_preflight.public_distribution_artifact_written == false
       and .ui_release_signing_capability_gate_ready == true
       and .ui_release_signing_capability.status == "ready"
+      and .ui_release_signing_capability.release_execution_handoff.handoff_ready == true
+      and .ui_release_signing_capability.release_execution_handoff.receipt_contract.release_artifact_receipt_output_env_name == "HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH"
+      and .ui_release_signing_capability.release_execution_handoff.receipt_contract.release_artifact_intake_input_env_name == "HEPTA_UI_RELEASE_ARTIFACT_INPUT_PATH"
+      and (.ui_release_signing_capability.release_execution_handoff.side_effects_must_remain_false_until_explicit_release_command | index("notary_submission_performed") != null)
+      and .ui_release_signing_capability.release_execution_handoff.claim_boundary_after_handoff.release_claim_ready == false
       and .local_release_signing_capability_audit_ready == true
       and (.release_signing_execution_prerequisites_ready | type) == "boolean"
       and (.release_signing_keychain_identity_ready | type) == "boolean"

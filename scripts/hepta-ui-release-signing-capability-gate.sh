@@ -352,6 +352,65 @@ jq -n \
         "feed_signed_notarized_stapled_artifact_receipt_into_release_artifact_intake",
         "rerun_hepta_ui_product_readiness_gate"
       ],
+      release_execution_handoff:{
+        handoff_kind:"operator_supplied_release_signing_notary_artifact_handoff",
+        handoff_ready:$audit_ready,
+        execution_prerequisites_ready:$execution_prerequisites_ready,
+        required_operator_inputs:[
+          "configured_developer_id_application_identity_available_in_keychain",
+          "apple_notary_credentials_as_environment_or_notarytool_keychain_profile",
+          "explicit_release_execution_command",
+          "release_artifact_receipt_path",
+          "signed_notarized_stapled_local_distribution_artifact_receipt"
+        ],
+        supported_credential_modes:{
+          direct_environment:{
+            env_names:["APPLE_ID","APPLE_PASSWORD","APPLE_TEAM_ID"],
+            all_required_env_present:notary_env_ready
+          },
+          notarytool_keychain_profile:{
+            profile_env_name:"HEPTA_NATIVE_NOTARYTOOL_PROFILE",
+            supported_by_build_script:$build_script_supports_notary_profile,
+            profile_env_present:$notary_profile_present,
+            keychain_profile_ready:notary_profile_ready
+          }
+        },
+        receipt_contract:{
+          release_artifact_receipt_output_env_name:"HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH",
+          release_artifact_receipt_output_supported:$build_script_writes_artifact_receipt,
+          release_artifact_intake_input_env_name:"HEPTA_UI_RELEASE_ARTIFACT_INPUT_PATH",
+          release_artifact_intake_gate:"scripts/hepta-ui-release-artifact-intake-gate.sh",
+          post_artifact_refresh_gate:"scripts/hepta-ui-product-readiness-gate.sh",
+          expected_artifact_kind:"signed_notarized_stapled_artifact",
+          public_upload_performed_must_be_false:true,
+          public_distribution_claim_requires_intake_refresh:true
+        },
+        local_verification_commands:[
+          "scripts/hepta-ui-release-signing-capability-gate.sh",
+          "apps/hepta-native/packaging/build-macos-dmg.sh",
+          "scripts/hepta-ui-release-artifact-intake-gate.sh",
+          "scripts/hepta-ui-product-readiness-gate.sh"
+        ],
+        side_effects_must_remain_false_until_explicit_release_command:[
+          "credential_value_captured",
+          "network_call_performed",
+          "notary_submission_performed",
+          "app_signed",
+          "app_notarized",
+          "app_stapled",
+          "public_distribution_artifact_written",
+          "external_mutation",
+          "active_binary_mutation",
+          "install_or_restart"
+        ],
+        claim_boundary_after_handoff:{
+          release_artifact_claim_ready:false,
+          release_execution_ready:false,
+          public_distribution_claim_ready:false,
+          release_claim_ready:false,
+          live_product_claim_ready:false
+        }
+      },
       claim_boundary:{
         local_release_signing_capability_audit_ready:$audit_ready,
         release_signing_execution_prerequisites_ready:$execution_prerequisites_ready,
@@ -394,6 +453,9 @@ jq -r '
   + "- Release signing prerequisites ready: \(.release_execution_prerequisites.release_signing_execution_prerequisites_ready)\n"
   + "- Release receipt output supported: \(.release_script_capabilities.release_artifact_receipt_output_supported)\n"
   + "- `spctl` failure is hard failure: \(.release_script_capabilities.spctl_failure_is_hard_failure)\n"
+  + "- Handoff ready: \(.release_execution_handoff.handoff_ready)\n"
+  + "- Release artifact receipt output env: `\(.release_execution_handoff.receipt_contract.release_artifact_receipt_output_env_name)`\n"
+  + "- Release artifact intake input env: `\(.release_execution_handoff.receipt_contract.release_artifact_intake_input_env_name)`\n"
   + "- Release/public/live claims remain false.\n\n"
   + "## Blockers\n\n"
   + (.blockers | map("- `" + . + "`") | join("\n"))
@@ -437,6 +499,29 @@ jq -e '
   and .release_script_capabilities.notary_keychain_profile_supported == true
   and .release_script_capabilities.release_artifact_receipt_output_supported == true
   and .release_script_capabilities.spctl_failure_is_hard_failure == true
+  and .release_execution_handoff.handoff_kind == "operator_supplied_release_signing_notary_artifact_handoff"
+  and .release_execution_handoff.handoff_ready == true
+  and (.release_execution_handoff.execution_prerequisites_ready | type) == "boolean"
+  and (.release_execution_handoff.required_operator_inputs | length) == 5
+  and .release_execution_handoff.supported_credential_modes.direct_environment.env_names == ["APPLE_ID","APPLE_PASSWORD","APPLE_TEAM_ID"]
+  and .release_execution_handoff.supported_credential_modes.notarytool_keychain_profile.profile_env_name == "HEPTA_NATIVE_NOTARYTOOL_PROFILE"
+  and .release_execution_handoff.supported_credential_modes.notarytool_keychain_profile.supported_by_build_script == true
+  and .release_execution_handoff.receipt_contract.release_artifact_receipt_output_env_name == "HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH"
+  and .release_execution_handoff.receipt_contract.release_artifact_receipt_output_supported == true
+  and .release_execution_handoff.receipt_contract.release_artifact_intake_input_env_name == "HEPTA_UI_RELEASE_ARTIFACT_INPUT_PATH"
+  and .release_execution_handoff.receipt_contract.release_artifact_intake_gate == "scripts/hepta-ui-release-artifact-intake-gate.sh"
+  and .release_execution_handoff.receipt_contract.post_artifact_refresh_gate == "scripts/hepta-ui-product-readiness-gate.sh"
+  and .release_execution_handoff.receipt_contract.expected_artifact_kind == "signed_notarized_stapled_artifact"
+  and .release_execution_handoff.receipt_contract.public_upload_performed_must_be_false == true
+  and (.release_execution_handoff.local_verification_commands | index("apps/hepta-native/packaging/build-macos-dmg.sh") != null)
+  and (.release_execution_handoff.side_effects_must_remain_false_until_explicit_release_command | index("credential_value_captured") != null)
+  and (.release_execution_handoff.side_effects_must_remain_false_until_explicit_release_command | index("notary_submission_performed") != null)
+  and (.release_execution_handoff.side_effects_must_remain_false_until_explicit_release_command | index("active_binary_mutation") != null)
+  and .release_execution_handoff.claim_boundary_after_handoff.release_artifact_claim_ready == false
+  and .release_execution_handoff.claim_boundary_after_handoff.release_execution_ready == false
+  and .release_execution_handoff.claim_boundary_after_handoff.public_distribution_claim_ready == false
+  and .release_execution_handoff.claim_boundary_after_handoff.release_claim_ready == false
+  and .release_execution_handoff.claim_boundary_after_handoff.live_product_claim_ready == false
   and .claim_boundary.local_release_signing_capability_audit_ready == true
   and .claim_boundary.release_artifact_claim_ready == false
   and .claim_boundary.public_distribution_claim_ready == false
