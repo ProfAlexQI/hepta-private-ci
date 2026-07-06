@@ -8120,7 +8120,10 @@ run_release_artifact_intake_gate() {
         and .release_artifact_state.notarized_app_artifact_present == false
         and .release_artifact_state.stapled_app_artifact_present == false
         and .release_artifact_state.signed_notarized_stapled_artifact_present == false
+        and .release_artifact_state.local_distribution_artifact_written == false
         and .release_artifact_state.public_distribution_artifact_written == false
+        and .release_artifact_state.public_upload_performed == false
+        and .release_artifact_state.public_distribution_artifact_semantics == "missing_release_artifact_distribution_semantics"
         and (.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") != null)
         and (.release_artifact_blockers | index("public_distribution_artifact_not_written") != null)
       )
@@ -8135,6 +8138,10 @@ run_release_artifact_intake_gate() {
         and .release_artifact_state.local_distribution_artifact_written == true
         and .release_artifact_state.public_distribution_artifact_written == true
         and .release_artifact_state.public_upload_performed == false
+        and (
+          .release_artifact_state.public_distribution_artifact_semantics == "local_signed_notarized_stapled_dmg_written_not_public_upload"
+          or .release_artifact_state.public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
+        )
         and (.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") == null)
         and (.release_artifact_blockers | index("public_distribution_artifact_not_written") == null)
       )
@@ -8217,7 +8224,14 @@ run_release_artifact_roundtrip_gate() {
     and .source_alignment.present_branch_release_artifact_present == true
     and .source_alignment.present_branch_release_artifact_valid == true
     and .source_alignment.present_branch_signed_notarized_stapled_artifact_present == true
+    and .source_alignment.present_branch_local_distribution_artifact_written == true
     and .source_alignment.present_branch_public_distribution_artifact_written == true
+    and .source_alignment.present_branch_public_upload_performed == false
+    and (
+      .source_alignment.present_branch_public_distribution_artifact_semantics == "local_signed_notarized_stapled_dmg_written_not_public_upload"
+      or .source_alignment.present_branch_public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
+    )
+    and .source_alignment.present_branch_source_public_upload_performed == false
     and .source_alignment.present_branch_post_artifact_refresh_required == true
     and (
       (
@@ -9684,16 +9698,17 @@ write_artifact_summary() {
 	      def release_artifact_realness_blockers:
 	        [
 	          (if real_release_artifact_receipt_present then empty else "signed_notarized_stapled_artifact_missing" end),
-	          (
-	            if (
-	              real_release_artifact_receipt_present
-	              and ($release_artifact_intake.release_artifact_state.public_distribution_artifact_written // false) == true
-	            ) then
-	              empty
-	            else
-	              "public_distribution_artifact_not_written"
-	            end
-	          )
+          (
+            if (
+              real_release_artifact_receipt_present
+              and ($release_artifact_intake.release_artifact_state.local_distribution_artifact_written // false) == true
+              and ($release_artifact_intake.release_artifact_state.public_distribution_artifact_written // false) == true
+            ) then
+              empty
+            else
+              "public_distribution_artifact_not_written"
+            end
+          )
 	        ];
 	      def release_plan_blockers:
 	        (($current_plan_refresh.current_plan[3].blockers // [])
@@ -10257,7 +10272,9 @@ write_artifact_summary() {
         release_artifact_intake_artifact_present:$release_artifact_intake.release_artifact_state.release_artifact_present,
         release_artifact_intake_artifact_valid:$release_artifact_intake.release_artifact_state.release_artifact_valid,
         release_artifact_intake_signed_notarized_stapled_artifact_present:$release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present,
+        release_artifact_intake_local_distribution_artifact_written:$release_artifact_intake.release_artifact_state.local_distribution_artifact_written,
         release_artifact_intake_public_distribution_artifact_written:$release_artifact_intake.release_artifact_state.public_distribution_artifact_written,
+        release_artifact_intake_public_upload_performed:$release_artifact_intake.release_artifact_state.public_upload_performed,
         release_artifact_receipt_semantics:release_artifact_receipt_semantics,
         release_artifact_input_mode:release_artifact_input_mode,
         real_release_artifact_receipt_required:true,
@@ -13365,6 +13382,7 @@ emit_readiness_json() {
 	          (
 	            if (
 	              real_release_artifact_receipt_present
+	              and ($release_artifact_intake.release_artifact_state.local_distribution_artifact_written // false) == true
 	              and ($release_artifact_intake.release_artifact_state.public_distribution_artifact_written // false) == true
 	            ) then
 	              empty
@@ -13862,7 +13880,9 @@ emit_readiness_json() {
       release_artifact_intake_artifact_present:$release_artifact_intake.release_artifact_state.release_artifact_present,
       release_artifact_intake_artifact_valid:$release_artifact_intake.release_artifact_state.release_artifact_valid,
       release_artifact_intake_signed_notarized_stapled_artifact_present:$release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present,
+      release_artifact_intake_local_distribution_artifact_written:$release_artifact_intake.release_artifact_state.local_distribution_artifact_written,
       release_artifact_intake_public_distribution_artifact_written:$release_artifact_intake.release_artifact_state.public_distribution_artifact_written,
+      release_artifact_intake_public_upload_performed:$release_artifact_intake.release_artifact_state.public_upload_performed,
       release_artifact_receipt_semantics:release_artifact_receipt_semantics,
       release_artifact_input_mode:release_artifact_input_mode,
       real_release_artifact_receipt_required:true,
@@ -14931,14 +14951,18 @@ emit_readiness_json() {
           and .release_artifact_intake_artifact_present == false
           and .release_artifact_intake_artifact_valid == false
           and .release_artifact_intake_signed_notarized_stapled_artifact_present == false
+          and .release_artifact_intake_local_distribution_artifact_written == false
           and .release_artifact_intake_public_distribution_artifact_written == false
+          and .release_artifact_intake_public_upload_performed == false
         )
         or (
           .release_artifact_intake_waiting_for_artifact == false
           and .release_artifact_intake_artifact_present == true
           and .release_artifact_intake_artifact_valid == true
           and .release_artifact_intake_signed_notarized_stapled_artifact_present == true
+          and .release_artifact_intake_local_distribution_artifact_written == true
           and .release_artifact_intake_public_distribution_artifact_written == true
+          and .release_artifact_intake_public_upload_performed == false
         )
       )
       and .real_release_artifact_receipt_required == true
@@ -15761,14 +15785,18 @@ emit_readiness_json() {
           and .artifact_summary.release_artifact_intake_artifact_present == false
           and .artifact_summary.release_artifact_intake_artifact_valid == false
           and .artifact_summary.release_artifact_intake_signed_notarized_stapled_artifact_present == false
+          and .artifact_summary.release_artifact_intake_local_distribution_artifact_written == false
           and .artifact_summary.release_artifact_intake_public_distribution_artifact_written == false
+          and .artifact_summary.release_artifact_intake_public_upload_performed == false
         )
         or (
           .artifact_summary.release_artifact_intake_waiting_for_artifact == false
           and .artifact_summary.release_artifact_intake_artifact_present == true
           and .artifact_summary.release_artifact_intake_artifact_valid == true
           and .artifact_summary.release_artifact_intake_signed_notarized_stapled_artifact_present == true
+          and .artifact_summary.release_artifact_intake_local_distribution_artifact_written == true
           and .artifact_summary.release_artifact_intake_public_distribution_artifact_written == true
+          and .artifact_summary.release_artifact_intake_public_upload_performed == false
         )
       )
       and .artifact_summary.real_release_artifact_receipt_required == true

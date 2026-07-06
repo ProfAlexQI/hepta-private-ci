@@ -142,7 +142,9 @@ jq -n \
         app_signed:false,
         app_notarized:false,
         app_stapled:false,
-        public_distribution_artifact_written:false
+        local_distribution_artifact_written:false,
+        public_distribution_artifact_written:false,
+        public_upload_performed:false
       }
     }' >"$TEMPLATE_PATH"
 
@@ -254,6 +256,8 @@ jq -n \
       and $template_bytes > 0
       and sha_ready($markdown_sha)
       and $markdown_bytes > 0;
+    def artifact_distribution_semantics:
+      ($artifact.artifact_evidence.public_distribution_artifact_semantics // "");
     def artifact_input_valid:
       $artifact_present == true
       and $artifact.artifact_kind == "signed_notarized_stapled_artifact"
@@ -264,9 +268,13 @@ jq -n \
       and $artifact.artifact_evidence.signed == true
       and $artifact.artifact_evidence.notarized == true
       and $artifact.artifact_evidence.stapled == true
-      and (($artifact.artifact_evidence.local_distribution_artifact_written // $artifact.artifact_evidence.public_distribution_artifact_written // false) == true)
+      and $artifact.artifact_evidence.local_distribution_artifact_written == true
       and $artifact.artifact_evidence.public_distribution_artifact_written == true
       and ($artifact.artifact_evidence.public_upload_performed // false) == false
+      and (
+        artifact_distribution_semantics == "local_signed_notarized_stapled_dmg_written_not_public_upload"
+        or artifact_distribution_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
+      )
       and ($artifact.claim_boundary.release_artifact_claim_ready // false) == false
       and ($artifact.claim_boundary.public_distribution_claim_ready // false) == false
       and ($artifact.claim_boundary.release_claim_ready // false) == false
@@ -323,10 +331,10 @@ jq -n \
         notarized_app_artifact_present:($artifact.artifact_evidence.notarized // false),
         stapled_app_artifact_present:($artifact.artifact_evidence.stapled // false),
         signed_notarized_stapled_artifact_present:$artifact_valid,
-        local_distribution_artifact_written:($artifact.artifact_evidence.local_distribution_artifact_written // $artifact.artifact_evidence.public_distribution_artifact_written // false),
+        local_distribution_artifact_written:($artifact.artifact_evidence.local_distribution_artifact_written // false),
         public_distribution_artifact_written:($artifact.artifact_evidence.public_distribution_artifact_written // false),
         public_upload_performed:($artifact.artifact_evidence.public_upload_performed // false),
-        public_distribution_artifact_semantics:($artifact.artifact_evidence.public_distribution_artifact_semantics // "legacy_local_artifact_written_not_public_upload"),
+        public_distribution_artifact_semantics:($artifact.artifact_evidence.public_distribution_artifact_semantics // "missing_release_artifact_distribution_semantics"),
         next_required_step:"post_artifact_ui_readiness_refresh"
       },
       release_artifact_source_side_effects:{
@@ -362,7 +370,7 @@ jq -n \
       release_artifact_blockers:[
         (if $approval.release_approval_state.release_approval_valid then empty else "operator_release_approval_required" end),
         (if $artifact_valid then empty else "signed_notarized_stapled_artifact_missing" end),
-        (if (($artifact.artifact_evidence.local_distribution_artifact_written // $artifact.artifact_evidence.public_distribution_artifact_written // false) == true) then empty else "public_distribution_artifact_not_written" end),
+        (if (($artifact.artifact_evidence.local_distribution_artifact_written // false) == true and ($artifact.artifact_evidence.public_distribution_artifact_written // false) == true) then empty else "public_distribution_artifact_not_written" end),
         "post_artifact_ui_readiness_refresh_required",
         (if ($boundary.claim_boundary.real_backend_receipt_claim_ready // false) then empty else "real_backend_receipt_missing" end)
       ],
@@ -412,6 +420,7 @@ jq -e '
   and .markdown_bytes > 0
   and .root_report_replay_required_count_after_intake == 37
   and .release_artifact_state.next_required_step == "post_artifact_ui_readiness_refresh"
+  and (.release_artifact_state.public_distribution_artifact_semantics | type) == "string"
   and (.release_artifact_source_side_effects.credential_value_read | type) == "boolean"
   and (.release_artifact_source_side_effects.keychain_identity_lookup_performed | type) == "boolean"
   and (.release_artifact_source_side_effects.network_call_performed | type) == "boolean"
@@ -487,6 +496,7 @@ jq -e '
       and .release_artifact_state.local_distribution_artifact_written == false
       and .release_artifact_state.public_distribution_artifact_written == false
       and .release_artifact_state.public_upload_performed == false
+      and .release_artifact_state.public_distribution_artifact_semantics == "missing_release_artifact_distribution_semantics"
       and (.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") != null)
       and (.release_artifact_blockers | index("public_distribution_artifact_not_written") != null)
     )
@@ -503,6 +513,10 @@ jq -e '
       and .release_artifact_state.local_distribution_artifact_written == true
       and .release_artifact_state.public_distribution_artifact_written == true
       and .release_artifact_state.public_upload_performed == false
+      and (
+        .release_artifact_state.public_distribution_artifact_semantics == "local_signed_notarized_stapled_dmg_written_not_public_upload"
+        or .release_artifact_state.public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
+      )
       and (.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") == null)
       and (.release_artifact_blockers | index("public_distribution_artifact_not_written") == null)
     )

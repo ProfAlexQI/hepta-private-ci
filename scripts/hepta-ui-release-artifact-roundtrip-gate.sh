@@ -227,6 +227,7 @@ jq -n \
       and $artifact.artifact_evidence.stapled == true
       and $artifact.artifact_evidence.local_distribution_artifact_written == true
       and $artifact.artifact_evidence.public_distribution_artifact_written == true
+      and $artifact.artifact_evidence.public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
       and $artifact.artifact_evidence.public_upload_performed == false
       and sha_ready($artifact.artifact_evidence.signed_artifact_sha256)
       and sha_ready($artifact.artifact_evidence.notarization_ticket_sha256)
@@ -260,6 +261,11 @@ jq -n \
       and $present.release_artifact_state.local_distribution_artifact_written == true
       and $present.release_artifact_state.public_distribution_artifact_written == true
       and $present.release_artifact_state.public_upload_performed == false
+      and (
+        $present.release_artifact_state.public_distribution_artifact_semantics == "local_signed_notarized_stapled_dmg_written_not_public_upload"
+        or $present.release_artifact_state.public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
+      )
+      and (($present.release_artifact_source_side_effects.public_upload_performed // false) == false)
       and $present.release_artifact_state.release_artifact_input_sha256 == $simulated_artifact_sha
       and $present.release_artifact_state.release_artifact_input_bytes == $simulated_artifact_bytes
       and (
@@ -354,6 +360,8 @@ jq -n \
         present_branch_local_distribution_artifact_written:$present.release_artifact_state.local_distribution_artifact_written,
         present_branch_public_distribution_artifact_written:$present.release_artifact_state.public_distribution_artifact_written,
         present_branch_public_upload_performed:$present.release_artifact_state.public_upload_performed,
+        present_branch_public_distribution_artifact_semantics:$present.release_artifact_state.public_distribution_artifact_semantics,
+        present_branch_source_public_upload_performed:($present.release_artifact_source_side_effects.public_upload_performed // false),
         present_branch_release_approval_valid:$present.source_alignment.release_approval_valid,
         present_branch_operator_release_approval_required:(($present.release_artifact_blockers | index("operator_release_approval_required")) != null),
         present_branch_post_artifact_refresh_required:(($present.release_artifact_blockers | index("post_artifact_ui_readiness_refresh_required")) != null),
@@ -416,6 +424,11 @@ jq -e '
   and .source_alignment.present_branch_local_distribution_artifact_written == true
   and .source_alignment.present_branch_public_distribution_artifact_written == true
   and .source_alignment.present_branch_public_upload_performed == false
+  and (
+    .source_alignment.present_branch_public_distribution_artifact_semantics == "local_signed_notarized_stapled_dmg_written_not_public_upload"
+    or .source_alignment.present_branch_public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
+  )
+  and .source_alignment.present_branch_source_public_upload_performed == false
   and (
     (
       .source_alignment.present_branch_release_approval_valid == true
